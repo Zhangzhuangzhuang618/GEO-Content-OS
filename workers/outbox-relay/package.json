@@ -2,5 +2,31 @@
   "name": "@geo-content-os/worker-outbox-relay",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Outbox Relay：SKIP LOCKED 领取、BullMQ 投递、租约管理"
+  "type": "module",
+  "description": "GEO Content OS — Outbox Relay：SKIP LOCKED 领取、BullMQ 投递、租约管理",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
+    "bullmq": "5.80.2",
+    "ioredis": "5.10.1",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

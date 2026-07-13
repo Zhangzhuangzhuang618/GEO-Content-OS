@@ -4,3 +4,9 @@ export {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
 } from './postgres.js';
+export {
+  REDIS_TEST_IMAGE,
+  redisUrl,
+  startRedisTestContainer,
+  type StartedTestContainer,
+} from './redis.js';

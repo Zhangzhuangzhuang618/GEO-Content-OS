@@ -39,7 +39,7 @@ describe('PostgreSQL Testcontainers smoke', () => {
       `;
 
       expect(extensions.map(({ extname }) => extname)).toEqual(['citext', 'pgcrypto', 'vector']);
-      expect(migrationRows[0]?.count).toBe(1);
+      expect(migrationRows[0]?.count).toBe(2);
     } finally {
       await client.end();
     }

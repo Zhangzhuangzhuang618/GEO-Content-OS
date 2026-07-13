@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm build:contracts && nest build",
     "build:contracts": "pnpm --filter @geo-content-os/contracts build",
-    "build:test-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/testkit build",
+    "build:test-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/testkit build && pnpm --filter @geo-content-os/worker-outbox-relay build",
     "db:check": "tsx src/database/cli/check.ts",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
     "db:migrate": "tsx src/database/cli/migrate.ts",
@@ -37,6 +37,7 @@
     "@nestjs/cli": "11.0.24",
     "@nestjs/testing": "11.1.28",
     "@geo-content-os/testkit": "workspace:*",
+    "@geo-content-os/worker-outbox-relay": "workspace:*",
     "@types/supertest": "7.2.0",
     "drizzle-kit": "0.31.10",
     "supertest": "7.2.2",

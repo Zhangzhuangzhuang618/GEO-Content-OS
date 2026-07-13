@@ -176,7 +176,12 @@ services:
 
   outbox-relay:
     <<: *worker-service
+    image: geo-content-os/outbox-relay:dev
+    build:
+      context: ..
+      dockerfile: infra/docker/outbox-relay.Dockerfile
     environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}
       HEALTH_PORT: '9090'
       REDIS_URL: redis://redis:6379/0
       WORKER_NAME: outbox-relay
