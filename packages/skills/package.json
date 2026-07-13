@@ -2,10 +2,5 @@
   "name": "@geo-content-os/skills",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — AI Skills: Prompt、JSON Schema、Few-shot、Tool Calling",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "scripts": {
-    "test": "echo 'test — implemented in T059-T070'"
-  }
+  "description": "GEO Content OS — AI Skills: Prompt、JSON Schema、Few-shot、Tool Calling"
 }

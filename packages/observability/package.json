@@ -2,10 +2,5 @@
   "name": "@geo-content-os/observability",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — OpenTelemetry、日志、trace 传播",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "scripts": {
-    "test": "echo 'test — implemented in T011'"
-  }
+  "description": "GEO Content OS — OpenTelemetry、日志、trace 传播"
 }

@@ -2,10 +2,5 @@
   "name": "@geo-content-os/testkit",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — 共享测试配置、fixture 和工具",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "scripts": {
-    "test": "echo 'test — implemented in T008'"
-  }
+  "description": "GEO Content OS — 共享测试配置、fixture 和工具"
 }

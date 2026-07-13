@@ -7,13 +7,14 @@
     "node": ">=22.0.0 <23.0.0",
     "pnpm": ">=10.0.0 <11.0.0"
   },
-  "packageManager": "pnpm@10.12.0",
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
-    "clean": "pnpm -r exec rm -rf dist/ .next/ node_modules/.cache"
+    "clean": "pnpm -r exec rm -rf dist/ .next/ node_modules/.cache",
+    "test": "node scripts/task-gate.mjs T008"
   },
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/Zhangzhuangzhuang618/GEO-Content-OS.git"
   },
   "license": "UNLICENSED",
   "author": ""

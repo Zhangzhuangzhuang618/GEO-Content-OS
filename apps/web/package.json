@@ -4,8 +4,6 @@
   "private": true,
   "description": "GEO Content OS — Next.js 15 App Router Web 前端",
   "scripts": {
-    "dev": "echo 'dev — implemented in T006'",
-    "build": "echo 'build — implemented in T006'",
-    "test": "echo 'test — implemented in T006'"
+    "build": "node ../../scripts/task-gate.mjs T006"
   }
 }

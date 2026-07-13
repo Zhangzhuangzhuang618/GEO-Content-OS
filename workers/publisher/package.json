@@ -2,9 +2,5 @@
   "name": "@geo-content-os/worker-publisher",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Publisher Worker：平台发布、重试、导出",
-  "scripts": {
-    "dev": "echo 'dev — implemented in T103'",
-    "test": "echo 'test — implemented in T103'"
-  }
+  "description": "GEO Content OS — Publisher Worker：平台发布、重试、导出"
 }

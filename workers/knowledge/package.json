@@ -2,9 +2,5 @@
   "name": "@geo-content-os/worker-knowledge",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Knowledge Worker：资料入库、分块、Embedding、FTS 索引",
-  "scripts": {
-    "dev": "echo 'dev — implemented in T040'",
-    "test": "echo 'test — implemented in T040'"
-  }
+  "description": "GEO Content OS — Knowledge Worker：资料入库、分块、Embedding、FTS 索引"
 }

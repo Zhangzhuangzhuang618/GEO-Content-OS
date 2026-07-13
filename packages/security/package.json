@@ -2,10 +2,5 @@
   "name": "@geo-content-os/security",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — CSRF、CORS、CSP、限流、脱敏和安全头",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "scripts": {
-    "test": "echo 'test — implemented in T012'"
-  }
+  "description": "GEO Content OS — CSRF、CORS、CSP、限流、脱敏和安全头"
 }

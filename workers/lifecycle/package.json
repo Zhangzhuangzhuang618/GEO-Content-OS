@@ -2,9 +2,5 @@
   "name": "@geo-content-os/worker-lifecycle",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Lifecycle Worker：租户导出、归档、清理",
-  "scripts": {
-    "dev": "echo 'dev — implemented in T136'",
-    "test": "echo 'test — implemented in T136'"
-  }
+  "description": "GEO Content OS — Lifecycle Worker：租户导出、归档、清理"
 }

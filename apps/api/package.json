@@ -4,8 +4,6 @@
   "private": true,
   "description": "GEO Content OS — NestJS 11 + FastifyAdapter API",
   "scripts": {
-    "dev": "echo 'dev — implemented in T005'",
-    "build": "echo 'build — implemented in T005'",
-    "test": "echo 'test — implemented in T005'"
+    "test": "node ../../scripts/task-gate.mjs T005"
   }
 }
