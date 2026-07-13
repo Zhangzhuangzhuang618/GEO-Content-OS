@@ -2,9 +2,9 @@ import { UuidSchema } from '@geo-content-os/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import type postgres from 'postgres';
 
+import { IdempotencyDatabase } from './idempotency.database.js';
 import { IdempotencyConflictError, IdempotencyProcessingError } from './idempotency.errors.js';
 import { parseIdempotencyKey } from './idempotency-key.js';
-import { IDEMPOTENCY_DATABASE_CLIENT } from './idempotency.tokens.js';
 import type {
   CachedHttpResponse,
   IdempotencyExecutionInput,
@@ -30,7 +30,10 @@ interface IdempotencyRow {
 
 @Injectable()
 export class IdempotencyService {
-  public constructor(@Inject(IDEMPOTENCY_DATABASE_CLIENT) private readonly client: postgres.Sql) {}
+  public constructor(
+    @Inject(IdempotencyDatabase)
+    private readonly database: IdempotencyDatabase | postgres.Sql,
+  ) {}
 
   public async execute<TBody extends JsonValue>(
     input: IdempotencyExecutionInput,
@@ -101,7 +104,7 @@ export class IdempotencyService {
         SET
           status = ${terminalStatus},
           response_status = ${response.statusCode},
-          response_json = ${transaction.json(response.body)}
+          response_json = ${JSON.stringify(response.body)}::text::jsonb
         WHERE tenant_id = ${tenantId}::uuid
           AND scope_key = ${scopeKey}
           AND idempotency_key = ${idempotencyKey}
@@ -115,6 +118,10 @@ export class IdempotencyService {
 
       return { outcome: 'executed', requestHash, response };
     });
+  }
+
+  private get client(): postgres.Sql {
+    return typeof this.database === 'function' ? this.database : this.database.client;
   }
 }
 

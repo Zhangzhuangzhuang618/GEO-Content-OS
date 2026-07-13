@@ -218,6 +218,9 @@ export const invitations = pgTable(
     index('invitations_tenant_pending_idx')
       .on(table.tenantId, table.email, table.expiresAt.desc())
       .where(sql`${table.acceptedAt} IS NULL AND ${table.revokedAt} IS NULL`),
+    uniqueIndex('invitations_tenant_email_pending_uq')
+      .on(table.tenantId, table.email)
+      .where(sql`${table.acceptedAt} IS NULL AND ${table.revokedAt} IS NULL`),
     index('invitations_expiry_idx')
       .on(table.expiresAt)
       .where(sql`${table.acceptedAt} IS NULL AND ${table.revokedAt} IS NULL`),
@@ -227,6 +230,10 @@ export const invitations = pgTable(
     ),
     check('invitations_token_hash_check', sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
     check('invitations_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'invitations_terminal_state_check',
+      sql`${table.acceptedAt} IS NULL OR ${table.revokedAt} IS NULL`,
+    ),
   ],
 );
 
