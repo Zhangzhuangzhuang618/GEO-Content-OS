@@ -5,19 +5,35 @@
   "type": "module",
   "description": "GEO Content OS — NestJS 11 + FastifyAdapter API",
   "scripts": {
+    "build": "pnpm build:contracts && nest build",
+    "build:contracts": "pnpm --filter @geo-content-os/contracts build",
     "db:check": "tsx src/database/cli/check.ts",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
     "db:migrate": "tsx src/database/cli/migrate.ts",
     "db:migrate:fresh": "tsx src/database/cli/fresh.ts --force",
-    "test": "node ../../scripts/task-gate.mjs T005",
+    "pretest": "pnpm build:contracts",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
+    "test": "vitest run",
     "test:database": "vitest run src/database",
+    "test:watch": "vitest",
     "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
+    "@nestjs/common": "11.1.28",
+    "@nestjs/core": "11.1.28",
+    "@nestjs/platform-fastify": "11.1.28",
     "drizzle-orm": "0.45.2",
-    "postgres": "3.4.9"
+    "fastify": "5.10.0",
+    "postgres": "3.4.9",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
   },
   "devDependencies": {
+    "@nestjs/cli": "11.0.24",
+    "@nestjs/testing": "11.1.28",
     "drizzle-kit": "0.31.10",
     "tsx": "4.23.1",
     "vitest": "4.1.10"
