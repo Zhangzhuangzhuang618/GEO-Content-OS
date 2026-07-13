@@ -89,6 +89,7 @@ describe('structured logger', () => {
         nested: { authorization: 'Bearer secret', safe: 'visible' },
         note: 'Bearer top-secret',
         password: 'secret',
+        redis_error: 'redis://default:redis-password@redis.internal:6379/1',
       });
     });
 
@@ -105,5 +106,6 @@ describe('structured logger', () => {
     });
     expect(record['note']).toBe('Bearer [REDACTED]');
     expect(record['nested']).toEqual({ authorization: '[REDACTED]', safe: 'visible' });
+    expect(lines.join('')).not.toContain('redis-password');
   });
 });

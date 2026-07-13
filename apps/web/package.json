@@ -5,12 +5,14 @@
   "type": "module",
   "description": "GEO Content OS — Next.js 15 App Router Web 前端",
   "scripts": {
-    "build": "next build",
+    "build": "pnpm --filter @geo-content-os/security build && next build",
     "dev": "next dev",
     "start": "next start",
+    "test:security": "pnpm --filter @geo-content-os/security build && vitest run --config vitest.config.ts src/middleware.test.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
+    "@geo-content-os/security": "workspace:*",
     "@tanstack/react-query": "5.101.2",
     "next": "15.5.20",
     "react": "19.2.7",
@@ -22,6 +24,7 @@
     "@tailwindcss/postcss": "4.3.2",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "tailwindcss": "4.3.2"
+    "tailwindcss": "4.3.2",
+    "vitest": "4.1.10"
   }
 }

@@ -19,6 +19,8 @@ COPY --chown=node:node --from=build /workspace/node_modules /workspace/node_modu
 COPY --chown=node:node --from=build /workspace/apps/web/node_modules ./node_modules
 COPY --chown=node:node --from=build /workspace/apps/web/package.json ./package.json
 COPY --chown=node:node --from=build /workspace/apps/web/.next ./.next
+COPY --chown=node:node --from=build /workspace/packages/security/package.json /workspace/packages/security/package.json
+COPY --chown=node:node --from=build /workspace/packages/security/dist /workspace/packages/security/dist
 
 USER node
 EXPOSE 3000

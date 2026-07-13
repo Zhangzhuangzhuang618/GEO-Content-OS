@@ -4,6 +4,9 @@ import type { ReactNode } from 'react';
 import './globals.css';
 import { ApplicationProviders } from './providers';
 
+// Nonce-based CSP requires request-time rendering so Next can attach the nonce to framework scripts.
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: {
     default: 'GEO Content OS',
