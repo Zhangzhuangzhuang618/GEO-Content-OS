@@ -15,6 +15,7 @@
     "db:generate": "pnpm --filter @geo-content-os/api db:generate",
     "db:migrate": "pnpm --filter @geo-content-os/api db:migrate",
     "db:migrate:fresh": "pnpm --filter @geo-content-os/api db:migrate:fresh",
+    "db:seed:identity": "pnpm --filter @geo-content-os/api db:seed:identity",
     "db:test": "pnpm --filter @geo-content-os/api test:database",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
