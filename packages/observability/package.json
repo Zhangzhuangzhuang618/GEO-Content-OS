@@ -13,11 +13,12 @@
     }
   },
   "scripts": {
-    "build": "tsc --project tsconfig.build.json --pretty false",
-    "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+    "build": "pnpm --filter @geo-content-os/security build && tsc --project tsconfig.build.json --pretty false",
+    "test": "pnpm --filter @geo-content-os/security build && vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/security build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
+    "@geo-content-os/security": "workspace:*",
     "@opentelemetry/api": "1.9.1",
     "@opentelemetry/context-async-hooks": "2.9.0",
     "@opentelemetry/core": "2.9.0",

@@ -1,4 +1,5 @@
 import pino, { type DestinationStream, type Level, type Logger } from 'pino';
+import { redactSensitiveData, redactSensitiveText } from '@geo-content-os/security';
 
 import { getTelemetryContext } from './context.js';
 
@@ -19,8 +20,6 @@ export interface StructuredLogger {
   error(message: string, error?: unknown, attributes?: LogAttributes): void;
   child(bindings: LogAttributes): StructuredLogger;
 }
-
-const SENSITIVE_KEY = /authorization|cookie|credential|password|secret|token|api[_-]?key/iu;
 
 export function createStructuredLogger(options: StructuredLoggerOptions): StructuredLogger {
   const base = {
@@ -57,15 +56,15 @@ class PinoStructuredLogger implements StructuredLogger {
   ) {}
 
   public debug(message: string, attributes: LogAttributes = {}): void {
-    this.logger.debug(this.fields(attributes), redactText(message));
+    this.logger.debug(this.fields(attributes), redactSensitiveText(message));
   }
 
   public info(message: string, attributes: LogAttributes = {}): void {
-    this.logger.info(this.fields(attributes), redactText(message));
+    this.logger.info(this.fields(attributes), redactSensitiveText(message));
   }
 
   public warn(message: string, attributes: LogAttributes = {}): void {
-    this.logger.warn(this.fields(attributes), redactText(message));
+    this.logger.warn(this.fields(attributes), redactSensitiveText(message));
   }
 
   public error(message: string, error?: unknown, attributes: LogAttributes = {}): void {
@@ -74,7 +73,7 @@ class PinoStructuredLogger implements StructuredLogger {
         ...attributes,
         ...(error === undefined ? {} : { error: serializeError(error) }),
       }),
-      redactText(message),
+      redactSensitiveText(message),
     );
   }
 
@@ -102,55 +101,18 @@ class PinoStructuredLogger implements StructuredLogger {
 }
 
 export function sanitizeAttributes(value: LogAttributes): Record<string, unknown> {
-  return sanitizeRecord(value, new WeakSet<object>());
-}
-
-function sanitizeRecord(
-  value: Readonly<Record<string, unknown>>,
-  seen: WeakSet<object>,
-): Record<string, unknown> {
-  if (seen.has(value)) return { circular: '[Circular]' };
-  seen.add(value);
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [
-      key,
-      SENSITIVE_KEY.test(key) ? '[REDACTED]' : sanitizeValue(item, seen),
-    ]),
-  );
-}
-
-function sanitizeValue(value: unknown, seen: WeakSet<object>): unknown {
-  if (typeof value === 'string') return redactText(value);
-  if (value === null || ['number', 'boolean'].includes(typeof value)) return value;
-  if (value === undefined) return undefined;
-  if (value instanceof Error) return serializeError(value);
-  if (Array.isArray(value)) {
-    if (seen.has(value)) return '[Circular]';
-    seen.add(value);
-    return value.map((item) => sanitizeValue(item, seen));
-  }
-  if (typeof value === 'object') {
-    return sanitizeRecord(value as Readonly<Record<string, unknown>>, seen);
-  }
-  return String(value);
+  return redactSensitiveData(value) as Record<string, unknown>;
 }
 
 function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
     return {
-      message: redactText(error.message),
+      message: redactSensitiveText(error.message),
       name: error.name,
-      ...(error.stack ? { stack: redactText(error.stack) } : {}),
+      ...(error.stack ? { stack: redactSensitiveText(error.stack) } : {}),
     };
   }
-  return { message: redactText(String(error)), name: 'NonErrorThrown' };
-}
-
-function redactText(value: string): string {
-  return value
-    .replaceAll(/Bearer\s+[^\s"']+/giu, 'Bearer [REDACTED]')
-    .replaceAll(/((?:api[_-]?key|password|secret|token)=)[^&\s]+/giu, '$1[REDACTED]');
+  return { message: redactSensitiveText(String(error)), name: 'NonErrorThrown' };
 }
 
 function normalizeLevel(value: string | undefined): Level {

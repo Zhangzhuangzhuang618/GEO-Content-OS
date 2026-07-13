@@ -25,6 +25,8 @@ COPY --chown=node:node --from=build /workspace/packages/contracts/dist ./package
 COPY --chown=node:node --from=build /workspace/packages/observability/node_modules ./packages/observability/node_modules
 COPY --chown=node:node --from=build /workspace/packages/observability/package.json ./packages/observability/package.json
 COPY --chown=node:node --from=build /workspace/packages/observability/dist ./packages/observability/dist
+COPY --chown=node:node --from=build /workspace/packages/security/package.json ./packages/security/package.json
+COPY --chown=node:node --from=build /workspace/packages/security/dist ./packages/security/dist
 
 USER node
 EXPOSE 3000
