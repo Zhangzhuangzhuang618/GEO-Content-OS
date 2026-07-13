@@ -2,5 +2,32 @@
   "name": "@geo-content-os/observability",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — OpenTelemetry、日志、trace 传播"
+  "type": "module",
+  "description": "GEO Content OS — OpenTelemetry、日志、trace 传播",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/context-async-hooks": "2.9.0",
+    "@opentelemetry/core": "2.9.0",
+    "@opentelemetry/sdk-trace-node": "2.9.0",
+    "pino": "10.3.1"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

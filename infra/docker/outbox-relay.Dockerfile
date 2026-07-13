@@ -19,6 +19,9 @@ COPY --chown=node:node --from=build /workspace/node_modules ./node_modules
 COPY --chown=node:node --from=build /workspace/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --chown=node:node --from=build /workspace/packages/contracts/package.json ./packages/contracts/package.json
 COPY --chown=node:node --from=build /workspace/packages/contracts/dist ./packages/contracts/dist
+COPY --chown=node:node --from=build /workspace/packages/observability/node_modules ./packages/observability/node_modules
+COPY --chown=node:node --from=build /workspace/packages/observability/package.json ./packages/observability/package.json
+COPY --chown=node:node --from=build /workspace/packages/observability/dist ./packages/observability/dist
 COPY --chown=node:node --from=build /workspace/workers/outbox-relay/node_modules ./workers/outbox-relay/node_modules
 COPY --chown=node:node --from=build /workspace/workers/outbox-relay/package.json ./workers/outbox-relay/package.json
 COPY --chown=node:node --from=build /workspace/workers/outbox-relay/dist ./workers/outbox-relay/dist
@@ -26,4 +29,3 @@ COPY --chown=node:node --from=build /workspace/workers/outbox-relay/dist ./worke
 USER node
 EXPOSE 9090
 CMD ["node", "workers/outbox-relay/dist/main.js"]
-

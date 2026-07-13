@@ -9,6 +9,7 @@ export {
   type Database,
   type DatabaseClient,
   type DatabaseConnection,
+  type DatabaseConnectionOptions,
 } from './connection.js';
 export { assertRequiredExtensions, REQUIRED_POSTGRES_EXTENSIONS } from './extensions.js';
 export { migrateFreshDatabase } from './fresh.js';
