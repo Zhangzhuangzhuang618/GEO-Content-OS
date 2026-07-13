@@ -209,6 +209,37 @@ export class AuthService {
     };
   }
 
+  /**
+   * Identity-scoped routes may recover from a disabled active membership by listing or switching
+   * to another tenant. Tenant-scoped routes must continue using authenticateWriteSession().
+   */
+  public async authenticateIdentitySession(
+    sessionToken: string | undefined,
+  ): Promise<AuthSessionPrincipal | undefined> {
+    if (!isValidSessionToken(sessionToken)) return undefined;
+    const session = await this.findAndTouchIdentitySession(sha256(sessionToken));
+    if (!session) return undefined;
+    return {
+      activeTenantId: session.activeTenantId,
+      sessionId: session.id,
+      userId: session.userId,
+    };
+  }
+
+  public async authenticateIdentityWriteSession(
+    sessionToken: string | undefined,
+    csrfToken: string | undefined,
+  ): Promise<AuthSessionPrincipal | undefined> {
+    if (!isValidSessionToken(sessionToken) || !isValidCsrfToken(csrfToken)) return undefined;
+    const session = await this.findAndTouchIdentitySession(sha256(sessionToken));
+    if (!session || !constantTimeEqual(session.csrfHash, sha256(csrfToken))) return undefined;
+    return {
+      activeTenantId: session.activeTenantId,
+      sessionId: session.id,
+      userId: session.userId,
+    };
+  }
+
   private async findAndTouchSession(sessionHash: string): Promise<SessionDatabaseView | undefined> {
     const rows = await this.database.client<SessionDatabaseView[]>`
       UPDATE sessions AS session
@@ -235,6 +266,32 @@ export class AuthService {
               AND tenant.deleted_at IS NULL
           )
         )
+      RETURNING
+        session.id,
+        session.user_id AS "userId",
+        session.active_tenant_id AS "activeTenantId",
+        session.csrf_hash AS "csrfHash",
+        session.expires_at AS "expiresAt",
+        identity_user.email::text AS email,
+        identity_user.display_name AS "displayName"
+    `;
+    return rows[0];
+  }
+
+  private async findAndTouchIdentitySession(
+    sessionHash: string,
+  ): Promise<SessionDatabaseView | undefined> {
+    const rows = await this.database.client<SessionDatabaseView[]>`
+      UPDATE sessions AS session
+      SET last_seen_at = now()
+      FROM users AS identity_user
+      WHERE
+        session.session_hash = ${sessionHash}
+        AND session.user_id = identity_user.id
+        AND session.revoked_at IS NULL
+        AND session.expires_at > now()
+        AND identity_user.status = 'active'
+        AND identity_user.deleted_at IS NULL
       RETURNING
         session.id,
         session.user_id AS "userId",
