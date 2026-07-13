@@ -4,7 +4,8 @@ const webPort = 34_100;
 const baseURL = `http://127.0.0.1:${webPort}`;
 
 export default defineConfig({
-  testDir: './apps/web/test/e2e',
+  testDir: '.',
+  testMatch: ['**/apps/api/test/e2e/**/*.spec.ts', '**/apps/web/test/e2e/**/*.spec.ts'],
   outputDir: './test-results/playwright',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
