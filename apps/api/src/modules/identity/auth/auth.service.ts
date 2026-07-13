@@ -209,6 +209,19 @@ export class AuthService {
     };
   }
 
+  public async authenticateReadSession(
+    sessionToken: string | undefined,
+  ): Promise<AuthSessionPrincipal | undefined> {
+    if (!isValidSessionToken(sessionToken)) return undefined;
+    const session = await this.findAndTouchSession(sha256(sessionToken));
+    if (!session) return undefined;
+    return {
+      activeTenantId: session.activeTenantId,
+      sessionId: session.id,
+      userId: session.userId,
+    };
+  }
+
   /**
    * Identity-scoped routes may recover from a disabled active membership by listing or switching
    * to another tenant. Tenant-scoped routes must continue using authenticateWriteSession().
