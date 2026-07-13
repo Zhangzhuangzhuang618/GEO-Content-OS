@@ -230,9 +230,42 @@ export const invitations = pgTable(
   ],
 );
 
+export const passwordResetTokens = pgTable(
+  'password_reset_tokens',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    tokenHash: char('token_hash', { length: 64 }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.userId],
+      foreignColumns: [users.id],
+      name: 'password_reset_tokens_user_fk',
+    }).onDelete('cascade'),
+    unique('password_reset_tokens_token_hash_uq').on(table.tokenHash),
+    index('password_reset_tokens_user_pending_idx')
+      .on(table.userId, table.expiresAt.desc())
+      .where(sql`${table.usedAt} IS NULL`),
+    index('password_reset_tokens_expiry_idx')
+      .on(table.expiresAt)
+      .where(sql`${table.usedAt} IS NULL`),
+    check('password_reset_tokens_token_hash_check', sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+    check('password_reset_tokens_expiry_check', sql`${table.expiresAt} > ${table.createdAt}`),
+    check(
+      'password_reset_tokens_used_at_check',
+      sql`${table.usedAt} IS NULL OR ${table.usedAt} >= ${table.createdAt}`,
+    ),
+  ],
+);
+
 export type UserRecord = typeof users.$inferSelect;
 export type PlatformRoleRecord = typeof platformRoles.$inferSelect;
 export type TenantRecord = typeof tenants.$inferSelect;
 export type MembershipRecord = typeof memberships.$inferSelect;
 export type SessionRecord = typeof sessions.$inferSelect;
 export type InvitationRecord = typeof invitations.$inferSelect;
+export type PasswordResetTokenRecord = typeof passwordResetTokens.$inferSelect;

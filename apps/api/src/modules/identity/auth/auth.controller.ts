@@ -8,10 +8,14 @@ import {
 import { Body, Controller, Get, HttpStatus, Inject, Post, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+import {
+  clearAuthCookies,
+  clearSessionCookie,
+  setCsrfCookie,
+  setSessionCookie,
+} from './auth.cookies.js';
 import { LoginRequestSchema, type SessionView } from './auth.dto.js';
 import { AuthService } from './auth.service.js';
-
-const COOKIE_PATH = '/';
 
 @Controller('auth')
 export class AuthController {
@@ -81,56 +85,14 @@ export class AuthController {
       request.cookies[CSRF_COOKIE_NAME],
     );
     if (!revoked) {
-      clearSessionCookie(reply);
-      clearCsrfCookie(reply);
+      clearAuthCookies(reply);
       await sendAuthRequired(reply, request.id);
       return;
     }
 
-    clearSessionCookie(reply);
-    clearCsrfCookie(reply);
+    clearAuthCookies(reply);
     await reply.status(HttpStatus.NO_CONTENT).send();
   }
-}
-
-function setSessionCookie(reply: FastifyReply, value: string, ttlSeconds: number): void {
-  reply.setCookie(SESSION_COOKIE_NAME, value, {
-    expires: new Date(Date.now() + ttlSeconds * 1_000),
-    httpOnly: true,
-    maxAge: ttlSeconds,
-    path: COOKIE_PATH,
-    sameSite: 'lax',
-    secure: true,
-  });
-}
-
-function setCsrfCookie(reply: FastifyReply, value: string, ttlSeconds: number): void {
-  reply.setCookie(CSRF_COOKIE_NAME, value, {
-    expires: new Date(Date.now() + ttlSeconds * 1_000),
-    httpOnly: false,
-    maxAge: ttlSeconds,
-    path: COOKIE_PATH,
-    sameSite: 'lax',
-    secure: true,
-  });
-}
-
-function clearSessionCookie(reply: FastifyReply): void {
-  reply.clearCookie(SESSION_COOKIE_NAME, {
-    httpOnly: true,
-    path: COOKIE_PATH,
-    sameSite: 'lax',
-    secure: true,
-  });
-}
-
-function clearCsrfCookie(reply: FastifyReply): void {
-  reply.clearCookie(CSRF_COOKIE_NAME, {
-    httpOnly: false,
-    path: COOKIE_PATH,
-    sameSite: 'lax',
-    secure: true,
-  });
 }
 
 function ensurePreAuthCsrfCookie(

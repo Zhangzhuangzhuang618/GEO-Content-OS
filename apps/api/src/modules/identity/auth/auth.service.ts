@@ -36,6 +36,12 @@ export interface LoginResult extends AuthenticatedSession {
   readonly ttlSeconds: number;
 }
 
+export interface AuthSessionPrincipal {
+  readonly activeTenantId: string | null;
+  readonly sessionId: string;
+  readonly userId: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly configuration: AuthConfiguration;
@@ -174,6 +180,20 @@ export class AuthService {
       RETURNING session.id
     `;
     return rows.length === 1;
+  }
+
+  public async authenticateWriteSession(
+    sessionToken: string | undefined,
+    csrfToken: string | undefined,
+  ): Promise<AuthSessionPrincipal | undefined> {
+    if (!isValidSessionToken(sessionToken) || !isValidCsrfToken(csrfToken)) return undefined;
+    const session = await this.findAndTouchSession(sha256(sessionToken));
+    if (!session || !constantTimeEqual(session.csrfHash, sha256(csrfToken))) return undefined;
+    return {
+      activeTenantId: session.activeTenantId,
+      sessionId: session.id,
+      userId: session.userId,
+    };
   }
 
   private async findAndTouchSession(sessionHash: string): Promise<SessionDatabaseView | undefined> {
