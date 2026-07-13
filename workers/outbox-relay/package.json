@@ -1,0 +1,10 @@
+{
+  "name": "@geo-content-os/worker-outbox-relay",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GEO Content OS — Outbox Relay：SKIP LOCKED 领取、BullMQ 投递、租约管理",
+  "scripts": {
+    "dev": "echo 'dev — implemented in T009'",
+    "test": "echo 'test — implemented in T009'"
+  }
+}

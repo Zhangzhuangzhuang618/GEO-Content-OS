@@ -1,0 +1,10 @@
+{
+  "name": "@geo-content-os/worker-analytics",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GEO Content OS — Analytics Worker：指标导入、聚合、成本计算",
+  "scripts": {
+    "dev": "echo 'dev — implemented in T127'",
+    "test": "echo 'test — implemented in T127'"
+  }
+}

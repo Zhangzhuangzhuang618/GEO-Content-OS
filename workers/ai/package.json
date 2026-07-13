@@ -1,0 +1,10 @@
+{
+  "name": "@geo-content-os/worker-ai",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GEO Content OS — AI Worker：Skill 编排、模型调用、生成运行",
+  "scripts": {
+    "dev": "echo 'dev — implemented in T053'",
+    "test": "echo 'test — implemented in T053'"
+  }
+}

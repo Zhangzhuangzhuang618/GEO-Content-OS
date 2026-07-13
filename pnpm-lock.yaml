@@ -1,0 +1,39 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .: {}
+
+  apps/api: {}
+
+  apps/web: {}
+
+  packages/adapters: {}
+
+  packages/contracts: {}
+
+  packages/observability: {}
+
+  packages/sdk: {}
+
+  packages/security: {}
+
+  packages/skills: {}
+
+  packages/testkit: {}
+
+  workers/ai: {}
+
+  workers/analytics: {}
+
+  workers/knowledge: {}
+
+  workers/lifecycle: {}
+
+  workers/outbox-relay: {}
+
+  workers/publisher: {}

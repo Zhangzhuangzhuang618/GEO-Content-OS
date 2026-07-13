@@ -1,0 +1,29 @@
+{
+  "name": "geo-content-os",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GEO Content OS — 企业级 GEO 多平台内容生产系统 (MVP v1.0)",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0",
+    "pnpm": ">=10.0.0 <11.0.0"
+  },
+  "packageManager": "pnpm@10.12.0",
+  "scripts": {
+    "dev": "echo 'dev script — implemented in T005/T006'",
+    "build": "echo 'build script — implemented in T005/T006'",
+    "lint": "echo 'lint script — implemented in T002'",
+    "typecheck": "echo 'typecheck script — implemented in T002'",
+    "test": "echo 'test script — implemented in T008'",
+    "verify": "echo 'verify script — implemented in T008'",
+    "db:migrate": "echo 'db:migrate script — implemented in T004'",
+    "db:migrate:fresh": "echo 'db:migrate:fresh script — implemented in T004'",
+    "db:seed": "echo 'db:seed script — implemented in T004'",
+    "clean": "pnpm -r exec rm -rf dist/ .next/ node_modules/.cache"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "license": "UNLICENSED",
+  "author": ""
+}

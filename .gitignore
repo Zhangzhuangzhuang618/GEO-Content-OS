@@ -1,0 +1,51 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# Build
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# Test
+coverage/
+playwright-report/
+test-results/
+.lighthouseci/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temp
+tmp/
+temp/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Docker
+infra/docker/data/
+infra/docker/minio/
+
+# Generated
+apps/api/openapi/openapi.json
+
+# Claude
+.claude/worktrees/
+.claude/scheduled_tasks.json
