@@ -10,7 +10,23 @@
   "packageManager": "pnpm@10.12.1",
   "scripts": {
     "clean": "pnpm -r exec rm -rf dist/ .next/ node_modules/.cache",
-    "test": "node scripts/task-gate.mjs T008"
+    "commitlint": "commitlint --from HEAD~1 --to HEAD --verbose",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --max-warnings=0 --fix",
+    "test": "node scripts/task-gate.mjs T008",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.1",
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.20.1",
+    "eslint": "9.39.5",
+    "globals": "17.7.0",
+    "prettier": "3.9.5",
+    "typescript": "5.8.3",
+    "typescript-eslint": "8.64.0"
   },
   "repository": {
     "type": "git",
