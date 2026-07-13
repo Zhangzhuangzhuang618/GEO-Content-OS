@@ -2,8 +2,26 @@
   "name": "@geo-content-os/web",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "GEO Content OS — Next.js 15 App Router Web 前端",
   "scripts": {
-    "build": "node ../../scripts/task-gate.mjs T006"
+    "build": "next build",
+    "dev": "next dev",
+    "start": "next start",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "5.101.2",
+    "next": "15.5.20",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-hook-form": "7.81.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.2",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "4.3.2"
   }
 }
