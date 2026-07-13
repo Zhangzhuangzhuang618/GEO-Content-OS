@@ -7,18 +7,20 @@
   "scripts": {
     "build": "pnpm build:contracts && nest build",
     "build:contracts": "pnpm --filter @geo-content-os/contracts build",
+    "build:test-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/testkit build",
     "db:check": "tsx src/database/cli/check.ts",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
     "db:migrate": "tsx src/database/cli/migrate.ts",
     "db:migrate:fresh": "tsx src/database/cli/fresh.ts --force",
-    "pretest": "pnpm build:contracts",
+    "pretest": "pnpm build:test-dependencies",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
-    "test": "vitest run",
+    "test": "vitest run --config vitest.config.ts",
     "test:database": "vitest run src/database",
+    "test:integration": "pnpm build:test-dependencies && vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest",
-    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm build:test-dependencies && tsc --project tsconfig.json --noEmit --pretty false && tsc --project tsconfig.test.json --noEmit --pretty false"
   },
   "dependencies": {
     "@geo-content-os/contracts": "workspace:*",
@@ -34,7 +36,10 @@
   "devDependencies": {
     "@nestjs/cli": "11.0.24",
     "@nestjs/testing": "11.1.28",
+    "@geo-content-os/testkit": "workspace:*",
+    "@types/supertest": "7.2.0",
     "drizzle-kit": "0.31.10",
+    "supertest": "7.2.2",
     "tsx": "4.23.1",
     "vitest": "4.1.10"
   }
