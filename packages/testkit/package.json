@@ -2,5 +2,28 @@
   "name": "@geo-content-os/testkit",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — 共享测试配置、fixture 和工具"
+  "type": "module",
+  "description": "GEO Content OS — 共享测试配置、fixture 和工具",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@testcontainers/postgresql": "12.0.4"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

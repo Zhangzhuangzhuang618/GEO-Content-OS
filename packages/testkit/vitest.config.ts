@@ -1,4 +1,4 @@
-import { createNodeVitestConfig } from '../testkit/vitest/node.mjs';
+import { createNodeVitestConfig } from './vitest/node.mjs';
 
 export default createNodeVitestConfig({
   include: ['src/**/*.test.ts'],
