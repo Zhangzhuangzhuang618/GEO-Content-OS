@@ -43,6 +43,13 @@
       "when": 1783987200000,
       "tag": "0005_invitation_history",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783990800000,
+      "tag": "0006_support_access",
+      "breakpoints": true
     }
   ]
 }

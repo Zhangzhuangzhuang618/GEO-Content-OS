@@ -20,3 +20,10 @@ export {
   type UserStatus,
 } from './identity.js';
 export { outboxEvents, type OutboxEventRecord } from './outbox.js';
+export {
+  auditEvents,
+  supportAccessGrants,
+  type AuditEventRecord,
+  type SupportAccessGrantRecord,
+  type SupportAccessScope,
+} from './platform-access.js';
