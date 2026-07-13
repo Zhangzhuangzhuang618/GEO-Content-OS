@@ -25,7 +25,7 @@
     "test:e2e": "pnpm --filter web build && playwright test",
     "test:integration": "pnpm --filter api test:integration",
     "test:security": "pnpm --filter security test:security && pnpm --filter api test:security && pnpm --filter web test:security",
-    "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter api test",
+    "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter @geo-content-os/adapter-email test && pnpm --filter api test",
     "typecheck": "pnpm typecheck:root && pnpm --recursive --if-present typecheck",
     "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false"
   },

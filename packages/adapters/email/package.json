@@ -1,0 +1,30 @@
+{
+  "name": "@geo-content-os/adapter-email",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GEO Content OS — SMTP email Adapter for identity notifications",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "nodemailer": "9.0.3"
+  },
+  "devDependencies": {
+    "@types/nodemailer": "8.0.1",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
+}

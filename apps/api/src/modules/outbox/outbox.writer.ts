@@ -43,7 +43,7 @@ export class OutboxWriter {
         ${event.event_type},
         ${event.aggregate.type},
         ${event.aggregate.id}::uuid,
-        ${transaction.json(event)}
+        ${JSON.stringify(event)}::text::jsonb
       )
     `;
 

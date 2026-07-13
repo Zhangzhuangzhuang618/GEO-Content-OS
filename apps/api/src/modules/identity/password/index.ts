@@ -1,7 +1,9 @@
 export { readPasswordConfiguration, type PasswordConfiguration } from './password.config.js';
+export { EmailPasswordResetDelivery } from './email-password-reset.delivery.js';
 export {
   ChangePasswordRequestSchema,
   ForgotPasswordRequestSchema,
+  NewPasswordSchema,
   ResetPasswordRequestSchema,
   type ChangePasswordRequest,
   type ForgotPasswordRequest,

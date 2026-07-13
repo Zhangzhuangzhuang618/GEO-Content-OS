@@ -1,6 +1,7 @@
 import { constantTimeEqual, generateSecureToken, isValidCsrfToken } from '@geo-content-os/security';
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
+import type postgres from 'postgres';
 
 import { IdentityRepository } from '../repositories/identity.repository.js';
 import { readAuthConfiguration, type AuthConfiguration } from './auth.config.js';
@@ -42,6 +43,12 @@ export interface AuthSessionPrincipal {
   readonly userId: string;
 }
 
+export interface SessionIdentity {
+  readonly displayName: string;
+  readonly email: string;
+  readonly id: string;
+}
+
 @Injectable()
 export class AuthService {
   private readonly configuration: AuthConfiguration;
@@ -65,13 +72,10 @@ export class AuthService {
 
     if (!user || !passwordValid || user.status !== 'active') return undefined;
 
-    const sessionToken = generateSecureToken(32);
-    const csrfToken = generateSecureToken(32);
     const ttlSeconds = input.remember_me
       ? this.configuration.rememberSessionTtlSeconds
       : this.configuration.sessionTtlSeconds;
-    const expiresAt = new Date(Date.now() + ttlSeconds * 1_000);
-    const created = await client.begin(async (transaction) => {
+    return client.begin(async (transaction) => {
       const activeUsers = await transaction<{ id: string }[]>`
         UPDATE users
         SET last_login_at = now()
@@ -82,37 +86,46 @@ export class AuthService {
           AND password_hash IS NOT NULL
         RETURNING id
       `;
-      if (activeUsers.length !== 1) return false;
-
-      await transaction`
-        INSERT INTO sessions (
-          user_id,
-          active_tenant_id,
-          session_hash,
-          csrf_hash,
-          expires_at,
-          ip,
-          user_agent
-        ) VALUES (
-          ${user.id},
-          NULL,
-          ${sha256(sessionToken)},
-          ${sha256(csrfToken)},
-          ${expiresAt.toISOString()},
-          ${context.ip ?? null},
-          ${context.userAgent?.slice(0, 2_048) ?? null}
-        )
-      `;
-      return true;
+      if (activeUsers.length !== 1) return undefined;
+      return this.issueSessionInTransaction(transaction, user, null, context, ttlSeconds);
     });
-    if (!created) return undefined;
+  }
 
+  public async issueSessionInTransaction(
+    transaction: postgres.TransactionSql,
+    user: SessionIdentity,
+    activeTenantId: string | null,
+    context: LoginContext,
+    ttlSeconds = this.configuration.sessionTtlSeconds,
+  ): Promise<LoginResult> {
+    const sessionToken = generateSecureToken(32);
+    const csrfToken = generateSecureToken(32);
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1_000);
+    await transaction`
+      INSERT INTO sessions (
+        user_id,
+        active_tenant_id,
+        session_hash,
+        csrf_hash,
+        expires_at,
+        ip,
+        user_agent
+      ) VALUES (
+        ${user.id},
+        ${activeTenantId},
+        ${sha256(sessionToken)},
+        ${sha256(csrfToken)},
+        ${expiresAt.toISOString()},
+        ${context.ip ?? null},
+        ${context.userAgent?.slice(0, 2_048) ?? null}
+      )
+    `;
     return {
       csrfToken,
       sessionToken,
       ttlSeconds,
       view: toSessionView({
-        activeTenantId: null,
+        activeTenantId,
         csrfHash: sha256(csrfToken),
         displayName: user.displayName,
         email: user.email,

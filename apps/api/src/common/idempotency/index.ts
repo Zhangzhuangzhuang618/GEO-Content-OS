@@ -4,6 +4,7 @@ export {
   IdempotencyKeyValidationError,
   parseIdempotencyKey,
 } from './idempotency-key.js';
+export { IdempotencyDatabase } from './idempotency.database.js';
 export { IdempotencyModule } from './idempotency.module.js';
 export { IdempotencyService } from './idempotency.service.js';
 export { IDEMPOTENCY_DATABASE_CLIENT } from './idempotency.tokens.js';

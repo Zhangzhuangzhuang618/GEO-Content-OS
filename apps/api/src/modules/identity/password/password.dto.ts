@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const PasswordSchema = z
+export const NewPasswordSchema = z
   .string()
   .min(12)
   .max(128)
@@ -20,7 +20,7 @@ export const ForgotPasswordRequestSchema = z
 
 export const ResetPasswordRequestSchema = z
   .object({
-    new_password: PasswordSchema,
+    new_password: NewPasswordSchema,
     token: ResetTokenSchema,
   })
   .strict();
@@ -28,7 +28,7 @@ export const ResetPasswordRequestSchema = z
 export const ChangePasswordRequestSchema = z
   .object({
     current_password: z.string().min(1).max(256),
-    new_password: PasswordSchema,
+    new_password: NewPasswordSchema,
   })
   .strict()
   .refine((value) => value.current_password !== value.new_password, {
