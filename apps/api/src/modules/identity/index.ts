@@ -1,3 +1,5 @@
+export * from './auth/index.js';
+export { IdentityModule } from './identity.module.js';
 export {
   IdentityRepository,
   type ActiveMembershipView,
