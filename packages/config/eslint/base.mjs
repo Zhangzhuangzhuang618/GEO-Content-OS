@@ -3,7 +3,11 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 const sourceFiles = ['**/*.{js,mjs,cjs,ts,mts,cts,tsx}'];
-const nodeFiles = ['**/*.config.{js,mjs,cjs,ts,mts,cts}', 'scripts/**/*.{js,mjs,cjs,ts,mts,cts}'];
+const nodeFiles = [
+  '**/*.config.{js,mjs,cjs,ts,mts,cts}',
+  'infra/docker/**/*.{js,mjs,cjs,ts,mts,cts}',
+  'scripts/**/*.{js,mjs,cjs,ts,mts,cts}',
+];
 
 export default tseslint.config(
   {
