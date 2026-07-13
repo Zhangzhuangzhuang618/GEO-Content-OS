@@ -2,6 +2,7 @@ export { idempotencyRecords, type IdempotencyRecord } from './idempotency.js';
 export {
   invitations,
   memberships,
+  passwordResetTokens,
   platformRoles,
   sessions,
   tenants,
@@ -9,6 +10,7 @@ export {
   type InvitationRecord,
   type MembershipRecord,
   type MembershipStatus,
+  type PasswordResetTokenRecord,
   type PlatformRoleRecord,
   type PlatformRoleStatus,
   type SessionRecord,
