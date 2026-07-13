@@ -1,3 +1,9 @@
+import {
+  createDatabaseDebugLogger,
+  createStructuredLogger,
+  initializeTelemetryContextManager,
+  shutdownTelemetryContextManager,
+} from '@geo-content-os/observability';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createServer } from 'node:http';
 import postgres from 'postgres';
@@ -8,17 +14,29 @@ import { OutboxRelay } from './relay.js';
 import { OutboxRelayStore } from './store.js';
 
 async function main(): Promise<void> {
+  initializeTelemetryContextManager();
   const config = readOutboxRelayConfig();
+  const logger = createStructuredLogger({ service: 'outbox-relay' });
   const abortController = new AbortController();
-  const client = postgres(config.databaseUrl, { max: 5, prepare: false });
+  const client = postgres(config.databaseUrl, {
+    debug: createDatabaseDebugLogger(logger),
+    max: 5,
+    prepare: false,
+  });
   const publisher = new BullMqEventPublisher(config.redisUrl);
   const store = new OutboxRelayStore(client);
-  const relay = new OutboxRelay(config.owner, store, publisher, {
-    batchSize: config.batchSize,
-    leaseDurationMs: config.leaseDurationMs,
-    maximumAttempts: config.maximumAttempts,
-    retryDelayMs: config.retryDelayMs,
-  });
+  const relay = new OutboxRelay(
+    config.owner,
+    store,
+    publisher,
+    {
+      batchSize: config.batchSize,
+      leaseDurationMs: config.leaseDurationMs,
+      maximumAttempts: config.maximumAttempts,
+      retryDelayMs: config.retryDelayMs,
+    },
+    logger,
+  );
   let ready = false;
 
   const healthServer = createServer((request, response) => {
@@ -53,7 +71,10 @@ async function main(): Promise<void> {
         ready = true;
       } catch (error) {
         ready = false;
-        console.error('Outbox relay iteration failed', error);
+        logger.error('Outbox relay iteration failed', error, {
+          event: 'queue.outbox.iteration_failed',
+          worker_id: config.owner,
+        });
       }
 
       try {
@@ -75,6 +96,7 @@ async function main(): Promise<void> {
       publisher.close(),
       client.end({ timeout: 5 }),
     ]);
+    shutdownTelemetryContextManager();
   }
 }
 

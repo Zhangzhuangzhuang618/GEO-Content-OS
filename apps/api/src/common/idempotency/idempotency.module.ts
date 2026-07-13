@@ -1,6 +1,7 @@
 import { Inject, Injectable, Module, type OnApplicationShutdown } from '@nestjs/common';
 
 import { createDatabaseConnection, type DatabaseClient } from '../../database/index.js';
+import { getApiLogger } from '../telemetry/api-logger.js';
 import { IdempotencyService } from './idempotency.service.js';
 import { IDEMPOTENCY_DATABASE_CLIENT } from './idempotency.tokens.js';
 
@@ -19,7 +20,8 @@ class IdempotencyDatabaseLifecycle implements OnApplicationShutdown {
   providers: [
     {
       provide: IDEMPOTENCY_DATABASE_CLIENT,
-      useFactory: (): DatabaseClient => createDatabaseConnection().client,
+      useFactory: (): DatabaseClient =>
+        createDatabaseConnection(undefined, { telemetryLogger: getApiLogger() }).client,
     },
     IdempotencyDatabaseLifecycle,
     IdempotencyService,

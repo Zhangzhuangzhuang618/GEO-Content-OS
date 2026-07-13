@@ -1,5 +1,6 @@
 import type { DomainEventEnvelope, EventType } from '@geo-content-os/contracts';
 import { Queue } from 'bullmq';
+import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
 
 import { queueNameFor, type OutboxQueueName } from './queue-router.js';
@@ -7,6 +8,10 @@ import type { ClaimedOutboxEvent, EventPublisher } from './types.js';
 
 export class BullMqEventPublisher implements EventPublisher {
   private readonly connection: Redis;
+  private readonly telemetry = new BullMQOtel({
+    tracerName: 'geo-content-os.outbox-relay',
+    version: '0.0.0',
+  });
   private readonly queues = new Map<
     OutboxQueueName,
     Queue<DomainEventEnvelope, unknown, EventType>
@@ -34,6 +39,13 @@ export class BullMqEventPublisher implements EventPublisher {
     return (await queue.getJob(event.id)) !== undefined;
   }
 
+  public async getJobTelemetryMetadata(
+    event: Pick<ClaimedOutboxEvent, 'eventType' | 'id'>,
+  ): Promise<string | undefined> {
+    const queue = this.getQueue(queueNameFor(event.eventType));
+    return (await queue.getJob(event.id))?.opts.telemetry?.metadata;
+  }
+
   public async close(): Promise<void> {
     await Promise.all([...this.queues.values()].map(async (queue) => queue.close()));
     await this.connection.quit();
@@ -47,6 +59,7 @@ export class BullMqEventPublisher implements EventPublisher {
 
     const queue = new Queue<DomainEventEnvelope, unknown, EventType>(name, {
       connection: this.connection,
+      telemetry: this.telemetry,
     });
     this.queues.set(name, queue);
     return queue;

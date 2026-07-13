@@ -11,6 +11,10 @@ import {
   OutboxRelay,
   OutboxRelayStore,
 } from '@geo-content-os/worker-outbox-relay';
+import {
+  initializeTelemetryContextManager,
+  runWithExtractedTraceContext,
+} from '@geo-content-os/observability';
 import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -24,6 +28,7 @@ describe('transactional outbox and BullMQ relay', () => {
   let writer: OutboxWriter | undefined;
 
   beforeAll(async () => {
+    initializeTelemetryContextManager();
     [postgresContainer, redisContainer] = await Promise.all([
       startPostgresTestContainer(),
       startRedisTestContainer(),
@@ -140,10 +145,24 @@ describe('transactional outbox and BullMQ relay', () => {
     });
 
     try {
-      await expect(relay.runOnce()).resolves.toMatchObject({ claimed: 1, published: 1 });
+      await expect(
+        runWithExtractedTraceContext(
+          {
+            traceparent: '00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01',
+          },
+          { requestId: 'request-outbox-integration' },
+          () => relay.runOnce(),
+        ),
+      ).resolves.toMatchObject({ claimed: 1, published: 1 });
       await expect(
         publisher.hasJob({ eventType: event.event_type, id: event.event_id }),
       ).resolves.toBe(true);
+      const telemetryMetadata = await publisher.getJobTelemetryMetadata({
+        eventType: event.event_type,
+        id: event.event_id,
+      });
+      expect(telemetryMetadata).toContain('4bf92f3577b34da6a3ce929d0e0e4736');
+      expect(telemetryMetadata).toContain('geo.request_id');
       const rows = await requiredClient()<
         {
           status: string;

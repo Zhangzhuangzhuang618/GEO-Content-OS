@@ -1,5 +1,6 @@
 import { Inject, Injectable, Module, type OnApplicationShutdown } from '@nestjs/common';
 
+import { getApiLogger } from '../../common/telemetry/api-logger.js';
 import { createDatabaseConnection, type DatabaseClient } from '../../database/index.js';
 import { OUTBOX_DATABASE_CLIENT } from './outbox.tokens.js';
 import { OutboxWriter } from './outbox.writer.js';
@@ -17,7 +18,8 @@ class OutboxDatabaseLifecycle implements OnApplicationShutdown {
   providers: [
     {
       provide: OUTBOX_DATABASE_CLIENT,
-      useFactory: (): DatabaseClient => createDatabaseConnection().client,
+      useFactory: (): DatabaseClient =>
+        createDatabaseConnection(undefined, { telemetryLogger: getApiLogger() }).client,
     },
     OutboxDatabaseLifecycle,
     OutboxWriter,
