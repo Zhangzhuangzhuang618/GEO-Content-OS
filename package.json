@@ -16,7 +16,8 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "test": "node scripts/task-gate.mjs T008",
-    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm typecheck:root && pnpm --recursive --if-present typecheck",
+    "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.1",
