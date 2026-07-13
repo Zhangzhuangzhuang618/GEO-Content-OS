@@ -2,8 +2,24 @@
   "name": "@geo-content-os/api",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "GEO Content OS — NestJS 11 + FastifyAdapter API",
   "scripts": {
-    "test": "node ../../scripts/task-gate.mjs T005"
+    "db:check": "tsx src/database/cli/check.ts",
+    "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
+    "db:migrate": "tsx src/database/cli/migrate.ts",
+    "db:migrate:fresh": "tsx src/database/cli/fresh.ts --force",
+    "test": "node ../../scripts/task-gate.mjs T005",
+    "test:database": "vitest run src/database",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "drizzle-kit": "0.31.10",
+    "tsx": "4.23.1",
+    "vitest": "4.1.10"
   }
 }
