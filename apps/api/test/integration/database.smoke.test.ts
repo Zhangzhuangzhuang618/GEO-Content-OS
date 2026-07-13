@@ -2,10 +2,11 @@ import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
 } from '@geo-content-os/testkit';
+import { readdir } from 'node:fs/promises';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { migrateDatabase } from '../../src/database/migrate.js';
+import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 
 describe('PostgreSQL Testcontainers smoke', () => {
   let container: StartedPostgreSqlContainer | undefined;
@@ -37,9 +38,12 @@ describe('PostgreSQL Testcontainers smoke', () => {
         SELECT count(*)::integer AS count
         FROM public.__drizzle_migrations
       `;
+      const migrationFiles = (await readdir(migrationsFolder)).filter((file) =>
+        file.endsWith('.sql'),
+      );
 
       expect(extensions.map(({ extname }) => extname)).toEqual(['citext', 'pgcrypto', 'vector']);
-      expect(migrationRows[0]?.count).toBe(2);
+      expect(migrationRows[0]?.count).toBe(migrationFiles.length);
     } finally {
       await client.end();
     }
