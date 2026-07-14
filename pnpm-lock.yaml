@@ -59,6 +59,9 @@ importers:
       '@geo-content-os/adapter-email':
         specifier: workspace:*
         version: link:../../packages/adapters/email
+      '@geo-content-os/adapter-embedding':
+        specifier: workspace:*
+        version: link:../../packages/adapters/embedding
       '@geo-content-os/adapter-storage':
         specifier: workspace:*
         version: link:../../packages/adapters/storage
@@ -111,9 +114,6 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
     devDependencies:
-      '@geo-content-os/adapter-embedding':
-        specifier: workspace:*
-        version: link:../../packages/adapters/embedding
       '@geo-content-os/testkit':
         specifier: workspace:*
         version: link:../../packages/testkit
