@@ -24,6 +24,12 @@ if (selectors.length === 1 && selectors[0] === 'rerank') {
   process.exit(0);
 }
 
+if (selectors.length === 1 && selectors[0] === 'status-projector') {
+  run(['--filter', '@geo-content-os/contracts', 'test', '--', 'src/transitions']);
+  run(['--filter', '@geo-content-os/api', 'test', '--', 'src/modules/content/status']);
+  process.exit(0);
+}
+
 process.stderr.write(`Unknown test selector: ${selectors.join(' ')}\n`);
 process.exit(2);
 
