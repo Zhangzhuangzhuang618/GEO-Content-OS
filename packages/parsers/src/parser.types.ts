@@ -34,7 +34,7 @@ export interface ParsedMaterialDocument {
   readonly language: string;
   readonly metadata: {
     readonly page_count: number | null;
-    readonly source_type: Exclude<MaterialSourceType, 'image'>;
+    readonly source_type: MaterialSourceType;
   };
   readonly parser_version: typeof MATERIAL_PARSER_VERSION;
   readonly text: string;

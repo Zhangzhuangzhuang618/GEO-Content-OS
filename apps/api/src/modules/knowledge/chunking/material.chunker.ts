@@ -122,8 +122,11 @@ function validateDocument(document: ChunkableMaterialDocument): void {
     ) {
       throw new ChunkingError('Parsed material unit provenance is invalid');
     }
-    if (document.metadata.source_type === 'pdf' && locator.page === null) {
-      throw new ChunkingError('PDF material unit is missing a page locator');
+    if (
+      (document.metadata.source_type === 'pdf' || document.metadata.source_type === 'image') &&
+      locator.page === null
+    ) {
+      throw new ChunkingError('Paginated material unit is missing a page locator');
     }
     if (document.metadata.source_type === 'url' && locator.url === null) {
       throw new ChunkingError('URL material unit is missing a URL locator');

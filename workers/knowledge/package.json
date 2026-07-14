@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "GEO Content OS — recoverable knowledge embedding worker",
+  "description": "GEO Content OS — recoverable knowledge ingestion and embedding worker",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -13,12 +13,18 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @geo-content-os/adapter-embedding build && tsc --project tsconfig.build.json --pretty false",
+    "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-ocr build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "pnpm --filter @geo-content-os/adapter-embedding build && tsc --project tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-ocr build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
     "@geo-content-os/adapter-embedding": "workspace:*",
+    "@geo-content-os/adapter-ocr": "workspace:*",
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/adapter-web-fetch": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "@geo-content-os/parsers": "workspace:*",
+    "bullmq": "5.80.2",
     "ioredis": "5.10.1",
     "postgres": "3.4.9"
   },
