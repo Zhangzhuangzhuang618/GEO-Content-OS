@@ -5,6 +5,7 @@ import { IsoDateTimeSchema, UuidSchema } from './api/common.js';
 export const EVENT_TYPES = Object.freeze([
   'knowledge.source.ingest_requested.v1',
   'knowledge.source.reindex_requested.v1',
+  'strategy.topic_plan.generation_requested.v1',
   'content.package.generation_requested.v1',
   'content.variant.quality_check_requested.v1',
   'publishing.job.execution_requested.v1',
@@ -17,6 +18,7 @@ export type EventType = (typeof EVENT_TYPES)[number];
 export const AGGREGATE_TYPES = Object.freeze([
   'tenant',
   'source_document',
+  'generation_run',
   'content_package',
   'content_variant',
   'publish_job',

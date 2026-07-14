@@ -13,6 +13,7 @@ export type OutboxQueueName = (typeof OUTBOX_QUEUE_NAMES)[number];
 const EVENT_QUEUE: Readonly<Record<EventType, OutboxQueueName>> = Object.freeze({
   'knowledge.source.ingest_requested.v1': 'geo-knowledge',
   'knowledge.source.reindex_requested.v1': 'geo-knowledge',
+  'strategy.topic_plan.generation_requested.v1': 'geo-ai',
   'content.package.generation_requested.v1': 'geo-ai',
   'content.variant.quality_check_requested.v1': 'geo-ai',
   'publishing.job.execution_requested.v1': 'geo-publisher',
