@@ -1,0 +1,152 @@
+import { expect, test } from '@playwright/test';
+const ACTIVE_ID = '10000000-0000-4000-8000-000000000078';
+const EXPIRED_ID = '10000000-0000-4000-8000-000000000178';
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/auth/tenants', async (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [
+          {
+            id: '20000000-0000-4000-8000-000000000078',
+            is_active: true,
+            last_used_at: null,
+            name: '知识企业',
+            role_code: 'content_editor',
+            slug: 'knowledge',
+          },
+        ],
+        meta: { request_id: 'role' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.route('**/api/v1/sources?*', async (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [
+          source(ACTIVE_ID, 'active', '产品白皮书'),
+          source(EXPIRED_ID, 'expired', '旧版价格表'),
+        ],
+        meta: { next_cursor: null, request_id: 'sources' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.route('**/api/v1/sources/*', async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      body: JSON.stringify({
+        data: {
+          chunks: [],
+          citation_count: 0,
+          facts: [],
+          ingest_jobs: [{ finished_at: '2026-07-15T02:00:00.000Z', status: 'succeeded' }],
+          source: source(
+            route.request().url().includes(EXPIRED_ID) ? EXPIRED_ID : ACTIVE_ID,
+            'active',
+            'detail',
+          ),
+        },
+        meta: { request_id: 'detail' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+});
+
+test('marks expired sources and prevents them from re-entering indexing', async ({ page }) => {
+  await page.goto('/know-01');
+  const expiredRow = page.getByRole('listitem').filter({ hasText: '旧版价格表' });
+  await expect(expiredRow.getByText('已失效资料不会进入新的检索。')).toBeVisible();
+  await expect(expiredRow.getByRole('button', { name: '重建索引' })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole('listitem')
+      .filter({ hasText: '产品白皮书' })
+      .getByRole('button', { name: '重建索引' }),
+  ).toBeVisible();
+});
+
+test('submits exact source hash for reindex and revision for expiry', async ({ page }) => {
+  let reindexBody: Record<string, unknown> | undefined;
+  let expireHeaders: Record<string, string> | undefined;
+  await page.route(`**/api/v1/sources/${ACTIVE_ID}/reindex`, async (route) => {
+    reindexBody = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ body: '{}', contentType: 'application/json', status: 202 });
+  });
+  await page.route(`**/api/v1/sources/${ACTIVE_ID}`, async (route) => {
+    if (route.request().method() === 'DELETE') {
+      expireHeaders = route.request().headers();
+      await route.fulfill({ status: 204 });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto('/know-01');
+  const row = page.getByRole('listitem').filter({ hasText: '产品白皮书' });
+  await row.getByRole('button', { name: '重建索引' }).click();
+  expect(reindexBody).toMatchObject({ expected_content_hash: 'a'.repeat(64) });
+  page.once('dialog', (dialog) => dialog.accept());
+  await row.getByRole('button', { name: '标记失效' }).click();
+  await expect(row.getByText('已失效资料不会进入新的检索。')).toBeVisible();
+  expect(expireHeaders?.['if-match']).toBe('"2026-07-15T01:00:00.000Z"');
+});
+
+test('writes filters to the URL and hides write actions from viewers on mobile', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/auth/tenants', async (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [
+          {
+            id: '20000000-0000-4000-8000-000000000078',
+            is_active: true,
+            last_used_at: null,
+            name: '知识企业',
+            role_code: 'viewer',
+            slug: 'knowledge',
+          },
+        ],
+        meta: { request_id: 'viewer' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto('/know-01');
+  await page.getByLabel('状态').selectOption('expired');
+  await expect(page).toHaveURL(/status=expired/u);
+  await expect(page.getByRole('link', { name: '上传资料' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '重建索引' })).toHaveCount(0);
+  await expect(page.locator('main')).toHaveCSS('min-height', '844px');
+});
+
+function source(id: string, status: 'active' | 'expired', title: string) {
+  return {
+    content_hash: 'a'.repeat(64),
+    created_at: '2026-07-15T00:00:00.000Z',
+    created_by: '30000000-0000-4000-8000-000000000078',
+    effective_from: null,
+    effective_to: status === 'expired' ? '2026-07-01' : null,
+    id,
+    language: 'zh-CN',
+    mime_type: 'application/pdf',
+    project_id: null,
+    source_type: 'pdf',
+    status,
+    tenant_id: '20000000-0000-4000-8000-000000000078',
+    title,
+    trust_level: 'verified',
+    updated_at: '2026-07-15T01:00:00.000Z',
+    workspace_id: '40000000-0000-4000-8000-000000000078',
+  };
+}
