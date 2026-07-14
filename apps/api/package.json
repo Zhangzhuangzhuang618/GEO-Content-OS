@@ -19,6 +19,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "test": "vitest run --config vitest.config.ts",
+    "test:contract": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/modules/workspace/strategy.contract.test.ts",
     "test:database": "vitest run src/database",
     "test:integration": "pnpm build:test-dependencies && vitest run --config vitest.integration.config.ts",
     "test:security": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/common/security && vitest run --config vitest.integration.config.ts test/integration/security-rate-limit.integration.test.ts",

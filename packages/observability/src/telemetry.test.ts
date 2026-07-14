@@ -26,6 +26,7 @@ describe('telemetry context', () => {
     expect(resolveRequestId('contains spaces')).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
     );
+    expect(resolveRequestId('request-1')).not.toBe('request-1');
     expect(resolveRequestId(['repeated'])).not.toBe('repeated');
   });
 

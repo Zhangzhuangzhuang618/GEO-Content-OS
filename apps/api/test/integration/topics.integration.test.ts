@@ -1,4 +1,9 @@
 import {
+  BriefResponseSchema,
+  GenerationRunResponseSchema,
+  TopicCandidatePageSchema,
+} from '@geo-content-os/contracts';
+import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
 } from '@geo-content-os/testkit';
@@ -136,6 +141,7 @@ describe('topic API', () => {
     const first = await requireServer(application).inject(request);
     const replay = await requireServer(application).inject(request);
     expect(first.statusCode).toBe(202);
+    expect(GenerationRunResponseSchema.safeParse(first.json()).success).toBe(true);
     expect(first.json().data).toMatchObject({
       model_key: 'mock-topic-planner',
       project_id: PROJECT_A,
@@ -210,6 +216,7 @@ describe('topic API', () => {
       url: `${CANDIDATE_PATH}?limit=1&project_id=${PROJECT_A}`,
     });
     expect(page.statusCode).toBe(200);
+    expect(TopicCandidatePageSchema.safeParse(page.json()).success).toBe(true);
     expect(page.json().data).toHaveLength(1);
     expect(page.json().meta.next_cursor).toBeTypeOf('string');
     const next = await requireServer(application).inject({
@@ -255,6 +262,7 @@ describe('topic API', () => {
     const adopted = await requireServer(application).inject(adoptRequest(evidenced.id));
     const replay = await requireServer(application).inject(adoptRequest(evidenced.id));
     expect(adopted.statusCode).toBe(200);
+    expect(BriefResponseSchema.safeParse(adopted.json()).success).toBe(true);
     expect(adopted.json().data).toMatchObject({
       keyword_ids: [KEYWORD_A],
       primary_keyword_id: KEYWORD_A,

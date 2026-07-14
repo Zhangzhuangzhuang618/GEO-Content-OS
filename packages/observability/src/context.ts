@@ -22,7 +22,7 @@ export interface TelemetryContext extends TelemetryContextFields {
   readonly spanId?: string;
 }
 
-const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,80}$/u;
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{16,80}$/u;
 const storage = new AsyncLocalStorage<TelemetryContextFields>();
 let installedContextManager: AsyncLocalStorageContextManager | undefined;
 let installedPropagator = false;

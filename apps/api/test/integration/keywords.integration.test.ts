@@ -1,3 +1,4 @@
+import { KeywordListResponseSchema, KeywordSetResponseSchema } from '@geo-content-os/contracts';
 import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
@@ -116,6 +117,7 @@ describe('keyword API', () => {
     const created = await requireServer(application).inject(request);
     const replay = await requireServer(application).inject(request);
     expect(created.statusCode).toBe(201);
+    expect(KeywordSetResponseSchema.safeParse(created.json()).success).toBe(true);
     expect(created.json().data).toMatchObject({
       name: 'Core GEO keywords',
       project_id: PROJECT_A,
@@ -186,6 +188,7 @@ describe('keyword API', () => {
     const created = await requireServer(application).inject(request);
     const replay = await requireServer(application).inject(request);
     expect(created.statusCode).toBe(200);
+    expect(KeywordListResponseSchema.safeParse(created.json()).success).toBe(true);
     expect(created.json().data.map((item: { term: string }) => item.term)).toEqual([
       'GEO content system',
       'Enterprise content automation',

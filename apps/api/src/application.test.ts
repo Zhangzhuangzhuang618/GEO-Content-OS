@@ -70,9 +70,15 @@ describe('API shell', () => {
       method: 'GET',
       url: `${API_BASE_PATH}/health/live`,
     });
+    const replacedShort = await application.inject({
+      headers: { 'x-request-id': 'request-1' },
+      method: 'GET',
+      url: `${API_BASE_PATH}/health/live`,
+    });
 
     expect(preserved.headers['x-request-id']).toBe('client-request-123');
     expect(replaced.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/u);
+    expect(replacedShort.headers['x-request-id']).toMatch(/^[0-9a-f-]{36}$/u);
   });
 
   it('emits an HTTP completion log correlated with request and W3C trace IDs', async () => {
