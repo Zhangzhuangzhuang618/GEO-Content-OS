@@ -420,6 +420,10 @@ export const generationRuns = pgTable(
       'generation_runs_time_check',
       sql`(${table.startedAt} IS NULL OR ${table.startedAt} >= ${table.createdAt}) AND (${table.finishedAt} IS NULL OR ${table.startedAt} IS NOT NULL) AND (${table.finishedAt} IS NULL OR ${table.finishedAt} >= ${table.startedAt})`,
     ),
+    check(
+      'generation_runs_content_scope_check',
+      sql`${table.packageId} IS NULL OR ${table.projectId} IS NOT NULL`,
+    ),
     check('generation_runs_version_check', sql`${table.version} > 0`),
   ],
 );

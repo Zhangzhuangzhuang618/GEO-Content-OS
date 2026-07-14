@@ -23,13 +23,27 @@ export {
   type SourceType,
 } from './knowledge.js';
 export {
+  aiCitations,
   briefKeywords,
   briefs,
   briefSources,
+  contentBlockLocks,
+  contentBlocks,
+  contentPackages,
+  contentVariants,
+  contentVersions,
+  type AiCitationRecord,
   type BriefKeywordRecord,
   type BriefObjective,
   type BriefRecord,
   type BriefSourceRecord,
+  type ContentBlockLockRecord,
+  type ContentBlockRecord,
+  type ContentBlockType,
+  type ContentDocument,
+  type ContentPackageRecord,
+  type ContentVariantRecord,
+  type ContentVersionRecord,
   type GenerationMode,
 } from './content.js';
 export {
