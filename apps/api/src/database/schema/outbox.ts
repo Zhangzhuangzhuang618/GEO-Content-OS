@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -8,8 +9,11 @@ import {
   text,
   timestamp,
   uuid,
+  unique,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+import { tenants } from './identity.js';
 
 export const outboxEvents = pgTable(
   'outbox_events',
@@ -30,6 +34,12 @@ export const outboxEvents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique('outbox_events_id_tenant_uq').on(table.id, table.tenantId),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'outbox_events_tenant_fk',
+    }).onDelete('restrict'),
     check(
       'outbox_events_status_check',
       sql`${table.status} IN ('pending', 'processing', 'published', 'failed')`,

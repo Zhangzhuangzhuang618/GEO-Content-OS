@@ -180,6 +180,11 @@ export const ingestJobs = pgTable(
   (table) => [
     unique('ingest_jobs_id_tenant_uq').on(table.id, table.tenantId),
     foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'ingest_jobs_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
       columns: [table.sourceDocumentId, table.tenantId],
       foreignColumns: [sourceDocuments.id, sourceDocuments.tenantId],
       name: 'ingest_jobs_source_fk',
@@ -251,6 +256,11 @@ export const sourceChunks = pgTable(
       table.chunkNo,
     ),
     foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'source_chunks_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
       columns: [table.sourceDocumentId, table.tenantId],
       foreignColumns: [sourceDocuments.id, sourceDocuments.tenantId],
       name: 'source_chunks_source_fk',
@@ -304,7 +314,13 @@ export const embeddings = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique('embeddings_id_tenant_uq').on(table.id, table.tenantId),
     unique('embeddings_chunk_model_uq').on(table.tenantId, table.chunkId, table.modelKey),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'embeddings_tenant_fk',
+    }).onDelete('restrict'),
     foreignKey({
       columns: [table.chunkId, table.tenantId],
       foreignColumns: [sourceChunks.id, sourceChunks.tenantId],
@@ -342,6 +358,11 @@ export const facts = pgTable(
   },
   (table) => [
     unique('facts_id_tenant_uq').on(table.id, table.tenantId),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'facts_tenant_fk',
+    }).onDelete('restrict'),
     foreignKey({
       columns: [table.workspaceId, table.tenantId],
       foreignColumns: [workspaces.id, workspaces.tenantId],
@@ -385,12 +406,18 @@ export const factSources = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique('fact_sources_id_tenant_uq').on(table.id, table.tenantId),
     unique('fact_sources_fact_chunk_quote_uq').on(
       table.tenantId,
       table.factId,
       table.chunkId,
       table.quoteHash,
     ),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'fact_sources_tenant_fk',
+    }).onDelete('restrict'),
     foreignKey({
       columns: [table.factId, table.tenantId],
       foreignColumns: [facts.id, facts.tenantId],

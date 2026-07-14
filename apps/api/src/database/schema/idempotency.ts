@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   char,
   check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
@@ -11,6 +12,8 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+import { tenants } from './identity.js';
 
 export const idempotencyRecords = pgTable(
   'idempotency_records',
@@ -28,6 +31,12 @@ export const idempotencyRecords = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
+    unique('idempotency_records_id_tenant_uq').on(table.id, table.tenantId),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'idempotency_records_tenant_fk',
+    }).onDelete('restrict'),
     unique('idempotency_records_unique_key').on(
       table.tenantId,
       table.scopeKey,

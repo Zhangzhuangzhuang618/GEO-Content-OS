@@ -100,6 +100,29 @@ describe('knowledge database', () => {
         'facts_subject_predicate_status_idx',
       ]),
     );
+    const tenantConstraints = await database<{ name: string }[]>`
+      SELECT conname AS name
+      FROM pg_constraint
+      WHERE conname IN (
+        'ingest_jobs_tenant_fk',
+        'source_chunks_tenant_fk',
+        'embeddings_id_tenant_uq',
+        'embeddings_tenant_fk',
+        'facts_tenant_fk',
+        'fact_sources_id_tenant_uq',
+        'fact_sources_tenant_fk'
+      )
+      ORDER BY conname
+    `;
+    expect(tenantConstraints.map((item) => item.name)).toEqual([
+      'embeddings_id_tenant_uq',
+      'embeddings_tenant_fk',
+      'fact_sources_id_tenant_uq',
+      'fact_sources_tenant_fk',
+      'facts_tenant_fk',
+      'ingest_jobs_tenant_fk',
+      'source_chunks_tenant_fk',
+    ]);
 
     await insertChunk(database, CHUNK_A, TENANT_A, SOURCE_A, 0, 'Enterprise GEO evidence');
     const searchable = await database<{ id: string }[]>`
