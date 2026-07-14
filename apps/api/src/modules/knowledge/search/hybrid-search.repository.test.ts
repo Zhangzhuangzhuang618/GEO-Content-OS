@@ -34,6 +34,8 @@ describe('hybrid search request validation', () => {
       () => validateHybridSearchRequest('ok', VECTOR, { ...valid, modelKey: 'bad model' }),
       () => validateHybridSearchRequest('ok', VECTOR, { ...valid, effectiveOn: '2026-02-30' }),
       () => validateHybridSearchRequest('ok', VECTOR, { ...valid, topK: 21 }),
+      () => validateHybridSearchRequest('ok', VECTOR, { ...valid, topK: 10, candidateLimit: 9 }),
+      () => validateHybridSearchRequest('ok', VECTOR, { ...valid, candidateLimit: 101 }),
       () => validateHybridSearchRequest('ok', VECTOR, { ...valid, trustLevels: [] }),
       () =>
         validateHybridSearchRequest('ok', VECTOR, {
