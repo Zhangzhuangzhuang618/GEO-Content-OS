@@ -4,7 +4,7 @@
   "private": true,
   "description": "GEO Content OS — 企业级 GEO 多平台内容生产系统 (MVP v1.0)",
   "engines": {
-    "node": ">=22.0.0 <23.0.0",
+    "node": ">=22.13.0 <23.0.0",
     "pnpm": ">=10.0.0 <11.0.0"
   },
   "packageManager": "pnpm@10.12.1",
@@ -21,12 +21,12 @@
     "format:check": "prettier . --check",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
-    "test": "pnpm test:unit && pnpm test:integration && pnpm test:e2e",
+    "test": "node scripts/run-tests.mjs",
     "test:contract": "pnpm --filter contracts test:contract && pnpm --filter api test:contract",
     "test:e2e": "pnpm --filter api build && pnpm --filter web build && node scripts/run-e2e.mjs",
     "test:integration": "pnpm --filter api test:integration",
     "test:security": "pnpm --filter @geo-content-os/adapter-web-fetch test:security && pnpm --filter security test:security && pnpm --filter api test:security && pnpm --filter web test:security",
-    "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter @geo-content-os/adapter-email test && pnpm --filter @geo-content-os/adapter-storage test && pnpm --filter @geo-content-os/adapter-web-fetch test && pnpm --filter api test",
+    "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter @geo-content-os/adapter-email test && pnpm --filter @geo-content-os/adapter-storage test && pnpm --filter @geo-content-os/adapter-web-fetch test && pnpm --filter @geo-content-os/parsers test && pnpm --filter api test",
     "typecheck": "pnpm typecheck:root && pnpm --recursive --if-present typecheck",
     "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false"
   },
