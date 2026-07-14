@@ -66,6 +66,7 @@ export interface KeywordSetView {
 }
 
 export interface KeywordView {
+  readonly createdAt: Date;
   readonly id: string;
   readonly intent: KeywordIntent;
   readonly keywordSetId: string;
@@ -311,6 +312,7 @@ export class WorkspaceStrategyRepository {
         keyword.synonyms,
         keyword.platform_scope AS "platformScope",
         keyword.status,
+        keyword.created_at AS "createdAt",
         keyword.updated_at AS "updatedAt"
       FROM keywords AS keyword
       JOIN keyword_sets AS keyword_set
