@@ -30,6 +30,11 @@ if (selectors.length === 1 && selectors[0] === 'status-projector') {
   process.exit(0);
 }
 
+if (selectors.length === 1 && selectors[0] === 'model-adapter') {
+  run(['--filter', '@geo-content-os/adapter-model', 'test']);
+  process.exit(0);
+}
+
 process.stderr.write(`Unknown test selector: ${selectors.join(' ')}\n`);
 process.exit(2);
 
