@@ -1,0 +1,472 @@
+import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import {
+  minioEndpoint,
+  MINIO_TEST_ACCESS_KEY,
+  MINIO_TEST_SECRET_KEY,
+  startMinioTestContainer,
+  startPostgresTestContainer,
+  type StartedPostgreSqlContainer,
+  type StartedTestContainer,
+} from '@geo-content-os/testkit';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import postgres, { type Sql } from 'postgres';
+import request from 'supertest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { createApplication } from '../../src/application.js';
+import { migrateDatabase } from '../../src/database/migrate.js';
+import {
+  SOURCE_STORAGE,
+  SourceNotFoundError,
+  SourceService,
+  SourceStorageError,
+  type ParsedSourceUpload,
+} from '../../src/modules/knowledge/index.js';
+import { OutboxWriter } from '../../src/modules/outbox/index.js';
+
+const MANAGER_ID = '10000000-0000-4000-8000-000000000030';
+const SCOPED_ID = '10000000-0000-4000-8000-000000000130';
+const VIEWER_ID = '10000000-0000-4000-8000-000000000230';
+const TENANT_ID = '20000000-0000-4000-8000-000000000030';
+const WORKSPACE_ID = '30000000-0000-4000-8000-000000000030';
+const PROJECT_A = '40000000-0000-4000-8000-000000000030';
+const PROJECT_B = '40000000-0000-4000-8000-000000000130';
+const API_PATH = '/api/v1/sources';
+
+describe('source upload', () => {
+  let application: NestFastifyApplication | undefined;
+  let client: Sql | undefined;
+  let container: StartedPostgreSqlContainer | undefined;
+  let minio: StartedTestContainer | undefined;
+  beforeAll(async () => {
+    [container, minio] = await Promise.all([
+      startPostgresTestContainer(),
+      startMinioTestContainer(),
+    ]);
+    await migrateDatabase(container.getConnectionUri());
+    client = postgres(container.getConnectionUri(), { max: 6 });
+    setEnvironment('DATABASE_URL', container.getConnectionUri());
+    setEnvironment('NODE_ENV', 'test');
+    setEnvironment('S3_ACCESS_KEY_ID', MINIO_TEST_ACCESS_KEY);
+    setEnvironment('S3_AUTO_CREATE_BUCKET', 'true');
+    setEnvironment('S3_BUCKET', 'geo-source-integration');
+    setEnvironment('S3_ENDPOINT', minioEndpoint(minio));
+    setEnvironment('S3_FORCE_PATH_STYLE', 'true');
+    setEnvironment('S3_REGION', 'us-east-1');
+    setEnvironment('S3_SECRET_ACCESS_KEY', MINIO_TEST_SECRET_KEY);
+    setEnvironment('S3_SERVER_SIDE_ENCRYPTION', 'false');
+    setEnvironment('SOURCE_UPLOAD_MAX_BYTES', '64');
+    setEnvironment('STORAGE_DRIVER', 's3');
+    application = await createApplication({
+      enableShutdownHooks: false,
+      logger: false,
+      securityConfiguration: {
+        allowedOrigins: ['https://app.example.com'],
+        environment: 'test',
+        production: false,
+        rateLimit: { max: 1_000, timeWindowMs: 60_000 },
+        trustProxy: false,
+      },
+    });
+    await application.init();
+    await application.getHttpAdapter().getInstance().ready();
+  }, 120_000);
+
+  beforeEach(async () => {
+    const database = requireClient(client);
+    await database`TRUNCATE fact_sources, facts, embeddings, source_chunks, ingest_jobs, brief_sources, brief_keywords, briefs, source_documents, topic_candidates, generation_runs, keywords, keyword_sets, brand_profiles, workspace_memberships, projects, workspaces, audit_events, outbox_events, support_access_grants, idempotency_records, password_reset_tokens, invitations, sessions, platform_roles, memberships, tenants, users CASCADE`;
+    await seedScope(database);
+  });
+
+  afterAll(async () => {
+    await application?.close();
+    await client?.end();
+    await Promise.all([container?.stop(), minio?.stop()]);
+    for (const [name, value] of originalEnvironmentGlobal) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  });
+
+  it('connects the runtime adapter to a private S3-compatible MinIO bucket', async () => {
+    const storage = requireStorage(application);
+    expect(storage.constructor.name).toBe('S3StorageAdapter');
+    const body = Buffer.from('storage smoke', 'utf8');
+    const contentHash = sha256(body);
+    const key = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${contentHash}.txt`;
+    await storage.putObject({
+      body,
+      contentHash,
+      contentType: 'text/plain',
+      key,
+      metadata: {
+        content_hash: contentHash,
+        source_id: randomUUID(),
+        tenant_id: TENANT_ID,
+        workspace_id: WORKSPACE_ID,
+      },
+    });
+    expect(await storage.headObject(key)).toMatchObject({ contentLength: body.byteLength });
+    await storage.deleteObject(key);
+  });
+
+  it('stores one private object and atomically creates source, ingest job, outbox, and audit', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from('Enterprise GEO trusted source', 'utf8');
+    const first = await sendUpload(application, tokens, 'source-upload-001', body);
+    const replay = await sendUpload(application, tokens, 'source-upload-001', body);
+
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(replay.body.data.source.id).toBe(first.body.data.source.id);
+    expect(first.body.data).toMatchObject({
+      ingest_job: {
+        progress: 0,
+        stage: 'queued',
+        status: 'queued',
+        tenant_id: TENANT_ID,
+      },
+      source: {
+        content_hash: sha256(body),
+        mime_type: 'text/plain',
+        project_id: PROJECT_A,
+        source_type: 'txt',
+        status: 'processing',
+        tenant_id: TENANT_ID,
+        trust_level: 'verified',
+        workspace_id: WORKSPACE_ID,
+      },
+    });
+
+    expect(
+      await database<{ sources: number; jobs: number; events: number; audits: number }[]>`
+        SELECT
+          (SELECT count(*)::integer FROM source_documents) AS sources,
+          (SELECT count(*)::integer FROM ingest_jobs) AS jobs,
+          (SELECT count(*)::integer FROM outbox_events) AS events,
+          (SELECT count(*)::integer FROM audit_events WHERE action = 'knowledge.source.uploaded') AS audits
+      `,
+    ).toEqual([{ audits: 1, events: 1, jobs: 1, sources: 1 }]);
+    const event = await database<
+      { eventType: string; jobId: string; sourceId: string; status: string }[]
+    >`
+      SELECT
+        event_type AS "eventType",
+        payload_json->'data'->>'ingest_job_id' AS "jobId",
+        payload_json->'data'->>'source_document_id' AS "sourceId",
+        status
+      FROM outbox_events
+    `;
+    expect(event).toEqual([
+      {
+        eventType: 'knowledge.source.ingest_requested.v1',
+        jobId: first.body.data.ingest_job.id,
+        sourceId: first.body.data.source.id,
+        status: 'pending',
+      },
+    ]);
+
+    const storage = requireStorage(application);
+    const objectKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sha256(body)}.txt`;
+    expect(await storage.headObject(objectKey)).toMatchObject({
+      contentLength: body.byteLength,
+      contentType: 'text/plain',
+      metadata: { content_hash: sha256(body) },
+    });
+    const download = await fetch(await storage.createDownloadUrl(objectKey, 60));
+    expect(download.status).toBe(200);
+    expect(Buffer.from(await download.arrayBuffer())).toEqual(body);
+    const source = await database<{ uri: string }[]>`SELECT uri FROM source_documents`;
+    expect(source[0]?.uri).toBe(`s3://geo-source-integration/${objectKey}`);
+  });
+
+  it('enforces content-hash and idempotency conflicts without duplicate side effects', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from('same source content', 'utf8');
+    expect((await sendUpload(application, tokens, 'source-upload-002', body)).status).toBe(201);
+    const duplicate = await sendUpload(application, tokens, 'source-upload-003', body);
+    expectApiError(duplicate, 409, 'STATE_TRANSITION_INVALID');
+    const changed = await sendUpload(
+      application,
+      tokens,
+      'source-upload-002',
+      Buffer.from('different source content', 'utf8'),
+    );
+    expectApiError(changed, 409, 'IDEMPOTENCY_CONFLICT');
+    expect(
+      await database<{ count: number }[]>`SELECT count(*)::integer AS count FROM source_documents`,
+    ).toEqual([{ count: 1 }]);
+  });
+
+  it('serializes concurrent hash duplicates so only one source and object win', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from('concurrent source content', 'utf8');
+    const [first, second] = await Promise.all([
+      sendUpload(application, tokens, 'source-upload-concurrent-a', body),
+      sendUpload(application, tokens, 'source-upload-concurrent-b', body),
+    ]);
+    expect([first.status, second.status].sort()).toEqual([201, 409]);
+    expect([first.body.error?.code, second.body.error?.code]).toContain('STATE_TRANSITION_INVALID');
+    expect(
+      await database<{ count: number }[]>`SELECT count(*)::integer AS count FROM source_documents`,
+    ).toEqual([{ count: 1 }]);
+    const objectKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sha256(body)}.txt`;
+    expect(await requireStorage(application).headObject(objectKey)).toMatchObject({
+      contentLength: body.byteLength,
+      contentType: 'text/plain',
+    });
+  });
+
+  it('validates signatures, upload limits, dates, and required multipart shape', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const spoofed = await sendUpload(
+      application,
+      tokens,
+      'source-upload-004',
+      Buffer.from('not a pdf', 'utf8'),
+      { contentType: 'application/pdf', filename: 'source.pdf' },
+    );
+    expectApiError(spoofed, 422, 'SCHEMA_VALIDATION_FAILED');
+    const oversized = await sendUpload(
+      application,
+      tokens,
+      'source-upload-005',
+      Buffer.alloc(65, 0x61),
+    );
+    expectApiError(oversized, 422, 'SCHEMA_VALIDATION_FAILED');
+    const badDate = await sendUpload(
+      application,
+      tokens,
+      'source-upload-006',
+      Buffer.from('valid text', 'utf8'),
+      { effectiveFrom: '2026-02-30' },
+    );
+    expectApiError(badDate, 422, 'SCHEMA_VALIDATION_FAILED');
+    expect(
+      await database<{ count: number }[]>`SELECT count(*)::integer AS count FROM source_documents`,
+    ).toEqual([{ count: 0 }]);
+  });
+
+  it('enforces role and live project scope while hiding forged project IDs', async () => {
+    const database = requireClient(client);
+    const viewer = await createSession(database, VIEWER_ID);
+    const denied = await sendUpload(
+      application,
+      viewer,
+      'source-upload-007',
+      Buffer.from('viewer source', 'utf8'),
+    );
+    expectApiError(denied, 403, 'PERMISSION_DENIED');
+
+    const scoped = await createSession(database, SCOPED_ID);
+    expect(
+      (
+        await sendUpload(
+          application,
+          scoped,
+          'source-upload-008',
+          Buffer.from('project a source', 'utf8'),
+        )
+      ).status,
+    ).toBe(201);
+    const projectB = await sendUpload(
+      application,
+      scoped,
+      'source-upload-009',
+      Buffer.from('project b source', 'utf8'),
+      { projectId: PROJECT_B },
+    );
+    expectApiError(projectB, 404, 'RESOURCE_NOT_FOUND');
+    const shared = await sendUpload(
+      application,
+      scoped,
+      'source-upload-010',
+      Buffer.from('shared source', 'utf8'),
+      { projectId: null },
+    );
+    expectApiError(shared, 404, 'RESOURCE_NOT_FOUND');
+    expect(
+      await database<{ count: number }[]>`SELECT count(*)::integer AS count FROM source_documents`,
+    ).toEqual([{ count: 1 }]);
+  });
+
+  it('revalidates service-layer permissions and rolls back every database side effect on storage failure', async () => {
+    const database = requireClient(client);
+    let putCalls = 0;
+    const failingStorage: ObjectStorageAdapter = {
+      createDownloadUrl: async () => 'https://storage.invalid/unreachable',
+      deleteObject: async () => undefined,
+      headObject: async () => undefined,
+      objectUri: (key) => `s3://failing-storage/${key}`,
+      putObject: async () => {
+        putCalls += 1;
+        throw new Error('simulated unavailable storage');
+      },
+    };
+    const service = new SourceService(new OutboxWriter(database), failingStorage);
+    const input = sourceInput(Buffer.from('service-layer source', 'utf8'));
+
+    await expect(
+      database.begin((transaction) =>
+        service.upload(transaction, TENANT_ID, VIEWER_ID, input, { requestId: randomUUID() }),
+      ),
+    ).rejects.toBeInstanceOf(SourceNotFoundError);
+    expect(putCalls).toBe(0);
+
+    await expect(
+      database.begin((transaction) =>
+        service.upload(transaction, TENANT_ID, MANAGER_ID, input, { requestId: randomUUID() }),
+      ),
+    ).rejects.toBeInstanceOf(SourceStorageError);
+    expect(putCalls).toBe(1);
+    expect(
+      await database<{ sources: number; jobs: number; events: number; audits: number }[]>`
+        SELECT
+          (SELECT count(*)::integer FROM source_documents) AS sources,
+          (SELECT count(*)::integer FROM ingest_jobs) AS jobs,
+          (SELECT count(*)::integer FROM outbox_events) AS events,
+          (SELECT count(*)::integer FROM audit_events) AS audits
+      `,
+    ).toEqual([{ audits: 0, events: 0, jobs: 0, sources: 0 }]);
+  });
+});
+
+async function seedScope(database: Sql): Promise<void> {
+  await database`
+    INSERT INTO users (id, email, display_name, status)
+    VALUES
+      (${MANAGER_ID}, 'source-manager@example.com', 'Source Manager', 'active'),
+      (${SCOPED_ID}, 'source-scoped@example.com', 'Source Scoped', 'active'),
+      (${VIEWER_ID}, 'source-viewer@example.com', 'Source Viewer', 'active')
+  `;
+  await database`
+    INSERT INTO tenants (id, name, slug, status)
+    VALUES (${TENANT_ID}, 'Source Tenant', 'source-tenant', 'active')
+  `;
+  await database`
+    INSERT INTO memberships (tenant_id, user_id, role_code, status)
+    VALUES
+      (${TENANT_ID}, ${MANAGER_ID}, 'strategy_editor', 'active'),
+      (${TENANT_ID}, ${SCOPED_ID}, 'content_editor', 'active'),
+      (${TENANT_ID}, ${VIEWER_ID}, 'viewer', 'active')
+  `;
+  await database`
+    INSERT INTO workspaces (id, tenant_id, name, slug, timezone)
+    VALUES (${WORKSPACE_ID}, ${TENANT_ID}, 'Source Workspace', 'source-workspace', 'UTC')
+  `;
+  await database`
+    INSERT INTO projects (id, tenant_id, workspace_id, name, owner_id)
+    VALUES
+      (${PROJECT_A}, ${TENANT_ID}, ${WORKSPACE_ID}, 'Source Project A', ${MANAGER_ID}),
+      (${PROJECT_B}, ${TENANT_ID}, ${WORKSPACE_ID}, 'Source Project B', ${MANAGER_ID})
+  `;
+  await database`
+    INSERT INTO workspace_memberships (workspace_id, user_id, scope_json)
+    VALUES (
+      ${WORKSPACE_ID},
+      ${SCOPED_ID},
+      ${JSON.stringify({ project_ids: [PROJECT_A], schema_version: 'workspace-scope@1' })}::text::jsonb
+    )
+  `;
+}
+
+async function createSession(
+  database: Sql,
+  userId: string,
+): Promise<{ readonly csrf: string; readonly session: string }> {
+  const session = randomBytes(32).toString('base64url');
+  const csrf = randomBytes(32).toString('base64url');
+  await database`
+    INSERT INTO sessions (user_id, active_tenant_id, session_hash, csrf_hash, expires_at)
+    VALUES (${userId}, ${TENANT_ID}, ${sha256(session)}, ${sha256(csrf)}, now() + interval '1 hour')
+  `;
+  return { csrf, session };
+}
+
+async function sendUpload(
+  value: NestFastifyApplication | undefined,
+  tokens: { readonly csrf: string; readonly session: string },
+  idempotencyKey: string,
+  body: Buffer,
+  options: {
+    readonly contentType?: string;
+    readonly effectiveFrom?: string;
+    readonly filename?: string;
+    readonly projectId?: string | null;
+  } = {},
+) {
+  const call = request(requireApplication(value).getHttpServer())
+    .post(API_PATH)
+    .set('Cookie', `geo_session=${tokens.session}; geo_csrf=${tokens.csrf}`)
+    .set('idempotency-key', idempotencyKey)
+    .set('x-csrf-token', tokens.csrf)
+    .field('workspace_id', WORKSPACE_ID)
+    .field('title', 'Enterprise source')
+    .field('language', 'zh-CN')
+    .field('trust_level', 'verified');
+  if (options.projectId !== null) call.field('project_id', options.projectId ?? PROJECT_A);
+  if (options.effectiveFrom) call.field('effective_from', options.effectiveFrom);
+  return call.attach('file', body, {
+    contentType: options.contentType ?? 'text/plain',
+    filename: options.filename ?? 'source.txt',
+  });
+}
+
+function expectApiError(
+  response: { readonly body: unknown; readonly status: number },
+  status: number,
+  code: string,
+): void {
+  expect(response.status).toBe(status);
+  expect(response.body).toMatchObject({
+    error: { code, request_id: expect.any(String) },
+  });
+}
+
+function setEnvironment(name: string, value: string): void {
+  if (!originalEnvironmentGlobal.has(name)) originalEnvironmentGlobal.set(name, process.env[name]);
+  process.env[name] = value;
+}
+
+const originalEnvironmentGlobal = new Map<string, string | undefined>();
+
+function sha256(value: string | Buffer): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function sourceInput(body: Buffer): ParsedSourceUpload {
+  return {
+    body,
+    contentHash: sha256(body),
+    effectiveFrom: null,
+    effectiveTo: null,
+    extension: 'txt',
+    filename: 'service-layer-source.txt',
+    language: 'zh-CN',
+    mimeType: 'text/plain',
+    projectId: PROJECT_A,
+    sourceType: 'txt',
+    title: 'Service-layer source',
+    trustLevel: 'verified',
+    workspaceId: WORKSPACE_ID,
+  };
+}
+
+function requireStorage(value: NestFastifyApplication | undefined): ObjectStorageAdapter {
+  return requireApplication(value).get<ObjectStorageAdapter>(SOURCE_STORAGE);
+}
+
+function requireApplication(value: NestFastifyApplication | undefined): NestFastifyApplication {
+  if (!value) throw new Error('Source upload application was not initialized');
+  return value;
+}
+
+function requireClient(value: Sql | undefined): Sql {
+  if (!value) throw new Error('Source upload database client was not initialized');
+  return value;
+}
