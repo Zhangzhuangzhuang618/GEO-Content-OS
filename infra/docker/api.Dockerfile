@@ -25,6 +25,9 @@ COPY --chown=node:node --from=build /workspace/packages/adapters/email/dist ./pa
 COPY --chown=node:node --from=build /workspace/packages/adapters/storage/node_modules ./packages/adapters/storage/node_modules
 COPY --chown=node:node --from=build /workspace/packages/adapters/storage/package.json ./packages/adapters/storage/package.json
 COPY --chown=node:node --from=build /workspace/packages/adapters/storage/dist ./packages/adapters/storage/dist
+COPY --chown=node:node --from=build /workspace/packages/adapters/web-fetch/node_modules ./packages/adapters/web-fetch/node_modules
+COPY --chown=node:node --from=build /workspace/packages/adapters/web-fetch/package.json ./packages/adapters/web-fetch/package.json
+COPY --chown=node:node --from=build /workspace/packages/adapters/web-fetch/dist ./packages/adapters/web-fetch/dist
 COPY --chown=node:node --from=build /workspace/packages/contracts/node_modules ./packages/contracts/node_modules
 COPY --chown=node:node --from=build /workspace/packages/contracts/package.json ./packages/contracts/package.json
 COPY --chown=node:node --from=build /workspace/packages/contracts/dist ./packages/contracts/dist

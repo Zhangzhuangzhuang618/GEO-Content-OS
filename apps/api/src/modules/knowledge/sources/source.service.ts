@@ -5,7 +5,7 @@ import type { TransactionSql } from 'postgres';
 
 import { OutboxWriter } from '../../outbox/index.js';
 import { SourceDuplicateError, SourceNotFoundError, SourceStorageError } from './source.errors.js';
-import type { ParsedSourceUpload } from './source-upload.parser.js';
+import type { ParsedFileSource, ParsedSourceUpload } from './source-upload.parser.js';
 import { SOURCE_STORAGE } from './source.tokens.js';
 
 export interface SourceAuditContext {
@@ -86,12 +86,16 @@ export class SourceService {
 
     const sourceId = randomUUID();
     const ingestJobId = randomUUID();
-    const objectKey = buildSourceObjectKey(tenantId, input);
+    const objectKey = input.kind === 'file' ? buildSourceObjectKey(tenantId, input) : null;
     let objectUri: string;
-    try {
-      objectUri = this.storage.objectUri(objectKey);
-    } catch {
-      throw new SourceStorageError();
+    if (input.kind === 'url') {
+      objectUri = input.finalUrl;
+    } else {
+      try {
+        objectUri = this.storage.objectUri(objectKey as string);
+      } catch {
+        throw new SourceStorageError();
+      }
     }
     let rows: CreatedRows[];
     try {
@@ -152,21 +156,23 @@ export class SourceService {
     const created = rows[0];
     if (!created) throw new Error('Source and ingest job creation did not return a row');
 
-    try {
-      await this.storage.putObject({
-        body: input.body,
-        contentHash: input.contentHash,
-        contentType: input.mimeType,
-        key: objectKey,
-        metadata: {
-          content_hash: input.contentHash,
-          source_id: sourceId,
-          tenant_id: tenantId,
-          workspace_id: input.workspaceId,
-        },
-      });
-    } catch {
-      throw new SourceStorageError();
+    if (input.kind === 'file') {
+      try {
+        await this.storage.putObject({
+          body: input.body,
+          contentHash: input.contentHash,
+          contentType: input.mimeType,
+          key: objectKey as string,
+          metadata: {
+            content_hash: input.contentHash,
+            source_id: sourceId,
+            tenant_id: tenantId,
+            workspace_id: input.workspaceId,
+          },
+        });
+      } catch {
+        throw new SourceStorageError();
+      }
     }
 
     await this.outboxWriter.enqueue(
@@ -176,7 +182,10 @@ export class SourceService {
         data: {
           content_hash: input.contentHash,
           ingest_job_id: ingestJobId,
-          object_key: objectKey,
+          ...(objectKey ? { object_key: objectKey } : {}),
+          ...(input.kind === 'url'
+            ? { redirect_chain: [...input.redirectChain], source_url: input.finalUrl }
+            : {}),
           source_document_id: sourceId,
           workspace_id: input.workspaceId,
         },
@@ -245,7 +254,7 @@ async function lockAuthorizedScope(
   if (project.length !== 1) throw new SourceNotFoundError();
 }
 
-function buildSourceObjectKey(tenantId: string, input: ParsedSourceUpload): string {
+function buildSourceObjectKey(tenantId: string, input: ParsedFileSource): string {
   return `tenants/${tenantId}/workspaces/${input.workspaceId}/sources/${input.contentHash}.${input.extension}`;
 }
 
@@ -279,6 +288,7 @@ async function insertSourceAudit(
         content_hash: input.input.contentHash,
         mime_type: input.input.mimeType,
         project_id: input.input.projectId,
+        ...(input.input.kind === 'url' ? { source_url: input.input.finalUrl } : {}),
         size_bytes: input.input.body.byteLength,
         status: 'processing',
         workspace_id: input.input.workspaceId,
