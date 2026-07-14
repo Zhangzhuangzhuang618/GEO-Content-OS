@@ -52,17 +52,27 @@ export function createSkillResultSchema(
   dataSchema: JsonSchema,
   schemaId: string,
 ): JsonSchema {
+  const dataDefinitions = dataSchema['$defs'];
+  if (dataDefinitions !== undefined && !isSchemaObject(dataDefinitions)) {
+    throw new TypeError('Skill data schema $defs must be an object');
+  }
   const embeddedDataSchema = Object.fromEntries(
-    Object.entries(dataSchema).filter(([key]) => key !== '$id' && key !== '$schema'),
+    Object.entries(dataSchema).filter(
+      ([key]) => key !== '$id' && key !== '$schema' && key !== '$defs',
+    ),
   ) as JsonSchema;
   return Object.freeze({
     $id: schemaId,
     $schema: 'https://json-schema.org/draft/2020-12/schema',
+    $defs: {
+      ...(dataDefinitions ?? {}),
+      skill_result_data: embeddedDataSchema,
+    },
     additionalProperties: false,
     properties: {
       blockers: { items: ISSUE_SCHEMA, type: 'array' },
       citations: { items: CITATION_SCHEMA, type: 'array' },
-      data: embeddedDataSchema,
+      data: { $ref: '#/$defs/skill_result_data' },
       skill_name: { const: skillName, type: 'string' },
       skill_version: { pattern: '^[0-9]+\\.[0-9]+\\.[0-9]+$', type: 'string' },
       status: { enum: ['success', 'partial', 'failed'] },
@@ -83,4 +93,8 @@ export function createSkillResultSchema(
     ],
     type: 'object',
   });
+}
+
+function isSchemaObject(value: unknown): value is JsonSchema {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
