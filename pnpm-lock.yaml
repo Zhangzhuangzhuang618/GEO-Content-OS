@@ -71,6 +71,9 @@ importers:
       '@geo-content-os/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@geo-content-os/parsers':
+        specifier: workspace:*
+        version: link:../../packages/parsers
       '@geo-content-os/security':
         specifier: workspace:*
         version: link:../../packages/security

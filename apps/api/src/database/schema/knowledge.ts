@@ -282,6 +282,12 @@ export const sourceChunks = pgTable(
       )`,
     ),
     check('source_chunks_token_count_check', sql`${table.tokenCount} > 0`),
+    check('source_chunks_token_count_max_check', sql`${table.tokenCount} <= 900`),
+    check(
+      'source_chunks_locator_required_check',
+      sql`${table.metadataJson} ?& ARRAY['char_start', 'char_end']::text[]
+        AND (${table.metadataJson}->>'char_end')::numeric > (${table.metadataJson}->>'char_start')::numeric`,
+    ),
     check('source_chunks_status_check', sql`${table.status} IN ('active', 'inactive')`),
   ],
 );
