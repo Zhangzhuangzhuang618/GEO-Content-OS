@@ -13,6 +13,11 @@ if (selectors.length === 1 && selectors[0] === 'parsers') {
   process.exit(0);
 }
 
+if (selectors.length === 1 && selectors[0] === 'ocr-adapter') {
+  run(['--filter', '@geo-content-os/adapter-ocr', 'test']);
+  process.exit(0);
+}
+
 process.stderr.write(`Unknown test selector: ${selectors.join(' ')}\n`);
 process.exit(2);
 
