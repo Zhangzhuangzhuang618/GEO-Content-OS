@@ -2,5 +2,29 @@
   "name": "@geo-content-os/skills",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — AI Skills: Prompt、JSON Schema、Few-shot、Tool Calling"
+  "type": "module",
+  "description": "GEO Content OS — AI Skills: Prompt、JSON Schema、Few-shot、Tool Calling",
+  "exports": {
+    "./runtime": {
+      "types": "./runtime/dist/index.d.ts",
+      "import": "./runtime/dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project runtime/tsconfig.build.json --pretty false",
+    "test": "vitest run --config runtime/vitest.config.ts",
+    "typecheck": "tsc --project runtime/tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-model": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "runtime/dist"
+  ]
 }
