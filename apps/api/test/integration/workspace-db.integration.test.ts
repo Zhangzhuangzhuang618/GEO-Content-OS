@@ -123,7 +123,8 @@ describe('workspace and strategy database', () => {
         INSERT INTO brand_profiles (
           tenant_id, workspace_id, version, schema_version, profile_json, created_by
         ) VALUES (
-          ${TENANT_A}, ${WORKSPACE_A}, 99, 'brand-profile@1', '{}', ${USER_B}
+          ${TENANT_A}, ${WORKSPACE_A}, 99, 'brand-profile@1',
+          ${JSON.stringify(brandProfile('forged-owner'))}::text::jsonb, ${USER_B}
         )
       `,
     ).rejects.toThrow(/brand_profiles_created_by_membership_fk/u);
@@ -307,13 +308,25 @@ async function insertBrandProfile(database: Sql, version: number): Promise<strin
       tenant_id, workspace_id, version, schema_version, profile_json, created_by
     ) VALUES (
       ${TENANT_A}, ${WORKSPACE_A}, ${version}, 'brand-profile@1',
-      ${JSON.stringify({ positioning: `version-${version}` })}::text::jsonb, ${USER_A}
+      ${JSON.stringify(brandProfile(`version-${version}`))}::text::jsonb, ${USER_A}
     )
     RETURNING id
   `;
   const profile = rows[0];
   if (!profile) throw new Error('Expected brand profile fixture');
   return profile.id;
+}
+
+function brandProfile(positioning: string) {
+  return {
+    audience: ['Enterprise content teams'],
+    banned: [],
+    compliance: ['Use verified evidence for factual claims'],
+    cta: 'Contact the content strategy team',
+    differentiators: ['Traceable source evidence'],
+    positioning,
+    tone: 'Professional and precise',
+  };
 }
 
 async function insertKeywordSet(database: Sql): Promise<string> {

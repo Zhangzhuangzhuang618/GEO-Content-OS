@@ -5,4 +5,5 @@ export * from './meta.js';
 export * from './platforms.js';
 export * from './permissions/index.js';
 export * from './roles.js';
+export * from './schemas/index.js';
 export * from './statuses.js';
