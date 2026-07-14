@@ -35,6 +35,11 @@ if (selectors.length === 1 && selectors[0] === 'model-adapter') {
   process.exit(0);
 }
 
+if (selectors.length === 1 && selectors[0] === 'model-router') {
+  run(['--filter', '@geo-content-os/api', 'test:model-router']);
+  process.exit(0);
+}
+
 process.stderr.write(`Unknown test selector: ${selectors.join(' ')}\n`);
 process.exit(2);
 
