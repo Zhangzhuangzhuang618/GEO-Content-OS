@@ -71,12 +71,15 @@ export const supportAccessGrants = pgTable(
     ),
     check(
       'support_access_grants_scope_check',
-      sql`jsonb_typeof(${table.scopeJson}) = 'object'
+      sql`COALESCE(jsonb_typeof(${table.scopeJson}) = 'object'
         AND ${table.scopeJson}->>'schema_version' = 'support-access@1'
+        AND ${table.scopeJson} - ARRAY['schema_version', 'permissions', 'resource_types'] = '{}'::jsonb
         AND jsonb_typeof(${table.scopeJson}->'permissions') = 'array'
         AND jsonb_array_length(${table.scopeJson}->'permissions') BETWEEN 1 AND 32
+        AND NOT jsonb_path_exists(${table.scopeJson}, '$.permissions[*] ? (@.type() != "string" || @ == "")')
         AND jsonb_typeof(${table.scopeJson}->'resource_types') = 'array'
-        AND jsonb_array_length(${table.scopeJson}->'resource_types') BETWEEN 1 AND 64`,
+        AND jsonb_array_length(${table.scopeJson}->'resource_types') BETWEEN 1 AND 64
+        AND NOT jsonb_path_exists(${table.scopeJson}, '$.resource_types[*] ? (@.type() != "string" || @ == "")'), false)`,
     ),
   ],
 );
