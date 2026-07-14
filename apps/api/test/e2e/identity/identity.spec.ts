@@ -336,7 +336,7 @@ async function expectApiError(
 }
 
 async function resetIdentityDatabase(database: Sql, hash: string): Promise<void> {
-  await database`TRUNCATE audit_events, support_access_grants, idempotency_records, password_reset_tokens, invitations, sessions, platform_roles, memberships, tenants, users CASCADE`;
+  await database`TRUNCATE topic_candidates, generation_runs, keywords, keyword_sets, brand_profiles, workspace_memberships, projects, workspaces, audit_events, support_access_grants, idempotency_records, password_reset_tokens, invitations, sessions, platform_roles, memberships, tenants, users CASCADE`;
   await database`
     INSERT INTO users (id, email, password_hash, display_name, status)
     VALUES
