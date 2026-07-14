@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { HealthModule } from './modules/health/health.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
-import { SourceModule } from './modules/knowledge/index.js';
+import { FactAdjudicationModule, SourceModule } from './modules/knowledge/index.js';
 import { PlatformAccessModule } from './modules/platform-access/platform-access.module.js';
 import {
   BrandProfileModule,
@@ -15,6 +15,7 @@ import {
 @Module({
   imports: [
     BrandProfileModule,
+    FactAdjudicationModule,
     HealthModule,
     IdentityModule,
     KeywordModule,
