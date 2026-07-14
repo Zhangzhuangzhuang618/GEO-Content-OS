@@ -1,5 +1,28 @@
 export { idempotencyRecords, type IdempotencyRecord } from './idempotency.js';
 export {
+  embeddings,
+  facts,
+  factSources,
+  ingestJobs,
+  sourceChunks,
+  sourceDocuments,
+  type ChunkMetadata,
+  type EmbeddingRecord,
+  type FactRecord,
+  type FactSourceRecord,
+  type FactStatus,
+  type IngestJobError,
+  type IngestJobRecord,
+  type IngestJobStatus,
+  type IngestStage,
+  type SourceChunkRecord,
+  type SourceChunkStatus,
+  type SourceDocumentRecord,
+  type SourceDocumentStatus,
+  type SourceTrustLevel,
+  type SourceType,
+} from './knowledge.js';
+export {
   briefKeywords,
   briefs,
   briefSources,

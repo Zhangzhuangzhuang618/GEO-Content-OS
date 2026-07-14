@@ -17,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 import { memberships, users } from './identity.js';
+import { sourceDocuments } from './knowledge.js';
 import { keywords, projects, topicCandidates, workspaces } from './workspace.js';
 
 export type BriefObjective = 'awareness' | 'conversion' | 'trust' | 'education';
@@ -150,6 +151,11 @@ export const briefSources = pgTable(
       foreignColumns: [briefs.id, briefs.tenantId],
       name: 'brief_sources_brief_fk',
     }).onDelete('cascade'),
+    foreignKey({
+      columns: [table.sourceDocumentId, table.tenantId],
+      foreignColumns: [sourceDocuments.id, sourceDocuments.tenantId],
+      name: 'brief_sources_source_document_fk',
+    }).onDelete('restrict'),
   ],
 );
 
