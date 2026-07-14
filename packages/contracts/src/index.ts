@@ -7,3 +7,4 @@ export * from './permissions/index.js';
 export * from './roles.js';
 export * from './schemas/index.js';
 export * from './statuses.js';
+export * from './transitions/index.js';
