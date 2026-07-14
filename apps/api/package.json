@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm build:runtime-dependencies && nest build",
     "build:contracts": "pnpm --filter @geo-content-os/contracts build",
-    "build:runtime-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/security build && pnpm --filter @geo-content-os/observability build && pnpm --filter @geo-content-os/adapter-email build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build",
+    "build:runtime-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/security build && pnpm --filter @geo-content-os/observability build && pnpm --filter @geo-content-os/adapter-email build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build",
     "build:test-dependencies": "pnpm build:runtime-dependencies && pnpm --filter @geo-content-os/testkit build && pnpm --filter @geo-content-os/worker-outbox-relay build && pnpm --filter @geo-content-os/worker-knowledge build",
     "db:check": "tsx src/database/cli/check.ts",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
@@ -22,6 +22,7 @@
     "test:contract": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/modules/workspace/strategy.contract.test.ts",
     "test:database": "vitest run src/database",
     "test:integration": "pnpm build:test-dependencies && vitest run --config vitest.integration.config.ts",
+    "test:rerank": "pnpm build:runtime-dependencies && vitest run --config vitest.config.ts src/modules/knowledge/search/citation-search.service.test.ts src/modules/knowledge/search/search-policy.test.ts",
     "test:security": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/common/security && vitest run --config vitest.integration.config.ts test/integration/security-rate-limit.integration.test.ts",
     "test:watch": "vitest",
     "typecheck": "pnpm build:test-dependencies && tsc --project tsconfig.json --noEmit --pretty false && tsc --project tsconfig.test.json --noEmit --pretty false"
@@ -33,6 +34,7 @@
     "@fastify/multipart": "^10.1.0",
     "@geo-content-os/adapter-email": "workspace:*",
     "@geo-content-os/adapter-embedding": "workspace:*",
+    "@geo-content-os/adapter-rerank": "workspace:*",
     "@geo-content-os/adapter-storage": "workspace:*",
     "@geo-content-os/adapter-web-fetch": "workspace:*",
     "@geo-content-os/contracts": "workspace:*",

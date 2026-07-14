@@ -4,6 +4,7 @@ import type { DatabaseClient } from '../../../database/index.js';
 import type {
   HybridSearchHit,
   HybridSearchOptions,
+  HybridSearchPort,
   HybridSearchScope,
   SearchableTrustLevel,
   ValidatedHybridSearchRequest,
@@ -13,7 +14,7 @@ const SEARCHABLE_TRUST_LEVELS = new Set<SearchableTrustLevel>(['normal', 'verifi
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
-export class HybridSearchRepository {
+export class HybridSearchRepository implements HybridSearchPort {
   public constructor(private readonly client: DatabaseClient) {}
 
   public async search(
@@ -212,6 +213,10 @@ export function validateHybridSearchRequest(
   if (!Number.isSafeInteger(topK) || topK < 1 || topK > 20) {
     throw new TypeError('Hybrid search topK must be an integer between 1 and 20');
   }
+  const candidateLimit = options.candidateLimit ?? 20;
+  if (!Number.isSafeInteger(candidateLimit) || candidateLimit < topK || candidateLimit > 100) {
+    throw new TypeError('Hybrid search candidate limit must be between topK and 100');
+  }
   const effectiveOn = options.effectiveOn ?? new Date().toISOString().slice(0, 10);
   if (!isIsoDate(effectiveOn)) throw new TypeError('Hybrid search effective date is invalid');
   const trustLevels = [...(options.trustLevels ?? ['verified', 'normal'])];
@@ -224,7 +229,7 @@ export function validateHybridSearchRequest(
     throw new TypeError('Hybrid search trust levels are invalid');
   }
   return Object.freeze({
-    candidateLimit: Math.min(100, Math.max(20, topK * 5)),
+    candidateLimit,
     effectiveOn,
     modelKey: options.modelKey,
     query,

@@ -11,10 +11,20 @@ export interface HybridSearchScope {
 }
 
 export interface HybridSearchOptions {
+  readonly candidateLimit?: number;
   readonly effectiveOn?: string;
   readonly modelKey: string;
   readonly topK?: number;
   readonly trustLevels?: readonly SearchableTrustLevel[];
+}
+
+export interface HybridSearchPort {
+  search(
+    scope: HybridSearchScope,
+    rawQuery: string,
+    queryEmbedding: readonly number[],
+    options: HybridSearchOptions,
+  ): Promise<readonly HybridSearchHit[]>;
 }
 
 export interface HybridSearchHit {
