@@ -236,7 +236,9 @@ describe('workspace and strategy database', () => {
     await expect(
       database`UPDATE topic_candidates SET question = 'Changed source?' WHERE id = ${topicId}`,
     ).rejects.toThrow(/source is immutable/u);
-    await database`UPDATE topic_candidates SET status = 'adopted' WHERE id = ${topicId}`;
+    await database`
+      UPDATE topic_candidates SET status = 'adopted', version = version + 1 WHERE id = ${topicId}
+    `;
     await expect(
       database`UPDATE topic_candidates SET status = 'archived' WHERE id = ${topicId}`,
     ).rejects.toThrow(/invalid topic candidate status transition/u);
@@ -400,7 +402,7 @@ function entities() {
 }
 
 function citations() {
-  return { evidence_ids: [], schema_version: 'citation-set@1' };
+  return { evidence_ids: [PROMPT_VERSION], schema_version: 'citation-set@1' };
 }
 
 function requireClient(client: Sql | undefined): Sql {

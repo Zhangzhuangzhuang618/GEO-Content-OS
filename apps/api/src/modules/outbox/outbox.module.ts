@@ -1,16 +1,29 @@
-import { Inject, Injectable, Module, type OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Module, type OnApplicationShutdown } from '@nestjs/common';
 
 import { getApiLogger } from '../../common/telemetry/api-logger.js';
 import { createDatabaseConnection, type DatabaseClient } from '../../database/index.js';
 import { OUTBOX_DATABASE_CLIENT } from './outbox.tokens.js';
 import { OutboxWriter } from './outbox.writer.js';
 
+export interface OutboxDatabaseProvider {
+  readonly client: DatabaseClient;
+}
+
 @Injectable()
-class OutboxDatabaseLifecycle implements OnApplicationShutdown {
-  public constructor(@Inject(OUTBOX_DATABASE_CLIENT) private readonly client: DatabaseClient) {}
+class LazyOutboxDatabase implements OnApplicationShutdown, OutboxDatabaseProvider {
+  private databaseClient: DatabaseClient | undefined;
+
+  public get client(): DatabaseClient {
+    this.databaseClient ??= createDatabaseConnection(undefined, {
+      telemetryLogger: getApiLogger(),
+    }).client;
+    return this.databaseClient;
+  }
 
   public async onApplicationShutdown(): Promise<void> {
-    await this.client.end({ timeout: 5 });
+    if (!this.databaseClient) return;
+    await this.databaseClient.end({ timeout: 5 });
+    this.databaseClient = undefined;
   }
 }
 
@@ -18,10 +31,8 @@ class OutboxDatabaseLifecycle implements OnApplicationShutdown {
   providers: [
     {
       provide: OUTBOX_DATABASE_CLIENT,
-      useFactory: (): DatabaseClient =>
-        createDatabaseConnection(undefined, { telemetryLogger: getApiLogger() }).client,
+      useClass: LazyOutboxDatabase,
     },
-    OutboxDatabaseLifecycle,
     OutboxWriter,
   ],
   exports: [OutboxWriter],

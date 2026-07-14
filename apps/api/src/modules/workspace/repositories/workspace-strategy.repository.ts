@@ -1,4 +1,4 @@
-import type { BrandProfile, PlatformCode } from '@geo-content-os/contracts';
+import type { BrandProfile, PlatformCode, TopicBriefSuggestion } from '@geo-content-os/contracts';
 
 import type { DatabaseClient } from '../../../database/index.js';
 import type {
@@ -80,6 +80,7 @@ export interface KeywordView {
 }
 
 export interface TopicCandidateView {
+  readonly briefSuggestion: TopicBriefSuggestion | null;
   readonly createdAt: Date;
   readonly entities: EntityList;
   readonly evidenceSummary: CitationSet;
@@ -94,6 +95,7 @@ export interface TopicCandidateView {
   readonly status: TopicCandidateStatus;
   readonly tenantId: string;
   readonly updatedAt: Date;
+  readonly version: number;
   readonly workspaceId: string;
 }
 
@@ -353,6 +355,8 @@ export class WorkspaceStrategyRepository {
         topic.priority,
         topic.risk_level AS "riskLevel",
         topic.status,
+        topic.brief_suggestion_json AS "briefSuggestion",
+        topic.version,
         topic.created_at AS "createdAt",
         topic.updated_at AS "updatedAt"
       FROM topic_candidates AS topic
@@ -393,6 +397,8 @@ export class WorkspaceStrategyRepository {
         topic.priority,
         topic.risk_level AS "riskLevel",
         topic.status,
+        topic.brief_suggestion_json AS "briefSuggestion",
+        topic.version,
         topic.created_at AS "createdAt",
         topic.updated_at AS "updatedAt"
       FROM topic_candidates AS topic

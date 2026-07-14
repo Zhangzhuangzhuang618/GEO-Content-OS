@@ -1,5 +1,15 @@
 export { idempotencyRecords, type IdempotencyRecord } from './idempotency.js';
 export {
+  briefKeywords,
+  briefs,
+  briefSources,
+  type BriefKeywordRecord,
+  type BriefObjective,
+  type BriefRecord,
+  type BriefSourceRecord,
+  type GenerationMode,
+} from './content.js';
+export {
   invitations,
   memberships,
   passwordResetTokens,

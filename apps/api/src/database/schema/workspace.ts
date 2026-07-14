@@ -1,6 +1,7 @@
 import type {
   BrandProfile,
   PlatformCode,
+  TopicBriefSuggestion,
   WorkspaceSettings as ContractWorkspaceSettings,
 } from '@geo-content-os/contracts';
 import { sql } from 'drizzle-orm';
@@ -360,6 +361,7 @@ export const generationRuns = pgTable(
     errorJson: jsonb('error_json').$type<Record<string, unknown>>(),
     startedAt: timestamp('started_at', { withTimezone: true }),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
+    version: integer().notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -418,6 +420,7 @@ export const generationRuns = pgTable(
       'generation_runs_time_check',
       sql`(${table.startedAt} IS NULL OR ${table.startedAt} >= ${table.createdAt}) AND (${table.finishedAt} IS NULL OR ${table.startedAt} IS NOT NULL) AND (${table.finishedAt} IS NULL OR ${table.finishedAt} >= ${table.startedAt})`,
     ),
+    check('generation_runs_version_check', sql`${table.version} > 0`),
   ],
 );
 
@@ -440,11 +443,19 @@ export const topicCandidates = pgTable(
     priority: smallint().notNull(),
     riskLevel: varchar('risk_level', { length: 16 }).$type<TopicRiskLevel>().notNull(),
     status: varchar({ length: 16 }).$type<TopicCandidateStatus>().notNull().default('proposed'),
+    briefSuggestionJson: jsonb('brief_suggestion_json').$type<TopicBriefSuggestion>(),
+    version: integer().notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     unique('topic_candidates_id_tenant_uq').on(table.id, table.tenantId),
+    unique('topic_candidates_id_scope_uq').on(
+      table.id,
+      table.tenantId,
+      table.workspaceId,
+      table.projectId,
+    ),
     foreignKey({
       columns: [table.workspaceId, table.tenantId],
       foreignColumns: [workspaces.id, workspaces.tenantId],
@@ -490,11 +501,11 @@ export const topicCandidates = pgTable(
     ),
     check(
       'topic_candidates_entities_check',
-      sql`COALESCE(jsonb_typeof(${table.entitiesJson}) = 'object' AND ${table.entitiesJson}->>'schema_version' = 'entity-list@1' AND jsonb_typeof(${table.entitiesJson}->'entities') = 'array' AND jsonb_array_length(${table.entitiesJson}->'entities') > 0 AND NOT jsonb_path_exists(${table.entitiesJson}, '$.entities[*] ? (@.type() != "string" || @ == "")'), false)`,
+      sql`COALESCE(jsonb_typeof(${table.entitiesJson}) = 'object' AND ${table.entitiesJson} ?& ARRAY['schema_version','entities'] AND ${table.entitiesJson} - ARRAY['schema_version','entities']::text[] = '{}'::jsonb AND ${table.entitiesJson}->>'schema_version' = 'entity-list@1' AND is_valid_nonblank_jsonb_string_array(${table.entitiesJson}->'entities', 1, 50), false)`,
     ),
     check(
       'topic_candidates_evidence_check',
-      sql`COALESCE(jsonb_typeof(${table.evidenceSummaryJson}) = 'object' AND ${table.evidenceSummaryJson}->>'schema_version' = 'citation-set@1' AND jsonb_typeof(${table.evidenceSummaryJson}->'evidence_ids') = 'array', false)`,
+      sql`COALESCE(jsonb_typeof(${table.evidenceSummaryJson}) = 'object' AND ${table.evidenceSummaryJson} ?& ARRAY['schema_version','evidence_ids'] AND ${table.evidenceSummaryJson} - ARRAY['schema_version','evidence_ids']::text[] = '{}'::jsonb AND ${table.evidenceSummaryJson}->>'schema_version' = 'citation-set@1' AND jsonb_typeof(${table.evidenceSummaryJson}->'evidence_ids') = 'array' AND jsonb_array_length(${table.evidenceSummaryJson}->'evidence_ids') BETWEEN 0 AND 100 AND NOT jsonb_path_exists(${table.evidenceSummaryJson}, '$.evidence_ids[*] ? (@.type() != "string")'), false)`,
     ),
     check(
       'topic_candidates_platform_codes_check',
@@ -509,6 +520,15 @@ export const topicCandidates = pgTable(
       'topic_candidates_status_check',
       sql`${table.status} IN ('proposed', 'adopted', 'archived')`,
     ),
+    check(
+      'topic_candidates_brief_suggestion_check',
+      sql`${table.briefSuggestionJson} IS NULL OR jsonb_typeof(${table.briefSuggestionJson}) = 'object'`,
+    ),
+    check(
+      'topic_candidates_evidence_risk_check',
+      sql`jsonb_array_length(${table.evidenceSummaryJson}->'evidence_ids') > 0 OR ${table.riskLevel} IN ('high', 'critical')`,
+    ),
+    check('topic_candidates_version_check', sql`${table.version} > 0`),
   ],
 );
 

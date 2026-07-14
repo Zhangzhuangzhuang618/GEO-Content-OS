@@ -37,6 +37,7 @@ export async function createApplication(
       trustProxy: securityConfiguration.trustProxy,
     }),
     {
+      abortOnError: false,
       logger:
         options.logger ?? (telemetryLogger ? new NestStructuredLogger(telemetryLogger) : false),
     },

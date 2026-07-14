@@ -7,6 +7,7 @@ import {
   BrandProfileModule,
   KeywordModule,
   ProjectModule,
+  TopicModule,
   WorkspaceModule,
 } from './modules/workspace/index.js';
 
@@ -18,6 +19,7 @@ import {
     KeywordModule,
     PlatformAccessModule,
     ProjectModule,
+    TopicModule,
     WorkspaceModule,
   ],
 })

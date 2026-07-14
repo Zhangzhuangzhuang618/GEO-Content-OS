@@ -5,9 +5,16 @@ import { randomUUID } from 'node:crypto';
 import { OUTBOX_DATABASE_CLIENT } from './outbox.tokens.js';
 import type { EnqueueOutboxEventInput, OutboxSql } from './outbox.types.js';
 
+interface OutboxDatabaseProvider {
+  readonly client: OutboxSql;
+}
+
 @Injectable()
 export class OutboxWriter {
-  public constructor(@Inject(OUTBOX_DATABASE_CLIENT) private readonly client: OutboxSql) {}
+  public constructor(
+    @Inject(OUTBOX_DATABASE_CLIENT)
+    private readonly database: OutboxSql | OutboxDatabaseProvider,
+  ) {}
 
   /**
    * Call this method with the transaction SQL object that mutated the aggregate.
@@ -15,8 +22,9 @@ export class OutboxWriter {
    */
   public async enqueue(
     input: EnqueueOutboxEventInput,
-    transaction: OutboxSql = this.client,
+    transaction?: OutboxSql,
   ): Promise<DomainEventEnvelope> {
+    const client = transaction ?? resolveClient(this.database);
     const event = DomainEventEnvelopeSchema.parse({
       event_id: randomUUID(),
       event_type: input.eventType,
@@ -29,7 +37,7 @@ export class OutboxWriter {
       occurred_at: normalizeOccurredAt(input.occurredAt),
     });
 
-    await transaction`
+    await client`
       INSERT INTO outbox_events (
         id,
         tenant_id,
@@ -49,6 +57,10 @@ export class OutboxWriter {
 
     return event;
   }
+}
+
+function resolveClient(database: OutboxSql | OutboxDatabaseProvider): OutboxSql {
+  return typeof database === 'function' ? database : database.client;
 }
 
 function normalizeOccurredAt(value: Date | string | undefined): string {
