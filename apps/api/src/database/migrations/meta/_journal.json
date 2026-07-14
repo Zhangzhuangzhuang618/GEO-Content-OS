@@ -113,6 +113,13 @@
       "when": 1784023200000,
       "tag": "0015_content_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784109600000,
+      "tag": "0016_usage_ledger",
+      "breakpoints": true
     }
   ]
 }
