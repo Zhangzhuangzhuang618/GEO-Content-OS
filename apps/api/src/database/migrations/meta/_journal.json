@@ -92,6 +92,13 @@
       "when": 1784012400000,
       "tag": "0012_topic_api_and_brief_base",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784016000000,
+      "tag": "0013_knowledge_schema",
+      "breakpoints": true
     }
   ]
 }

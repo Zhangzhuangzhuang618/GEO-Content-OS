@@ -110,6 +110,20 @@ describe('topic API', () => {
         (${OTHER_PROJECT}, ${OTHER_TENANT_ID}, ${OTHER_WORKSPACE}, 'Other Topic Project', ${OTHER_OWNER_ID})
     `;
     await database`
+      INSERT INTO source_documents (
+        id, tenant_id, workspace_id, project_id, title, source_type, mime_type,
+        uri, content_hash, status, created_by
+      ) VALUES
+        (
+          ${SOURCE_A}, ${TENANT_ID}, ${WORKSPACE_A}, ${PROJECT_A}, 'Topic evidence A',
+          'txt', 'text/plain', 'memory://topic-evidence-a', ${'a'.repeat(64)}, 'active', ${OWNER_ID}
+        ),
+        (
+          ${SOURCE_B}, ${TENANT_ID}, ${WORKSPACE_A}, ${PROJECT_A}, 'Topic evidence B',
+          'txt', 'text/plain', 'memory://topic-evidence-b', ${'b'.repeat(64)}, 'active', ${OWNER_ID}
+        )
+    `;
+    await database`
       INSERT INTO keyword_sets (id, tenant_id, project_id, name)
       VALUES
         (${KEYWORD_SET_A}, ${TENANT_ID}, ${PROJECT_A}, 'Topic keywords A'),
