@@ -2,5 +2,31 @@
   "name": "@geo-content-os/worker-knowledge",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Knowledge Worker：资料入库、分块、Embedding、FTS 索引"
+  "type": "module",
+  "description": "GEO Content OS — recoverable knowledge embedding worker",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/adapter-embedding build && tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/adapter-embedding build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-embedding": "workspace:*",
+    "ioredis": "5.10.1",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@geo-content-os/testkit": "workspace:*",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }
