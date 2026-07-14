@@ -42,3 +42,35 @@ export const GET_PLATFORM_RULES_TOOL: SkillToolDefinitionContract = Object.freez
   }),
   name: 'get_platform_rules',
 });
+
+export const SEARCH_KNOWLEDGE_TOOL: SkillToolDefinitionContract = Object.freeze({
+  description: '在当前 tenant/workspace 范围内混合检索可信资料',
+  inputSchema: Object.freeze({
+    additionalProperties: false,
+    properties: {
+      project_id: { format: 'uuid', type: ['string', 'null'] },
+      query: { minLength: 2, type: 'string' },
+      top_k: { maximum: 20, minimum: 1, type: 'integer' },
+      trust_levels: { items: { enum: ['verified', 'normal'] }, type: 'array' },
+      workspace_id: { format: 'uuid', type: 'string' },
+    },
+    required: ['query', 'workspace_id', 'top_k'],
+    type: 'object',
+  }),
+  name: 'search_knowledge',
+});
+
+export const REQUEST_HUMAN_REVIEW_TOOL: SkillToolDefinitionContract = Object.freeze({
+  description: '创建人工事实裁决待办，不改变内容或发布状态',
+  inputSchema: Object.freeze({
+    additionalProperties: false,
+    properties: {
+      claim_keys: { items: { type: 'string' }, minItems: 1, type: 'array' },
+      reason: { type: 'string' },
+      risk_level: { enum: ['high', 'critical'] },
+    },
+    required: ['risk_level', 'reason', 'claim_keys'],
+    type: 'object',
+  }),
+  name: 'request_human_review',
+});
