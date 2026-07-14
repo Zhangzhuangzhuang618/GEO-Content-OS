@@ -1,5 +1,6 @@
 import { API_BASE_PATH } from '@geo-content-os/contracts';
 import { resolveRequestId, type StructuredLogger } from '@geo-content-os/observability';
+import fastifyMultipart from '@fastify/multipart';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { LoggerService, LogLevel } from '@nestjs/common';
@@ -15,6 +16,7 @@ import {
 import { getApiLogger } from './common/telemetry/api-logger.js';
 import { NestStructuredLogger } from './common/telemetry/nest-logger.js';
 import { registerRequestTelemetry } from './common/telemetry/request-telemetry.js';
+import { readSourceUploadConfiguration } from './modules/knowledge/index.js';
 
 export interface CreateApplicationOptions {
   readonly enableShutdownHooks?: boolean;
@@ -45,6 +47,18 @@ export async function createApplication(
 
   application.setGlobalPrefix(API_BASE_PATH.slice(1));
   registerRequestTelemetry(application.getHttpAdapter().getInstance(), telemetryLogger);
+  const sourceUpload = readSourceUploadConfiguration();
+  await application.register(fastifyMultipart, {
+    limits: {
+      fieldNameSize: 64,
+      fieldSize: 8_192,
+      fields: 7,
+      fileSize: sourceUpload.maxFileBytes,
+      files: 1,
+      parts: 8,
+    },
+    throwFileSizeLimit: true,
+  });
   await registerApiSecurityMiddleware(application, securityConfiguration);
 
   if (options.enableShutdownHooks !== false) {
