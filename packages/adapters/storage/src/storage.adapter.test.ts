@@ -110,9 +110,10 @@ describe('object storage adapters', () => {
   });
 
   it('downloads S3 bytes without exposing provider errors', async () => {
-    const send = vi.fn(async (_command: unknown) => ({
-      Body: { transformToByteArray: async () => BODY },
-    }));
+    const send = vi.fn(async (command: unknown) => {
+      void command;
+      return { Body: { transformToByteArray: async () => BODY } };
+    });
     const client = {
       send,
     } as unknown as S3Client;

@@ -1,0 +1,19 @@
+{
+  "dataset_sha256": "94847b98f10014c45f063aaafb6cea78cea2051b47884d50383d8d13da5eeee2",
+  "dataset_version": "rag-eval-v1",
+  "metrics": {
+    "citation_accuracy": 1,
+    "fabricated_citation_count": 0,
+    "high_risk_precision": 1,
+    "latency_p95_ms": 57,
+    "no_answer_accuracy": 1,
+    "precision": 1,
+    "recall": 1
+  },
+  "schema_version": "rag-eval-baseline@1",
+  "system_version": "citation-search-v1",
+  "tolerance": {
+    "latency_ratio": 1.1,
+    "quality_absolute": 0.001
+  }
+}

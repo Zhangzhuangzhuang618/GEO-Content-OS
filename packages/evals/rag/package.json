@@ -1,0 +1,29 @@
+{
+  "name": "@geo-content-os/eval-rag",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Versioned offline RAG retrieval and citation evaluation baseline",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "eval": "pnpm build && vitest run --config vitest.config.ts && node dist/cli.js --dataset fixtures/rag-eval.v1.dataset.json --predictions fixtures/rag-eval.v1.predictions.json --baseline baselines/rag-eval.v1.baseline.json",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist",
+    "fixtures",
+    "baselines"
+  ]
+}
