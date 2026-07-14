@@ -2,6 +2,7 @@ export * from './content-writer/index.js';
 export * from './fact-checker/index.js';
 export * from './geo-optimizer/index.js';
 export * from './material-parser/index.js';
+export * from './quality-checker/index.js';
 export * from './schema.types.js';
 export * from './skill-result.schema.js';
 export * from './topic-planner/index.js';

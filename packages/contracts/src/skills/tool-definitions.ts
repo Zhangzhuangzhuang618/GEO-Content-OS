@@ -74,3 +74,19 @@ export const REQUEST_HUMAN_REVIEW_TOOL: SkillToolDefinitionContract = Object.fre
   }),
   name: 'request_human_review',
 });
+
+export const CREATE_QUALITY_ISSUE_TOOL: SkillToolDefinitionContract = Object.freeze({
+  description: '将确定的问题追加到当前质量报告草稿',
+  inputSchema: Object.freeze({
+    additionalProperties: false,
+    properties: {
+      location: { type: ['string', 'null'] },
+      message: { type: 'string' },
+      rule_id: { type: 'string' },
+      severity: { enum: ['BLOCK', 'WARN', 'INFO'] },
+    },
+    required: ['rule_id', 'severity', 'message'],
+    type: 'object',
+  }),
+  name: 'create_quality_issue',
+});
