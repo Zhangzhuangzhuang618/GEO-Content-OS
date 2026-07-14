@@ -59,6 +59,13 @@ const BriefFieldsSchema = z.object({
   title: z.string().trim().min(2).max(80),
 });
 
+const BriefScopeFieldsSchema = z.object({
+  platform_codes: PlatformCodeListSchema,
+  project_id: UuidSchema,
+  source_ids: UniqueUuidListSchema(100),
+  workspace_id: UuidSchema,
+});
+
 export const TopicBriefSuggestionSchema =
   BriefFieldsSchema.strict().superRefine(validatePrimaryKeyword);
 
@@ -127,6 +134,54 @@ export const AdoptTopicRequestSchema = BriefFieldsSchema.partial()
       });
     }
   });
+
+export const CreateBriefRequestSchema = BriefFieldsSchema.extend(BriefScopeFieldsSchema.shape)
+  .strict()
+  .superRefine((value, context) => {
+    validatePrimaryKeyword(value, context);
+    validateBriefEvidence(value, context);
+  });
+
+export const UpdateBriefRequestSchema = BriefFieldsSchema.extend({
+  platform_codes: PlatformCodeListSchema,
+  source_ids: UniqueUuidListSchema(100),
+})
+  .partial()
+  .strict()
+  .superRefine((value, context) => {
+    if (Object.keys(value).length === 0) {
+      context.addIssue({ code: 'custom', message: 'At least one Brief field is required' });
+    }
+    if (
+      value.keyword_ids !== undefined &&
+      value.primary_keyword_id !== undefined &&
+      !value.keyword_ids.includes(value.primary_keyword_id)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Primary keyword must be included in keyword_ids',
+        path: ['primary_keyword_id'],
+      });
+    }
+    if (value.objective !== undefined && value.source_ids !== undefined) {
+      validateBriefEvidence({ objective: value.objective, source_ids: value.source_ids }, context);
+    }
+  });
+
+export const BriefListQuerySchema = z
+  .object({
+    created_by: UuidSchema.optional(),
+    cursor: CursorSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    objective: z.enum(['awareness', 'conversion', 'trust', 'education']).optional(),
+    platform_code: z.enum(PLATFORM_CODES).optional(),
+    project_id: UuidSchema.optional(),
+    search: z.string().trim().min(1).max(80).optional(),
+    workspace_id: UuidSchema.optional(),
+  })
+  .strict();
+
+export const BriefIdSchema = UuidSchema;
 
 export const TopicCandidateIdSchema = UuidSchema;
 
@@ -221,6 +276,10 @@ export const BriefResponseSchema = z
   .object({ data: BriefViewSchema, meta: RequestMetaSchema })
   .strict();
 
+export const BriefPageSchema = z
+  .object({ data: z.array(BriefViewSchema), meta: CursorPageMetaSchema })
+  .strict();
+
 export type BriefConstraints = z.infer<typeof BriefConstraintsSchema>;
 export type TopicBriefSuggestion = z.infer<typeof TopicBriefSuggestionSchema>;
 export type TopicCandidateOutput = z.infer<typeof TopicCandidateOutputSchema>;
@@ -228,6 +287,9 @@ export type TopicPlannerData = z.infer<typeof TopicPlannerDataSchema>;
 export type TopicPlanRequest = z.infer<typeof TopicPlanRequestSchema>;
 export type TopicCandidateQuery = z.infer<typeof TopicCandidateQuerySchema>;
 export type AdoptTopicRequest = z.infer<typeof AdoptTopicRequestSchema>;
+export type CreateBriefRequest = z.infer<typeof CreateBriefRequestSchema>;
+export type UpdateBriefRequest = z.infer<typeof UpdateBriefRequestSchema>;
+export type BriefListQuery = z.infer<typeof BriefListQuerySchema>;
 
 export interface GenerationRunView {
   readonly created_at: string;
@@ -297,6 +359,11 @@ export interface BriefView {
   readonly workspace_id: string;
 }
 
+export interface BriefPage {
+  readonly data: readonly BriefView[];
+  readonly meta: { readonly next_cursor: string | null; readonly request_id: string };
+}
+
 function validatePrimaryKeyword(
   value: { readonly keyword_ids: readonly string[]; readonly primary_keyword_id: string },
   context: z.RefinementCtx,
@@ -306,6 +373,22 @@ function validatePrimaryKeyword(
       code: 'custom',
       message: 'Primary keyword must be included in keyword_ids',
       path: ['primary_keyword_id'],
+    });
+  }
+}
+
+function validateBriefEvidence(
+  value: {
+    readonly objective: 'awareness' | 'conversion' | 'trust' | 'education';
+    readonly source_ids: readonly string[];
+  },
+  context: z.RefinementCtx,
+): void {
+  if (['trust', 'education'].includes(value.objective) && value.source_ids.length === 0) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Trust and education Briefs require at least one evidence source',
+      path: ['source_ids'],
     });
   }
 }
