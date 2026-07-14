@@ -1,4 +1,7 @@
-import type { PlatformCode } from '@geo-content-os/contracts';
+import type {
+  PlatformCode,
+  WorkspaceSettings as ContractWorkspaceSettings,
+} from '@geo-content-os/contracts';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -33,10 +36,7 @@ export type GenerationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' 
 export type TopicRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 export type TopicCandidateStatus = 'proposed' | 'adopted' | 'archived';
 
-export interface WorkspaceSettings {
-  readonly schema_version?: 'workspace-settings@1';
-  readonly [key: string]: unknown;
-}
+export type WorkspaceSettings = ContractWorkspaceSettings | Record<string, never>;
 
 export interface WorkspaceScope {
   readonly schema_version?: 'workspace-scope@1';
@@ -63,6 +63,7 @@ export const workspaces = pgTable(
     timezone: varchar({ length: 64 }).notNull(),
     settingsJson: jsonb('settings_json').$type<WorkspaceSettings>().notNull().default({}),
     status: varchar({ length: 16 }).$type<WorkspaceStatus>().notNull().default('active'),
+    version: integer().notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -91,6 +92,10 @@ export const workspaces = pgTable(
       sql`COALESCE(jsonb_typeof(${table.settingsJson}) = 'object' AND (${table.settingsJson} = '{}'::jsonb OR ${table.settingsJson}->>'schema_version' = 'workspace-settings@1'), false)`,
     ),
     check('workspaces_status_check', sql`${table.status} IN ('active', 'archived')`),
+    check('workspaces_version_check', sql`${table.version} > 0`),
+    index('workspaces_tenant_version_idx')
+      .on(table.tenantId, table.id, table.version)
+      .where(sql`${table.deletedAt} IS NULL`),
     check(
       'workspaces_deleted_status_check',
       sql`${table.deletedAt} IS NULL OR ${table.status} = 'archived'`,

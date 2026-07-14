@@ -81,6 +81,11 @@ export class InvitationService {
       if (input.request.role_code === 'tenant_owner' && actor.roleCode !== 'tenant_owner') {
         throw new InvitationPermissionError();
       }
+      await assertInvitationWorkspaceScope(
+        transaction,
+        input.tenantId,
+        input.request.workspace_scope.workspace_ids,
+      );
 
       await transaction`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenantId}:${input.request.email}`}, 0))`;
       const memberships = await transaction<{ status: string }[]>`
@@ -275,6 +280,33 @@ export class InvitationService {
           )
         `;
       }
+      const workspaceIds = invitation.workspaceScope.workspace_ids;
+      await assertInvitationWorkspaceScope(transaction, invitation.tenantId, workspaceIds);
+      await transaction`
+        DELETE FROM workspace_memberships AS workspace_membership
+        USING workspaces AS workspace
+        WHERE
+          workspace_membership.workspace_id = workspace.id
+          AND workspace_membership.user_id = ${user.id}
+          AND workspace.tenant_id = ${invitation.tenantId}
+      `;
+      if (workspaceIds && workspaceIds.length > 0) {
+        await transaction`
+          INSERT INTO workspace_memberships (workspace_id, user_id, scope_json)
+          SELECT
+            workspace.id,
+            ${user.id},
+            ${JSON.stringify({ schema_version: 'workspace-scope@1' })}::text::jsonb
+          FROM workspaces AS workspace
+          WHERE
+            workspace.tenant_id = ${invitation.tenantId}
+            AND workspace.id = ANY(${workspaceIds}::uuid[])
+            AND workspace.status = 'active'
+            AND workspace.deleted_at IS NULL
+          ON CONFLICT (workspace_id, user_id) DO UPDATE
+          SET scope_json = EXCLUDED.scope_json
+        `;
+      }
       await transaction`
         UPDATE invitations
         SET accepted_at = now()
@@ -369,6 +401,26 @@ async function findPendingInvitation(
     FOR UPDATE
   `;
   return rows[0];
+}
+
+async function assertInvitationWorkspaceScope(
+  transaction: TransactionSql,
+  tenantId: string,
+  workspaceIds: readonly string[] | undefined,
+): Promise<void> {
+  if (!workspaceIds || workspaceIds.length === 0) return;
+  const rows = await transaction<{ id: string }[]>`
+    SELECT id
+    FROM workspaces
+    WHERE
+      tenant_id = ${tenantId}
+      AND id = ANY(${workspaceIds}::uuid[])
+      AND status = 'active'
+      AND deleted_at IS NULL
+    ORDER BY id
+    FOR SHARE
+  `;
+  if (rows.length !== workspaceIds.length) throw new InvitationNotFoundError();
 }
 
 function toInvitationView(invitation: InvitationRow): InvitationView {

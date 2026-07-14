@@ -57,6 +57,13 @@
       "when": 1783994400000,
       "tag": "0007_workspace_strategy",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783998000000,
+      "tag": "0008_workspace_api_version",
+      "breakpoints": true
     }
   ]
 }
