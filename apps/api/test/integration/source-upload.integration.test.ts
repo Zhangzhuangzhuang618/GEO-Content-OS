@@ -1,4 +1,5 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import { type WebFetchAdapter, WebFetchBlockedError } from '@geo-content-os/adapter-web-fetch';
 import {
   minioEndpoint,
   MINIO_TEST_ACCESS_KEY,
@@ -12,12 +13,13 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import postgres, { type Sql } from 'postgres';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApplication } from '../../src/application.js';
 import { migrateDatabase } from '../../src/database/migrate.js';
 import {
   SOURCE_STORAGE,
+  SOURCE_WEB_FETCH,
   SourceNotFoundError,
   SourceService,
   SourceStorageError,
@@ -334,6 +336,94 @@ describe('source upload', () => {
       `,
     ).toEqual([{ audits: 0, events: 0, jobs: 0, sources: 0 }]);
   });
+
+  it('registers a safely fetched URL using its final URL and content hash without an object key', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from('<html><body>canonical evidence</body></html>', 'utf8');
+    const webFetch = requireApplication(application).get<WebFetchAdapter>(SOURCE_WEB_FETCH);
+    const fetch = vi.spyOn(webFetch, 'fetch').mockResolvedValue({
+      body,
+      contentHash: sha256(body),
+      contentType: 'text/html',
+      finalUrl: 'https://www.example.com/canonical',
+      redirectChain: ['https://www.example.com/canonical'],
+      statusCode: 200,
+    });
+    try {
+      const response = await sendUrl(
+        application,
+        tokens,
+        'source-url-001',
+        'https://example.com/original#fragment',
+      );
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+      expect(response.body.data.source).toMatchObject({
+        content_hash: sha256(body),
+        mime_type: 'text/html',
+        source_type: 'url',
+        status: 'processing',
+      });
+      expect(fetch).toHaveBeenCalledWith('https://example.com/original#fragment');
+      const rows = await database<
+        { event: Record<string, unknown>; sourceType: string; uri: string }[]
+      >`
+        SELECT
+          source.source_type AS "sourceType",
+          source.uri,
+          event.payload_json->'data' AS event
+        FROM source_documents AS source
+        JOIN outbox_events AS event ON event.aggregate_id = source.id
+      `;
+      expect(rows).toEqual([
+        {
+          event: expect.objectContaining({
+            content_hash: sha256(body),
+            redirect_chain: ['https://www.example.com/canonical'],
+            source_url: 'https://www.example.com/canonical',
+          }),
+          sourceType: 'url',
+          uri: 'https://www.example.com/canonical',
+        },
+      ]);
+      expect(rows[0]?.event).not.toHaveProperty('object_key');
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('maps SSRF blocks and ambiguous file-plus-url submissions to validation errors without side effects', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const webFetch = requireApplication(application).get<WebFetchAdapter>(SOURCE_WEB_FETCH);
+    const fetch = vi.spyOn(webFetch, 'fetch').mockRejectedValue(new WebFetchBlockedError());
+    try {
+      expectApiError(
+        await sendUrl(application, tokens, 'source-url-002', 'http://169.254.169.254/latest'),
+        422,
+        'SCHEMA_VALIDATION_FAILED',
+      );
+    } finally {
+      fetch.mockRestore();
+    }
+    const ambiguous = await request(requireApplication(application).getHttpServer())
+      .post(API_PATH)
+      .set('Cookie', `geo_session=${tokens.session}; geo_csrf=${tokens.csrf}`)
+      .set('idempotency-key', 'source-url-003')
+      .set('x-csrf-token', tokens.csrf)
+      .field('workspace_id', WORKSPACE_ID)
+      .field('project_id', PROJECT_A)
+      .field('title', 'Ambiguous source')
+      .field('url', 'https://example.com')
+      .attach('file', Buffer.from('file body'), {
+        contentType: 'text/plain',
+        filename: 'source.txt',
+      });
+    expectApiError(ambiguous, 422, 'SCHEMA_VALIDATION_FAILED');
+    expect(
+      await database<{ count: number }[]>`SELECT count(*)::integer AS count FROM source_documents`,
+    ).toEqual([{ count: 0 }]);
+  });
 });
 
 async function seedScope(database: Sql): Promise<void> {
@@ -417,6 +507,25 @@ async function sendUpload(
   });
 }
 
+async function sendUrl(
+  value: NestFastifyApplication | undefined,
+  tokens: { readonly csrf: string; readonly session: string },
+  idempotencyKey: string,
+  url: string,
+) {
+  return request(requireApplication(value).getHttpServer())
+    .post(API_PATH)
+    .set('Cookie', `geo_session=${tokens.session}; geo_csrf=${tokens.csrf}`)
+    .set('idempotency-key', idempotencyKey)
+    .set('x-csrf-token', tokens.csrf)
+    .field('workspace_id', WORKSPACE_ID)
+    .field('project_id', PROJECT_A)
+    .field('title', 'Enterprise URL source')
+    .field('language', 'zh-CN')
+    .field('trust_level', 'verified')
+    .field('url', url);
+}
+
 function expectApiError(
   response: { readonly body: unknown; readonly status: number },
   status: number,
@@ -447,6 +556,7 @@ function sourceInput(body: Buffer): ParsedSourceUpload {
     effectiveTo: null,
     extension: 'txt',
     filename: 'service-layer-source.txt',
+    kind: 'file',
     language: 'zh-CN',
     mimeType: 'text/plain',
     projectId: PROJECT_A,

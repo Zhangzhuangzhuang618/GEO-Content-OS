@@ -16,29 +16,52 @@ const ALLOWED_FIELDS = new Set([
   'project_id',
   'title',
   'trust_level',
+  'url',
   'workspace_id',
 ]);
 
-export interface ParsedSourceUpload {
-  readonly body: Buffer;
-  readonly contentHash: string;
+interface ParsedSourceMetadata {
   readonly effectiveFrom: string | null;
   readonly effectiveTo: string | null;
-  readonly extension: string;
-  readonly filename: string;
   readonly language: string;
-  readonly mimeType: string;
   readonly projectId: string | null;
-  readonly sourceType: Exclude<SourceType, 'url'>;
   readonly title: string;
   readonly trustLevel: SourceTrustLevel;
   readonly workspaceId: string;
 }
 
+export interface ParsedFileSource extends ParsedSourceMetadata {
+  readonly body: Buffer;
+  readonly contentHash: string;
+  readonly extension: string;
+  readonly filename: string;
+  readonly kind: 'file';
+  readonly mimeType: string;
+  readonly sourceType: Exclude<SourceType, 'url'>;
+}
+
+export interface ParsedUrlSource extends ParsedSourceMetadata {
+  readonly body: Buffer;
+  readonly contentHash: string;
+  readonly finalUrl: string;
+  readonly kind: 'url';
+  readonly mimeType: string;
+  readonly redirectChain: readonly string[];
+  readonly sourceType: 'url';
+}
+
+export interface ParsedUrlSubmission extends ParsedSourceMetadata {
+  readonly kind: 'url-submission';
+  readonly requestedUrl: string;
+}
+
+export type ParsedSourceUpload = ParsedFileSource | ParsedUrlSource;
+export type ParsedSourceSubmission = ParsedFileSource | ParsedUrlSubmission;
+
 export async function parseSourceUpload(
   request: FastifyRequest,
   maxFileBytes: number,
-): Promise<ParsedSourceUpload> {
+): Promise<ParsedSourceSubmission> {
   if (!request.isMultipart()) {
     throw new SourceUploadValidationError('Content-Type must be multipart/form-data');
   }
@@ -85,8 +108,12 @@ export async function parseSourceUpload(
     }
     throw error;
   }
-  if (!file || file.body.byteLength === 0) {
-    throw new SourceUploadValidationError('A non-empty file is required');
+  const requestedUrl = fields.get('url');
+  if (Boolean(file) === Boolean(requestedUrl)) {
+    throw new SourceUploadValidationError('Exactly one non-empty file or url is required');
+  }
+  if (file && file.body.byteLength === 0) {
+    throw new SourceUploadValidationError('Uploaded file must not be empty');
   }
 
   const workspaceId = requiredUuid(fields, 'workspace_id');
@@ -105,21 +132,31 @@ export async function parseSourceUpload(
   if (effectiveFrom && effectiveTo && effectiveTo < effectiveFrom) {
     throw new SourceUploadValidationError('effective_to must be on or after effective_from');
   }
-  const detected = detectFile(file.body, file.mimetype, file.filename);
-  return {
-    body: file.body,
-    contentHash: createHash('sha256').update(file.body).digest('hex'),
+  const metadata = {
     effectiveFrom,
     effectiveTo,
-    extension: detected.extension,
-    filename: normalizeFilename(file.filename),
     language,
-    mimeType: detected.mimeType,
     projectId,
-    sourceType: detected.sourceType,
     title,
     trustLevel,
     workspaceId,
+  } as const;
+  if (!file) {
+    if (!requestedUrl || requestedUrl.length > 2_048 || hasControlCharacter(requestedUrl)) {
+      throw new SourceUploadValidationError('url must contain 1 to 2048 safe characters');
+    }
+    return { ...metadata, kind: 'url-submission', requestedUrl };
+  }
+  const detected = detectFile(file.body, file.mimetype, file.filename);
+  return {
+    ...metadata,
+    body: file.body,
+    contentHash: createHash('sha256').update(file.body).digest('hex'),
+    extension: detected.extension,
+    filename: normalizeFilename(file.filename),
+    kind: 'file',
+    mimeType: detected.mimeType,
+    sourceType: detected.sourceType,
   };
 }
 

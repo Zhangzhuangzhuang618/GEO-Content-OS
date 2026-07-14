@@ -11,5 +11,12 @@ export {
   type SourceAuditContext,
   type SourceUploadResult,
 } from './source.service.js';
-export { SOURCE_STORAGE } from './source.tokens.js';
-export { parseSourceUpload, type ParsedSourceUpload } from './source-upload.parser.js';
+export { SOURCE_STORAGE, SOURCE_WEB_FETCH } from './source.tokens.js';
+export {
+  parseSourceUpload,
+  type ParsedFileSource,
+  type ParsedSourceSubmission,
+  type ParsedSourceUpload,
+  type ParsedUrlSource,
+  type ParsedUrlSubmission,
+} from './source-upload.parser.js';

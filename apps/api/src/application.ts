@@ -52,10 +52,10 @@ export async function createApplication(
     limits: {
       fieldNameSize: 64,
       fieldSize: 8_192,
-      fields: 7,
+      fields: 8,
       fileSize: sourceUpload.maxFileBytes,
       files: 1,
-      parts: 8,
+      parts: 9,
     },
     throwFileSizeLimit: true,
   });
