@@ -126,6 +126,38 @@ describe('identity-db frozen schema', () => {
     expect(sessions).toHaveLength(1);
   });
 
+  it('rejects orphan tenant IDs in pre-identity tenant tables', async () => {
+    const database = requireClient(client);
+    const missingTenantId = '20000000-0000-4000-8000-000000000099';
+
+    await expect(
+      database`
+        INSERT INTO outbox_events (
+          tenant_id, event_type, aggregate_type, aggregate_id, payload_json
+        ) VALUES (
+          ${missingTenantId},
+          'knowledge.source.ingest_requested.v1',
+          'source_document',
+          '40000000-0000-4000-8000-000000000099',
+          '{}'::jsonb
+        )
+      `,
+    ).rejects.toThrow(/outbox_events_tenant_fk/u);
+    await expect(
+      database`
+        INSERT INTO idempotency_records (
+          tenant_id, scope_key, idempotency_key, request_hash, expires_at
+        ) VALUES (
+          ${missingTenantId},
+          'identity-db',
+          'orphan-tenant',
+          ${'a'.repeat(64)},
+          now() + interval '1 hour'
+        )
+      `,
+    ).rejects.toThrow(/idempotency_records_tenant_fk/u);
+  });
+
   it('uses case-insensitive active-only uniqueness and database updated_at triggers', async () => {
     const database = requireClient(client);
     await seedIdentity(database);

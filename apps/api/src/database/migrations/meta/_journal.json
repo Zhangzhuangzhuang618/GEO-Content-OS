@@ -113,6 +113,20 @@
       "when": 1784023200000,
       "tag": "0015_content_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784026800000,
+      "tag": "0016_identity_tenant_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784030400000,
+      "tag": "0017_knowledge_tenant_constraints",
+      "breakpoints": true
     }
   ]
 }

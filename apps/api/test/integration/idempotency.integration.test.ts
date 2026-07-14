@@ -23,6 +23,10 @@ describe('HTTP Idempotency-Key transaction coordinator', () => {
     client = postgres(container.getConnectionUri(), { max: 10, prepare: false });
     service = new IdempotencyService(client);
     await client`
+      INSERT INTO tenants (id, name, slug)
+      VALUES (${deterministicUuid(1)}, '幂等测试租户', 'idempotency-test')
+    `;
+    await client`
       CREATE TABLE idempotency_test_effects (
         id uuid PRIMARY KEY,
         value text NOT NULL

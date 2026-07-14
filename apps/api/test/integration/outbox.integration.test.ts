@@ -35,6 +35,10 @@ describe('transactional outbox and BullMQ relay', () => {
     ]);
     await migrateDatabase(postgresContainer.getConnectionUri());
     client = postgres(postgresContainer.getConnectionUri(), { max: 10, prepare: false });
+    await client`
+      INSERT INTO tenants (id, name, slug)
+      VALUES (${deterministicUuid(1)}, 'Outbox 测试租户', 'outbox-test')
+    `;
     writer = new OutboxWriter(client);
   }, 120_000);
 
@@ -166,7 +170,7 @@ describe('transactional outbox and BullMQ relay', () => {
       await expect(
         publisher.getJobRetryOptions({ eventType: event.event_type, id: event.event_id }),
       ).resolves.toEqual({
-        attempts: 5,
+        attempts: 3,
         backoff: { delay: 30_000, type: 'exponential' },
       });
       const rows = await requiredClient()<
