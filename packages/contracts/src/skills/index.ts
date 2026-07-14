@@ -3,4 +3,5 @@ export * from './fact-checker/index.js';
 export * from './material-parser/index.js';
 export * from './schema.types.js';
 export * from './skill-result.schema.js';
+export * from './topic-planner/index.js';
 export * from './tool-definitions.js';
