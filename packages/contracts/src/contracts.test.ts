@@ -142,9 +142,10 @@ describe('error contracts', () => {
 });
 
 describe('API DTO foundations', () => {
-  it('accepts UUID or ULID request IDs', () => {
+  it('accepts UUID, ULID, or safe 16-80 character request IDs', () => {
     expect(RequestIdSchema.safeParse(uuid).success).toBe(true);
     expect(RequestIdSchema.safeParse(requestId).success).toBe(true);
+    expect(RequestIdSchema.safeParse('client-request-123').success).toBe(true);
     expect(RequestIdSchema.safeParse('request-1').success).toBe(false);
   });
 

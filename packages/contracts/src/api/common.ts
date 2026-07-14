@@ -5,7 +5,15 @@ import { ERROR_CODES } from '../errors.js';
 export const UuidSchema = z.string().uuid();
 export const IsoDateTimeSchema = z.string().datetime({ offset: true });
 export const UlidSchema = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/);
-export const RequestIdSchema = z.union([UuidSchema, UlidSchema]);
+export const RequestIdSchema = z.union([
+  UuidSchema,
+  UlidSchema,
+  z
+    .string()
+    .min(16)
+    .max(80)
+    .regex(/^[A-Za-z0-9._:-]+$/u),
+]);
 
 export const VersionSchema = z.number().int().positive();
 export const CursorSchema = z.string().min(1).max(512);

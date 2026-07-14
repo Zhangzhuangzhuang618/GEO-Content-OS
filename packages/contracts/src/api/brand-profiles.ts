@@ -1,7 +1,14 @@
 import { z } from 'zod';
 
 import { BrandProfileSchema, BrandProfileSchemaVersionSchema } from '../schemas/index.js';
-import { CursorSchema, UuidSchema } from './common.js';
+import {
+  CursorPageMetaSchema,
+  CursorSchema,
+  IsoDateTimeSchema,
+  RequestMetaSchema,
+  UuidSchema,
+  VersionSchema,
+} from './common.js';
 
 export const CreateBrandProfileRequestSchema = z
   .object({
@@ -27,6 +34,29 @@ export const BrandProfileQuerySchema = z
   .strict();
 
 export const BrandProfileIdSchema = UuidSchema;
+
+export const BrandProfileViewSchema = z
+  .object({
+    created_at: IsoDateTimeSchema,
+    created_by: UuidSchema,
+    id: UuidSchema,
+    profile: BrandProfileSchema,
+    published_at: IsoDateTimeSchema.nullable(),
+    schema_version: BrandProfileSchemaVersionSchema,
+    status: z.enum(['draft', 'published', 'retired']),
+    tenant_id: UuidSchema,
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const BrandProfileResponseSchema = z
+  .object({ data: BrandProfileViewSchema, meta: RequestMetaSchema })
+  .strict();
+
+export const BrandProfilePageSchema = z
+  .object({ data: z.array(BrandProfileViewSchema), meta: CursorPageMetaSchema })
+  .strict();
 
 export type CreateBrandProfileRequest = z.infer<typeof CreateBrandProfileRequestSchema>;
 export type PublishVersionRequest = z.infer<typeof PublishVersionRequestSchema>;

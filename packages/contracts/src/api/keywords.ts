@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { PLATFORM_CODES } from '../platforms.js';
-import { UuidSchema } from './common.js';
+import { IsoDateTimeSchema, RequestMetaSchema, UuidSchema } from './common.js';
 
 const KeywordTermSchema = z.string().trim().min(1).max(240);
 
@@ -61,6 +61,42 @@ export const UpsertKeywordsRequestSchema = z
   });
 
 export const KeywordSetIdSchema = UuidSchema;
+
+export const KeywordSetViewSchema = z
+  .object({
+    created_at: IsoDateTimeSchema,
+    id: UuidSchema,
+    name: z.string().trim().min(1).max(120),
+    project_id: UuidSchema,
+    status: z.enum(['active', 'archived']),
+    tenant_id: UuidSchema,
+    updated_at: IsoDateTimeSchema,
+  })
+  .strict();
+
+export const KeywordSchema = z
+  .object({
+    created_at: IsoDateTimeSchema,
+    id: UuidSchema,
+    intent: z.enum(['informational', 'commercial', 'transactional', 'navigational']),
+    keyword_set_id: UuidSchema,
+    platform_scope: KeywordPlatformScopeSchema,
+    priority: z.number().int().min(0).max(100),
+    status: z.enum(['active', 'disabled']),
+    synonyms: KeywordSynonymsSchema,
+    tenant_id: UuidSchema,
+    term: KeywordTermSchema,
+    updated_at: IsoDateTimeSchema,
+  })
+  .strict();
+
+export const KeywordSetResponseSchema = z
+  .object({ data: KeywordSetViewSchema, meta: RequestMetaSchema })
+  .strict();
+
+export const KeywordListResponseSchema = z
+  .object({ data: z.array(KeywordSchema), meta: RequestMetaSchema })
+  .strict();
 
 export type CreateKeywordSetRequest = z.infer<typeof CreateKeywordSetRequestSchema>;
 export type KeywordInput = z.infer<typeof KeywordInputSchema>;

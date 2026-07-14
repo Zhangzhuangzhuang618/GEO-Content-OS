@@ -22,6 +22,7 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "test": "pnpm test:unit && pnpm test:integration && pnpm test:e2e",
+    "test:contract": "pnpm --filter contracts test:contract && pnpm --filter api test:contract",
     "test:e2e": "pnpm --filter api build && pnpm --filter web build && node scripts/run-e2e.mjs",
     "test:integration": "pnpm --filter api test:integration",
     "test:security": "pnpm --filter security test:security && pnpm --filter api test:security && pnpm --filter web test:security",

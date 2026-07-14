@@ -1,7 +1,15 @@
 import { z } from 'zod';
 
 import { PLATFORM_CODES } from '../platforms.js';
-import { CursorSchema, IsoDateTimeSchema, UuidSchema } from './common.js';
+import {
+  CursorPageMetaSchema,
+  CursorSchema,
+  IsoDateTimeSchema,
+  RequestIdSchema,
+  RequestMetaSchema,
+  UuidSchema,
+  VersionSchema,
+} from './common.js';
 
 const UniqueUuidListSchema = (maximumItems: number) =>
   z
@@ -121,6 +129,97 @@ export const AdoptTopicRequestSchema = BriefFieldsSchema.partial()
   });
 
 export const TopicCandidateIdSchema = UuidSchema;
+
+export const GenerationRunViewSchema = z
+  .object({
+    created_at: IsoDateTimeSchema,
+    error: z.record(z.string(), z.unknown()).nullable(),
+    finished_at: IsoDateTimeSchema.nullable(),
+    id: UuidSchema,
+    input_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+    model_key: z.string().min(1).max(80),
+    package_id: UuidSchema.nullable(),
+    project_id: UuidSchema.nullable(),
+    prompt_version_id: UuidSchema,
+    request_id: RequestIdSchema,
+    skill_name: z.string().min(1).max(80),
+    skill_version: z.string().min(1).max(32),
+    started_at: IsoDateTimeSchema.nullable(),
+    status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
+    tenant_id: UuidSchema,
+    updated_at: IsoDateTimeSchema,
+    variant_id: UuidSchema.nullable(),
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const TopicCandidateViewSchema = z
+  .object({
+    brief_suggestion: TopicBriefSuggestionSchema.nullable(),
+    created_at: IsoDateTimeSchema,
+    entities: UniqueTextListSchema(1, 50),
+    evidence_ids: UniqueUuidListSchema(100),
+    generation_run_id: UuidSchema,
+    id: UuidSchema,
+    intent: z.string().trim().min(1).max(32),
+    platform_codes: PlatformCodeListSchema,
+    priority: z.number().int().min(0).max(100),
+    project_id: UuidSchema,
+    question: z.string().trim().min(5).max(2_000),
+    risk_level: z.enum(['low', 'medium', 'high', 'critical']),
+    status: z.enum(['proposed', 'adopted', 'archived']),
+    tenant_id: UuidSchema,
+    updated_at: IsoDateTimeSchema,
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.evidence_ids.length === 0 && !['high', 'critical'].includes(value.risk_level)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Topics without evidence must be high or critical risk',
+        path: ['risk_level'],
+      });
+    }
+  });
+
+export const BriefViewSchema = z
+  .object({
+    audience: z.string().trim().min(10).max(500),
+    constraints: BriefConstraintsSchema,
+    created_at: IsoDateTimeSchema,
+    created_by: UuidSchema,
+    due_at: IsoDateTimeSchema.nullable(),
+    id: UuidSchema,
+    keyword_ids: UniqueUuidListSchema(100).min(1),
+    objective: z.enum(['awareness', 'conversion', 'trust', 'education']),
+    platform_codes: PlatformCodeListSchema,
+    primary_keyword_id: UuidSchema,
+    project_id: UuidSchema,
+    source_ids: UniqueUuidListSchema(100),
+    source_topic_candidate_id: UuidSchema.nullable(),
+    tenant_id: UuidSchema,
+    title: z.string().trim().min(2).max(80),
+    updated_at: IsoDateTimeSchema,
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict()
+  .superRefine(validatePrimaryKeyword);
+
+export const GenerationRunResponseSchema = z
+  .object({ data: GenerationRunViewSchema, meta: RequestMetaSchema })
+  .strict();
+
+export const TopicCandidatePageSchema = z
+  .object({ data: z.array(TopicCandidateViewSchema), meta: CursorPageMetaSchema })
+  .strict();
+
+export const BriefResponseSchema = z
+  .object({ data: BriefViewSchema, meta: RequestMetaSchema })
+  .strict();
 
 export type BriefConstraints = z.infer<typeof BriefConstraintsSchema>;
 export type TopicBriefSuggestion = z.infer<typeof TopicBriefSuggestionSchema>;

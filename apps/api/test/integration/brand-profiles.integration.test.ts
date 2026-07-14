@@ -1,3 +1,4 @@
+import { BrandProfilePageSchema, BrandProfileResponseSchema } from '@geo-content-os/contracts';
 import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
@@ -103,6 +104,7 @@ describe('brand profiles API', () => {
     const first = await server.inject({ headers, method: 'POST', payload, url: API_PATH });
     const replay = await server.inject({ headers, method: 'POST', payload, url: API_PATH });
     expect(first.statusCode).toBe(201);
+    expect(BrandProfileResponseSchema.safeParse(first.json()).success).toBe(true);
     expect(first.json().data).toMatchObject({ status: 'draft', version: 1 });
     expect(first.headers.etag).toBe('"1"');
     expect(replay.json().data.id).toBe(first.json().data.id);
@@ -182,6 +184,7 @@ describe('brand profiles API', () => {
       url: `${API_PATH}?limit=1`,
     });
     expect(page.statusCode).toBe(200);
+    expect(BrandProfilePageSchema.safeParse(page.json()).success).toBe(true);
     expect(page.json().data).toHaveLength(1);
     expect(page.json().data[0].workspace_id).toBe(WORKSPACE_A);
     const next = await requireServer(application).inject({
