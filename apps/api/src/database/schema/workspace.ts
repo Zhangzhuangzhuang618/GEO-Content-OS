@@ -1,4 +1,5 @@
 import type {
+  BrandProfile,
   PlatformCode,
   WorkspaceSettings as ContractWorkspaceSettings,
 } from '@geo-content-os/contracts';
@@ -203,8 +204,8 @@ export const brandProfiles = pgTable(
     workspaceId: uuid('workspace_id').notNull(),
     version: integer().notNull(),
     status: varchar({ length: 16 }).$type<BrandProfileStatus>().notNull().default('draft'),
-    schemaVersion: varchar('schema_version', { length: 32 }).notNull(),
-    profileJson: jsonb('profile_json').$type<Record<string, unknown>>().notNull(),
+    schemaVersion: varchar('schema_version', { length: 32 }).$type<'brand-profile@1'>().notNull(),
+    profileJson: jsonb('profile_json').$type<BrandProfile>().notNull(),
     createdBy: uuid('created_by').notNull(),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -242,13 +243,10 @@ export const brandProfiles = pgTable(
     ),
     check('brand_profiles_version_check', sql`${table.version} > 0`),
     check('brand_profiles_status_check', sql`${table.status} IN ('draft', 'published', 'retired')`),
-    check(
-      'brand_profiles_schema_version_check',
-      sql`char_length(btrim(${table.schemaVersion})) BETWEEN 1 AND 32`,
-    ),
+    check('brand_profiles_schema_version_check', sql`${table.schemaVersion} = 'brand-profile@1'`),
     check(
       'brand_profiles_profile_check',
-      sql`COALESCE(jsonb_typeof(${table.profileJson}) = 'object', false)`,
+      sql`COALESCE(jsonb_typeof(${table.profileJson}) = 'object' AND ${table.profileJson} ?& ARRAY['positioning','audience','tone','differentiators','compliance','banned','cta'] AND ${table.profileJson} - ARRAY['positioning','audience','tone','differentiators','compliance','banned','cta']::text[] = '{}'::jsonb AND jsonb_typeof(${table.profileJson}->'positioning') = 'string' AND char_length(btrim(${table.profileJson}->>'positioning')) BETWEEN 1 AND 2000 AND is_valid_nonblank_jsonb_string_array(${table.profileJson}->'audience', 1, 50) AND jsonb_typeof(${table.profileJson}->'tone') = 'string' AND char_length(btrim(${table.profileJson}->>'tone')) BETWEEN 1 AND 240 AND is_valid_nonblank_jsonb_string_array(${table.profileJson}->'differentiators', 0, 50) AND is_valid_nonblank_jsonb_string_array(${table.profileJson}->'compliance', 0, 100) AND is_valid_nonblank_jsonb_string_array(${table.profileJson}->'banned', 0, 100) AND (${table.profileJson}->'cta' = 'null'::jsonb OR (jsonb_typeof(${table.profileJson}->'cta') = 'string' AND char_length(btrim(${table.profileJson}->>'cta')) BETWEEN 1 AND 500)), false)`,
     ),
     check(
       'brand_profiles_publication_check',

@@ -1,4 +1,4 @@
-import type { PlatformCode } from '@geo-content-os/contracts';
+import type { BrandProfile, PlatformCode } from '@geo-content-os/contracts';
 
 import type { DatabaseClient } from '../../../database/index.js';
 import type {
@@ -24,6 +24,7 @@ export interface WorkspaceView {
   readonly tenantId: string;
   readonly timezone: string;
   readonly updatedAt: Date;
+  readonly version: number;
 }
 
 export interface ProjectView {
@@ -37,6 +38,7 @@ export interface ProjectView {
   readonly status: ProjectStatus;
   readonly tenantId: string;
   readonly updatedAt: Date;
+  readonly version: number;
   readonly workspaceId: string;
 }
 
@@ -44,9 +46,9 @@ export interface BrandProfileView {
   readonly createdAt: Date;
   readonly createdBy: string;
   readonly id: string;
-  readonly profile: Record<string, unknown>;
+  readonly profile: BrandProfile;
   readonly publishedAt: Date | null;
-  readonly schemaVersion: string;
+  readonly schemaVersion: 'brand-profile@1';
   readonly status: BrandProfileStatus;
   readonly tenantId: string;
   readonly version: number;
@@ -114,6 +116,7 @@ export class WorkspaceStrategyRepository {
         workspace.timezone,
         workspace.settings_json AS settings,
         workspace.status,
+        workspace.version,
         workspace.created_at AS "createdAt",
         workspace.updated_at AS "updatedAt"
       FROM workspaces AS workspace
@@ -136,6 +139,7 @@ export class WorkspaceStrategyRepository {
         timezone,
         settings_json AS settings,
         status,
+        version,
         created_at AS "createdAt",
         updated_at AS "updatedAt"
       FROM workspaces
@@ -154,6 +158,7 @@ export class WorkspaceStrategyRepository {
         project.owner_id AS "ownerId",
         project.objective,
         project.status,
+        project.version,
         project.start_date::text AS "startDate",
         project.end_date::text AS "endDate",
         project.created_at AS "createdAt",
@@ -185,6 +190,7 @@ export class WorkspaceStrategyRepository {
         project.owner_id AS "ownerId",
         project.objective,
         project.status,
+        project.version,
         project.start_date::text AS "startDate",
         project.end_date::text AS "endDate",
         project.created_at AS "createdAt",
