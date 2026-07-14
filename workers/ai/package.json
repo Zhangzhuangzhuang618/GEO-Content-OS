@@ -2,5 +2,29 @@
   "name": "@geo-content-os/worker-ai",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — AI Worker：Skill 编排、模型调用、生成运行"
+  "type": "module",
+  "description": "GEO Content OS — AI Worker：Skill 编排、模型调用、生成运行",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }
