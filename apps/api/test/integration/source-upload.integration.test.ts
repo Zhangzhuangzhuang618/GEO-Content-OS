@@ -184,6 +184,146 @@ describe('source upload', () => {
     expect(source[0]?.uri).toBe(`s3://geo-source-integration/${objectKey}`);
   });
 
+  it('serves the complete source and ingest-job API lifecycle with scope, role, audit, and outbox enforcement', async () => {
+    const database = requireClient(client);
+    const manager = await createSession(database, MANAGER_ID);
+    const viewer = await createSession(database, VIEWER_ID);
+    const body = Buffer.from('Knowledge lifecycle source', 'utf8');
+    const upload = await sendUpload(application, manager, 'source-lifecycle-001', body);
+    expect(upload.status).toBe(201);
+    const sourceId = String(upload.body.data.source.id);
+    const originalJobId = String(upload.body.data.ingest_job.id);
+    const scopeQuery = `workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_A}`;
+
+    const listed = await authenticatedRequest(application, viewer).get(`${API_PATH}?${scopeQuery}`);
+    expect(listed.status, JSON.stringify(listed.body)).toBe(200);
+    expect(listed.body).toMatchObject({
+      data: [{ id: sourceId, title: 'Enterprise source' }],
+      meta: { next_cursor: null, request_id: expect.any(String) },
+    });
+
+    const detail = await authenticatedRequest(application, viewer).get(
+      `${API_PATH}/${sourceId}?${scopeQuery}`,
+    );
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body.data).toMatchObject({
+      chunks: [],
+      citation_count: 0,
+      facts: [],
+      ingest_jobs: [{ id: originalJobId }],
+      source: { id: sourceId },
+    });
+
+    const job = await authenticatedRequest(application, viewer).get(
+      `/api/v1/ingest-jobs/${originalJobId}?${scopeQuery}`,
+    );
+    expect(job.status).toBe(200);
+    expect(job.body.data).toMatchObject({ id: originalJobId, source_document_id: sourceId });
+    const hidden = await authenticatedRequest(application, viewer).get(
+      `${API_PATH}/${sourceId}?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_B}`,
+    );
+    expectApiError(hidden, 404, 'RESOURCE_NOT_FOUND');
+
+    await database`
+      UPDATE ingest_jobs
+      SET status = 'succeeded', attempt_count = 1, stage = 'done', progress = 100,
+        started_at = now() - interval '1 second', finished_at = now(), updated_at = now()
+      WHERE id = ${originalJobId}::uuid
+    `;
+    await database`
+      UPDATE source_documents SET status = 'active', updated_at = now()
+      WHERE id = ${sourceId}::uuid
+    `;
+    const chunkId = randomUUID();
+    const factId = randomUUID();
+    const quote = '标准退款周期为 30 天';
+    await database`
+      INSERT INTO source_chunks (
+        id, tenant_id, source_document_id, chunk_no, text, text_hash, metadata_json, token_count
+      ) VALUES (
+        ${chunkId}::uuid, ${TENANT_ID}::uuid, ${sourceId}::uuid, 0, ${quote}, ${sha256(quote)},
+        ${JSON.stringify({ char_end: quote.length, char_start: 0, schema_version: 'chunk-metadata@1' })}::text::jsonb,
+        8
+      )
+    `;
+    await database`
+      INSERT INTO facts (
+        id, tenant_id, workspace_id, subject, predicate, object_value, confidence
+      ) VALUES (
+        ${factId}::uuid, ${TENANT_ID}::uuid, ${WORKSPACE_ID}::uuid,
+        '标准服务', '退款周期', '30 天', 0.9800
+      )
+    `;
+    await database`
+      INSERT INTO fact_sources (tenant_id, fact_id, chunk_id, quote_text, quote_hash)
+      VALUES (${TENANT_ID}::uuid, ${factId}::uuid, ${chunkId}::uuid, ${quote}, ${sha256(quote)})
+    `;
+    const facts = await authenticatedRequest(application, viewer).get(
+      `/api/v1/facts?${scopeQuery}&status=candidate&search=${encodeURIComponent('退款')}`,
+    );
+    expect(facts.status, JSON.stringify(facts.body)).toBe(200);
+    expect(facts.body.data).toMatchObject([
+      {
+        evidence: [{ chunk_id: chunkId, source_document_id: sourceId }],
+        id: factId,
+        object_value: '30 天',
+        predicate: '退款周期',
+      },
+    ]);
+    const detailedEvidence = await authenticatedRequest(application, viewer).get(
+      `${API_PATH}/${sourceId}?${scopeQuery}`,
+    );
+    expect(detailedEvidence.body.data).toMatchObject({
+      chunks: [{ id: chunkId, metadata: { char_start: 0, char_end: quote.length } }],
+      citation_count: 1,
+      facts: [{ id: factId }],
+    });
+    const denied = await authenticatedRequest(application, viewer)
+      .post(`${API_PATH}/${sourceId}/reindex`)
+      .send({ expected_content_hash: sha256(body), reason: 'viewer cannot reindex' });
+    expectApiError(denied, 403, 'PERMISSION_DENIED');
+
+    const reindex = await authenticatedRequest(application, manager)
+      .post(`${API_PATH}/${sourceId}/reindex`)
+      .send({ expected_content_hash: sha256(body), reason: 'refresh embeddings' });
+    expect(reindex.status, JSON.stringify(reindex.body)).toBe(202);
+    expect(reindex.body.data).toMatchObject({
+      source_document_id: sourceId,
+      stage: 'queued',
+      status: 'queued',
+    });
+    expect(reindex.body.data.id).not.toBe(originalJobId);
+
+    const afterReindex = await authenticatedRequest(application, manager).get(
+      `${API_PATH}/${sourceId}?${scopeQuery}`,
+    );
+    expect(afterReindex.status).toBe(200);
+    const revision = String(afterReindex.body.data.source.updated_at);
+    const removed = await authenticatedRequest(application, manager)
+      .delete(`${API_PATH}/${sourceId}`)
+      .set('If-Match', `"${revision}"`)
+      .send({ reason: 'source superseded' });
+    expect(removed.status, removed.text).toBe(204);
+
+    const absent = await authenticatedRequest(application, viewer).get(
+      `${API_PATH}/${sourceId}?${scopeQuery}`,
+    );
+    expectApiError(absent, 404, 'RESOURCE_NOT_FOUND');
+    expect(
+      await database<
+        { audits: number; events: number; jobs: number; sourceStatus: string; deleted: boolean }[]
+      >`
+        SELECT
+          (SELECT count(*)::integer FROM audit_events WHERE resource_id = ${sourceId}::uuid) AS audits,
+          (SELECT count(*)::integer FROM outbox_events WHERE aggregate_id = ${sourceId}::uuid) AS events,
+          (SELECT count(*)::integer FROM ingest_jobs WHERE source_document_id = ${sourceId}::uuid) AS jobs,
+          source.status AS "sourceStatus",
+          source.deleted_at IS NOT NULL AS deleted
+        FROM source_documents AS source WHERE source.id = ${sourceId}::uuid
+      `,
+    ).toEqual([{ audits: 3, deleted: true, events: 2, jobs: 2, sourceStatus: 'expired' }]);
+  });
+
   it('enforces content-hash and idempotency conflicts without duplicate side effects', async () => {
     const database = requireClient(client);
     const tokens = await createSession(database, MANAGER_ID);
@@ -527,6 +667,22 @@ async function sendUrl(
     .field('language', 'zh-CN')
     .field('trust_level', 'verified')
     .field('url', url);
+}
+
+function authenticatedRequest(
+  value: NestFastifyApplication | undefined,
+  tokens: { readonly csrf: string; readonly session: string },
+) {
+  const server = requireApplication(value).getHttpServer();
+  const authenticate = <T extends { set(name: string, value: string): T }>(call: T): T =>
+    call
+      .set('Cookie', `geo_session=${tokens.session}; geo_csrf=${tokens.csrf}`)
+      .set('x-csrf-token', tokens.csrf);
+  return {
+    delete: (path: string) => authenticate(request(server).delete(path)),
+    get: (path: string) => authenticate(request(server).get(path)),
+    post: (path: string) => authenticate(request(server).post(path)),
+  };
 }
 
 function expectApiError(

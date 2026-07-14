@@ -19,7 +19,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "test": "vitest run --config vitest.config.ts",
-    "test:contract": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/modules/workspace/strategy.contract.test.ts",
+    "test:contract": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/modules/workspace/strategy.contract.test.ts src/modules/knowledge/knowledge.contract.test.ts",
     "test:database": "vitest run src/database",
     "test:integration": "pnpm build:test-dependencies && vitest run --config vitest.integration.config.ts",
     "test:rerank": "pnpm build:runtime-dependencies && vitest run --config vitest.config.ts src/modules/knowledge/search/citation-search.service.test.ts src/modules/knowledge/search/search-policy.test.ts",

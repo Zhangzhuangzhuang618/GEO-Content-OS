@@ -6,13 +6,24 @@ import { IdempotencyModule } from '../../../common/idempotency/idempotency.modul
 import { AuthModule } from '../../identity/auth/auth.module.js';
 import { RbacModule } from '../../identity/rbac/rbac.module.js';
 import { OutboxModule } from '../../outbox/index.js';
+import {
+  IngestJobController,
+  KnowledgeFactController,
+  KnowledgeSourceController,
+} from '../knowledge-api.controller.js';
+import { KnowledgeApiService } from '../knowledge-api.service.js';
 import { SourceController } from './source.controller.js';
 import { SourceService } from './source.service.js';
 import { SOURCE_STORAGE, SOURCE_WEB_FETCH } from './source.tokens.js';
 
 @Module({
-  controllers: [SourceController],
-  exports: [SourceService, SOURCE_STORAGE, SOURCE_WEB_FETCH],
+  controllers: [
+    IngestJobController,
+    KnowledgeFactController,
+    KnowledgeSourceController,
+    SourceController,
+  ],
+  exports: [KnowledgeApiService, SourceService, SOURCE_STORAGE, SOURCE_WEB_FETCH],
   imports: [AuthModule, IdempotencyModule, OutboxModule, RbacModule],
   providers: [
     {
@@ -24,6 +35,7 @@ import { SOURCE_STORAGE, SOURCE_WEB_FETCH } from './source.tokens.js';
       useFactory: () => new SafeWebFetchAdapter(readWebFetchConfiguration()),
     },
     SourceService,
+    KnowledgeApiService,
   ],
 })
 export class SourceModule {}
