@@ -143,6 +143,7 @@ export const projects = pgTable(
     ownerId: uuid('owner_id').notNull(),
     objective: text(),
     status: varchar({ length: 16 }).$type<ProjectStatus>().notNull().default('active'),
+    version: integer().notNull().default(1),
     startDate: date('start_date', { mode: 'string' }),
     endDate: date('end_date', { mode: 'string' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -179,6 +180,10 @@ export const projects = pgTable(
       sql`${table.objective} IS NULL OR char_length(btrim(${table.objective})) BETWEEN 1 AND 10000`,
     ),
     check('projects_status_check', sql`${table.status} IN ('active', 'archived')`),
+    check('projects_version_check', sql`${table.version} > 0`),
+    index('projects_tenant_version_idx')
+      .on(table.tenantId, table.id, table.version)
+      .where(sql`${table.deletedAt} IS NULL`),
     check(
       'projects_date_range_check',
       sql`${table.startDate} IS NULL OR ${table.endDate} IS NULL OR ${table.endDate} >= ${table.startDate}`,

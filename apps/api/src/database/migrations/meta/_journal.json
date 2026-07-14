@@ -64,6 +64,13 @@
       "when": 1783998000000,
       "tag": "0008_workspace_api_version",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784001600000,
+      "tag": "0009_project_api_version",
+      "breakpoints": true
     }
   ]
 }
