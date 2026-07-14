@@ -120,6 +120,13 @@
       "when": 1784109600000,
       "tag": "0016_usage_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784113200000,
+      "tag": "0017_publishing_schema",
+      "breakpoints": true
     }
   ]
 }
