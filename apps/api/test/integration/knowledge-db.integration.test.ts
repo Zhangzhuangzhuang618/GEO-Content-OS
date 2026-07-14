@@ -175,7 +175,7 @@ describe('knowledge database', () => {
           '{"schema_version":"chunk-metadata@1","unknown":true}'::jsonb, 20
         )
       `,
-    ).rejects.toThrow(/source_chunks_metadata_check/u);
+    ).rejects.toThrow(/source_chunks_metadata_check|source_chunks_locator_required_check/u);
     await insertChunk(database, CHUNK_A, TENANT_A, SOURCE_A, 0, 'Valid chunk');
     await expect(
       insertChunk(database, undefined, TENANT_A, SOURCE_A, 0, 'Duplicate chunk'),

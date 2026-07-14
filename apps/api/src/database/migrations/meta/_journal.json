@@ -99,6 +99,13 @@
       "when": 1784016000000,
       "tag": "0013_knowledge_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784019600000,
+      "tag": "0014_chunking_fts_constraints",
+      "breakpoints": true
     }
   ]
 }
