@@ -328,6 +328,24 @@ importers:
       '@geo-content-os/adapter-embedding':
         specifier: workspace:*
         version: link:../../packages/adapters/embedding
+      '@geo-content-os/adapter-ocr':
+        specifier: workspace:*
+        version: link:../../packages/adapters/ocr
+      '@geo-content-os/adapter-storage':
+        specifier: workspace:*
+        version: link:../../packages/adapters/storage
+      '@geo-content-os/adapter-web-fetch':
+        specifier: workspace:*
+        version: link:../../packages/adapters/web-fetch
+      '@geo-content-os/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@geo-content-os/parsers':
+        specifier: workspace:*
+        version: link:../../packages/parsers
+      bullmq:
+        specifier: 5.80.2
+        version: 5.80.2
       ioredis:
         specifier: 5.10.1
         version: 5.10.1

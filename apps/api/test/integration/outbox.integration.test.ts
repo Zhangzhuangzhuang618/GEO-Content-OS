@@ -163,6 +163,12 @@ describe('transactional outbox and BullMQ relay', () => {
       });
       expect(telemetryMetadata).toContain('4bf92f3577b34da6a3ce929d0e0e4736');
       expect(telemetryMetadata).toContain('geo.request_id');
+      await expect(
+        publisher.getJobRetryOptions({ eventType: event.event_type, id: event.event_id }),
+      ).resolves.toEqual({
+        attempts: 5,
+        backoff: { delay: 30_000, type: 'exponential' },
+      });
       const rows = await requiredClient()<
         {
           status: string;

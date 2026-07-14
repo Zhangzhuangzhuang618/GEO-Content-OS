@@ -1,4 +1,4 @@
-import { PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -33,7 +33,10 @@ describe('object storage adapters', () => {
       etag: HASH,
       metadata: { tenant_id: 'tenant' },
     });
-    expect(storage.readObject(stored.key)).toEqual(BODY);
+    expect(await storage.getObject(stored.key)).toEqual(BODY);
+    const downloaded = await storage.getObject(stored.key);
+    downloaded[0] = 0;
+    expect(await storage.getObject(stored.key)).toEqual(BODY);
     expect(await storage.createDownloadUrl(stored.key, 60)).not.toContain('secret');
     await storage.deleteObject(stored.key);
     expect(await storage.headObject(stored.key)).toBeUndefined();
@@ -106,6 +109,25 @@ describe('object storage adapters', () => {
     ).rejects.toThrow(/^Object storage upload failed$/u);
   });
 
+  it('downloads S3 bytes without exposing provider errors', async () => {
+    const send = vi.fn(async (_command: unknown) => ({
+      Body: { transformToByteArray: async () => BODY },
+    }));
+    const client = {
+      send,
+    } as unknown as S3Client;
+    const storage = new S3StorageAdapter(s3Configuration(), client);
+    expect(await storage.getObject(`sources/${HASH}.txt`)).toEqual(BODY);
+    expect(send.mock.calls[0]?.[0]).toBeInstanceOf(GetObjectCommand);
+
+    const failingClient = {
+      send: vi.fn(() => Promise.reject(new Error('secret=minio-password'))),
+    } as unknown as S3Client;
+    await expect(
+      new S3StorageAdapter(s3Configuration(), failingClient).getObject(`sources/${HASH}.txt`),
+    ).rejects.toThrow(/^Object storage download failed$/u);
+  });
+
   it('fails explicitly when storage is disabled', async () => {
     await expect(
       new DisabledStorageAdapter().putObject({
@@ -115,6 +137,7 @@ describe('object storage adapters', () => {
         key: 'source.txt',
       }),
     ).rejects.toThrow(/disabled/u);
+    await expect(new DisabledStorageAdapter().getObject('source.txt')).rejects.toThrow(/disabled/u);
   });
 });
 

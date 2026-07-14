@@ -303,6 +303,9 @@ describe('source upload', () => {
     const failingStorage: ObjectStorageAdapter = {
       createDownloadUrl: async () => 'https://storage.invalid/unreachable',
       deleteObject: async () => undefined,
+      getObject: async () => {
+        throw new Error('simulated unavailable storage');
+      },
       headObject: async () => undefined,
       objectUri: (key) => `s3://failing-storage/${key}`,
       putObject: async () => {

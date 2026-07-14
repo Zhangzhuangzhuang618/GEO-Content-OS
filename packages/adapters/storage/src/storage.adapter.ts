@@ -39,6 +39,7 @@ export interface StoredObjectMetadata {
 export interface ObjectStorageAdapter {
   createDownloadUrl(key: string, expiresInSeconds?: number): Promise<string>;
   deleteObject(key: string): Promise<void>;
+  getObject(key: string): Promise<Uint8Array>;
   headObject(key: string): Promise<StoredObjectMetadata | undefined>;
   objectUri(key: string): string;
   putObject(input: PutObjectInput): Promise<StoredObject>;
@@ -58,6 +59,11 @@ export class DisabledStorageAdapter implements ObjectStorageAdapter {
   }
 
   public deleteObject(key: string): Promise<void> {
+    void key;
+    return Promise.reject(new Error('Object storage is disabled'));
+  }
+
+  public getObject(key: string): Promise<Uint8Array> {
     void key;
     return Promise.reject(new Error('Object storage is disabled'));
   }
@@ -113,6 +119,13 @@ export class InMemoryStorageAdapter implements ObjectStorageAdapter {
       etag: object.contentHash,
       metadata: object.metadata,
     };
+  }
+
+  public async getObject(key: string): Promise<Uint8Array> {
+    requireSafeKey(key);
+    const body = this.objects.get(key)?.body;
+    if (!body) throw new Error('Object not found');
+    return Uint8Array.from(body);
   }
 
   public objectUri(key: string): string {
@@ -201,6 +214,22 @@ export class S3StorageAdapter implements ObjectStorageAdapter {
     } catch (error) {
       if (isNotFound(error)) return undefined;
       throw new Error('Object storage metadata lookup failed');
+    }
+  }
+
+  public async getObject(key: string): Promise<Uint8Array> {
+    requireSafeKey(key);
+    await this.ensureBucket();
+    try {
+      const result = await this.client.send(
+        new GetObjectCommand({ Bucket: this.configuration.bucket, Key: key }),
+        requestOptions(),
+      );
+      if (!result.Body) throw new Error('Object body is missing');
+      return Uint8Array.from(await result.Body.transformToByteArray());
+    } catch (error) {
+      if (isNotFound(error)) throw new Error('Object not found');
+      throw new Error('Object storage download failed', { cause: error });
     }
   }
 

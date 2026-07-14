@@ -28,6 +28,9 @@ export class BullMqEventPublisher implements EventPublisher {
     const queue = this.getQueue(queueNameFor(event.eventType));
 
     await queue.add(event.eventType, event.payload, {
+      ...(event.eventType.startsWith('knowledge.source.')
+        ? { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } }
+        : {}),
       jobId: event.id,
       removeOnComplete: false,
       removeOnFail: false,
@@ -44,6 +47,18 @@ export class BullMqEventPublisher implements EventPublisher {
   ): Promise<string | undefined> {
     const queue = this.getQueue(queueNameFor(event.eventType));
     return (await queue.getJob(event.id))?.opts.telemetry?.metadata;
+  }
+
+  public async getJobRetryOptions(
+    event: Pick<ClaimedOutboxEvent, 'eventType' | 'id'>,
+  ): Promise<{ readonly attempts?: number; readonly backoff?: unknown } | undefined> {
+    const queue = this.getQueue(queueNameFor(event.eventType));
+    const job = await queue.getJob(event.id);
+    if (!job) return undefined;
+    return {
+      ...(job.opts.attempts === undefined ? {} : { attempts: job.opts.attempts }),
+      ...(job.opts.backoff === undefined ? {} : { backoff: job.opts.backoff }),
+    };
   }
 
   public async close(): Promise<void> {
