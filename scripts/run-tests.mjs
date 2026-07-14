@@ -40,6 +40,11 @@ if (selectors.length === 1 && selectors[0] === 'model-router') {
   process.exit(0);
 }
 
+if (selectors.length === 1 && selectors[0] === 'skill-runner') {
+  run(['--filter', '@geo-content-os/skills', 'test']);
+  process.exit(0);
+}
+
 process.stderr.write(`Unknown test selector: ${selectors.join(' ')}\n`);
 process.exit(2);
 
