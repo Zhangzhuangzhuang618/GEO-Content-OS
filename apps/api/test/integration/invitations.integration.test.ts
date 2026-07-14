@@ -21,6 +21,8 @@ const ADMIN_ID = '10000000-0000-4000-8000-000000000216';
 const EDITOR_ID = '10000000-0000-4000-8000-000000000116';
 const TENANT_ID = '20000000-0000-4000-8000-000000000016';
 const OTHER_TENANT_ID = '20000000-0000-4000-8000-000000000116';
+const WORKSPACE_ID = '30000000-0000-4000-8000-000000000016';
+const OTHER_WORKSPACE_ID = '30000000-0000-4000-8000-000000000116';
 const OWNER_PASSWORD = 'correct horse battery staple';
 const INVITEE_PASSWORD = 'an enterprise invitation passphrase';
 const API_INVITATIONS_PATH = '/api/v1/invitations';
@@ -94,6 +96,12 @@ describe('invitations', () => {
         (${TENANT_ID}, ${ADMIN_ID}, 'tenant_admin', 'active'),
         (${TENANT_ID}, ${EDITOR_ID}, 'content_editor', 'active'),
         (${OTHER_TENANT_ID}, ${OWNER_ID}, 'tenant_owner', 'active')
+    `;
+    await database`
+      INSERT INTO workspaces (id, tenant_id, name, slug, timezone)
+      VALUES
+        (${WORKSPACE_ID}, ${TENANT_ID}, 'Invitation Workspace', 'invitation-workspace', 'UTC'),
+        (${OTHER_WORKSPACE_ID}, ${OTHER_TENANT_ID}, 'Other Invitation Workspace', 'other-invitation-workspace', 'UTC')
     `;
   });
 
@@ -226,7 +234,7 @@ describe('invitations', () => {
       request: {
         email: 'accepted@example.com',
         role_code: 'reviewer' as const,
-        workspace_scope: {},
+        workspace_scope: { workspace_ids: [WORKSPACE_ID] },
       },
       tenantId: TENANT_ID,
     };
@@ -270,6 +278,12 @@ describe('invitations', () => {
       WHERE invitation.id = ${first.id}
     `;
     expect(state).toEqual([{ accepted: true, membership_status: 'active' }]);
+    expect(
+      await requireClient(client)<{ workspace_id: string }[]>`
+        SELECT workspace_id FROM workspace_memberships
+        WHERE user_id = (SELECT id FROM users WHERE email = ${input.request.email})
+      `,
+    ).toEqual([{ workspace_id: WORKSPACE_ID }]);
 
     const replayCsrf = await bootstrapCsrf(server);
     const replay = await server.inject({
@@ -280,6 +294,24 @@ describe('invitations', () => {
     });
     expect(replay.statusCode).toBe(404);
     expect(replay.json().error.code).toBe('RESOURCE_NOT_FOUND');
+  });
+
+  it('rejects invitation workspace scope outside the active tenant', async () => {
+    const service = createInvitationService(
+      requireApplication(application),
+      new CapturingEmailAdapter(),
+    );
+    await expect(
+      service.create({
+        actorUserId: OWNER_ID,
+        request: {
+          email: 'forged-scope@example.com',
+          role_code: 'viewer',
+          workspace_scope: { workspace_ids: [OTHER_WORKSPACE_ID] },
+        },
+        tenantId: TENANT_ID,
+      }),
+    ).rejects.toThrow(/Invitation/u);
   });
 
   it('revokes only within the active tenant and does not leak invalid token or password values', async () => {
