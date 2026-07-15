@@ -1,0 +1,33 @@
+{
+  "rule_version": "official-site-render-rules@1.0.0",
+  "content": {
+    "platform_code": "official_site",
+    "title": "标题太短",
+    "summary": "无效官网内容",
+    "blocks": [
+      {
+        "block_key": "short-list",
+        "block_type": "list",
+        "text": "内容不足"
+      }
+    ],
+    "hashtags": [],
+    "cta": null,
+    "citation_map": [],
+    "platform_meta": {
+      "slug": "invalid-content",
+      "meta_description": "用于验证硬约束阻断。",
+      "faq": [
+        {
+          "question": "这是测试吗？",
+          "answer": "是。"
+        }
+      ],
+      "schema_org": {
+        "@context": "https://schema.org",
+        "@type": "Article"
+      }
+    }
+  },
+  "citations": []
+}

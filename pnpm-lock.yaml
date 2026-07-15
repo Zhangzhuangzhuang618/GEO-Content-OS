@@ -237,6 +237,25 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/adapters/platforms:
+    dependencies:
+      '@geo-content-os/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+      ajv-formats:
+        specifier: 3.0.1
+        version: 3.0.1(ajv@8.20.0)
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/adapters/rerank:
     devDependencies:
       vitest:
@@ -313,32 +332,6 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
-  packages/evals/quality-checker:
-    dependencies:
-      '@geo-content-os/contracts':
-        specifier: workspace:*
-        version: link:../../contracts
-      '@geo-content-os/skills':
-        specifier: workspace:*
-        version: link:../../skills
-    devDependencies:
-      vitest:
-        specifier: 4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
-
-  packages/evals/topic-planner:
-    dependencies:
-      '@geo-content-os/contracts':
-        specifier: workspace:*
-        version: link:../../contracts
-      '@geo-content-os/skills':
-        specifier: workspace:*
-        version: link:../../skills
-    devDependencies:
-      vitest:
-        specifier: 4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
-
   packages/evals/material-parser:
     dependencies:
       '@geo-content-os/contracts':
@@ -352,7 +345,33 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/evals/quality-checker:
+    dependencies:
+      '@geo-content-os/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@geo-content-os/skills':
+        specifier: workspace:*
+        version: link:../../skills
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+
   packages/evals/rag:
+    devDependencies:
+      vitest:
+        specifier: 4.1.10
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  packages/evals/topic-planner:
+    dependencies:
+      '@geo-content-os/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+      '@geo-content-os/skills':
+        specifier: workspace:*
+        version: link:../../skills
     devDependencies:
       vitest:
         specifier: 4.1.10

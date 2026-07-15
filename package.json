@@ -29,7 +29,7 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "test": "node scripts/run-tests.mjs",
-    "test:contract": "pnpm --filter contracts test:contract && pnpm --filter api test:contract",
+    "test:contract": "pnpm --filter contracts test:contract && pnpm --filter api test:contract && pnpm --filter @geo-content-os/adapter-platforms test:contract",
     "test:e2e": "pnpm --filter @geo-content-os/worker-ai build && pnpm --filter api build && pnpm --filter web build && node scripts/run-e2e.mjs",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:security": "pnpm --filter @geo-content-os/adapter-web-fetch test:security && pnpm --filter security test:security && pnpm --filter api test:security && pnpm --filter web test:security",
