@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "cases": [
+    {
+      "id": "TENANT-001",
+      "category": "tenant_isolation",
+      "vector": "cross_tenant_resource_id",
+      "input": "tenant-a-export-job-id",
+      "expected": "not_found"
+    },
+    {
+      "id": "SSRF-001",
+      "category": "ssrf",
+      "vector": "cloud_metadata_ip",
+      "input": "http://169.254.169.254/latest/meta-data",
+      "expected": "blocked"
+    },
+    {
+      "id": "SSRF-002",
+      "category": "ssrf",
+      "vector": "dns_rebinding",
+      "input": "https://rebind.example.com/source",
+      "dns_answers": ["1.1.1.1", "127.0.0.1"],
+      "expected": "blocked_before_request"
+    },
+    {
+      "id": "CSRF-001",
+      "category": "csrf",
+      "vector": "bearer_with_session_cookie",
+      "method": "POST",
+      "expected": "blocked_without_double_submit"
+    },
+    {
+      "id": "CSRF-002",
+      "category": "csrf",
+      "vector": "valid_double_submit",
+      "method": "POST",
+      "expected": "allowed"
+    },
+    {
+      "id": "XSS-001",
+      "category": "xss",
+      "vector": "script_element",
+      "input": "<script>globalThis.__geo_xss_canary__=true</script>",
+      "expected": "escaped"
+    },
+    {
+      "id": "XSS-002",
+      "category": "xss",
+      "vector": "event_handler",
+      "input": "<img src=x onerror=globalThis.__geo_xss_canary__=true>",
+      "expected": "escaped"
+    },
+    {
+      "id": "INJECTION-001",
+      "category": "sql_injection",
+      "vector": "resource_identifier",
+      "input": "00000000-0000-4000-8000-000000000000'; DROP TABLE tenant_export_jobs;--",
+      "expected": "schema_rejected"
+    },
+    {
+      "id": "CREDENTIAL-001",
+      "category": "credential_leakage",
+      "vector": "ciphertext_error_and_log",
+      "input": "geo-security-canary-secret-do-not-use",
+      "expected": "not_exposed"
+    }
+  ]
+}
