@@ -35,7 +35,8 @@
     "test:security": "pnpm --filter @geo-content-os/adapter-web-fetch test:security && pnpm --filter security test:security && pnpm --filter api test:security && pnpm --filter web test:security",
     "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter @geo-content-os/worker-knowledge test && pnpm --filter @geo-content-os/worker-ai test && pnpm --filter @geo-content-os/adapter-email test && pnpm --filter @geo-content-os/adapter-storage test && pnpm --filter @geo-content-os/adapter-web-fetch test && pnpm --filter @geo-content-os/adapter-ocr test && pnpm --filter @geo-content-os/adapter-embedding test && pnpm --filter @geo-content-os/adapter-rerank test && pnpm --filter @geo-content-os/adapter-model test && pnpm --filter @geo-content-os/adapter-model-deepseek test && pnpm --filter @geo-content-os/skills test && pnpm --filter @geo-content-os/parsers test && pnpm --filter @geo-content-os/eval-rag test && pnpm --filter @geo-content-os/eval-material-parser test && pnpm --filter @geo-content-os/eval-content-writer test && pnpm --filter @geo-content-os/eval-fact-checker test && pnpm --filter @geo-content-os/eval-topic-planner test && pnpm --filter @geo-content-os/eval-geo-optimizer test && pnpm --filter @geo-content-os/eval-quality-checker test && pnpm --filter api test",
     "typecheck": "pnpm typecheck:root && pnpm --recursive --if-present typecheck",
-    "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false"
+    "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false",
+    "verify:restore": "node infra/backup/verify-restore.mjs"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.1",
