@@ -68,6 +68,15 @@ export {
 } from './identity.js';
 export { outboxEvents, type OutboxEventRecord } from './outbox.js';
 export {
+  factCheckResults,
+  factEvidences,
+  type FactCheckResultRecord,
+  type FactCheckRiskLevel,
+  type FactCheckVerdict,
+  type FactEvidenceRecord,
+  type FactEvidenceSupportLevel,
+} from './quality.js';
+export {
   auditEvents,
   supportAccessGrants,
   type AuditEventRecord,

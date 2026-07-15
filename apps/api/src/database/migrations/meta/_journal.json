@@ -134,6 +134,13 @@
       "when": 1784116800000,
       "tag": "0018_analytics_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784120400000,
+      "tag": "0019_fact_check_schema",
+      "breakpoints": true
     }
   ]
 }
