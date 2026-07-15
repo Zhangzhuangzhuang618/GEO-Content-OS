@@ -62,7 +62,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('marks expired sources and prevents them from re-entering indexing', async ({ page }) => {
-  await page.goto('/know-01');
+  await page.goto(scopeUrl);
   const expiredRow = page.getByRole('listitem').filter({ hasText: '旧版价格表' });
   await expect(expiredRow.getByText('已失效资料不会进入新的检索。')).toBeVisible();
   await expect(expiredRow.getByRole('button', { name: '重建索引' })).toHaveCount(0);
@@ -72,6 +72,10 @@ test('marks expired sources and prevents them from re-entering indexing', async 
       .filter({ hasText: '产品白皮书' })
       .getByRole('button', { name: '重建索引' }),
   ).toBeVisible();
+  await expect(page.getByRole('link', { name: '产品白皮书' })).toHaveAttribute(
+    'href',
+    `/know-03?id=${ACTIVE_ID}&workspace_id=${workspaceId}&project_id=${projectId}`,
+  );
 });
 
 test('submits exact source hash for reindex and revision for expiry', async ({ page }) => {
@@ -89,7 +93,7 @@ test('submits exact source hash for reindex and revision for expiry', async ({ p
     }
     await route.fallback();
   });
-  await page.goto('/know-01');
+  await page.goto(scopeUrl);
   const row = page.getByRole('listitem').filter({ hasText: '产品白皮书' });
   await row.getByRole('button', { name: '重建索引' }).click();
   expect(reindexBody).toMatchObject({ expected_content_hash: 'a'.repeat(64) });
@@ -122,7 +126,7 @@ test('writes filters to the URL and hides write actions from viewers on mobile',
     }),
   );
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto('/know-01');
+  await page.goto(scopeUrl);
   await page.getByLabel('状态').selectOption('expired');
   await expect(page).toHaveURL(/status=expired/u);
   await expect(page.getByRole('link', { name: '上传资料' })).toHaveCount(0);
@@ -140,7 +144,7 @@ function source(id: string, status: 'active' | 'expired', title: string) {
     id,
     language: 'zh-CN',
     mime_type: 'application/pdf',
-    project_id: null,
+    project_id: projectId,
     source_type: 'pdf',
     status,
     tenant_id: '20000000-0000-4000-8000-000000000078',
@@ -150,3 +154,7 @@ function source(id: string, status: 'active' | 'expired', title: string) {
     workspace_id: '40000000-0000-4000-8000-000000000078',
   };
 }
+
+const workspaceId = '40000000-0000-4000-8000-000000000078';
+const projectId = '50000000-0000-4000-8000-000000000078';
+const scopeUrl = `/know-01?workspace_id=${workspaceId}&project_id=${projectId}`;
