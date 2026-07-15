@@ -4,7 +4,7 @@ import {
   QUALITY_CHECKER_OUTPUT_SCHEMA,
   QUALITY_CHECKER_SKILL_NAME,
   QUALITY_CHECKER_SKILL_VERSION,
-} from '../../../../contracts/src/skills/quality-checker/index.js';
+} from '@geo-content-os/contracts/skills';
 import { QUALITY_CHECKER_FEW_SHOTS_V1 } from './few-shots.js';
 import {
   QUALITY_CHECKER_PROMPT_VERSION,

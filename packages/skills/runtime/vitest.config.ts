@@ -8,5 +8,6 @@ export default createNodeVitestConfig({
     'fact-checker/src/*.test.ts',
     'topic-planner/src/*.test.ts',
     'geo-optimizer/src/*.test.ts',
+    'quality-checker/src/*.test.ts',
   ],
 });

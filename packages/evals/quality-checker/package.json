@@ -1,0 +1,32 @@
+{
+  "name": "@geo-content-os/eval-quality-checker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Versioned offline evaluation for the quality-checker Skill",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/skills build && tsc --project tsconfig.build.json --pretty false",
+    "eval": "pnpm build && pnpm --filter @geo-content-os/skills test -- quality-checker && vitest run --config vitest.config.ts && node dist/cli.js --manifest fixtures/quality-checker-eval.v1.json",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/skills build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
+    "@geo-content-os/skills": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist",
+    "fixtures"
+  ]
+}
