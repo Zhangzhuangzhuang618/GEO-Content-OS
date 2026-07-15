@@ -1,0 +1,24 @@
+{
+  "rule_version": "toutiao-render-rules@1.0.0",
+  "content": {
+    "platform_code": "toutiao",
+    "title": "震惊这个明显超过五十个字符并且不应被渲染器静默截断的头条号内容标题示例用于完整校验与稳定阻断测试超过限制超过限制超过限制",
+    "summary": "无效示例",
+    "blocks": [
+      {
+        "block_key": "question-only",
+        "block_type": "heading",
+        "text": "最新规则发生了什么变化？"
+      }
+    ],
+    "hashtags": [],
+    "cta": null,
+    "citation_map": [],
+    "platform_meta": {
+      "lead": "这是一个用于验证导语长度硬约束的无效导语。它会持续重复必要的说明文字，以确保字符数量超过一百个，同时仍然保持在通用输入结构允许的二百四十个字符以内。渲染器必须返回阻断问题，不能通过静默截断导语来制造一个已经改变原始内容的发布载荷。这里继续补充文字用于稳定超过限制。",
+      "tags": [],
+      "content_type": "article"
+    }
+  },
+  "citations": []
+}

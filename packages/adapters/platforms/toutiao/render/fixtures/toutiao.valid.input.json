@@ -1,0 +1,46 @@
+{
+  "rule_version": "toutiao-render-rules@1.0.0",
+  "content": {
+    "platform_code": "toutiao",
+    "title": "企业GEO内容生产为什么需要可信证据链",
+    "summary": "用问题和答案说明可信资料、引用与版本规则对企业GEO内容生产的作用。",
+    "blocks": [
+      {
+        "block_key": "question",
+        "block_type": "heading",
+        "text": "企业为什么不能只依赖模型直接生成内容？"
+      },
+      {
+        "block_key": "answer",
+        "block_type": "paragraph",
+        "text": "模型输出如果没有可信资料和精确引用，就无法验证事实来源，也难以在规则变化后复现。企业需要先管理资料、适用时间和内容哈希，再让生成过程绑定具体证据。"
+      },
+      {
+        "block_key": "workflow",
+        "block_type": "paragraph",
+        "text": "目前的冻结方案要求品牌策略、Prompt、模型和平台规则使用版本记录，审核快照固定内容版本与引用，发布任务再次固定载荷哈希。"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产", "可信AI"],
+    "cta": "从一个有明确证据来源的主题开始验证闭环。",
+    "citation_map": [
+      {
+        "claim_key": "claim-workflow",
+        "claim_text": "目前冻结方案要求生成、审核和发布过程保留版本与引用。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000107"]
+      }
+    ],
+    "platform_meta": {
+      "lead": "目前企业GEO内容生产需要把可信资料、结构化写作、质量门禁和发布追踪连接成可审计流程。",
+      "tags": ["GEO", "内容生产", "证据链"],
+      "content_type": "article"
+    }
+  },
+  "citations": [
+    {
+      "citation_id": "10000000-0000-4000-8000-000000000107",
+      "label": "可信内容生产规范",
+      "url": "https://example.com/references/trusted-content"
+    }
+  ]
+}
