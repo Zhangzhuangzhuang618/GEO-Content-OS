@@ -4,7 +4,7 @@ import {
   TOPIC_PLANNER_OUTPUT_SCHEMA,
   TOPIC_PLANNER_SKILL_NAME,
   TOPIC_PLANNER_SKILL_VERSION,
-} from '../../../../contracts/src/skills/topic-planner/index.js';
+} from '@geo-content-os/contracts/skills';
 import { TOPIC_PLANNER_FEW_SHOTS_V1 } from './few-shots.js';
 import {
   TOPIC_PLANNER_PROMPT_VERSION,

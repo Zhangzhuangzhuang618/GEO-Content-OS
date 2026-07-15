@@ -17,15 +17,19 @@
       "types": "./material-parser/dist/src/index.d.ts",
       "import": "./material-parser/dist/src/index.js"
     },
+    "./topic-planner": {
+      "types": "./topic-planner/dist/src/index.d.ts",
+      "import": "./topic-planner/dist/src/index.js"
+    },
     "./runtime": {
       "types": "./runtime/dist/index.d.ts",
       "import": "./runtime/dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false && tsc --project content-writer/src/tsconfig.build.json --pretty false && tsc --project fact-checker/src/tsconfig.build.json --pretty false",
+    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false && tsc --project content-writer/src/tsconfig.build.json --pretty false && tsc --project fact-checker/src/tsconfig.build.json --pretty false && tsc --project topic-planner/src/tsconfig.build.json --pretty false",
     "test": "pnpm --filter @geo-content-os/adapter-model-deepseek build && vitest run --config runtime/vitest.config.ts",
-    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false && tsc --project content-writer/src/tsconfig.json --noEmit --pretty false && tsc --project fact-checker/src/tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false && tsc --project content-writer/src/tsconfig.json --noEmit --pretty false && tsc --project fact-checker/src/tsconfig.json --noEmit --pretty false && tsc --project topic-planner/src/tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
     "@geo-content-os/adapter-model": "workspace:*",
@@ -41,6 +45,7 @@
     "runtime/dist",
     "material-parser/dist",
     "content-writer/dist",
-    "fact-checker/dist"
+    "fact-checker/dist",
+    "topic-planner/dist"
   ]
 }
