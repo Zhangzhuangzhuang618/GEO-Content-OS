@@ -1,9 +1,15 @@
 import { sql } from 'drizzle-orm';
+import type {
+  QualityDecision,
+  QualityGeoScores,
+  QualityIssue,
+} from '@geo-content-os/contracts/skills';
 import {
   char,
   check,
   foreignKey,
   index,
+  jsonb,
   numeric,
   pgTable,
   text,
@@ -13,7 +19,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
-import { contentVariants } from './content.js';
+import { contentVariants, contentVersions } from './content.js';
 import { tenants } from './identity.js';
 import { facts, sourceChunks } from './knowledge.js';
 import { generationRuns } from './workspace.js';
@@ -22,6 +28,15 @@ export type FactCheckVerdict =
   'supported' | 'partially_supported' | 'conflicted' | 'unsupported' | 'outdated';
 export type FactCheckRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 export type FactEvidenceSupportLevel = Exclude<FactCheckVerdict, 'unsupported'>;
+
+export interface QualityIssuesDocument {
+  readonly issues: readonly QualityIssue[];
+  readonly schema_version: 'quality-checker-data@1';
+}
+
+export interface QualityGeoScoresDocument extends QualityGeoScores {
+  readonly schema_version: 'geo-scores@1';
+}
 
 export const factCheckResults = pgTable(
   'fact_check_results',
@@ -154,5 +169,59 @@ export const factEvidences = pgTable(
   ],
 );
 
+export const qualityReports = pgTable(
+  'quality_reports',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    variantId: uuid('variant_id').notNull(),
+    contentVersionId: uuid('content_version_id').notNull(),
+    generationRunId: uuid('generation_run_id').notNull(),
+    checkerVersion: varchar('checker_version', { length: 32 }).notNull(),
+    score: numeric({ precision: 5, scale: 2 }).notNull(),
+    decision: varchar({ length: 16 }).$type<QualityDecision>().notNull(),
+    issuesJson: jsonb('issues_json').$type<QualityIssuesDocument>().notNull(),
+    geoScoresJson: jsonb('geo_scores_json').$type<QualityGeoScoresDocument>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('quality_reports_id_tenant_uq').on(table.id, table.tenantId),
+    unique('quality_reports_run_uq').on(table.tenantId, table.generationRunId),
+    foreignKey({
+      columns: [table.tenantId],
+      foreignColumns: [tenants.id],
+      name: 'quality_reports_tenant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.variantId, table.tenantId],
+      foreignColumns: [contentVariants.id, contentVariants.tenantId],
+      name: 'quality_reports_variant_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.contentVersionId, table.tenantId],
+      foreignColumns: [contentVersions.id, contentVersions.tenantId],
+      name: 'quality_reports_content_version_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.generationRunId, table.tenantId],
+      foreignColumns: [generationRuns.id, generationRuns.tenantId],
+      name: 'quality_reports_generation_run_fk',
+    }).onDelete('restrict'),
+    index('quality_reports_variant_created_idx').on(
+      table.tenantId,
+      table.variantId,
+      table.createdAt.desc(),
+      table.id,
+    ),
+    check(
+      'quality_reports_checker_version_check',
+      sql`char_length(btrim(${table.checkerVersion})) BETWEEN 1 AND 32 AND ${table.checkerVersion} ~ '^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$'`,
+    ),
+    check('quality_reports_score_check', sql`${table.score} BETWEEN 0 AND 100`),
+    check('quality_reports_decision_check', sql`${table.decision} IN ('pass', 'revise', 'block')`),
+  ],
+);
+
 export type FactCheckResultRecord = typeof factCheckResults.$inferSelect;
 export type FactEvidenceRecord = typeof factEvidences.$inferSelect;
+export type QualityReportRecord = typeof qualityReports.$inferSelect;
