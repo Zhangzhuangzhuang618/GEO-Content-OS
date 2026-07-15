@@ -7,6 +7,8 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
+import type { IdentityAuthDatabase } from '../../src/modules/identity/auth/auth.database.js';
+import { ReviewApiService } from '../../src/modules/review/api/review-api.service.js';
 import {
   ReviewDecisionService,
   type ReviewDecisionScope,
@@ -268,6 +270,64 @@ describe('review decisions', () => {
         { expectedVersion: 1, variantIds: [VARIANT_ID] },
       ),
     ).rejects.toMatchObject({ code: 'REVIEW_DECISION_NOT_FOUND' });
+  });
+
+  it('lists only accessible snapshots and claims one with versioned triage', async () => {
+    const database = requireClient(client);
+    const snapshot = await submit(database, [VARIANT_ID]);
+    const service = new ReviewApiService({ client: database } as IdentityAuthDatabase);
+
+    const page = await service.list(TENANT_ID, REVIEWER_ID, {
+      limit: 20,
+      workspace_id: WORKSPACE_ID,
+    });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      claimed_at: null,
+      claimed_by: null,
+      due_at: null,
+      id: snapshot.id,
+      risk_level: null,
+      workspace_id: WORKSPACE_ID,
+    });
+
+    const dueAt = new Date(Date.now() + 86_400_000).toISOString();
+    const claimed = await database.begin((transaction) =>
+      service.claim(
+        transaction,
+        TENANT_ID,
+        REVIEWER_ID,
+        snapshot.id,
+        { due_at: dueAt, risk_level: 'high' },
+        1,
+        { requestId: 'req-review-claim-119' },
+      ),
+    );
+    expect(claimed).toMatchObject({
+      claimed_by: REVIEWER_ID,
+      risk_level: 'high',
+      snapshot_id: snapshot.id,
+      version: 2,
+    });
+    await expect(
+      database.begin((transaction) =>
+        service.claim(
+          transaction,
+          TENANT_ID,
+          SIGNER_ID,
+          snapshot.id,
+          { due_at: dueAt, risk_level: 'low' },
+          2,
+          { requestId: 'req-review-claim-conflict-119' },
+        ),
+      ),
+    ).rejects.toMatchObject({ kind: 'state' });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE action = 'review_snapshot.claimed' AND resource_id = ${snapshot.id}::uuid
+      `,
+    ).toEqual([{ count: 1 }]);
   });
 });
 

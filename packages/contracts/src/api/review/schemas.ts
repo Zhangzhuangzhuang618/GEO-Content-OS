@@ -44,13 +44,21 @@ export const RequestSignoffRequestSchema = z
       path: ['required_role'],
     },
   );
+export const ClaimReviewRequestSchema = z
+  .object({
+    due_at: IsoDateTimeSchema,
+    risk_level: z.enum(['low', 'medium', 'high', 'critical']),
+  })
+  .strict();
 export const ReviewInboxQuerySchema = z
   .object({
+    claim_state: z.enum(['mine', 'unclaimed']).optional(),
     created_by: UuidSchema.optional(),
     cursor: CursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
     platform_code: z.enum(PLATFORM_CODES).optional(),
     project_id: UuidSchema.optional(),
+    risk_level: z.enum(['low', 'medium', 'high', 'critical']).optional(),
     status: z.enum(['in_review', 'approved', 'rejected', 'superseded']).optional(),
     workspace_id: UuidSchema.optional(),
   })
@@ -134,12 +142,27 @@ export const ReviewInboxItemSchema = ReviewSnapshotViewSchema.omit({
   requirements: true,
   variants: true,
 }).extend({
+  claimed_at: IsoDateTimeSchema.nullable(),
+  claimed_by: UuidSchema.nullable(),
+  due_at: IsoDateTimeSchema.nullable(),
   pending_signoff_count: z.number().int().nonnegative(),
   platform_codes: z.array(z.enum(PLATFORM_CODES)).min(1).max(PLATFORM_CODES.length),
   project_id: UuidSchema,
+  risk_level: z.enum(['low', 'medium', 'high', 'critical']).nullable(),
   variant_count: z.number().int().min(1).max(PLATFORM_CODES.length),
   workspace_id: UuidSchema,
 });
+
+export const ReviewClaimViewSchema = z
+  .object({
+    claimed_at: IsoDateTimeSchema,
+    claimed_by: UuidSchema,
+    due_at: IsoDateTimeSchema,
+    risk_level: z.enum(['low', 'medium', 'high', 'critical']),
+    snapshot_id: UuidSchema,
+    version: VersionSchema,
+  })
+  .strict();
 
 const FrozenCitationDetailSchema = z
   .object({
@@ -210,6 +233,7 @@ export const ReviewSnapshotDetailResponseSchema = createDataResponseSchema(
 export const ReviewRequirementResponseSchema = createDataResponseSchema(
   ReviewRequirementViewSchema,
 );
+export const ReviewClaimResponseSchema = createDataResponseSchema(ReviewClaimViewSchema);
 export const ReviewSnapshotPageSchema = z
   .object({ data: z.array(ReviewInboxItemSchema), meta: CursorPageMetaSchema })
   .strict();
@@ -221,6 +245,7 @@ export const ReviewActionPageSchema = z
   .strict();
 
 export type ReviewInboxQuery = z.infer<typeof ReviewInboxQuerySchema>;
+export type ClaimReviewRequest = z.infer<typeof ClaimReviewRequestSchema>;
 export type ReviewDecisionRequest = z.infer<typeof ReviewDecisionRequestSchema>;
 export type RequestSignoffRequest = z.infer<typeof RequestSignoffRequestSchema>;
 export type SubmitReviewRequest = z.infer<typeof SubmitReviewRequestSchema>;

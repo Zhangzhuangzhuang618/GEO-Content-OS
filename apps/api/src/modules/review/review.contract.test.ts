@@ -12,6 +12,7 @@ const bindings = [
   bind('review.submit', ReviewSubmissionController, ReviewSubmissionController.prototype.submit),
   bind('review.list', ReviewSnapshotController, ReviewSnapshotController.prototype.list),
   bind('review.get', ReviewSnapshotController, ReviewSnapshotController.prototype.detail),
+  bind('review.claim', ReviewSnapshotController, ReviewSnapshotController.prototype.claim),
   bind('review.approve', ReviewSnapshotController, ReviewSnapshotController.prototype.approve),
   bind('review.reject', ReviewSnapshotController, ReviewSnapshotController.prototype.reject),
   bind(
@@ -23,9 +24,9 @@ const bindings = [
 ] as const;
 
 describe('review controller contract bindings', () => {
-  it('binds all seven frozen review contracts exactly once', () => {
-    expect(bindings).toHaveLength(7);
-    expect(new Set(bindings.map((binding) => binding.key)).size).toBe(7);
+  it('binds all eight corrected review contracts exactly once', () => {
+    expect(bindings).toHaveLength(8);
+    expect(new Set(bindings.map((binding) => binding.key)).size).toBe(8);
   });
 
   it.each(bindings)('$key matches method, route, permission, and status', (binding) => {

@@ -179,7 +179,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结端点数：114。
+冻结基线原为 114 个端点；ADR-0002 为满足 REV-01 的领取闭环新增 1 个修正端点，当前可执行端点数为 115。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -268,6 +268,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 审核 | POST | `/content-packages/{id}/submit-review` | content_editor_or_admin | SubmitReviewRequest | ReviewSnapshotView | key+snapshot_hash |
 | 审核 | GET | `/review-snapshots` | reviewer_or_admin | ReviewInboxQuery | ReviewSnapshotPage | - |
 | 审核 | GET | `/review-snapshots/{id}` | reviewer_or_admin | - | ReviewSnapshotDetail | - |
+| 审核 | POST | `/review-snapshots/{id}/claim` | reviewer_or_admin | ClaimReviewRequest | ReviewClaimView | key+version |
 | 审核 | POST | `/review-snapshots/{id}/approve` | reviewer_or_admin | ReviewDecisionRequest | ReviewSnapshotDetail | key+version |
 | 审核 | POST | `/review-snapshots/{id}/reject` | reviewer_or_admin | ReviewDecisionRequest | ReviewSnapshotDetail | key+version |
 | 审核 | POST | `/review-snapshots/{id}/request-signoff` | reviewer_or_admin | RequestSignoffRequest | ReviewRequirementView | key+version |

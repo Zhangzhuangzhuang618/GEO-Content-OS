@@ -1,4 +1,5 @@
 import {
+  ClaimReviewRequestSchema,
   ERROR_DEFINITIONS,
   RequestSignoffRequestSchema,
   ReviewDecisionRequestSchema,
@@ -135,6 +136,50 @@ export class ReviewSnapshotController {
     } catch (error) {
       await sendReviewError(reply, request.id, error);
     }
+  }
+
+  @Post(':id/claim')
+  @RequirePermissions('review.decide')
+  public async claim(
+    @Param() params: unknown,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsedParams = ReviewSnapshotParamsSchema.safeParse(params);
+    const parsedBody = ClaimReviewRequestSchema.safeParse(body);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    let version: number;
+    try {
+      version = parseIfMatch(request.headers['if-match']);
+    } catch (error) {
+      return sendReviewError(reply, request.id, error);
+    }
+    return idempotent(
+      this.idempotency,
+      reply,
+      request,
+      `/review-snapshots/${parsedParams.data.id}/claim`,
+      parsedBody.data as JsonValue,
+      async (transaction, policy) =>
+        response(
+          await this.review.claim(
+            transaction,
+            policy.tenantId,
+            policy.userId,
+            parsedParams.data.id,
+            parsedBody.data,
+            version,
+            audit(request),
+          ),
+          request.id,
+        ),
+      HttpStatus.OK,
+      'data.version',
+      version,
+    );
   }
 
   @Post(':id/approve')

@@ -1,4 +1,5 @@
 import type {
+  ClaimReviewRequest,
   RequestSignoffRequest,
   ReviewDecisionRequest as ApiReviewDecisionRequest,
   ReviewInboxQuery,
@@ -29,8 +30,11 @@ interface ResourceScope {
 
 interface InboxRow {
   readonly brandProfileId: string;
+  readonly claimedAt: Date | null;
+  readonly claimedBy: string | null;
   readonly createdAt: Date;
   readonly createdBy: string;
+  readonly dueAt: Date | null;
   readonly id: string;
   readonly modelKey: string;
   readonly packageId: string;
@@ -40,6 +44,7 @@ interface InboxRow {
   readonly projectId: string;
   readonly promptVersionId: string;
   readonly qualityRulesHash: string;
+  readonly riskLevel: 'low' | 'medium' | 'high' | 'critical' | null;
   readonly snapshotHash: string;
   readonly status: string;
   readonly tenantId: string;
@@ -136,6 +141,10 @@ export class ReviewApiService {
         snapshot.status,
         snapshot.version,
         snapshot.created_by AS "createdBy",
+        snapshot.claimed_by AS "claimedBy",
+        snapshot.claimed_at AS "claimedAt",
+        snapshot.risk_level AS "riskLevel",
+        snapshot.due_at AS "dueAt",
         snapshot.created_at AS "createdAt",
         snapshot.updated_at AS "updatedAt",
         package.workspace_id AS "workspaceId",
@@ -163,6 +172,12 @@ export class ReviewApiService {
         AND (${query.workspace_id ?? null}::uuid IS NULL OR package.workspace_id = ${query.workspace_id ?? null}::uuid)
         AND (${query.project_id ?? null}::uuid IS NULL OR package.project_id = ${query.project_id ?? null}::uuid)
         AND (${query.created_by ?? null}::uuid IS NULL OR snapshot.created_by = ${query.created_by ?? null}::uuid)
+        AND (${query.risk_level ?? null}::varchar IS NULL OR snapshot.risk_level = ${query.risk_level ?? null})
+        AND (
+          ${query.claim_state ?? null}::varchar IS NULL
+          OR (${query.claim_state ?? null} = 'unclaimed' AND snapshot.claimed_by IS NULL)
+          OR (${query.claim_state ?? null} = 'mine' AND snapshot.claimed_by = ${userId}::uuid)
+        )
         AND (${query.status ?? null}::varchar IS NULL OR snapshot.status = ${query.status ?? null})
         AND (${query.platform_code ?? null}::varchar IS NULL OR EXISTS (
           SELECT 1 FROM review_snapshot_variants AS selected
@@ -181,6 +196,86 @@ export class ReviewApiService {
     return {
       items: Object.freeze(rows.slice(0, query.limit).map(mapInboxItem)),
       nextCursor: hasNext ? encodeCursor(offset + query.limit) : null,
+    };
+  }
+
+  public async claim(
+    transaction: TransactionSql,
+    tenantId: string,
+    userId: string,
+    snapshotId: string,
+    request: ClaimReviewRequest,
+    expectedVersion: number,
+    audit: ReviewAuditContext,
+  ): Promise<JsonValue> {
+    await this.scopeForSnapshot(transaction, tenantId, userId, snapshotId);
+    const dueAt = new Date(request.due_at);
+    if (dueAt.getTime() <= Date.now()) validation('Review due_at must be in the future');
+    const beforeRows = await transaction<
+      { claimedBy: string | null; status: string; version: number }[]
+    >`
+      SELECT claimed_by AS "claimedBy", status, version
+      FROM review_snapshots
+      WHERE id = ${snapshotId}::uuid AND tenant_id = ${tenantId}::uuid
+      FOR UPDATE
+    `;
+    const before = beforeRows[0];
+    if (!before) notFound();
+    if (before.version !== expectedVersion) {
+      throw new ReviewApiError('version', 'Review snapshot version does not match');
+    }
+    if (before.status !== 'in_review') {
+      throw new ReviewApiError('state', 'Only in-review snapshots may be claimed');
+    }
+    if (before.claimedBy && before.claimedBy !== userId) {
+      throw new ReviewApiError('state', 'Review snapshot is already claimed by another reviewer');
+    }
+    const rows = await transaction<
+      {
+        claimedAt: Date;
+        claimedBy: string;
+        dueAt: Date;
+        riskLevel: ClaimReviewRequest['risk_level'];
+        version: number;
+      }[]
+    >`
+      UPDATE review_snapshots
+      SET claimed_by = ${userId}::uuid,
+          claimed_at = COALESCE(claimed_at, now()),
+          risk_level = ${request.risk_level},
+          due_at = ${request.due_at}::timestamptz,
+          version = version + 1
+      WHERE id = ${snapshotId}::uuid AND tenant_id = ${tenantId}::uuid
+        AND version = ${expectedVersion}
+      RETURNING claimed_by AS "claimedBy", claimed_at AS "claimedAt",
+        risk_level AS "riskLevel", due_at AS "dueAt", version
+    `;
+    const claimed = rows[0];
+    if (!claimed) throw new ReviewApiError('version', 'Review snapshot version does not match');
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id, actor_id, action, resource_type, resource_id,
+        before_json, after_json, ip, request_id
+      ) VALUES (
+        ${tenantId}::uuid, ${userId}::uuid, 'review_snapshot.claimed',
+        'review_snapshot', ${snapshotId}::uuid,
+        ${JSON.stringify(before)}::text::jsonb,
+        ${JSON.stringify({
+          claimed_by: claimed.claimedBy,
+          due_at: claimed.dueAt.toISOString(),
+          risk_level: claimed.riskLevel,
+          version: claimed.version,
+        })}::text::jsonb,
+        ${audit.ip ?? null}, ${audit.requestId}
+      )
+    `;
+    return {
+      claimed_at: iso(claimed.claimedAt),
+      claimed_by: claimed.claimedBy,
+      due_at: iso(claimed.dueAt),
+      risk_level: claimed.riskLevel,
+      snapshot_id: snapshotId,
+      version: claimed.version,
     };
   }
 
@@ -497,8 +592,11 @@ function mapAction(action: ReviewActionView): JsonValue {
 function mapInboxItem(row: InboxRow): JsonValue {
   return {
     brand_profile_id: row.brandProfileId,
+    claimed_at: row.claimedAt ? iso(row.claimedAt) : null,
+    claimed_by: row.claimedBy,
     created_at: iso(row.createdAt),
     created_by: row.createdBy,
+    due_at: row.dueAt ? iso(row.dueAt) : null,
     id: row.id,
     model_key: row.modelKey,
     package_id: row.packageId,
@@ -508,6 +606,7 @@ function mapInboxItem(row: InboxRow): JsonValue {
     project_id: row.projectId,
     prompt_version_id: row.promptVersionId,
     quality_rules_hash: row.qualityRulesHash,
+    risk_level: row.riskLevel,
     snapshot_hash: row.snapshotHash,
     status: row.status,
     tenant_id: row.tenantId,
