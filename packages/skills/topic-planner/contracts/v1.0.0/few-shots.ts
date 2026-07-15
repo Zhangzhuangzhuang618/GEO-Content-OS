@@ -1,4 +1,4 @@
-import type { TopicPlannerOutput } from '../../../../contracts/src/skills/topic-planner/index.js';
+import type { TopicPlannerOutput } from '@geo-content-os/contracts/skills';
 
 const BRAND_ID = '10000000-0000-4000-8000-000000000065';
 const KEYWORD_ID = '20000000-0000-4000-8000-000000000065';

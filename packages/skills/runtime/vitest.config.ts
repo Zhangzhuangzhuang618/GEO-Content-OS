@@ -6,5 +6,6 @@ export default createNodeVitestConfig({
     'material-parser/src/*.test.ts',
     'content-writer/src/*.test.ts',
     'fact-checker/src/*.test.ts',
+    'topic-planner/src/*.test.ts',
   ],
 });
