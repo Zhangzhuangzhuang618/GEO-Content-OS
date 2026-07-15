@@ -5,6 +5,10 @@ if (selectors.length === 1 && selectors[0] === 'deepseek-adapter') {
   run(['--filter', '@geo-content-os/adapter-model-deepseek', 'test:integration']);
   process.exit(0);
 }
+if (selectors.length === 1 && selectors[0] === 'official_site-delivery') {
+  run(['--filter', '@geo-content-os/adapter-platforms', 'test:integration']);
+  process.exit(0);
+}
 
 run(['--filter', 'api', 'test:integration', '--', ...selectors]);
 
