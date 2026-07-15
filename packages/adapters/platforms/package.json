@@ -24,13 +24,17 @@
     "./toutiao/render": {
       "types": "./dist/toutiao/render/src/index.d.ts",
       "import": "./dist/toutiao/render/src/index.js"
+    },
+    "./toutiao/delivery": {
+      "types": "./dist/toutiao/delivery/src/index.d.ts",
+      "import": "./dist/toutiao/delivery/src/index.js"
     }
   },
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
     "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render",
-    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery",
+    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery toutiao/delivery",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
