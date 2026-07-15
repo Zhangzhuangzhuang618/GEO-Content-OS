@@ -24,7 +24,7 @@
   "scripts": {
     "build": "tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run",
-    "test:contract": "vitest run src/api/strategy src/api/knowledge src/api/content src/api/review src/api/tenant-lifecycle",
+    "test:contract": "vitest run src/api/strategy src/api/knowledge src/api/content src/api/review src/api/tenant-lifecycle src/api/analytics",
     "test:watch": "vitest",
     "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
   },

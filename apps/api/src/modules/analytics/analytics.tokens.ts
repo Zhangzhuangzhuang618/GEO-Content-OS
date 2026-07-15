@@ -1,0 +1,1 @@
+export const ANALYTICS_STORAGE = Symbol('ANALYTICS_STORAGE');

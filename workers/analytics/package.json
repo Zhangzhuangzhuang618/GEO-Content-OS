@@ -18,7 +18,9 @@
     "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
-    "@geo-content-os/contracts": "workspace:*"
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "vitest": "4.1.10"

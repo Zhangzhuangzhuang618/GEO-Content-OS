@@ -57,13 +57,17 @@ interface ProviderCostRow {
 const CURRENCY = /^[A-Z]{3}$/u;
 const MONTH = /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/u;
 
+interface CostQueryDatabaseProvider {
+  readonly client: DatabaseClient;
+}
+
 export class CostQueryService {
-  public constructor(private readonly client: DatabaseClient) {}
+  public constructor(private readonly client: DatabaseClient | CostQueryDatabaseProvider) {}
 
   public async report(scope: CostQueryScope, filter: CostFilter): Promise<CostReport> {
     const normalizedScope = normalizeScope(scope);
     const normalized = normalizeFilter(filter);
-    const rows = (await this.client.begin(async (transaction) => {
+    const rows = (await resolveClient(this.client).begin(async (transaction) => {
       await assertCostRole(transaction, normalizedScope);
       return queryBreakdown(transaction, normalizedScope, normalized);
     })) as CostRow[];
@@ -83,7 +87,7 @@ export class CostQueryService {
     const normalizedScope = normalizeScope(scope);
     const workspaceId = normalizeUuid(query.workspaceId);
     if (!MONTH.test(query.month)) throw new CostQueryValidationError();
-    const rows = (await this.client.begin(async (transaction) => {
+    const rows = (await resolveClient(this.client).begin(async (transaction) => {
       await assertCostRole(transaction, normalizedScope);
       return transaction<BudgetRow[]>`
         SELECT
@@ -149,7 +153,7 @@ export class CostQueryService {
     const normalizedScope = normalizeScope(scope);
     const normalized = normalizeFilter(filter);
     const statements = normalizeStatements(statementLines);
-    const ledgerRows = (await this.client.begin(async (transaction) => {
+    const ledgerRows = (await resolveClient(this.client).begin(async (transaction) => {
       await assertCostRole(transaction, normalizedScope);
       return queryProviderCosts(transaction, normalizedScope, normalized);
     })) as ProviderCostRow[];
@@ -416,6 +420,10 @@ function safeInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed)) throw new CostQueryStateError('Cost total exceeds safe range');
   return parsed;
+}
+
+function resolveClient(database: DatabaseClient | CostQueryDatabaseProvider): DatabaseClient {
+  return typeof database === 'function' ? database : database.client;
 }
 
 function toCents(value: number): number {
