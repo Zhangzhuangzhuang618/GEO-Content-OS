@@ -1,8 +1,8 @@
 # GEO Content OS - 项目上下文
 
 > 企业级 GEO 多平台内容生产系统（MVP v1.0）
-> 文档基线日期：2026-07-13
-> 上下文版本：v2.0（全面开发冻结版）
+> 文档基线日期：2026-07-15
+> 上下文版本：v2.1（全面开发冻结修订版）
 
 ## 0. 开发冻结声明
 
@@ -93,7 +93,7 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 
 ## 5. 数据模型
 
-冻结表数：56。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结表数：57。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -148,6 +148,7 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 | `import_jobs` | 指标导入批次 |
 | `metric_records` | 平台指标事实 |
 | `visibility_observations` | 问答/搜索可见性观察 |
+| `analytics_export_jobs` | 分析数据异步导出任务 |
 | `usage_ledger` | 全成本 append-only 用量账本 |
 | `idempotency_records` | HTTP 写请求幂等结果 |
 | `outbox_events` | 事务事件箱和投递租约 |
@@ -178,7 +179,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结端点数：103。
+冻结端点数：114。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -196,7 +197,16 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 平台 | POST | `/platform/tenants` | platform_admin | CreateTenantRequest | TenantView | key+body_hash |
 | 平台 | GET | `/platform/tenants` | platform_admin | TenantListQuery | TenantPage | - |
 | 平台 | POST | `/platform/tenants/{id}/suspend` | platform_admin | ReasonRequest | TenantView | resource+version |
+| 平台 | POST | `/platform/tenants/{id}/restore` | platform_admin | - | TenantView | resource+version |
 | 平台 | POST | `/platform/support-access-grants` | platform_admin | SupportGrantRequest | SupportGrantView | key+body_hash |
+| 平台 | GET | `/platform/prompt-versions` | platform_operator | PromptVersionQuery | PromptVersionPage | - |
+| 平台 | POST | `/platform/prompt-versions` | platform_operator | CreatePromptVersionRequest | PromptVersionView | key+body_hash |
+| 平台 | POST | `/platform/prompt-versions/{id}/publish` | platform_operator | PublishVersionRequest | PromptVersionView | resource+version |
+| 平台 | POST | `/platform/prompt-versions/{id}/retire` | platform_operator | ReasonRequest | PromptVersionView | resource+version |
+| 平台 | GET | `/platform/rule-versions` | platform_operator | RuleVersionQuery | RuleVersionPage | - |
+| 平台 | POST | `/platform/rule-versions` | platform_operator | CreateRuleVersionRequest | RuleVersionView | key+body_hash |
+| 平台 | POST | `/platform/rule-versions/{id}/publish` | platform_operator | PublishVersionRequest | RuleVersionView | resource+version |
+| 平台 | POST | `/platform/rule-versions/{id}/retire` | platform_operator | ReasonRequest | RuleVersionView | resource+version |
 | 租户 | GET | `/tenant` | tenant_member | - | TenantView | - |
 | 租户 | PATCH | `/tenant` | tenant_owner | UpdateTenantRequest | TenantView | key+version |
 | 租户 | GET | `/memberships` | tenant_admin_or_owner | MemberListQuery | MembershipPage | - |
@@ -218,6 +228,8 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 策略 | POST | `/brand-profiles/{id}/publish` | strategy_editor_or_admin | PublishVersionRequest | BrandProfileView | resource+version |
 | 策略 | POST | `/brand-profiles/{id}/retire` | strategy_editor_or_admin | ReasonRequest | BrandProfileView | resource+version |
 | 策略 | POST | `/keyword-sets` | strategy_editor_or_admin | CreateKeywordSetRequest | KeywordSetView | key+body_hash |
+| 策略 | GET | `/keyword-sets` | tenant_member | KeywordSetQuery | KeywordSetPage | - |
+| 策略 | GET | `/keyword-sets/{id}` | tenant_member | - | KeywordSetDetail | - |
 | 策略 | POST | `/keyword-sets/{id}/keywords` | strategy_editor_or_admin | UpsertKeywordsRequest | Keyword[] | key+body_hash |
 | 策略 | POST | `/topic-plans/generate` | strategy_editor_or_admin | TopicPlanRequest | GenerationRunView | key+body_hash |
 | 策略 | GET | `/topic-candidates` | tenant_member | TopicCandidateQuery | TopicCandidatePage | - |
@@ -281,7 +293,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 分析 | POST | `/metrics/manual` | analyst_or_admin | ManualMetricsRequest | MetricRecord[] | key+body_hash |
 | 分析 | POST | `/visibility-observations` | analyst_or_admin | VisibilityObservationRequest | VisibilityObservationView | key+body_hash |
 | 分析 | GET | `/usage/summary` | owner_or_analyst_or_admin | CostQuery | UsageSummary | - |
-| 分析 | GET | `/analytics/export` | analyst_or_admin | AnalyticsExportQuery | ExportJobView | key+query_hash |
+| 分析 | GET | `/analytics/export` | analyst_or_admin | AnalyticsExportQuery | AnalyticsExportJobView | key+query_hash |
 | 系统 | GET | `/audit-events` | tenant_owner | AuditQuery | AuditEventPage | - |
 | 系统 | POST | `/tenant-exports` | tenant_owner | TenantExportRequest | TenantExportJobView | key+body_hash |
 | 系统 | GET | `/tenant-exports/{id}` | tenant_owner | - | TenantExportJobView | - |
@@ -324,7 +336,7 @@ HTTP 幂等保存 scope+key+request_hash；相同 hash 返回原结果，不同 
 | STR-01 | 品牌策略列表 | tenant_member | 写操作仅 strategy_editor_or_admin |
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
 | STR-03 | 主题规划 | strategy_editor_or_admin | 无证据主题标记风险，不自动进入生产 |
-| STR-04 | 关键词集 | strategy_editor_or_admin | 项目内 term 唯一 |
+| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一 |
 | KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索 |
 | KNOW-02 | 上传资料 | strategy_or_content_editor_or_admin | 类型、大小、病毒扫描和 SSRF 校验 |
 | KNOW-03 | 资料详情 | tenant_member | 原文和 chunk 可回溯 |
