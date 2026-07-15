@@ -2,11 +2,11 @@
 
 ## 当前冻结版本
 
-- 版本：v2.0（全面开发冻结版）
-- 基线日期：2026-07-13
+- 版本：v2.1（全面开发冻结修订版）
+- 基线日期：2026-07-15
 - 全局入口：`../PROJECT_CONTEXT.md`
 - Claude Code 指令：`../CLAUDE.md`
-- 冻结文档：`freeze-v2.0/`
+- 冻结文档：`freeze-v2.1/`
 
 ## 使用方式
 
@@ -23,11 +23,11 @@
 | PRD产品需求文档.docx | 页面、字段、角色权限、业务流程和验收标准 |
 | 技术设计文档（AI开发友好）.docx | 架构、API、RAG、队列、Adapter、部署和成本 |
 | AI Skills & Prompt设计规范.docx | Skills、Prompt、Schema、Few-shot、Tool Calling 和七平台规则 |
-| 数据库设计手册.docx | ER、56 张表、字段、索引、迁移和示例数据 |
+| 数据库设计手册.docx | ER、57 张表、字段、索引、迁移和示例数据 |
 | Claude Code开发任务拆解.docx | T001–T144 的依赖、范围、验证命令和完成定义 |
 
 ## 冻结管理
 
-- 不在 `freeze-v2.0/` 内直接修订文件。
+- 不在 `freeze-v2.1/` 内直接修订文件；`freeze-v2.0/` 作为历史只读基线保留。
 - 需要变更时先记录原因、影响面、兼容策略和迁移方案。
 - 评审通过后建立新版本目录，并同步更新 `PROJECT_CONTEXT.md`、`CLAUDE.md` 和哈希清单。
