@@ -8,5 +8,6 @@ export * from './topics.js';
 export * from './strategy/index.js';
 export * from './workspaces.js';
 export * from './projects.js';
+export * from './publishing/index.js';
 export * from './review/index.js';
 export * from './tenant-lifecycle/index.js';

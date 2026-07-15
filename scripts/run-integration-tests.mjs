@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 
 const selectors = process.argv.slice(2).filter((value) => value !== '--');
 if (selectors.length === 1 && selectors[0] === 'deepseek-adapter') {
@@ -18,6 +19,27 @@ if (
   ].includes(selectors[0])
 ) {
   run(['--filter', '@geo-content-os/adapter-platforms', 'test:integration']);
+  process.exit(0);
+}
+
+const apiTestFiles = selectors.map(
+  (selector) => `test/integration/${selector}.integration.test.ts`,
+);
+if (
+  apiTestFiles.length > 0 &&
+  apiTestFiles.every((file) => existsSync(new URL(`../apps/api/${file}`, import.meta.url)))
+) {
+  run(['--filter', 'api', 'build:test-dependencies']);
+  run([
+    '--filter',
+    'api',
+    'exec',
+    'vitest',
+    'run',
+    '--config',
+    'vitest.integration.config.ts',
+    ...apiTestFiles,
+  ]);
   process.exit(0);
 }
 
