@@ -30,7 +30,9 @@ export class BullMqEventPublisher implements EventPublisher {
     await queue.add(event.eventType, event.payload, {
       ...(event.eventType.startsWith('knowledge.source.')
         ? { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } }
-        : {}),
+        : event.eventType === 'publishing.job.execution_requested.v1'
+          ? { attempts: 4, backoff: { type: 'publisher' } }
+          : {}),
       jobId: event.id,
       removeOnComplete: false,
       removeOnFail: false,
