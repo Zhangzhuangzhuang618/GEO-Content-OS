@@ -165,10 +165,7 @@ export class PublishJobService {
       if (before.variantStatus !== before.status) {
         throw stateInvalid('Publish job and content variant states are inconsistent');
       }
-      const currentAttemptStarted =
-        before.status === 'publishing' &&
-        (await hasAttempt(transaction, scope.tenantId, before.id, before.attemptCount));
-      const resolution = resolvePublishCancellation(currentAttemptStarted);
+      const resolution = resolvePublishCancellation(before.status === 'publishing');
       const rows = await transaction<JobRow[]>`
         UPDATE publish_jobs SET status=${resolution.publishJobStatus}, version=version+1
         WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
@@ -499,23 +496,6 @@ async function enqueueExecution(
     UPDATE outbox_events SET next_attempt_at=GREATEST(${scheduledAt},now())
     WHERE id=${event.event_id}::uuid AND tenant_id=${scope.tenantId}::uuid
   `;
-}
-
-async function hasAttempt(
-  transaction: TransactionSql,
-  tenantId: string,
-  jobId: string,
-  attemptCount: number,
-): Promise<boolean> {
-  if (attemptCount < 1) return false;
-  const rows = await transaction<{ found: boolean }[]>`
-    SELECT EXISTS(
-      SELECT 1 FROM publish_attempts
-      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
-        AND attempt_no=${attemptCount}
-    ) AS found
-  `;
-  return rows[0]?.found ?? false;
 }
 
 async function latestAttemptIsUnknown(

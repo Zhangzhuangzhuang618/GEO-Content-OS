@@ -164,7 +164,7 @@ describe('publish jobs', () => {
     expect(writes).toEqual([{ jobs: 0, outbox: 0 }]);
   });
 
-  it('requests cancellation without rolling back a variant after a platform call starts', async () => {
+  it('treats publishing state as a started platform call before its final attempt is appended', async () => {
     const database = requireClient(client);
     const service = new PublishJobService(database);
     const job = await schedule(service);
@@ -258,13 +258,6 @@ async function markPublishing(database: Sql, jobId: string): Promise<void> {
     await transaction`
       UPDATE content_packages SET status='publishing',version=version+1
       WHERE id=${PACKAGE_ID}::uuid
-    `;
-    await transaction`
-      INSERT INTO publish_attempts(
-        tenant_id,publish_job_id,attempt_no,adapter_code,status,request_hash,started_at
-      ) VALUES (
-        ${TENANT_ID}::uuid,${jobId}::uuid,1,'official-site@1','running',${'b'.repeat(64)},now()
-      )
     `;
   });
 }
