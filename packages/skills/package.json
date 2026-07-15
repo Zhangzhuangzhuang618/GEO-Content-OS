@@ -5,6 +5,10 @@
   "type": "module",
   "description": "GEO Content OS — AI Skills: Prompt、JSON Schema、Few-shot、Tool Calling",
   "exports": {
+    "./content-writer": {
+      "types": "./content-writer/dist/src/index.d.ts",
+      "import": "./content-writer/dist/src/index.js"
+    },
     "./material-parser": {
       "types": "./material-parser/dist/src/index.d.ts",
       "import": "./material-parser/dist/src/index.js"
@@ -15,9 +19,9 @@
     }
   },
   "scripts": {
-    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false",
+    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false && tsc --project content-writer/src/tsconfig.build.json --pretty false",
     "test": "pnpm --filter @geo-content-os/adapter-model-deepseek build && vitest run --config runtime/vitest.config.ts",
-    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false && tsc --project content-writer/src/tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
     "@geo-content-os/adapter-model": "workspace:*",
@@ -31,6 +35,7 @@
   },
   "files": [
     "runtime/dist",
-    "material-parser/dist"
+    "material-parser/dist",
+    "content-writer/dist"
   ]
 }
