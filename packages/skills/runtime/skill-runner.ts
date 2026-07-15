@@ -1,5 +1,6 @@
 import type {
   JsonObject,
+  JsonValue,
   ModelAdapter,
   ModelMessage,
   ModelResult,
@@ -30,7 +31,13 @@ export interface SkillRunResult<TOutput> {
   readonly output: TOutput;
   readonly schemaRepairAttempts: 0 | 1;
   readonly toolCallCount: number;
+  readonly toolResults: readonly SkillToolResult[];
   readonly usages: readonly ModelUsage[];
+}
+
+export interface SkillToolResult {
+  readonly name: string;
+  readonly output: JsonValue;
 }
 
 export class SkillRunner {
@@ -60,6 +67,7 @@ export class SkillRunner {
     const usages: ModelUsage[] = [];
     const messages: ModelMessage[] = [...input.messages];
     let toolCallCount = 0;
+    const toolResults: SkillToolResult[] = [];
 
     for (let round = 0; ; round += 1) {
       const result = await this.generate(input, messages, definitions);
@@ -67,7 +75,14 @@ export class SkillRunner {
       usages.push(result.usage);
       const calls = result.message.toolCalls ?? [];
       if (calls.length === 0) {
-        return this.parseOrRepair<TInput, TOutput>(input, messages, result, usages, toolCallCount);
+        return this.parseOrRepair<TInput, TOutput>(
+          input,
+          messages,
+          result,
+          usages,
+          toolCallCount,
+          toolResults,
+        );
       }
       if (round >= MAX_TOOL_ROUNDS) {
         throw new SkillRuntimeError(
@@ -91,6 +106,7 @@ export class SkillRunner {
           input.signal,
         );
         messages.push({ content: JSON.stringify(output), role: 'tool', toolCallId: call.id });
+        toolResults.push(Object.freeze({ name: call.name, output }));
         toolCallCount += 1;
       }
     }
@@ -132,9 +148,10 @@ export class SkillRunner {
     first: ModelResult,
     usages: ModelUsage[],
     toolCallCount: number,
+    toolResults: readonly SkillToolResult[],
   ): Promise<SkillRunResult<TOutput>> {
     const firstCheck = parseAndCheck<TOutput>(this.schemas, input.outputSchema, first);
-    if (firstCheck.valid) return result(firstCheck.value, usages, 0, toolCallCount);
+    if (firstCheck.valid) return result(firstCheck.value, usages, 0, toolCallCount, toolResults);
 
     const repairMessages: ModelMessage[] = [
       ...messages,
@@ -165,7 +182,7 @@ export class SkillRunner {
         repairedCheck.paths,
       );
     }
-    return result(repairedCheck.value, usages, 1, toolCallCount);
+    return result(repairedCheck.value, usages, 1, toolCallCount, toolResults);
   }
 }
 
@@ -197,11 +214,13 @@ function result<T>(
   usages: readonly ModelUsage[],
   schemaRepairAttempts: 0 | 1,
   toolCallCount: number,
+  toolResults: readonly SkillToolResult[],
 ): SkillRunResult<T> {
   return Object.freeze({
     output,
     schemaRepairAttempts,
     toolCallCount,
+    toolResults: Object.freeze([...toolResults]),
     usages: Object.freeze([...usages]),
   });
 }

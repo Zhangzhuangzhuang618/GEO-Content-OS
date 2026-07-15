@@ -4,7 +4,7 @@ import {
   FACT_CHECKER_OUTPUT_SCHEMA,
   FACT_CHECKER_SKILL_NAME,
   FACT_CHECKER_SKILL_VERSION,
-} from '../../../../contracts/src/skills/fact-checker/index.js';
+} from '@geo-content-os/contracts/skills';
 import { FACT_CHECKER_FEW_SHOTS_V1 } from './few-shots.js';
 import {
   FACT_CHECKER_PROMPT_VERSION,

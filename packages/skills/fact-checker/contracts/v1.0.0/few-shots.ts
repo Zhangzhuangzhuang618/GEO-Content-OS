@@ -1,4 +1,4 @@
-import type { FactCheckerOutput } from '../../../../contracts/src/skills/fact-checker/index.js';
+import type { FactCheckerOutput } from '@geo-content-os/contracts/skills';
 
 const VERSION_ID = '10000000-0000-4000-8000-000000000063';
 const VARIANT_ID = '20000000-0000-4000-8000-000000000063';
