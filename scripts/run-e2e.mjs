@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 
 const aliases = new Map([
+  ['content', ['apps/api/test/e2e/content']],
   ['identity', ['apps/api/test/e2e/identity']],
   ['system', ['apps/api/test/e2e/system', 'apps/web/test/e2e/system']],
   ['workspace', ['apps/api/test/e2e/workspace']],
