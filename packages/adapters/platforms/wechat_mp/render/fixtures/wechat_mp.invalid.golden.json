@@ -1,0 +1,11 @@
+{
+  "blocker_codes": [
+    "CITATION_LINK_MISSING",
+    "CTA_REQUIRED",
+    "DIGEST_REQUIRED",
+    "INTERNAL_LINK_REQUIRED",
+    "LEAD_REQUIRED",
+    "PARAGRAPH_TOO_LONG",
+    "TITLE_LENGTH_OUT_OF_RANGE"
+  ]
+}
