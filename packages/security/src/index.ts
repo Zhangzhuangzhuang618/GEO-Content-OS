@@ -19,4 +19,3 @@ export {
 } from './headers.js';
 export { readRateLimitConfiguration, type RateLimitConfiguration } from './rate-limit.js';
 export { redactSensitiveData, redactSensitiveText } from './redaction.js';
-export * from './credentials/index.js';
