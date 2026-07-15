@@ -1,0 +1,46 @@
+{
+  "rule_version": "baijiahao-render-rules@1.0.0",
+  "content": {
+    "platform_code": "baijiahao",
+    "title": "企业GEO内容系统如何建立可信生产闭环",
+    "summary": "说明企业如何用可信资料、版本规则和质量门禁建设可追溯的GEO内容生产流程。",
+    "blocks": [
+      {
+        "block_key": "evidence",
+        "block_type": "paragraph",
+        "text": "企业建设GEO内容系统时，应先管理可信资料和引用关系。资料需要记录来源、适用时间和内容哈希，生成内容中的事实陈述才能回到原始证据。"
+      },
+      {
+        "block_key": "workflow",
+        "block_type": "paragraph",
+        "text": "生产流程应绑定品牌策略、Prompt、模型和平台规则版本。内容经过事实检查与质量门禁后再进入审核，审核快照固定具体内容版本与引用。"
+      },
+      {
+        "block_key": "delivery",
+        "block_type": "list",
+        "text": "先探测平台账号能力\n支持接口时调用授权API\n不支持时生成确定性导出包"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产", "企业AI"],
+    "cta": "从一个可验证的内容项目开始建立生产闭环。",
+    "citation_map": [
+      {
+        "claim_key": "claim-evidence",
+        "claim_text": "可信资料和精确引用是内容生产的基础。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000105"]
+      }
+    ],
+    "platform_meta": {
+      "abstract": "说明企业如何用可信资料、版本规则和质量门禁建设可追溯的GEO内容生产流程。",
+      "tags": ["GEO", "内容生产", "可信AI"],
+      "content_type": "article"
+    }
+  },
+  "citations": [
+    {
+      "citation_id": "10000000-0000-4000-8000-000000000105",
+      "label": "可信内容生产规范",
+      "url": "https://example.com/references/trusted-content"
+    }
+  ]
+}
