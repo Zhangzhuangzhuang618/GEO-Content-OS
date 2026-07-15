@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ClaimReviewRequestSchema,
   REVIEW_API_CONTRACTS,
   REVIEW_OPENAPI_DOCUMENT,
   RequestSignoffRequestSchema,
@@ -28,6 +29,15 @@ const EXPECTED = [
     200,
   ],
   ['GET', '/review-snapshots/{id}', 'reviewer_or_admin', '-', 'ReviewSnapshotDetail', '-', 200],
+  [
+    'POST',
+    '/review-snapshots/{id}/claim',
+    'reviewer_or_admin',
+    'ClaimReviewRequest',
+    'ReviewClaimView',
+    'key+version',
+    200,
+  ],
   [
     'POST',
     '/review-snapshots/{id}/approve',
@@ -59,8 +69,8 @@ const EXPECTED = [
 ] as const;
 
 describe('Review API frozen contract', () => {
-  it('matches all seven frozen endpoints exactly', () => {
-    expect(REVIEW_API_CONTRACTS).toHaveLength(7);
+  it('matches all eight corrected endpoints exactly', () => {
+    expect(REVIEW_API_CONTRACTS).toHaveLength(8);
     expect(
       REVIEW_API_CONTRACTS.map((item) => [
         item.method,
@@ -72,7 +82,7 @@ describe('Review API frozen contract', () => {
         item.successStatus,
       ]),
     ).toEqual(EXPECTED);
-    expect(new Set(REVIEW_API_CONTRACTS.map((item) => `${item.method} ${item.path}`)).size).toBe(7);
+    expect(new Set(REVIEW_API_CONTRACTS.map((item) => `${item.method} ${item.path}`)).size).toBe(8);
   });
 
   it('projects all operations into OpenAPI 3.1 with frozen guards', () => {
@@ -80,7 +90,7 @@ describe('Review API frozen contract', () => {
     const operations = Object.values(REVIEW_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(7);
+    expect(operations).toHaveLength(8);
     for (const contract of REVIEW_API_CONTRACTS) {
       const operation = REVIEW_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -99,6 +109,17 @@ describe('Review API frozen contract', () => {
       }).success,
     ).toBe(false);
     expect(ReviewDecisionRequestSchema.safeParse({ variant_ids: [] }).success).toBe(false);
+    expect(
+      ClaimReviewRequestSchema.safeParse({ due_at: new Date().toISOString(), risk_level: 'high' })
+        .success,
+    ).toBe(true);
+    expect(
+      ClaimReviewRequestSchema.safeParse({
+        due_at: new Date().toISOString(),
+        risk_level: 'high',
+        tenant_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
     expect(
       RequestSignoffRequestSchema.safeParse({
         required_role: 'reviewer',

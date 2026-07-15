@@ -3,8 +3,10 @@ import type { z } from 'zod';
 
 import { buildReviewOpenApiDocument } from './openapi.js';
 import {
+  ClaimReviewRequestSchema,
   RequestSignoffRequestSchema,
   ReviewActionPageSchema,
+  ReviewClaimResponseSchema,
   ReviewDecisionRequestSchema,
   ReviewInboxQuerySchema,
   ReviewRequirementResponseSchema,
@@ -79,6 +81,19 @@ const contracts = [
     '-',
     'ReviewSnapshotDetail',
     ReviewSnapshotDetailResponseSchema,
+    200,
+  ),
+  contract(
+    'review.claim',
+    'POST',
+    '/review-snapshots/{id}/claim',
+    'reviewer_or_admin',
+    'review.decide',
+    'key+version',
+    ClaimReviewRequestSchema,
+    'ClaimReviewRequest',
+    'ReviewClaimView',
+    ReviewClaimResponseSchema,
     200,
   ),
   contract(
