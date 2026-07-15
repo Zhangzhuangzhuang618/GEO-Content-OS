@@ -1,0 +1,11 @@
+{
+  "bundle_sha256": "3c44017a94d9a571ed7061b1e0e6910ac6e8fee4c91de9effe4cf7be434eecc1",
+  "file_paths": [
+    "30000000-0000-4000-8000-000000000116/script.json",
+    "30000000-0000-4000-8000-000000000116/script.txt",
+    "30000000-0000-4000-8000-000000000116/subtitles.srt",
+    "30000000-0000-4000-8000-000000000116/metadata.json",
+    "30000000-0000-4000-8000-000000000116/manifest.json"
+  ],
+  "schema_version": "douyin-export@1"
+}

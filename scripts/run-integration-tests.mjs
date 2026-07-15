@@ -14,6 +14,7 @@ if (
     'zhihu-delivery',
     'xiaohongshu-delivery',
     'wechat_mp-delivery',
+    'douyin-delivery',
   ].includes(selectors[0])
 ) {
   run(['--filter', '@geo-content-os/adapter-platforms', 'test:integration']);

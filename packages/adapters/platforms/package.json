@@ -56,13 +56,17 @@
     "./douyin/render": {
       "types": "./dist/douyin/render/src/index.d.ts",
       "import": "./dist/douyin/render/src/index.js"
+    },
+    "./douyin/delivery": {
+      "types": "./dist/douyin/delivery/src/index.d.ts",
+      "import": "./dist/douyin/delivery/src/index.js"
     }
   },
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
     "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render zhihu/render xiaohongshu/render wechat_mp/render douyin/render",
-    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery toutiao/delivery zhihu/delivery xiaohongshu/delivery wechat_mp/delivery",
+    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery toutiao/delivery zhihu/delivery xiaohongshu/delivery wechat_mp/delivery douyin/delivery",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
