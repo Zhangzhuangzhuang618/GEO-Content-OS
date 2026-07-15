@@ -1,0 +1,9 @@
+{
+  "citation_link_count": 1,
+  "content_type": "article",
+  "payload_sha256": "4ae957158c931e9e2bf6f76a9a232e7637cc309c1a043624d9440b5fe5339ef7",
+  "platform_code": "toutiao",
+  "rule_version": "toutiao-render-rules@1.0.0",
+  "schema_version": "toutiao-payload@1",
+  "tag_count": 3
+}
