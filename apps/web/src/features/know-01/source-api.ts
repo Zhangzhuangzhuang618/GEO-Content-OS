@@ -11,10 +11,12 @@ const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? ''
 
 export interface SourceFilters {
   cursor?: string;
+  projectId?: string;
   search?: string;
   sourceType?: SourceType;
   status?: SourceStatus;
   trustLevel?: TrustLevel;
+  workspaceId?: string;
 }
 
 export async function listSources(
@@ -22,11 +24,14 @@ export async function listSources(
   signal?: AbortSignal,
 ): Promise<{ items: SourceListItem[]; nextCursor: string | null }> {
   const query = new URLSearchParams({ limit: '20' });
+  if (!filters.projectId || !filters.workspaceId) throw new SourceRequestError(422);
   if (filters.cursor) query.set('cursor', filters.cursor);
+  query.set('project_id', filters.projectId);
   if (filters.search) query.set('search', filters.search);
   if (filters.sourceType) query.set('source_type', filters.sourceType);
   if (filters.status) query.set('status', filters.status);
   if (filters.trustLevel) query.set('trust_level', filters.trustLevel);
+  query.set('workspace_id', filters.workspaceId);
   const response = await fetch(`${API_ORIGIN}/api/v1/sources?${query}`, {
     credentials: 'include',
     method: 'GET',
@@ -37,11 +42,19 @@ export async function listSources(
   if (!parsed.success) throw new SourceRequestError(502);
   const items = await Promise.all(
     parsed.data.data.map(async (source) => {
-      const detailResponse = await fetch(`${API_ORIGIN}/api/v1/sources/${source.id}`, {
-        credentials: 'include',
-        method: 'GET',
-        ...(signal ? { signal } : {}),
+      if (!source.project_id) return { ...source, parsed_at: null };
+      const detailQuery = new URLSearchParams({
+        project_id: source.project_id,
+        workspace_id: source.workspace_id,
       });
+      const detailResponse = await fetch(
+        `${API_ORIGIN}/api/v1/sources/${source.id}?${detailQuery}`,
+        {
+          credentials: 'include',
+          method: 'GET',
+          ...(signal ? { signal } : {}),
+        },
+      );
       if (!detailResponse.ok) throw new SourceRequestError(detailResponse.status);
       const detail = SourceDetailSchema.safeParse(await detailResponse.json());
       if (!detail.success) throw new SourceRequestError(502);

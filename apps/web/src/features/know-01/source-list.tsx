@@ -33,12 +33,17 @@ export function SourceList() {
     async (nextFilters: SourceFilters, append = false, signal?: AbortSignal) => {
       setState('loading');
       try {
-        const [tenants, page] = await Promise.all([
-          listAvailableTenants(signal),
-          listSources(nextFilters, signal),
-        ]);
+        const tenants = await listAvailableTenants(signal);
         if (signal?.aborted) return;
         setRole(tenants.find((tenant) => tenant.is_active)?.role_code ?? null);
+        if (!nextFilters.workspaceId || !nextFilters.projectId) {
+          setItems([]);
+          setNextCursor(null);
+          setState('ready');
+          return;
+        }
+        const page = await listSources(nextFilters, signal);
+        if (signal?.aborted) return;
         setItems((current) => (append ? [...current, ...page.items] : page.items));
         setNextCursor(page.nextCursor);
         setState('ready');
@@ -66,9 +71,11 @@ export function SourceList() {
     setFilters(next);
     const query = new URLSearchParams();
     if (next.search) query.set('search', next.search);
+    if (next.projectId) query.set('project_id', next.projectId);
     if (next.sourceType) query.set('source_type', next.sourceType);
     if (next.status) query.set('status', next.status);
     if (next.trustLevel) query.set('trust_level', next.trustLevel);
+    if (next.workspaceId) query.set('workspace_id', next.workspaceId);
     window.history.replaceState(null, '', query.size ? `/know-01?${query}` : '/know-01');
   }
 
@@ -112,7 +119,25 @@ export function SourceList() {
   return (
     <section className="mt-8">
       <div className="rounded-2xl border border-line bg-white p-4 shadow-panel">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="text-sm text-ink-700">
+            工作区 UUID
+            <input
+              className={controlClass}
+              defaultValue={filters.workspaceId}
+              onBlur={(event) => updateFilter('workspaceId', event.currentTarget.value.trim())}
+              placeholder="必填"
+            />
+          </label>
+          <label className="text-sm text-ink-700">
+            项目 UUID
+            <input
+              className={controlClass}
+              defaultValue={filters.projectId}
+              onBlur={(event) => updateFilter('projectId', event.currentTarget.value.trim())}
+              placeholder="必填"
+            />
+          </label>
           <label className="text-sm text-ink-700">
             搜索
             <input
@@ -170,6 +195,8 @@ export function SourceList() {
 
       {state === 'loading' && items.length === 0 ? (
         <ListSkeleton />
+      ) : !filters.workspaceId || !filters.projectId ? (
+        <StatePanel title="请选择资料范围" text="填写工作区和项目 UUID 后加载资料。" />
       ) : items.length === 0 ? (
         <StatePanel title="暂无资料" text="当前筛选条件下没有可见资料。" />
       ) : (
@@ -225,12 +252,16 @@ function SourceRow({
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <a
-              className="font-semibold text-ink-950 hover:text-brand-700"
-              href={`/know-03?id=${source.id}`}
-            >
-              {source.title}
-            </a>
+            {source.project_id ? (
+              <a
+                className="font-semibold text-ink-950 hover:text-brand-700"
+                href={`/know-03?id=${source.id}&workspace_id=${source.workspace_id}&project_id=${source.project_id}`}
+              >
+                {source.title}
+              </a>
+            ) : (
+              <span className="font-semibold text-ink-950">{source.title}</span>
+            )}
             <StatusBadge status={source.status} />
             <span className="text-xs text-ink-500">{source.source_type.toUpperCase()}</span>
           </div>
@@ -354,10 +385,12 @@ function readFilters(): SourceFilters {
   if (typeof window === 'undefined') return {};
   const query = new URLSearchParams(window.location.search);
   return {
+    ...(query.get('project_id') ? { projectId: query.get('project_id')! } : {}),
     ...(query.get('search') ? { search: query.get('search')! } : {}),
     ...(query.get('source_type') ? { sourceType: query.get('source_type') as SourceType } : {}),
     ...(query.get('status') ? { status: query.get('status') as SourceStatus } : {}),
     ...(query.get('trust_level') ? { trustLevel: query.get('trust_level') as TrustLevel } : {}),
+    ...(query.get('workspace_id') ? { workspaceId: query.get('workspace_id')! } : {}),
   };
 }
 function readCookie(name: string) {
