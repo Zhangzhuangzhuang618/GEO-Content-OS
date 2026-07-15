@@ -482,9 +482,15 @@ importers:
 
   workers/analytics:
     dependencies:
+      '@geo-content-os/adapter-storage':
+        specifier: workspace:*
+        version: link:../../packages/adapters/storage
       '@geo-content-os/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
     devDependencies:
       vitest:
         specifier: 4.1.10

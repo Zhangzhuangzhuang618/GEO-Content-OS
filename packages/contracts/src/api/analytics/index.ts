@@ -1,0 +1,206 @@
+import type { PermissionCode, PolicyCode } from '../../permissions/index.js';
+import type { z } from 'zod';
+
+import { buildAnalyticsOpenApiDocument } from './openapi.js';
+import {
+  AnalyticsExportJobResponseSchema,
+  AnalyticsExportQuerySchema,
+  AnalyticsQuerySchema,
+  ContentAnalyticsQuerySchema,
+  ContentMetricsResponseSchema,
+  CostBreakdownResponseSchema,
+  CostQuerySchema,
+  ImportJobParamsSchema,
+  ImportJobResponseSchema,
+  ManualMetricsRequestSchema,
+  ManualMetricsResponseSchema,
+  OverviewMetricsResponseSchema,
+  PlatformMetricsResponseSchema,
+  UsageSummaryResponseSchema,
+  VisibilityObservationRequestSchema,
+  VisibilityObservationResponseSchema,
+} from './schemas.js';
+
+export * from './openapi.js';
+export * from './schemas.js';
+
+export interface AnalyticsApiContract {
+  readonly bodySchema: z.ZodType | null;
+  readonly idempotency: '-' | 'key+body_hash' | 'key+content_hash' | 'key+query_hash';
+  readonly key: string;
+  readonly method: 'GET' | 'POST';
+  readonly paramsSchema: z.ZodType | null;
+  readonly path: string;
+  readonly permission: Extract<PermissionCode, 'analytics.read' | 'cost.read'>;
+  readonly policy: Extract<PolicyCode, 'analyst_or_admin' | 'owner_or_analyst_or_admin'>;
+  readonly querySchema: z.ZodType | null;
+  readonly requestContentType: 'application/json' | 'multipart/form-data';
+  readonly responseName: string;
+  readonly responseSchema: z.ZodType;
+  readonly successStatus: 200 | 201;
+}
+
+const contracts = [
+  contract(
+    'analytics.overview',
+    'GET',
+    '/analytics/overview',
+    'analyst_or_admin',
+    'analytics.read',
+    '-',
+    null,
+    AnalyticsQuerySchema,
+    OverviewMetricsResponseSchema,
+    'OverviewMetrics',
+  ),
+  contract(
+    'analytics.platforms',
+    'GET',
+    '/analytics/platforms',
+    'analyst_or_admin',
+    'analytics.read',
+    '-',
+    null,
+    AnalyticsQuerySchema,
+    PlatformMetricsResponseSchema,
+    'PlatformMetrics[]',
+  ),
+  contract(
+    'analytics.contents',
+    'GET',
+    '/analytics/contents',
+    'analyst_or_admin',
+    'analytics.read',
+    '-',
+    null,
+    ContentAnalyticsQuerySchema,
+    ContentMetricsResponseSchema,
+    'ContentMetricsPage',
+  ),
+  contract(
+    'analytics.costs',
+    'GET',
+    '/analytics/costs',
+    'owner_or_analyst_or_admin',
+    'cost.read',
+    '-',
+    null,
+    CostQuerySchema,
+    CostBreakdownResponseSchema,
+    'CostBreakdown',
+  ),
+  contract(
+    'metrics.import',
+    'POST',
+    '/metrics/import',
+    'analyst_or_admin',
+    'analytics.read',
+    'key+content_hash',
+    null,
+    null,
+    ImportJobResponseSchema,
+    'ImportJobView',
+    201,
+    'multipart/form-data',
+  ),
+  contract(
+    'metrics.import-job',
+    'GET',
+    '/metrics/import-jobs/{id}',
+    'analyst_or_admin',
+    'analytics.read',
+    '-',
+    null,
+    null,
+    ImportJobResponseSchema,
+    'ImportJobView',
+    200,
+    'application/json',
+    ImportJobParamsSchema,
+  ),
+  contract(
+    'metrics.manual',
+    'POST',
+    '/metrics/manual',
+    'analyst_or_admin',
+    'analytics.read',
+    'key+body_hash',
+    ManualMetricsRequestSchema,
+    null,
+    ManualMetricsResponseSchema,
+    'MetricRecord[]',
+    201,
+  ),
+  contract(
+    'visibility.create',
+    'POST',
+    '/visibility-observations',
+    'analyst_or_admin',
+    'analytics.read',
+    'key+body_hash',
+    VisibilityObservationRequestSchema,
+    null,
+    VisibilityObservationResponseSchema,
+    'VisibilityObservationView',
+    201,
+  ),
+  contract(
+    'usage.summary',
+    'GET',
+    '/usage/summary',
+    'owner_or_analyst_or_admin',
+    'cost.read',
+    '-',
+    null,
+    CostQuerySchema,
+    UsageSummaryResponseSchema,
+    'UsageSummary',
+  ),
+  contract(
+    'analytics.export',
+    'GET',
+    '/analytics/export',
+    'analyst_or_admin',
+    'analytics.read',
+    'key+query_hash',
+    null,
+    AnalyticsExportQuerySchema,
+    AnalyticsExportJobResponseSchema,
+    'AnalyticsExportJobView',
+  ),
+] as const satisfies readonly AnalyticsApiContract[];
+
+export const ANALYTICS_API_CONTRACTS: readonly AnalyticsApiContract[] = Object.freeze(contracts);
+export const ANALYTICS_OPENAPI_DOCUMENT = buildAnalyticsOpenApiDocument(contracts);
+
+function contract(
+  key: string,
+  method: AnalyticsApiContract['method'],
+  path: string,
+  policy: AnalyticsApiContract['policy'],
+  permission: AnalyticsApiContract['permission'],
+  idempotency: AnalyticsApiContract['idempotency'],
+  bodySchema: z.ZodType | null,
+  querySchema: z.ZodType | null,
+  responseSchema: z.ZodType,
+  responseName: string,
+  successStatus: AnalyticsApiContract['successStatus'] = 200,
+  requestContentType: AnalyticsApiContract['requestContentType'] = 'application/json',
+  paramsSchema: z.ZodType | null = null,
+): AnalyticsApiContract {
+  return {
+    bodySchema,
+    idempotency,
+    key,
+    method,
+    paramsSchema,
+    path,
+    permission,
+    policy,
+    querySchema,
+    requestContentType,
+    responseName,
+    responseSchema,
+    successStatus,
+  };
+}

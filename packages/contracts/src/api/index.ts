@@ -1,4 +1,5 @@
 export * from './common.js';
+export * from './analytics/index.js';
 export * from './content/index.js';
 export * from './brand-profiles.js';
 export * from './keywords.js';

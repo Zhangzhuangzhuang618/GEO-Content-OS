@@ -34,6 +34,10 @@ export interface AnalyticsQueryOptions {
   readonly methodologyVersion: string;
 }
 
+interface AnalyticsQueryDatabaseProvider {
+  readonly client: DatabaseClient;
+}
+
 interface MetricRow {
   readonly aggregation: MetricDefinition['aggregation'];
   readonly dataUpdatedAt: Date | string | null;
@@ -71,7 +75,7 @@ export class AnalyticsQueryService {
   private readonly definitions: readonly Readonly<MetricDefinition>[];
 
   public constructor(
-    private readonly client: DatabaseClient,
+    private readonly client: DatabaseClient | AnalyticsQueryDatabaseProvider,
     registry: MetricRegistry,
     private readonly cache: AnalyticsQueryCache | undefined,
     private readonly options: AnalyticsQueryOptions,
@@ -213,7 +217,7 @@ export class AnalyticsQueryService {
     input: unknown,
     load: (transaction: TransactionSql) => Promise<T>,
   ): Promise<T> {
-    const accessFingerprint = (await this.client.begin((transaction) =>
+    const accessFingerprint = (await resolveClient(this.client).begin((transaction) =>
       assertAnalyticsAccess(transaction, scope),
     )) as string;
     const key = `geo:analytics:${stableHash({
@@ -231,7 +235,7 @@ export class AnalyticsQueryService {
         // Cache is an optional derived-data accelerator; PostgreSQL remains authoritative.
       }
     }
-    const result = (await this.client.begin(async (transaction) => {
+    const result = (await resolveClient(this.client).begin(async (transaction) => {
       await assertAnalyticsAccess(transaction, scope);
       return load(transaction);
     })) as T;
@@ -691,4 +695,8 @@ function validDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function resolveClient(database: DatabaseClient | AnalyticsQueryDatabaseProvider): DatabaseClient {
+  return typeof database === 'function' ? database : database.client;
 }

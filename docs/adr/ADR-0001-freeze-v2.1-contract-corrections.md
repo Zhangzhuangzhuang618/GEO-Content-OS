@@ -67,6 +67,9 @@
 - T124 增加 publishing jobs contracts 与 `publish_jobs.version` 迁移范围。
 - T126 继续负责发布聚合契约、OpenAPI 和 mock E2E。
 - T132 增加 `analytics_export_jobs` 迁移、worker/outbox 接口及 Analytics contracts 范围。
+- T132 的异步导出使用 `analytics.export.requested.v1` 事件和
+  `analytics_export_job` 聚合类型，统一路由到 `geo-analytics`；该事件随
+  Analytics contracts、迁移和 Worker 一并冻结。
 - T142 增加纠正迁移、完整演示种子和迁移验证脚本范围。
 - 其余任务的目标和验收命令保持不变。
 

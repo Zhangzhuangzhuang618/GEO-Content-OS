@@ -98,9 +98,13 @@ interface TrendRow {
   readonly queryText: string;
 }
 
+interface VisibilityDatabaseProvider {
+  readonly client: DatabaseClient;
+}
+
 export class VisibilityService {
   public constructor(
-    private readonly client: DatabaseClient,
+    private readonly client: DatabaseClient | VisibilityDatabaseProvider,
     private readonly storage: ObjectStorageAdapter,
   ) {}
 
@@ -119,7 +123,7 @@ export class VisibilityService {
     let objectStored = false;
 
     try {
-      return await this.client.begin(async (transaction) => {
+      return await resolveClient(this.client).begin(async (transaction) => {
         await assertVisibilityAccess(transaction, scope);
         if (screenshot && assetId && objectKey) {
           const contentHash = validateScreenshot(screenshot);
@@ -172,7 +176,7 @@ export class VisibilityService {
     if (rows.length === 0 || rows.length > 1_000) throw new VisibilityValidationError();
     const normalized = rows.map(normalizeObservation);
     try {
-      return await this.client.begin(async (transaction) => {
+      return await resolveClient(this.client).begin(async (transaction) => {
         await assertVisibilityAccess(transaction, scope);
         const created: VisibilityObservationView[] = [];
         for (const row of normalized) {
@@ -201,7 +205,7 @@ export class VisibilityService {
     ) {
       throw new VisibilityValidationError();
     }
-    return this.client.begin(async (transaction) => {
+    return resolveClient(this.client).begin(async (transaction) => {
       await assertVisibilityAccess(transaction, scope);
       const rows = await transaction<TrendRow[]>`
         SELECT
@@ -408,4 +412,8 @@ function isEvidenceConstraint(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false;
   const code = (error as { code?: unknown }).code;
   return code === '23503' || code === 'P0001';
+}
+
+function resolveClient(database: DatabaseClient | VisibilityDatabaseProvider): DatabaseClient {
+  return typeof database === 'function' ? database : database.client;
 }
