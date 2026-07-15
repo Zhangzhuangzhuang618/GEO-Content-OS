@@ -95,6 +95,7 @@ export class SubmitReviewService {
   public async submit(
     scope: SubmitReviewScope,
     request: SubmitReviewRequest,
+    providedTransaction?: TransactionSql,
   ): Promise<SubmitReviewResult> {
     const variantIds = validateRequest(scope, request);
     const reviewScope: ReviewScope = {
@@ -103,7 +104,7 @@ export class SubmitReviewService {
       userId: scope.userId,
       workspaceId: scope.workspaceId,
     };
-    return this.repository.withTransaction(async (transaction) => {
+    const work = async (transaction: TransactionSql): Promise<SubmitReviewResult> => {
       const packageRow = await lockPackage(transaction, scope, request.packageId);
       if (!packageRow) notFound();
       if (packageRow.status === 'archived' || packageRow.status === 'cancelled') {
@@ -191,7 +192,8 @@ export class SubmitReviewService {
       if (!snapshot)
         throw new Error('Submitted review snapshot is not readable in its transaction');
       return Object.freeze({ replayed: false, snapshot });
-    });
+    };
+    return providedTransaction ? work(providedTransaction) : this.repository.withTransaction(work);
   }
 }
 

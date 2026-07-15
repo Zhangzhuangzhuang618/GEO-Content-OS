@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { PlatformCode } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
 import type { DatabaseClient } from '../../../database/index.js';
@@ -79,6 +80,7 @@ export interface ReviewSnapshotVariantView {
   readonly contentVersionId: string;
   readonly createdAt: Date;
   readonly id: string;
+  readonly platformCode: PlatformCode;
   readonly platformRuleVersionId: string;
   readonly qualityReportId: string;
   readonly snapshotId: string;
@@ -274,9 +276,13 @@ export class ReviewRepository {
         snapshot_variant.content_hash AS "contentHash",
         snapshot_variant.platform_rule_version_id AS "platformRuleVersionId",
         snapshot_variant.quality_report_id AS "qualityReportId",
+        variant.platform_code AS "platformCode",
         snapshot_variant.status,
         snapshot_variant.created_at AS "createdAt"
       FROM review_snapshot_variants AS snapshot_variant
+      JOIN content_variants AS variant
+        ON variant.id = snapshot_variant.variant_id
+        AND variant.tenant_id = snapshot_variant.tenant_id
       WHERE snapshot_variant.tenant_id = ${scope.tenantId}::uuid
         AND snapshot_variant.snapshot_id = ${snapshotId}::uuid
       ORDER BY snapshot_variant.created_at, snapshot_variant.id

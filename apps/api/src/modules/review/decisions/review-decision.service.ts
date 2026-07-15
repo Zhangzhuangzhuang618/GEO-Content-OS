@@ -63,25 +63,28 @@ export class ReviewDecisionService {
     scope: ReviewDecisionScope,
     snapshotId: string,
     request: ReviewDecisionRequest,
+    transaction?: TransactionSql,
   ): Promise<ReviewDecisionResult> {
-    return this.decide(scope, snapshotId, request, 'approve');
+    return this.decide(scope, snapshotId, request, 'approve', transaction);
   }
 
   public reject(
     scope: ReviewDecisionScope,
     snapshotId: string,
     request: ReviewDecisionRequest,
+    transaction?: TransactionSql,
   ): Promise<ReviewDecisionResult> {
-    return this.decide(scope, snapshotId, request, 'reject');
+    return this.decide(scope, snapshotId, request, 'reject', transaction);
   }
 
   public async requestSignoff(
     scope: ReviewDecisionScope,
     snapshotId: string,
     request: RequestReviewSignoffRequest,
+    providedTransaction?: TransactionSql,
   ): Promise<ReviewDecisionResult> {
     const variantIds = validateSignoff(scope, snapshotId, request);
-    return this.repository.withTransaction(async (transaction) => {
+    const work = async (transaction: TransactionSql): Promise<ReviewDecisionResult> => {
       const snapshot = await loadSnapshot(transaction, scope, snapshotId);
       const actorRole = await requireReviewRole(transaction, scope);
       assertActiveSnapshot(snapshot, request.expectedVersion);
@@ -129,7 +132,8 @@ export class ReviewDecisionService {
         tenantId: scope.tenantId,
       });
       return { snapshot: await readSnapshot(this.repository, transaction, scope, snapshot.id) };
-    });
+    };
+    return providedTransaction ? work(providedTransaction) : this.repository.withTransaction(work);
   }
 
   private async decide(
@@ -137,9 +141,10 @@ export class ReviewDecisionService {
     snapshotId: string,
     request: ReviewDecisionRequest,
     decision: DecisionKind,
+    providedTransaction?: TransactionSql,
   ): Promise<ReviewDecisionResult> {
     const variantIds = validateDecision(scope, snapshotId, request, decision);
-    return this.repository.withTransaction(async (transaction) => {
+    const work = async (transaction: TransactionSql): Promise<ReviewDecisionResult> => {
       const snapshot = await loadSnapshot(transaction, scope, snapshotId);
       const actorRole = await requireReviewRole(transaction, scope);
       assertActiveSnapshot(snapshot, request.expectedVersion);
@@ -186,7 +191,8 @@ export class ReviewDecisionService {
         tenantId: scope.tenantId,
       });
       return { snapshot: await readSnapshot(this.repository, transaction, scope, snapshot.id) };
-    });
+    };
+    return providedTransaction ? work(providedTransaction) : this.repository.withTransaction(work);
   }
 }
 

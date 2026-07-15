@@ -19,7 +19,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "test": "vitest run --config vitest.config.ts",
-    "test:contract": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/modules/workspace/strategy.contract.test.ts src/modules/knowledge/knowledge.contract.test.ts src/modules/content/content.contract.test.ts",
+    "test:contract": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/modules/workspace/strategy.contract.test.ts src/modules/knowledge/knowledge.contract.test.ts src/modules/content/content.contract.test.ts src/modules/review/review.contract.test.ts",
     "test:database": "vitest run src/database",
     "test:integration": "pnpm build:test-dependencies && vitest run --config vitest.integration.config.ts",
     "test:model-router": "pnpm build:runtime-dependencies && vitest run --config vitest.config.ts src/modules/ai/model-routing",
