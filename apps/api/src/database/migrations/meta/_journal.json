@@ -148,6 +148,13 @@
       "when": 1784124000000,
       "tag": "0020_quality_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784127600000,
+      "tag": "0021_review_schema",
+      "breakpoints": true
     }
   ]
 }
