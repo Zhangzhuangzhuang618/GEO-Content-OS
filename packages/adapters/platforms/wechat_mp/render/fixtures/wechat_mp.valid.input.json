@@ -1,0 +1,57 @@
+{
+  "rule_version": "wechat-mp-render-rules@1.0.0",
+  "content": {
+    "platform_code": "wechat_mp",
+    "title": "企业GEO内容如何建立可核验的证据链",
+    "summary": "说明企业GEO内容从资料到发布的证据链。",
+    "blocks": [
+      {
+        "block_key": "lead",
+        "block_type": "paragraph",
+        "text": "企业建设GEO内容生产系统，应先固定资料、事实与引用，再进入生成、审核和发布。"
+      },
+      {
+        "block_key": "workflow-heading",
+        "block_type": "heading",
+        "text": "四步建立证据链"
+      },
+      {
+        "block_key": "workflow",
+        "block_type": "list",
+        "text": "- 记录资料版本和适用时间\n- 让事实指向具体来源\n- 审核时固定内容与引用\n- 发布前校验载荷哈希"
+      },
+      {
+        "block_key": "boundary",
+        "block_type": "paragraph",
+        "text": "存在来源链接不等于事实始终有效，过期资料仍需重新核验。"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产", "证据链"],
+    "cta": "从一条可核验的事实开始建立内容证据链。",
+    "citation_map": [
+      {
+        "claim_key": "claim-review",
+        "claim_text": "审核时应固定内容版本与引用。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000113"]
+      }
+    ],
+    "platform_meta": {
+      "digest": "用四个步骤建立可追溯、可审核的企业GEO内容证据链。",
+      "author": "GEO内容团队",
+      "cover_asset_id": "20000000-0000-4000-8000-000000000113"
+    }
+  },
+  "internal_links": [
+    {
+      "label": "继续阅读：GEO内容审核方法",
+      "url": "https://example.com/articles/geo-content-review"
+    }
+  ],
+  "citations": [
+    {
+      "citation_id": "10000000-0000-4000-8000-000000000113",
+      "label": "可信内容生产规范",
+      "url": "https://example.com/references/trusted-content"
+    }
+  ]
+}

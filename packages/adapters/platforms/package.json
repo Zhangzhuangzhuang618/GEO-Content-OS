@@ -44,12 +44,16 @@
     "./xiaohongshu/delivery": {
       "types": "./dist/xiaohongshu/delivery/src/index.d.ts",
       "import": "./dist/xiaohongshu/delivery/src/index.js"
+    },
+    "./wechat_mp/render": {
+      "types": "./dist/wechat_mp/render/src/index.d.ts",
+      "import": "./dist/wechat_mp/render/src/index.js"
     }
   },
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
-    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render zhihu/render xiaohongshu/render",
+    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render zhihu/render xiaohongshu/render wechat_mp/render",
     "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery toutiao/delivery zhihu/delivery xiaohongshu/delivery",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
   },
