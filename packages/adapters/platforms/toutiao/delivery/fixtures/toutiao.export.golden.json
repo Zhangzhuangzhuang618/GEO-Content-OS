@@ -1,0 +1,10 @@
+{
+  "bundle_sha256": "3f4c3db29d5a2d9738a5c6cb17cf70892dcb9add3f0dbc323496465cb32563dd",
+  "file_paths": [
+    "30000000-0000-4000-8000-000000000108/article.html",
+    "30000000-0000-4000-8000-000000000108/article.txt",
+    "30000000-0000-4000-8000-000000000108/metadata.json",
+    "30000000-0000-4000-8000-000000000108/manifest.json"
+  ],
+  "schema_version": "toutiao-export@1"
+}
