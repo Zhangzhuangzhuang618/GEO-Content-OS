@@ -1,7 +1,4 @@
-import type {
-  ContentWriterContent,
-  ContentWriterOutput,
-} from '../../../../contracts/src/skills/content-writer/index.js';
+import type { ContentWriterContent, ContentWriterOutput } from '@geo-content-os/contracts/skills';
 
 const BRIEF_ID = '10000000-0000-4000-8000-000000000061';
 const PROFILE_ID = '20000000-0000-4000-8000-000000000061';

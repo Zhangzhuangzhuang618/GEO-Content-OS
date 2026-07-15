@@ -1,4 +1,4 @@
-import type { ContentPlatformCode } from '../../../../contracts/src/skills/content-writer/index.js';
+import type { ContentPlatformCode } from '@geo-content-os/contracts/skills';
 
 export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.0.0' as const;
 

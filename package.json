@@ -18,6 +18,7 @@
     "db:seed:identity": "pnpm --filter @geo-content-os/api db:seed:identity",
     "eval:rag": "pnpm --filter @geo-content-os/eval-rag eval",
     "eval:material-parser": "pnpm --filter @geo-content-os/eval-material-parser eval",
+    "eval:content-writer": "pnpm --filter @geo-content-os/eval-content-writer eval",
     "db:test": "pnpm --filter @geo-content-os/api test:database",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
@@ -28,7 +29,7 @@
     "test:e2e": "pnpm --filter @geo-content-os/worker-ai build && pnpm --filter api build && pnpm --filter web build && node scripts/run-e2e.mjs",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "test:security": "pnpm --filter @geo-content-os/adapter-web-fetch test:security && pnpm --filter security test:security && pnpm --filter api test:security && pnpm --filter web test:security",
-    "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter @geo-content-os/worker-knowledge test && pnpm --filter @geo-content-os/worker-ai test && pnpm --filter @geo-content-os/adapter-email test && pnpm --filter @geo-content-os/adapter-storage test && pnpm --filter @geo-content-os/adapter-web-fetch test && pnpm --filter @geo-content-os/adapter-ocr test && pnpm --filter @geo-content-os/adapter-embedding test && pnpm --filter @geo-content-os/adapter-rerank test && pnpm --filter @geo-content-os/adapter-model test && pnpm --filter @geo-content-os/adapter-model-deepseek test && pnpm --filter @geo-content-os/skills test && pnpm --filter @geo-content-os/parsers test && pnpm --filter @geo-content-os/eval-rag test && pnpm --filter @geo-content-os/eval-material-parser test && pnpm --filter api test",
+    "test:unit": "pnpm --filter contracts test && pnpm --filter security test && pnpm --filter observability test && pnpm --filter testkit test && pnpm --filter worker-outbox-relay test && pnpm --filter @geo-content-os/worker-knowledge test && pnpm --filter @geo-content-os/worker-ai test && pnpm --filter @geo-content-os/adapter-email test && pnpm --filter @geo-content-os/adapter-storage test && pnpm --filter @geo-content-os/adapter-web-fetch test && pnpm --filter @geo-content-os/adapter-ocr test && pnpm --filter @geo-content-os/adapter-embedding test && pnpm --filter @geo-content-os/adapter-rerank test && pnpm --filter @geo-content-os/adapter-model test && pnpm --filter @geo-content-os/adapter-model-deepseek test && pnpm --filter @geo-content-os/skills test && pnpm --filter @geo-content-os/parsers test && pnpm --filter @geo-content-os/eval-rag test && pnpm --filter @geo-content-os/eval-material-parser test && pnpm --filter @geo-content-os/eval-content-writer test && pnpm --filter api test",
     "typecheck": "pnpm typecheck:root && pnpm --recursive --if-present typecheck",
     "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false"
   },

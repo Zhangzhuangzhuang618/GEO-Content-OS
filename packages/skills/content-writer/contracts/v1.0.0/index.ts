@@ -4,7 +4,7 @@ import {
   CONTENT_WRITER_OUTPUT_SCHEMA,
   CONTENT_WRITER_SKILL_NAME,
   CONTENT_WRITER_SKILL_VERSION,
-} from '../../../../contracts/src/skills/content-writer/index.js';
+} from '@geo-content-os/contracts/skills';
 import { CONTENT_WRITER_FEW_SHOTS_V1 } from './few-shots.js';
 import {
   CONTENT_WRITER_PLATFORM_PROMPTS_V1,
