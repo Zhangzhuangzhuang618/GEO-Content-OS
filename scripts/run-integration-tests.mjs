@@ -5,7 +5,10 @@ if (selectors.length === 1 && selectors[0] === 'deepseek-adapter') {
   run(['--filter', '@geo-content-os/adapter-model-deepseek', 'test:integration']);
   process.exit(0);
 }
-if (selectors.length === 1 && selectors[0] === 'official_site-delivery') {
+if (
+  selectors.length === 1 &&
+  ['official_site-delivery', 'baijiahao-delivery'].includes(selectors[0])
+) {
   run(['--filter', '@geo-content-os/adapter-platforms', 'test:integration']);
   process.exit(0);
 }
