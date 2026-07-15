@@ -2,5 +2,38 @@
   "name": "@geo-content-os/worker-publisher",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Publisher Worker：平台发布、重试、导出"
+  "type": "module",
+  "description": "GEO Content OS — Publisher Worker：平台发布、重试、导出",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm build:dependencies && tsc --project tsconfig.build.json --pretty false",
+    "build:dependencies": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/security build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-platforms build",
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "pnpm build:dependencies && vitest run --config vitest.integration.config.ts",
+    "typecheck": "pnpm build:dependencies && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-platforms": "workspace:*",
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "@geo-content-os/security": "workspace:*",
+    "bullmq": "5.80.2",
+    "ioredis": "5.10.1",
+    "postgres": "3.4.9",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@geo-content-os/testkit": "workspace:*",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }
