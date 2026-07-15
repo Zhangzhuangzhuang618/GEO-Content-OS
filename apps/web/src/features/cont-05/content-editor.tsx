@@ -377,7 +377,11 @@ function EditorForm({
           const stored = detail.current_content?.blocks.find((item) => item.block_key === block.block_key);
           const locked = detail.locks.some((item) => item.block_key === block.block_key);
           return (
-            <fieldset className="rounded-control border border-line p-4" key={`${block.block_key}-${index}`}>
+            <fieldset
+              className="scroll-mt-6 rounded-control border border-line p-4"
+              id={`block-${block.block_key}`}
+              key={`${block.block_key}-${index}`}
+            >
               <legend className="px-2 text-sm font-medium text-ink-700">内容块 {index + 1}</legend>
               <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
                 <TextField
