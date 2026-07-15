@@ -7,7 +7,9 @@ if (selectors.length === 1 && selectors[0] === 'deepseek-adapter') {
 }
 if (
   selectors.length === 1 &&
-  ['official_site-delivery', 'baijiahao-delivery', 'toutiao-delivery'].includes(selectors[0])
+  ['official_site-delivery', 'baijiahao-delivery', 'toutiao-delivery', 'zhihu-delivery'].includes(
+    selectors[0],
+  )
 ) {
   run(['--filter', '@geo-content-os/adapter-platforms', 'test:integration']);
   process.exit(0);
