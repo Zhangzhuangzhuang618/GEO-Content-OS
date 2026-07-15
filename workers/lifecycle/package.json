@@ -2,5 +2,30 @@
   "name": "@geo-content-os/worker-lifecycle",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Lifecycle Worker：租户导出、归档、清理"
+  "type": "module",
+  "description": "GEO Content OS — Lifecycle Worker：租户导出、归档、清理",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

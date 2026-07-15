@@ -6,6 +6,7 @@ import { IdentityModule } from './modules/identity/identity.module.js';
 import { FactAdjudicationModule, SourceModule } from './modules/knowledge/index.js';
 import { PlatformAccessModule } from './modules/platform-access/platform-access.module.js';
 import { ReviewApiModule } from './modules/review/index.js';
+import { TenantLifecycleModule } from './modules/tenant-lifecycle/index.js';
 import {
   BrandProfileModule,
   KeywordModule,
@@ -27,6 +28,7 @@ import {
     ProjectModule,
     ReviewApiModule,
     SourceModule,
+    TenantLifecycleModule,
     TopicModule,
     WorkspaceModule,
   ],
