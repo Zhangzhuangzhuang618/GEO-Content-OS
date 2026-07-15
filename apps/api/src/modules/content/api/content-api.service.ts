@@ -36,6 +36,7 @@ import {
   contentValidationInvalid,
   contentVersionConflict,
 } from './content-api.errors.js';
+import { canRegenerateContentVariant } from './content-api.guards.js';
 
 type SqlClient = IdentityAuthDatabase['client'] | TransactionSql;
 
@@ -668,10 +669,7 @@ export class ContentApiService {
     const variant = await lockVariant(transaction, tenantId, variantId);
     if (!variant) throw contentNotFound();
     if (variant.version !== expectedVersion) throw contentVersionConflict();
-    if (
-      !variant.isRequired ||
-      !['generated', 'quality_failed', 'quality_passed', 'review_rejected'].includes(variant.status)
-    ) {
+    if (!variant.isRequired || !canRegenerateContentVariant(variant.status)) {
       throw contentStateInvalid('Variant state does not permit regeneration');
     }
     await assertNoActivePackageRuns(transaction, tenantId, variant.packageId);
