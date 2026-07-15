@@ -101,16 +101,25 @@ export class SkillRunner {
     messages: readonly ModelMessage[],
     tools: ReturnType<ToolRegistry['definitions']>,
   ): Promise<ModelResult> {
+    const capabilities = this.adapter.capabilities();
+    if (!capabilities.jsonSchema && !capabilities.jsonMode) {
+      throw new SkillRuntimeError(
+        'SKILL_MODEL_CAPABILITY_UNAVAILABLE',
+        'Skill execution requires JSON Schema or JSON mode',
+      );
+    }
     return this.adapter.generate({
       maxOutputTokens: input.maxOutputTokens,
       messages,
       requestId: input.context.requestId,
-      responseFormat: {
-        name: `${input.context.skillName.replaceAll('-', '_')}_output`,
-        schema: input.outputSchema,
-        strict: true,
-        type: 'json_schema',
-      },
+      responseFormat: capabilities.jsonSchema
+        ? {
+            name: `${input.context.skillName.replaceAll('-', '_')}_output`,
+            schema: input.outputSchema,
+            strict: true,
+            type: 'json_schema',
+          }
+        : { type: 'json_object' },
       ...(input.signal ? { signal: input.signal } : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       ...(tools.length > 0 ? { toolChoice: 'auto' as const, tools } : {}),
