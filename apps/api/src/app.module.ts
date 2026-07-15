@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 
-import { BriefModule } from './modules/content/index.js';
+import { BriefModule, ContentApiModule } from './modules/content/index.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
 import { FactAdjudicationModule, SourceModule } from './modules/knowledge/index.js';
@@ -17,6 +17,7 @@ import {
   imports: [
     BrandProfileModule,
     BriefModule,
+    ContentApiModule,
     FactAdjudicationModule,
     HealthModule,
     IdentityModule,
