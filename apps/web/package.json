@@ -8,7 +8,7 @@
     "build": "pnpm --filter @geo-content-os/security build && next build",
     "dev": "next dev",
     "start": "next start",
-    "test:security": "pnpm --filter @geo-content-os/security build && vitest run --config vitest.config.ts src/middleware.test.ts",
+    "test:security": "pnpm --filter @geo-content-os/security build && vitest run --config vitest.config.ts src/middleware.test.ts && vitest run --config vitest.security.config.ts",
     "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {

@@ -24,7 +24,7 @@
     "test:integration": "pnpm build:test-dependencies && vitest run --config vitest.integration.config.ts",
     "test:model-router": "pnpm build:runtime-dependencies && vitest run --config vitest.config.ts src/modules/ai/model-routing",
     "test:rerank": "pnpm build:runtime-dependencies && vitest run --config vitest.config.ts src/modules/knowledge/search/citation-search.service.test.ts src/modules/knowledge/search/search-policy.test.ts",
-    "test:security": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/common/security && vitest run --config vitest.integration.config.ts test/integration/security-rate-limit.integration.test.ts",
+    "test:security": "pnpm build:test-dependencies && vitest run --config vitest.config.ts src/common/security && vitest run --config vitest.integration.config.ts test/integration/security-rate-limit.integration.test.ts && vitest run --config vitest.security.config.ts",
     "test:watch": "vitest",
     "typecheck": "pnpm build:test-dependencies && tsc --project tsconfig.json --noEmit --pretty false && tsc --project tsconfig.test.json --noEmit --pretty false"
   },
