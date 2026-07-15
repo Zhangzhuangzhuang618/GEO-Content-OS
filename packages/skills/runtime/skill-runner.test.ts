@@ -209,6 +209,9 @@ describe('SkillRunner', () => {
 
     expect(execute).toHaveBeenCalledOnce();
     expect(result).toMatchObject({ schemaRepairAttempts: 0, toolCallCount: 1 });
+    expect(result.toolResults).toEqual([
+      { name: 'search_knowledge', output: { hits: ['chunk-1'] } },
+    ]);
     expect(result.usages).toHaveLength(2);
   });
 
