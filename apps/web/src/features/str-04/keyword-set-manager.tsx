@@ -1,0 +1,532 @@
+'use client';
+
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
+
+import { listAvailableTenants } from '../auth-02/tenant-api';
+import type { TenantRole } from '../auth-02/tenant.schema';
+import {
+  getKeywordSet,
+  listKeywordSets,
+  KeywordSetRequestError,
+  upsertKeywords,
+} from './keyword-set-api';
+import {
+  KeywordInputSchema,
+  type Keyword,
+  type KeywordInput,
+  type KeywordIntent,
+  type KeywordSet,
+  type KeywordSetDetail,
+  type KeywordStatus,
+  type PlatformCode,
+} from './keyword-set.schema';
+
+const MANAGER_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'strategy_editor']);
+const PLATFORM_OPTIONS = [
+  ['official_site', '官网'],
+  ['baijiahao', '百家号'],
+  ['toutiao', '头条号'],
+  ['zhihu', '知乎'],
+  ['xiaohongshu', '小红书'],
+  ['wechat_mp', '微信公众号'],
+  ['douyin', '抖音'],
+] as const satisfies readonly (readonly [PlatformCode, string])[];
+
+interface Filters {
+  readonly keywordSetId?: string;
+  readonly projectId?: string;
+  readonly status?: 'active' | 'archived';
+}
+
+export function KeywordSetManager() {
+  const [filters, setFilters] = useState<Filters>(readFilters);
+  const [sets, setSets] = useState<KeywordSet[]>([]);
+  const [detail, setDetail] = useState<KeywordSetDetail | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
+  const [message, setMessage] = useState<string | null>(null);
+
+  const load = useCallback(async (next: Filters, signal?: AbortSignal) => {
+    setState('loading');
+    try {
+      const tenants = await listAvailableTenants(signal);
+      const role = tenants.find((tenant) => tenant.is_active)?.role_code;
+      if (!role || !MANAGER_ROLES.has(role)) {
+        setState('permission');
+        return;
+      }
+      const items = await listKeywordSets(
+        {
+          ...(next.projectId ? { projectId: next.projectId } : {}),
+          ...(next.status ? { status: next.status } : {}),
+        },
+        signal,
+      );
+      const selectedId = items.some((item) => item.id === next.keywordSetId)
+        ? next.keywordSetId
+        : items[0]?.id;
+      const selected = selectedId ? await getKeywordSet(selectedId, signal) : null;
+      if (signal?.aborted) return;
+      setSets(items);
+      setDetail(selected);
+      setState('ready');
+    } catch (error) {
+      if (signal?.aborted) return;
+      setState(
+        error instanceof KeywordSetRequestError && error.status === 403 ? 'permission' : 'error',
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(filters, controller.signal);
+    return () => controller.abort();
+  }, [filters, load]);
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const projectId = String(data.get('project_id') ?? '').trim();
+    const status = String(data.get('set_status') ?? '');
+    const next: Filters = {
+      ...(projectId ? { projectId } : {}),
+      ...(status === 'active' || status === 'archived' ? { status } : {}),
+    };
+    setFilters(next);
+    writeFilters(next);
+  }
+
+  function selectSet(id: string) {
+    const next = { ...filters, ...(id ? { keywordSetId: id } : {}) };
+    if (!id) delete next.keywordSetId;
+    setFilters(next);
+    writeFilters(next);
+  }
+
+  async function refresh(message?: string) {
+    await load(filters);
+    if (message) setMessage(message);
+  }
+
+  if (state === 'permission')
+    return <StatePanel title="无权管理关键词集" text="当前角色不具备策略编辑权限。" />;
+  if (state === 'error')
+    return <StatePanel title="无法加载关键词集" text="请检查筛选条件或网络后重试。" />;
+
+  return (
+    <section className="mt-8">
+      <form
+        className="rounded-2xl border border-line bg-white p-4 shadow-panel"
+        onSubmit={applyFilters}
+      >
+        <div className="grid gap-4 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+          <TextField
+            {...(filters.projectId ? { defaultValue: filters.projectId } : {})}
+            label="项目 UUID（可选）"
+            name="project_id"
+          />
+          <label className="text-sm text-ink-700">
+            关键词集状态
+            <select className={controlClass} defaultValue={filters.status ?? ''} name="set_status">
+              <option value="">全部</option>
+              <option value="active">启用</option>
+              <option value="archived">已归档</option>
+            </select>
+          </label>
+          <button className={primaryButton} type="submit">
+            应用筛选
+          </button>
+        </div>
+      </form>
+
+      {state === 'loading' && sets.length === 0 ? (
+        <StatePanel title="正在加载关键词集" text="正在读取当前项目范围内的数据。" />
+      ) : sets.length === 0 ? (
+        <StatePanel title="暂无关键词集" text="当前筛选条件下没有可管理的关键词集。" />
+      ) : (
+        <>
+          <label className="mt-5 block rounded-2xl border border-line bg-white p-4 text-sm text-ink-700 shadow-panel">
+            当前关键词集
+            <select
+              aria-label="当前关键词集"
+              className={controlClass}
+              onChange={(event) => selectSet(event.currentTarget.value)}
+              value={detail?.id ?? ''}
+            >
+              {sets.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} · {item.status === 'active' ? '启用' : '已归档'}
+                </option>
+              ))}
+            </select>
+          </label>
+          {detail ? <KeywordWorkspace detail={detail} onRefresh={refresh} /> : null}
+        </>
+      )}
+      <div aria-live="polite" className="mt-4 min-h-6">
+        {message ? <p role="status">{message}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function KeywordWorkspace({
+  detail,
+  onRefresh,
+}: {
+  readonly detail: KeywordSetDetail;
+  readonly onRefresh: (message?: string) => Promise<void>;
+}) {
+  const canWrite = detail.status === 'active';
+  const [editing, setEditing] = useState<Keyword | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
+
+  async function submitBatch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = String(new FormData(event.currentTarget).get('batch') ?? '');
+    let parsed: KeywordInput[];
+    try {
+      parsed = parseBatch(text);
+    } catch (error) {
+      setLocalMessage(error instanceof Error ? error.message : '批量数据格式错误。');
+      return;
+    }
+    await save(parsed, `${parsed.length} 个关键词已导入或更新。`);
+    if (parsed.length > 0) event.currentTarget.reset();
+  }
+
+  async function save(keywords: readonly KeywordInput[], success: string) {
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setLocalMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy(true);
+    setLocalMessage(null);
+    try {
+      await upsertKeywords(detail.id, keywords, csrf);
+      setEditing(null);
+      await onRefresh(success);
+    } catch (error) {
+      setLocalMessage(
+        error instanceof KeywordSetRequestError && error.status === 422
+          ? '提交内容不符合字段约束，请检查 term、意图、优先级和平台范围。'
+          : '保存失败，请稍后重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disable(keyword: Keyword) {
+    await save([toInput(keyword, 'disabled')], `关键词“${keyword.term}”已禁用。`);
+  }
+
+  return (
+    <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_360px]">
+      <div className="min-w-0 overflow-x-auto rounded-2xl border border-line bg-white shadow-panel">
+        {detail.keywords.length === 0 ? (
+          <StatePanel title="暂无关键词" text="使用右侧批量导入添加第一个关键词。" />
+        ) : (
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead className="bg-surface-subtle text-ink-500">
+              <tr>
+                <th className="p-4">term</th>
+                <th className="p-4">intent</th>
+                <th className="p-4">priority</th>
+                <th className="p-4">synonyms</th>
+                <th className="p-4">platform_scope</th>
+                <th className="p-4">status</th>
+                <th className="p-4">动作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.keywords.map((keyword) => (
+                <tr className="border-t border-line" key={keyword.id}>
+                  <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
+                  <td className="p-4">{keyword.intent}</td>
+                  <td className="p-4">{keyword.priority}</td>
+                  <td className="p-4">{keyword.synonyms.join('、') || '—'}</td>
+                  <td className="p-4">{keyword.platform_scope.map(platformLabel).join('、')}</td>
+                  <td className="p-4">{keyword.status === 'active' ? '启用' : '禁用'}</td>
+                  <td className="p-4">
+                    {canWrite ? (
+                      <div className="flex gap-3">
+                        <button
+                          className="text-brand-700"
+                          onClick={() => setEditing(keyword)}
+                          type="button"
+                        >
+                          编辑
+                        </button>
+                        {keyword.status === 'active' ? (
+                          <button
+                            className="text-red-700 disabled:opacity-50"
+                            disabled={busy}
+                            onClick={() => void disable(keyword)}
+                            type="button"
+                          >
+                            禁用
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-ink-500">只读</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      <aside className="space-y-5">
+        <form
+          className="rounded-2xl border border-line bg-white p-5 shadow-panel"
+          onSubmit={submitBatch}
+        >
+          <h2 className="font-semibold text-ink-950">批量导入</h2>
+          <p className="mt-2 text-xs leading-5 text-ink-500">
+            每行使用 Tab 分隔：term、intent、priority、synonyms（| 分隔）、platform_scope（|
+            分隔）、status。
+          </p>
+          <textarea
+            aria-label="批量关键词"
+            className={`${controlClass} min-h-40 font-mono text-xs`}
+            name="batch"
+            placeholder={
+              'GEO 内容\tinformational\t80\t生成式搜索|答案引擎\tofficial_site|zhihu\tactive'
+            }
+            required
+          />
+          <button
+            className={`${primaryButton} mt-4 w-full`}
+            disabled={busy || !canWrite}
+            type="submit"
+          >
+            导入关键词
+          </button>
+        </form>
+        {editing ? (
+          <EditKeywordForm
+            busy={busy}
+            keyword={editing}
+            onCancel={() => setEditing(null)}
+            onInvalid={() => setLocalMessage('请填写 0–100 的优先级并至少选择一个平台。')}
+            onSave={save}
+          />
+        ) : null}
+        <div aria-live="polite" className="min-h-6 text-sm">
+          {localMessage ? <p role="status">{localMessage}</p> : null}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function EditKeywordForm({
+  busy,
+  keyword,
+  onCancel,
+  onInvalid,
+  onSave,
+}: {
+  readonly busy: boolean;
+  readonly keyword: Keyword;
+  readonly onCancel: () => void;
+  readonly onInvalid: () => void;
+  readonly onSave: (keywords: readonly KeywordInput[], success: string) => Promise<void>;
+}) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const parsed = KeywordInputSchema.safeParse({
+      intent: data.get('intent'),
+      platform_scope: data.getAll('platform_scope'),
+      priority: Number(data.get('priority')),
+      status: data.get('status'),
+      synonyms: splitPipe(String(data.get('synonyms') ?? '')),
+      term: keyword.term,
+    });
+    if (!parsed.success) {
+      onInvalid();
+      return;
+    }
+    void onSave([parsed.data], `关键词“${keyword.term}”已更新。`);
+  }
+  return (
+    <form className="rounded-2xl border border-line bg-white p-5 shadow-panel" onSubmit={submit}>
+      <h2 className="font-semibold text-ink-950">编辑关键词</h2>
+      <p className="mt-2 text-sm font-medium">{keyword.term}</p>
+      <p className="mt-1 text-xs text-ink-500">term 是唯一键；改名需新增关键词并禁用旧项。</p>
+      <label className="mt-4 block text-sm text-ink-700">
+        意图
+        <select className={controlClass} defaultValue={keyword.intent} name="intent">
+          {INTENTS.map((intent) => (
+            <option key={intent} value={intent}>
+              {intent}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="mt-4 block text-sm text-ink-700">
+        优先级
+        <input
+          className={controlClass}
+          defaultValue={keyword.priority}
+          max="100"
+          min="0"
+          name="priority"
+          type="number"
+        />
+      </label>
+      <TextField
+        defaultValue={keyword.synonyms.join('|')}
+        label="同义词（| 分隔）"
+        name="synonyms"
+      />
+      <fieldset className="mt-4">
+        <legend className="text-sm text-ink-700">平台范围</legend>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          {PLATFORM_OPTIONS.map(([code, label]) => (
+            <label className="flex items-center gap-2 text-sm" key={code}>
+              <input
+                defaultChecked={keyword.platform_scope.includes(code)}
+                name="platform_scope"
+                type="checkbox"
+                value={code}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <label className="mt-4 block text-sm text-ink-700">
+        状态
+        <select className={controlClass} defaultValue={keyword.status} name="status">
+          <option value="active">启用</option>
+          <option value="disabled">禁用</option>
+        </select>
+      </label>
+      <div className="mt-4 flex gap-3">
+        <button className={primaryButton} disabled={busy} type="submit">
+          保存
+        </button>
+        <button className={secondaryButton} onClick={onCancel} type="button">
+          取消
+        </button>
+      </div>
+    </form>
+  );
+}
+
+const INTENTS: readonly KeywordIntent[] = [
+  'informational',
+  'commercial',
+  'transactional',
+  'navigational',
+];
+function parseBatch(value: string): KeywordInput[] {
+  const rows = value
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (rows.length === 0) throw new Error('请至少输入一个关键词。');
+  if (rows.length > 500) throw new Error('单次最多导入 500 个关键词。');
+  const terms = new Set<string>();
+  return rows.map((row, index) => {
+    const [term, intent, priority, synonyms = '', platforms = '', status = 'active', ...rest] =
+      row.split('\t');
+    if (rest.length > 0) throw new Error(`第 ${index + 1} 行字段数超过 6 个。`);
+    const parsed = KeywordInputSchema.safeParse({
+      intent,
+      platform_scope: splitPipe(platforms),
+      priority: Number(priority),
+      status,
+      synonyms: splitPipe(synonyms),
+      term,
+    });
+    if (!parsed.success) throw new Error(`第 ${index + 1} 行字段不符合约束。`);
+    const normalized = parsed.data.term.toLowerCase();
+    if (terms.has(normalized)) throw new Error(`第 ${index + 1} 行 term 在本次导入中重复。`);
+    terms.add(normalized);
+    return parsed.data;
+  });
+}
+function toInput(keyword: Keyword, status: KeywordStatus): KeywordInput {
+  return {
+    intent: keyword.intent,
+    platform_scope: keyword.platform_scope,
+    priority: keyword.priority,
+    status,
+    synonyms: keyword.synonyms,
+    term: keyword.term,
+  };
+}
+function splitPipe(value: string) {
+  return value
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+function platformLabel(code: PlatformCode) {
+  return PLATFORM_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
+}
+function readFilters(): Filters {
+  if (typeof window === 'undefined') return {};
+  const query = new URLSearchParams(window.location.search);
+  const status = query.get('status');
+  const keywordSetId = query.get('keyword_set_id');
+  const projectId = query.get('project_id');
+  return {
+    ...(keywordSetId ? { keywordSetId } : {}),
+    ...(projectId ? { projectId } : {}),
+    ...(status === 'active' || status === 'archived' ? { status } : {}),
+  };
+}
+function writeFilters(filters: Filters) {
+  const query = new URLSearchParams();
+  if (filters.projectId) query.set('project_id', filters.projectId);
+  if (filters.status) query.set('status', filters.status);
+  if (filters.keywordSetId) query.set('keyword_set_id', filters.keywordSetId);
+  window.history.replaceState(null, '', query.size ? `/str-04?${query}` : '/str-04');
+}
+function readCookie(name: string) {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const cookie = document.cookie
+    .split(';')
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : '';
+}
+function TextField({
+  defaultValue,
+  label,
+  name,
+}: {
+  readonly defaultValue?: string;
+  readonly label: string;
+  readonly name: string;
+}) {
+  return (
+    <label className="mt-4 block text-sm text-ink-700">
+      {label}
+      <input className={controlClass} defaultValue={defaultValue} name={name} type="text" />
+    </label>
+  );
+}
+function StatePanel({ title, text }: { readonly title: string; readonly text: string }) {
+  return (
+    <div className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-panel">
+      <h2 className="font-semibold text-ink-950">{title}</h2>
+      <p className="mt-2 text-sm text-ink-500">{text}</p>
+    </div>
+  );
+}
+const controlClass =
+  'mt-2 h-11 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-950 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100';
+const primaryButton =
+  'h-11 rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50';
+const secondaryButton =
+  'h-11 rounded-control border border-line px-4 text-sm font-semibold text-ink-700';

@@ -3,7 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { TENANT_ROLE_CODES } from '../../roles.js';
 import { roleHasPermission } from '../../permissions/index.js';
 import { BrandProfilePageSchema, BrandProfileResponseSchema } from '../brand-profiles.js';
-import { KeywordListResponseSchema, KeywordSetResponseSchema } from '../keywords.js';
+import {
+  KeywordListResponseSchema,
+  KeywordSetDetailResponseSchema,
+  KeywordSetPageSchema,
+  KeywordSetResponseSchema,
+} from '../keywords.js';
 import {
   BriefResponseSchema,
   GenerationRunResponseSchema,
@@ -16,7 +21,7 @@ const timestamp = '2026-07-14T03:00:00.000Z';
 const requestId = '01J00000000000000000000000';
 
 describe('frozen strategy API contract', () => {
-  it('contains exactly the ten frozen brand, keyword, and topic endpoints', () => {
+  it('contains exactly the twelve frozen brand, keyword, and topic endpoints', () => {
     expect(
       STRATEGY_API_CONTRACTS.map((contract) => ({
         idempotency: contract.idempotency,
@@ -75,6 +80,16 @@ describe('frozen strategy API contract', () => {
         201,
       ),
       endpoint(
+        'GET',
+        '/keyword-sets',
+        'strategy.read',
+        'KeywordSetQuery',
+        'KeywordSetPage',
+        '-',
+        200,
+      ),
+      endpoint('GET', '/keyword-sets/{id}', 'strategy.read', '-', 'KeywordSetDetail', '-', 200),
+      endpoint(
         'POST',
         '/keyword-sets/{id}/keywords',
         'strategy.manage',
@@ -111,7 +126,7 @@ describe('frozen strategy API contract', () => {
         200,
       ),
     ]);
-    expect(new Set(STRATEGY_API_CONTRACTS.map((contract) => contract.key)).size).toBe(10);
+    expect(new Set(STRATEGY_API_CONTRACTS.map((contract) => contract.key)).size).toBe(12);
     expect(STRATEGY_API_CONTRACTS.every((contract) => Object.isFrozen(contract))).toBe(true);
   });
 
@@ -144,6 +159,11 @@ describe('frozen strategy API contract', () => {
       updated_at: timestamp,
     };
     expect(KeywordSetResponseSchema.safeParse(response(keywordSet)).success).toBe(true);
+    expect(KeywordSetPageSchema.safeParse(page([keywordSet], null)).success).toBe(true);
+    expect(
+      KeywordSetDetailResponseSchema.safeParse(response({ ...keywordSet, keywords: [keyword()] }))
+        .success,
+    ).toBe(true);
     expect(KeywordListResponseSchema.safeParse(response([keyword()])).success).toBe(true);
     expect(GenerationRunResponseSchema.safeParse(response(generationRun())).success).toBe(true);
     expect(TopicCandidatePageSchema.safeParse(page([topicCandidate()], null)).success).toBe(true);

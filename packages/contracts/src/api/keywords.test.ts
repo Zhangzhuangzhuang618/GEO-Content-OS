@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   CreateKeywordSetRequestSchema,
   KeywordInputSchema,
+  KeywordSetDetailResponseSchema,
+  KeywordSetPageSchema,
+  KeywordSetQuerySchema,
   UpsertKeywordsRequestSchema,
 } from './keywords.js';
 
@@ -63,5 +66,34 @@ describe('keyword API contracts', () => {
     ).toBe(false);
     expect(KeywordInputSchema.safeParse({ ...validKeyword, unknown: true }).success).toBe(false);
     expect(UpsertKeywordsRequestSchema.safeParse({ keywords: [] }).success).toBe(false);
+  });
+
+  it('validates keyword set list filters and detail responses', () => {
+    const query = KeywordSetQuerySchema.parse({ limit: '50', status: 'active' });
+    expect(query).toEqual({ limit: 50, status: 'active' });
+    expect(KeywordSetQuerySchema.safeParse({ limit: 101 }).success).toBe(false);
+
+    const keywordSet = {
+      created_at: '2026-07-15T00:00:00.000Z',
+      id: '11000000-0000-4000-8000-000000000001',
+      name: 'Core GEO terms',
+      project_id: '21000000-0000-4000-8000-000000000001',
+      status: 'active' as const,
+      tenant_id: '31000000-0000-4000-8000-000000000001',
+      updated_at: '2026-07-15T00:00:00.000Z',
+    };
+    const requestMeta = { request_id: '01J00000000000000000000000' };
+    expect(
+      KeywordSetPageSchema.safeParse({
+        data: [keywordSet],
+        meta: { ...requestMeta, next_cursor: null },
+      }).success,
+    ).toBe(true);
+    expect(
+      KeywordSetDetailResponseSchema.safeParse({
+        data: { ...keywordSet, keywords: [] },
+        meta: requestMeta,
+      }).success,
+    ).toBe(true);
   });
 });

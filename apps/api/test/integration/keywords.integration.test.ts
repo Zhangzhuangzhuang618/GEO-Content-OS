@@ -1,4 +1,9 @@
-import { KeywordListResponseSchema, KeywordSetResponseSchema } from '@geo-content-os/contracts';
+import {
+  KeywordListResponseSchema,
+  KeywordSetDetailResponseSchema,
+  KeywordSetPageSchema,
+  KeywordSetResponseSchema,
+} from '@geo-content-os/contracts';
 import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
@@ -230,6 +235,64 @@ describe('keyword API', () => {
         SELECT count(*)::integer AS count FROM audit_events WHERE action = 'keywords.upserted'
       `,
     ).toEqual([{ count: 2 }]);
+  });
+
+  it('lists and reads only keyword sets in the active project scope', async () => {
+    const database = requireClient(client);
+    const setA = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Visible set');
+    await insertKeywordSet(database, TENANT_ID, PROJECT_B, 'Hidden set');
+    const otherSet = await insertKeywordSet(
+      database,
+      OTHER_TENANT_ID,
+      OTHER_PROJECT,
+      'Other tenant set',
+    );
+    await database`
+      INSERT INTO keywords (
+        tenant_id, keyword_set_id, term, intent, priority, synonyms, platform_scope, status
+      ) VALUES (
+        ${TENANT_ID}, ${setA}, 'Scoped GEO', 'informational', 88,
+        ARRAY['GEO scope'], ARRAY['official_site'], 'active'
+      )
+    `;
+    await database`
+      INSERT INTO workspace_memberships (workspace_id, user_id, scope_json)
+      VALUES (
+        ${WORKSPACE_A}, ${SCOPED_ID},
+        ${JSON.stringify({ project_ids: [PROJECT_A], schema_version: 'workspace-scope@1' })}::text::jsonb
+      )
+    `;
+    const scoped = await createSession(database, SCOPED_ID, TENANT_ID);
+    const server = requireServer(application);
+
+    const listed = await server.inject({
+      headers: writeHeaders(scoped),
+      method: 'GET',
+      url: `${API_PATH}?project_id=${PROJECT_A}&status=active&limit=20`,
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(KeywordSetPageSchema.safeParse(listed.json()).success).toBe(true);
+    expect(listed.json().data.map((item: { id: string }) => item.id)).toEqual([setA]);
+
+    const detail = await server.inject({
+      headers: writeHeaders(scoped),
+      method: 'GET',
+      url: `${API_PATH}/${setA}`,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(KeywordSetDetailResponseSchema.safeParse(detail.json()).success).toBe(true);
+    expect(detail.json().data.keywords).toHaveLength(1);
+    expect(detail.json().data.keywords[0]).toMatchObject({ priority: 88, term: 'Scoped GEO' });
+
+    expect(
+      (
+        await server.inject({
+          headers: writeHeaders(scoped),
+          method: 'GET',
+          url: `${API_PATH}/${otherSet}`,
+        })
+      ).statusCode,
+    ).toBe(404);
   });
 
   it('rejects invalid batches and enforces project scope and active parent state', async () => {

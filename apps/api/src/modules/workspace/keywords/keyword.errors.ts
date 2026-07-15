@@ -11,3 +11,10 @@ export class KeywordStateError extends Error {
     this.name = 'KeywordStateError';
   }
 }
+
+export class KeywordValidationError extends Error {
+  public constructor(message = 'Keyword query is invalid') {
+    super(message);
+    this.name = 'KeywordValidationError';
+  }
+}

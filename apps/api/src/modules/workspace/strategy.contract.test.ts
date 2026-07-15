@@ -27,6 +27,8 @@ const bindings: readonly ControllerBinding[] = [
   bind('brand-profile.publish', BrandProfileController, BrandProfileController.prototype.publish),
   bind('brand-profile.retire', BrandProfileController, BrandProfileController.prototype.retire),
   bind('keyword-set.create', KeywordController, KeywordController.prototype.createSet),
+  bind('keyword-set.list', KeywordController, KeywordController.prototype.list),
+  bind('keyword-set.get', KeywordController, KeywordController.prototype.find),
   bind('keyword-set.upsert-keywords', KeywordController, KeywordController.prototype.upsert),
   bind('topic-plan.generate', TopicPlanController, TopicPlanController.prototype.generate),
   bind('topic-candidate.list', TopicCandidateController, TopicCandidateController.prototype.list),
@@ -35,8 +37,8 @@ const bindings: readonly ControllerBinding[] = [
 
 describe('strategy controller contract bindings', () => {
   it('binds every frozen strategy contract exactly once', () => {
-    expect(bindings.map((binding) => binding.key)).toHaveLength(10);
-    expect(new Set(bindings.map((binding) => binding.key)).size).toBe(10);
+    expect(bindings.map((binding) => binding.key)).toHaveLength(12);
+    expect(new Set(bindings.map((binding) => binding.key)).size).toBe(12);
   });
 
   it.each(bindings)('$key matches its method, route, and permission', (binding) => {

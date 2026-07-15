@@ -2,15 +2,18 @@ import {
   CreateKeywordSetRequestSchema,
   ERROR_DEFINITIONS,
   KeywordSetIdSchema,
+  KeywordSetQuerySchema,
   UpsertKeywordsRequestSchema,
 } from '@geo-content-os/contracts';
 import {
   Body,
   Controller,
+  Get,
   HttpStatus,
   Inject,
   Param,
   Post,
+  Query,
   Req,
   Res,
   UseGuards,
@@ -27,7 +30,11 @@ import {
   type JsonValue,
 } from '../../../common/idempotency/index.js';
 import { getPolicyContext, PolicyGuard, RequirePermissions } from '../../identity/rbac/index.js';
-import { KeywordNotFoundError, KeywordStateError } from './keyword.errors.js';
+import {
+  KeywordNotFoundError,
+  KeywordStateError,
+  KeywordValidationError,
+} from './keyword.errors.js';
 import { KeywordService } from './keyword.service.js';
 
 type KeywordErrorCode =
@@ -43,6 +50,57 @@ export class KeywordController {
     @Inject(IdempotencyService) private readonly idempotencyService: IdempotencyService,
     @Inject(KeywordService) private readonly keywordService: KeywordService,
   ) {}
+
+  @Get()
+  @RequirePermissions('strategy.read')
+  public async list(
+    @Query() query: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = KeywordSetQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      await sendSchemaError(reply, request.id, parsed.error.issues);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    try {
+      const page = await this.keywordService.list(policy.tenantId, policy.userId, parsed.data);
+      await reply.status(HttpStatus.OK).send({
+        data: page.items,
+        meta: { next_cursor: page.nextCursor, request_id: request.id },
+      });
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id')
+  @RequirePermissions('strategy.read')
+  public async find(
+    @Param('id') id: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = KeywordSetIdSchema.safeParse(id);
+    if (!parsed.success) {
+      await sendSchemaError(reply, request.id, parsed.error.issues);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    try {
+      const keywordSet = await this.keywordService.find(
+        policy.tenantId,
+        policy.userId,
+        parsed.data,
+      );
+      await reply
+        .status(HttpStatus.OK)
+        .send({ data: keywordSet, meta: { request_id: request.id } });
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
 
   @Post()
   @RequirePermissions('strategy.manage')
@@ -179,6 +237,10 @@ async function sendKeywordError(
 ): Promise<void> {
   if (error instanceof KeywordNotFoundError) {
     await sendError(reply, requestId, 'RESOURCE_NOT_FOUND');
+    return;
+  }
+  if (error instanceof KeywordValidationError) {
+    await sendError(reply, requestId, 'SCHEMA_VALIDATION_FAILED');
     return;
   }
   if (error instanceof KeywordStateError || isDatabaseConstraintError(error)) {

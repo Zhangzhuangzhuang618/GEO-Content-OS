@@ -2,16 +2,23 @@ import type {
   CreateKeywordSetRequest,
   Keyword,
   KeywordInput,
+  KeywordSetDetail,
+  KeywordSetQuery,
   KeywordSetView,
 } from '@geo-content-os/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransactionSql } from 'postgres';
 
 import { IdentityAuthDatabase } from '../../identity/auth/auth.database.js';
-import { KeywordNotFoundError, KeywordStateError } from './keyword.errors.js';
+import {
+  KeywordNotFoundError,
+  KeywordStateError,
+  KeywordValidationError,
+} from './keyword.errors.js';
 
 interface KeywordSetRow {
   readonly createdAt: Date | string;
+  readonly cursorUpdatedAt?: string;
   readonly id: string;
   readonly name: string;
   readonly projectId: string;
@@ -20,6 +27,16 @@ interface KeywordSetRow {
   readonly tenantId: string;
   readonly updatedAt: Date | string;
   readonly workspaceStatus?: 'active' | 'archived';
+}
+
+interface KeywordSetCursor {
+  readonly id: string;
+  readonly updatedAt: string;
+}
+
+export interface KeywordSetPageResult {
+  readonly items: readonly KeywordSetView[];
+  readonly nextCursor: string | null;
 }
 
 interface KeywordRow {
@@ -46,6 +63,97 @@ export class KeywordService {
   public constructor(
     @Inject(IdentityAuthDatabase) private readonly database: IdentityAuthDatabase,
   ) {}
+
+  public async list(
+    tenantId: string,
+    userId: string,
+    query: KeywordSetQuery,
+  ): Promise<KeywordSetPageResult> {
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+    const rows = await this.database.client<KeywordSetRow[]>`
+      SELECT
+        keyword_set.id,
+        keyword_set.tenant_id AS "tenantId",
+        keyword_set.project_id AS "projectId",
+        keyword_set.name,
+        keyword_set.status,
+        keyword_set.created_at AS "createdAt",
+        keyword_set.updated_at AS "updatedAt",
+        keyword_set.updated_at::text AS "cursorUpdatedAt"
+      FROM keyword_sets AS keyword_set
+      JOIN projects AS project
+        ON project.id = keyword_set.project_id
+        AND project.tenant_id = keyword_set.tenant_id
+        AND project.deleted_at IS NULL
+      JOIN workspaces AS workspace
+        ON workspace.id = project.workspace_id
+        AND workspace.tenant_id = project.tenant_id
+        AND workspace.deleted_at IS NULL
+      WHERE
+        keyword_set.tenant_id = ${tenantId}
+        AND keyword_set.deleted_at IS NULL
+        AND has_project_scope_access(
+          project.tenant_id,
+          project.workspace_id,
+          project.id,
+          ${userId}
+        )
+        AND (${query.project_id ?? null}::uuid IS NULL OR keyword_set.project_id = ${query.project_id ?? null})
+        AND (${query.status ?? null}::text IS NULL OR keyword_set.status = ${query.status ?? null})
+        AND (
+          ${cursor?.updatedAt ?? null}::timestamptz IS NULL
+          OR (keyword_set.updated_at, keyword_set.id) < (
+            ${cursor?.updatedAt ?? null}::timestamptz,
+            ${cursor?.id ?? null}::uuid
+          )
+        )
+      ORDER BY keyword_set.updated_at DESC, keyword_set.id DESC
+      LIMIT ${query.limit + 1}
+    `;
+    const hasMore = rows.length > query.limit;
+    const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+    const last = pageRows.at(-1);
+    return {
+      items: pageRows.map(toKeywordSetView),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor({
+              id: last.id,
+              updatedAt: last.cursorUpdatedAt ?? toIso(last.updatedAt),
+            })
+          : null,
+    };
+  }
+
+  public async find(
+    tenantId: string,
+    userId: string,
+    keywordSetId: string,
+  ): Promise<KeywordSetDetail> {
+    return this.database.client.begin(async (transaction) => {
+      const keywordSet = await findKeywordSet(transaction, tenantId, userId, keywordSetId);
+      const keywords = await transaction<KeywordRow[]>`
+        SELECT
+          keyword.id,
+          keyword.tenant_id AS "tenantId",
+          keyword.keyword_set_id AS "keywordSetId",
+          keyword.term::text AS term,
+          keyword.intent,
+          keyword.priority,
+          keyword.synonyms,
+          keyword.platform_scope AS "platformScope",
+          keyword.status,
+          keyword.created_at AS "createdAt",
+          keyword.updated_at AS "updatedAt"
+        FROM keywords AS keyword
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+        ORDER BY keyword.priority DESC, keyword.term, keyword.id
+      `;
+      return { ...toKeywordSetView(keywordSet), keywords: keywords.map(toKeywordView) };
+    });
+  }
 
   public async createSet(
     transaction: TransactionSql,
@@ -304,6 +412,47 @@ async function lockKeywordSet(
   return row;
 }
 
+async function findKeywordSet(
+  transaction: TransactionSql,
+  tenantId: string,
+  userId: string,
+  keywordSetId: string,
+): Promise<KeywordSetRow> {
+  const rows = await transaction<KeywordSetRow[]>`
+    SELECT
+      keyword_set.id,
+      keyword_set.tenant_id AS "tenantId",
+      keyword_set.project_id AS "projectId",
+      keyword_set.name,
+      keyword_set.status,
+      keyword_set.created_at AS "createdAt",
+      keyword_set.updated_at AS "updatedAt"
+    FROM keyword_sets AS keyword_set
+    JOIN projects AS project
+      ON project.id = keyword_set.project_id
+      AND project.tenant_id = keyword_set.tenant_id
+      AND project.deleted_at IS NULL
+    JOIN workspaces AS workspace
+      ON workspace.id = project.workspace_id
+      AND workspace.tenant_id = project.tenant_id
+      AND workspace.deleted_at IS NULL
+    WHERE
+      keyword_set.id = ${keywordSetId}
+      AND keyword_set.tenant_id = ${tenantId}
+      AND keyword_set.deleted_at IS NULL
+      AND has_project_scope_access(
+        project.tenant_id,
+        project.workspace_id,
+        project.id,
+        ${userId}
+      )
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) throw new KeywordNotFoundError();
+  return row;
+}
+
 interface AuditInput {
   readonly action: string;
   readonly actorUserId: string;
@@ -373,4 +522,32 @@ function toKeywordView(row: KeywordRow): Keyword {
 
 function toIso(value: Date | string): string {
   return new Date(value).toISOString();
+}
+
+function encodeCursor(cursor: KeywordSetCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+}
+
+function decodeCursor(value: string): KeywordSetCursor {
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown;
+    if (!isCursor(decoded)) throw new Error('Malformed keyword set cursor');
+    return decoded;
+  } catch {
+    throw new KeywordValidationError();
+  }
+}
+
+function isCursor(value: unknown): value is KeywordSetCursor {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    Object.keys(record).length === 2 &&
+    typeof record['id'] === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+      record['id'],
+    ) &&
+    typeof record['updatedAt'] === 'string' &&
+    Number.isFinite(new Date(record['updatedAt']).getTime())
+  );
 }
