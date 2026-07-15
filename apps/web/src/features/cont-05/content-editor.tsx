@@ -35,6 +35,7 @@ const MANUAL_EDIT_STATUSES = new Set([
 ]);
 const REGENERATE_STATUSES = new Set([
   'generated',
+  'generation_failed',
   'quality_failed',
   'quality_passed',
   'review_rejected',
