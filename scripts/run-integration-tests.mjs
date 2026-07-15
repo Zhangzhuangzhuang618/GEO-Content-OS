@@ -13,6 +13,7 @@ if (
     'toutiao-delivery',
     'zhihu-delivery',
     'xiaohongshu-delivery',
+    'wechat_mp-delivery',
   ].includes(selectors[0])
 ) {
   run(['--filter', '@geo-content-os/adapter-platforms', 'test:integration']);
