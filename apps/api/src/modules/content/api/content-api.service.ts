@@ -57,7 +57,7 @@ interface PackageCursor {
 interface QualityReportRow {
   readonly checkerVersion: string;
   readonly contentVersionId: string;
-  readonly createdAt: Date;
+  readonly createdAt: Date | string;
   readonly decision: 'block' | 'pass' | 'revise';
   readonly generationRunId: string;
   readonly geoScoresJson: Record<string, unknown>;
@@ -1525,7 +1525,7 @@ function qualityReportView(value: QualityReportRow): JsonValue {
   return {
     checker_version: value.checkerVersion,
     content_version_id: value.contentVersionId,
-    created_at: value.createdAt.toISOString(),
+    created_at: isoDate(value.createdAt),
     decision: value.decision,
     generation_run_id: value.generationRunId,
     geo_scores: geoScores as JsonValue,
@@ -1548,6 +1548,10 @@ function snake(value: unknown): JsonValue {
     output[key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`)] = snake(item);
   }
   return output;
+}
+
+function isoDate(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
 function encodeCursor(cursor: PackageCursor): string {
