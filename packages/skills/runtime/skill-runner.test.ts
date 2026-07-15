@@ -131,6 +131,40 @@ describe('SkillRunner', () => {
     expect(result.usages[0]?.modelKey).toBe('flash');
   });
 
+  it('falls back to JSON mode when an Adapter cannot enforce JSON Schema', async () => {
+    const adapter = new MockModelAdapter({
+      capabilities: { jsonMode: true, jsonSchema: false },
+      modelKey: 'flash',
+      responses: [{ text: '{"answer":"json-mode"}' }],
+    });
+    const runner = new SkillRunner(
+      adapter,
+      new SchemaGuard(),
+      new ToolRegistry([], new SchemaGuard()),
+    );
+
+    await expect(runner.run(runInput())).resolves.toMatchObject({
+      output: { answer: 'json-mode' },
+    });
+  });
+
+  it('rejects an Adapter without structured JSON capabilities', async () => {
+    const adapter = new MockModelAdapter({
+      capabilities: { jsonMode: false, jsonSchema: false },
+      modelKey: 'flash',
+      responses: [{ text: '{"answer":"unused"}' }],
+    });
+    const runner = new SkillRunner(
+      adapter,
+      new SchemaGuard(),
+      new ToolRegistry([], new SchemaGuard()),
+    );
+
+    await expect(runner.run(runInput())).rejects.toMatchObject({
+      code: 'SKILL_MODEL_CAPABILITY_UNAVAILABLE',
+    });
+  });
+
   it('performs exactly one schema repair using invalid paths', async () => {
     const runner = createRunner([{ text: '{}' }, { text: '{"answer":"repaired"}' }]);
 

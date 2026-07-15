@@ -4,7 +4,7 @@ import {
   MATERIAL_PARSER_OUTPUT_SCHEMA,
   MATERIAL_PARSER_SKILL_NAME,
   MATERIAL_PARSER_SKILL_VERSION,
-} from '../../../../contracts/src/skills/material-parser/index.js';
+} from '@geo-content-os/contracts/skills';
 import { MATERIAL_PARSER_FEW_SHOTS_V1 } from './few-shots.js';
 import {
   MATERIAL_PARSER_PROMPT_VERSION,

@@ -5,15 +5,19 @@
   "type": "module",
   "description": "GEO Content OS — AI Skills: Prompt、JSON Schema、Few-shot、Tool Calling",
   "exports": {
+    "./material-parser": {
+      "types": "./material-parser/dist/src/index.d.ts",
+      "import": "./material-parser/dist/src/index.js"
+    },
     "./runtime": {
       "types": "./runtime/dist/index.d.ts",
       "import": "./runtime/dist/index.js"
     }
   },
   "scripts": {
-    "build": "tsc --project runtime/tsconfig.build.json --pretty false",
-    "test": "vitest run --config runtime/vitest.config.ts",
-    "typecheck": "tsc --project runtime/tsconfig.json --noEmit --pretty false"
+    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false",
+    "test": "pnpm --filter @geo-content-os/adapter-model-deepseek build && vitest run --config runtime/vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
     "@geo-content-os/adapter-model": "workspace:*",
@@ -22,9 +26,11 @@
     "ajv-formats": "3.0.1"
   },
   "devDependencies": {
+    "@geo-content-os/adapter-model-deepseek": "workspace:*",
     "vitest": "4.1.10"
   },
   "files": [
-    "runtime/dist"
+    "runtime/dist",
+    "material-parser/dist"
   ]
 }
