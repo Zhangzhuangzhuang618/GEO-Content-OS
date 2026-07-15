@@ -70,11 +70,15 @@ export { outboxEvents, type OutboxEventRecord } from './outbox.js';
 export {
   factCheckResults,
   factEvidences,
+  qualityReports,
   type FactCheckResultRecord,
   type FactCheckRiskLevel,
   type FactCheckVerdict,
   type FactEvidenceRecord,
   type FactEvidenceSupportLevel,
+  type QualityGeoScoresDocument,
+  type QualityIssuesDocument,
+  type QualityReportRecord,
 } from './quality.js';
 export {
   auditEvents,

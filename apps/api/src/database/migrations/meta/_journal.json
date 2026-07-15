@@ -141,6 +141,13 @@
       "when": 1784120400000,
       "tag": "0019_fact_check_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784124000000,
+      "tag": "0020_quality_reports",
+      "breakpoints": true
     }
   ]
 }
