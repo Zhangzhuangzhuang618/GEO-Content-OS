@@ -28,12 +28,16 @@
     "./toutiao/delivery": {
       "types": "./dist/toutiao/delivery/src/index.d.ts",
       "import": "./dist/toutiao/delivery/src/index.js"
+    },
+    "./zhihu/render": {
+      "types": "./dist/zhihu/render/src/index.d.ts",
+      "import": "./dist/zhihu/render/src/index.js"
     }
   },
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
-    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render",
+    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render zhihu/render",
     "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery toutiao/delivery",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
   },

@@ -1,0 +1,51 @@
+{
+  "rule_version": "zhihu-render-rules@1.0.0",
+  "content": {
+    "platform_code": "zhihu",
+    "title": "企业GEO内容生产为什么需要可信证据链",
+    "summary": "直接说明可信资料、引用与版本规则对企业GEO内容生产的作用及适用边界。",
+    "blocks": [
+      {
+        "block_key": "direct-answer",
+        "block_type": "paragraph",
+        "text": "企业GEO内容生产需要可信证据链，因为只有把结论绑定到具体资料和版本，审核者才能验证来源，发布后也能复现当时依据。"
+      },
+      {
+        "block_key": "boundary-heading",
+        "block_type": "heading",
+        "text": "适用边界与反例"
+      },
+      {
+        "block_key": "boundary",
+        "block_type": "paragraph",
+        "text": "证据链不能保证结论永远正确，它只保证依据可追溯。反例是来源已经过期却仍被引用，此时系统应阻断时效性结论，而不是把有链接等同于事实成立。"
+      },
+      {
+        "block_key": "workflow",
+        "block_type": "paragraph",
+        "text": "冻结方案要求品牌策略、Prompt、模型和平台规则使用版本记录，审核快照固定内容版本与引用，发布任务再次固定载荷哈希。"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产", "可信AI"],
+    "cta": "先用一个有明确证据来源的主题验证完整闭环。",
+    "citation_map": [
+      {
+        "claim_key": "claim-workflow",
+        "claim_text": "冻结方案要求生成、审核和发布过程保留版本与引用。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000109"]
+      }
+    ],
+    "platform_meta": {
+      "question_id": "question-109",
+      "content_type": "answer",
+      "topics": ["GEO", "内容生产", "证据链"]
+    }
+  },
+  "citations": [
+    {
+      "citation_id": "10000000-0000-4000-8000-000000000109",
+      "label": "可信内容生产规范",
+      "url": "https://example.com/references/trusted-content"
+    }
+  ]
+}
