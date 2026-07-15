@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Deterministic validate, render and delivery adapters for GEO content platforms",
   "exports": {
+    "./baijiahao/render": {
+      "types": "./dist/baijiahao/render/src/index.d.ts",
+      "import": "./dist/baijiahao/render/src/index.js"
+    },
     "./official_site/delivery": {
       "types": "./dist/official_site/delivery/src/index.d.ts",
       "import": "./dist/official_site/delivery/src/index.js"
@@ -17,7 +21,7 @@
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
-    "test:contract": "vitest run --config vitest.config.ts official_site/render",
+    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render",
     "test:integration": "vitest run --config vitest.config.ts official_site/delivery",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
   },
