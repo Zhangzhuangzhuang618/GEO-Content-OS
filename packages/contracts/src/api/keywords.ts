@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
 import { PLATFORM_CODES } from '../platforms.js';
-import { IsoDateTimeSchema, RequestMetaSchema, UuidSchema } from './common.js';
+import {
+  CursorPageMetaSchema,
+  CursorSchema,
+  IsoDateTimeSchema,
+  RequestMetaSchema,
+  UuidSchema,
+} from './common.js';
 
 const KeywordTermSchema = z.string().trim().min(1).max(240);
 
@@ -62,6 +68,15 @@ export const UpsertKeywordsRequestSchema = z
 
 export const KeywordSetIdSchema = UuidSchema;
 
+export const KeywordSetQuerySchema = z
+  .object({
+    cursor: CursorSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    project_id: UuidSchema.optional(),
+    status: z.enum(['active', 'archived']).optional(),
+  })
+  .strict();
+
 export const KeywordSetViewSchema = z
   .object({
     created_at: IsoDateTimeSchema,
@@ -90,8 +105,20 @@ export const KeywordSchema = z
   })
   .strict();
 
+export const KeywordSetDetailSchema = KeywordSetViewSchema.extend({
+  keywords: z.array(KeywordSchema),
+}).strict();
+
 export const KeywordSetResponseSchema = z
   .object({ data: KeywordSetViewSchema, meta: RequestMetaSchema })
+  .strict();
+
+export const KeywordSetPageSchema = z
+  .object({ data: z.array(KeywordSetViewSchema), meta: CursorPageMetaSchema })
+  .strict();
+
+export const KeywordSetDetailResponseSchema = z
+  .object({ data: KeywordSetDetailSchema, meta: RequestMetaSchema })
   .strict();
 
 export const KeywordListResponseSchema = z
@@ -100,6 +127,7 @@ export const KeywordListResponseSchema = z
 
 export type CreateKeywordSetRequest = z.infer<typeof CreateKeywordSetRequestSchema>;
 export type KeywordInput = z.infer<typeof KeywordInputSchema>;
+export type KeywordSetQuery = z.infer<typeof KeywordSetQuerySchema>;
 export type UpsertKeywordsRequest = z.infer<typeof UpsertKeywordsRequestSchema>;
 
 export interface KeywordSetView {
@@ -124,4 +152,16 @@ export interface Keyword {
   readonly tenant_id: string;
   readonly term: string;
   readonly updated_at: string;
+}
+
+export interface KeywordSetDetail extends KeywordSetView {
+  readonly keywords: readonly Keyword[];
+}
+
+export interface KeywordSetPage {
+  readonly data: readonly KeywordSetView[];
+  readonly meta: {
+    readonly next_cursor: string | null;
+    readonly request_id: string;
+  };
 }
