@@ -1,0 +1,10 @@
+{
+  "bundle_sha256": "6fbcd0f93396d25d4420dd39c29067b83b802504ff083ce718f4c99fc8b797dc",
+  "file_paths": [
+    "30000000-0000-4000-8000-000000000110/article.html",
+    "30000000-0000-4000-8000-000000000110/article.txt",
+    "30000000-0000-4000-8000-000000000110/metadata.json",
+    "30000000-0000-4000-8000-000000000110/manifest.json"
+  ],
+  "schema_version": "zhihu-export@1"
+}
