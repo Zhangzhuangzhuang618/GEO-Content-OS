@@ -4,7 +4,7 @@ import {
   GEO_OPTIMIZER_OUTPUT_SCHEMA,
   GEO_OPTIMIZER_SKILL_NAME,
   GEO_OPTIMIZER_SKILL_VERSION,
-} from '../../../../contracts/src/skills/geo-optimizer/index.js';
+} from '@geo-content-os/contracts/skills';
 import { GEO_OPTIMIZER_FEW_SHOTS_V1 } from './few-shots.js';
 import {
   GEO_OPTIMIZER_PROMPT_VERSION,

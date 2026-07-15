@@ -13,6 +13,10 @@
       "types": "./fact-checker/dist/src/index.d.ts",
       "import": "./fact-checker/dist/src/index.js"
     },
+    "./geo-optimizer": {
+      "types": "./geo-optimizer/dist/src/index.d.ts",
+      "import": "./geo-optimizer/dist/src/index.js"
+    },
     "./material-parser": {
       "types": "./material-parser/dist/src/index.d.ts",
       "import": "./material-parser/dist/src/index.js"
@@ -27,9 +31,9 @@
     }
   },
   "scripts": {
-    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false && tsc --project content-writer/src/tsconfig.build.json --pretty false && tsc --project fact-checker/src/tsconfig.build.json --pretty false && tsc --project topic-planner/src/tsconfig.build.json --pretty false",
+    "build": "tsc --project runtime/tsconfig.build.json --pretty false && tsc --project material-parser/src/tsconfig.build.json --pretty false && tsc --project content-writer/src/tsconfig.build.json --pretty false && tsc --project fact-checker/src/tsconfig.build.json --pretty false && tsc --project topic-planner/src/tsconfig.build.json --pretty false && tsc --project geo-optimizer/src/tsconfig.build.json --pretty false",
     "test": "pnpm --filter @geo-content-os/adapter-model-deepseek build && vitest run --config runtime/vitest.config.ts",
-    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false && tsc --project content-writer/src/tsconfig.json --noEmit --pretty false && tsc --project fact-checker/src/tsconfig.json --noEmit --pretty false && tsc --project topic-planner/src/tsconfig.json --noEmit --pretty false"
+    "typecheck": "pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm build && tsc --project runtime/tsconfig.json --noEmit --pretty false && tsc --project material-parser/src/tsconfig.json --noEmit --pretty false && tsc --project content-writer/src/tsconfig.json --noEmit --pretty false && tsc --project fact-checker/src/tsconfig.json --noEmit --pretty false && tsc --project topic-planner/src/tsconfig.json --noEmit --pretty false && tsc --project geo-optimizer/src/tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
     "@geo-content-os/adapter-model": "workspace:*",
@@ -46,6 +50,7 @@
     "material-parser/dist",
     "content-writer/dist",
     "fact-checker/dist",
-    "topic-planner/dist"
+    "topic-planner/dist",
+    "geo-optimizer/dist"
   ]
 }

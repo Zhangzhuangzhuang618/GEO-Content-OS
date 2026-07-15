@@ -1,4 +1,4 @@
-import type { GeoOptimizerOutput } from '../../../../contracts/src/skills/geo-optimizer/index.js';
+import type { GeoOptimizerOutput } from '@geo-content-os/contracts/skills';
 
 const CONTENT_VERSION_ID = '10000000-0000-4000-8000-000000000067';
 const VARIANT_ID = '20000000-0000-4000-8000-000000000067';
