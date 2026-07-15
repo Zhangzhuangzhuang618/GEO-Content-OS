@@ -1,0 +1,11 @@
+{
+  "citation_link_count": 1,
+  "duration_seconds": 30,
+  "payload_sha256": "6aef9fe7207f1f78fdf3e58e0b2bf51f60e9bf1e4b6b3337d9bd09157fc7f36e",
+  "platform_code": "douyin",
+  "rule_version": "douyin-render-rules@1.0.0",
+  "schema_version": "douyin-payload@1",
+  "storyboard_count": 3,
+  "subtitle_count": 3,
+  "topic_count": 3
+}

@@ -1,0 +1,75 @@
+{
+  "rule_version": "douyin-render-rules@1.0.0",
+  "content": {
+    "platform_code": "douyin",
+    "title": "30秒看懂GEO内容证据链",
+    "summary": "用分镜、口播和字幕说明企业GEO内容证据链。",
+    "blocks": [
+      {
+        "block_key": "script-summary",
+        "block_type": "paragraph",
+        "text": "脚本说明资料、事实、审核和发布四个环节。"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产", "证据链"],
+    "cta": "从一条可核验的事实开始。",
+    "citation_map": [
+      {
+        "claim_key": "claim-review",
+        "claim_text": "审核时应固定内容版本与引用。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000115"]
+      }
+    ],
+    "platform_meta": {
+      "duration_seconds": 30,
+      "storyboard": [
+        {
+          "scene_key": "hook",
+          "start_second": 0,
+          "end_second": 3,
+          "visual": "资料、事实、审核、发布四个词依次出现",
+          "voiceover": "一条GEO内容，怎样证明每个结论都有来源？"
+        },
+        {
+          "scene_key": "workflow",
+          "start_second": 3,
+          "end_second": 22,
+          "visual": "四步流程图从左到右展开",
+          "voiceover": "先记录资料版本，再让事实指向来源，审核时固定内容与引用，发布前校验载荷哈希。"
+        },
+        {
+          "scene_key": "boundary",
+          "start_second": 22,
+          "end_second": 30,
+          "visual": "来源链接旁出现有效期提示",
+          "voiceover": "有链接不代表事实永远有效，过期资料仍要重新核验。"
+        }
+      ],
+      "subtitles": [
+        {
+          "start_second": 0,
+          "end_second": 3,
+          "text": "每个结论都有来源吗？"
+        },
+        {
+          "start_second": 3,
+          "end_second": 22,
+          "text": "资料版本→事实来源→审核冻结→发布校验"
+        },
+        {
+          "start_second": 22,
+          "end_second": 30,
+          "text": "过期资料仍需重新核验"
+        }
+      ],
+      "topics": ["GEO", "内容生产", "可信AI"]
+    }
+  },
+  "citations": [
+    {
+      "citation_id": "10000000-0000-4000-8000-000000000115",
+      "label": "可信内容生产规范",
+      "url": "https://example.com/references/trusted-content"
+    }
+  ]
+}
