@@ -12,7 +12,7 @@ import {
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
-import type { DatabaseClient } from '../../../database/index.js';
+import { resolveDatabaseClient, type DatabaseClientSource } from '../../../database/index.js';
 import { RequiredAuditWriter } from '../../audit/index.js';
 import { PackageStatusProjector } from '../../content/status/index.js';
 import { OutboxWriter } from '../../outbox/index.js';
@@ -80,12 +80,23 @@ const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/u;
 
 export class PublishJobService {
   private readonly projector = new PackageStatusProjector();
+  private readonly audit: RequiredAuditWriter;
+  private readonly databaseSource: DatabaseClientSource;
+  private readonly outbox: OutboxWriter;
 
   public constructor(
-    private readonly database: DatabaseClient,
-    private readonly outbox: OutboxWriter = new OutboxWriter(database),
-    private readonly audit: RequiredAuditWriter = new RequiredAuditWriter(),
-  ) {}
+    database: DatabaseClientSource,
+    outbox?: OutboxWriter,
+    audit: RequiredAuditWriter = new RequiredAuditWriter(),
+  ) {
+    this.databaseSource = database;
+    this.outbox = outbox ?? new OutboxWriter(resolveDatabaseClient(database));
+    this.audit = audit;
+  }
+
+  private get database() {
+    return resolveDatabaseClient(this.databaseSource);
+  }
 
   public create(
     scope: PublishJobScope,
@@ -94,10 +105,22 @@ export class PublishJobService {
   ): Promise<PublishJobView> {
     const scheduledAt = parseDate(input.scheduled_at);
     assertIdempotencyKey(idempotencyKey);
-    return this.database.begin(async (transaction) => {
-      const target = await loadPublishTarget(transaction, scope, input);
-      assertSchedulable(target);
-      const rows = await transaction<JobRow[]>`
+    return this.database.begin((transaction) =>
+      this.createInTransaction(transaction, scope, input, idempotencyKey, scheduledAt),
+    );
+  }
+
+  public async createInTransaction(
+    transaction: TransactionSql,
+    scope: PublishJobScope,
+    input: CreatePublishJobRequest,
+    idempotencyKey: string,
+    scheduledAt = parseDate(input.scheduled_at),
+  ): Promise<PublishJobView> {
+    assertIdempotencyKey(idempotencyKey);
+    const target = await loadPublishTarget(transaction, scope, input);
+    assertSchedulable(target);
+    const rows = await transaction<JobRow[]>`
         INSERT INTO publish_jobs (
           tenant_id, variant_id, content_version_id, account_id, scheduled_at,
           idempotency_key, payload_hash, status, created_by
@@ -115,37 +138,36 @@ export class PublishJobService {
           last_error_json AS "lastError", created_by AS "createdBy", version,
           created_at AS "createdAt", updated_at AS "updatedAt"
       `;
-      const job = requireInsertedJob(rows, target);
-      await updateVariant(
-        transaction,
-        scope.tenantId,
-        target.variantId,
-        target.variantVersion,
-        'approved',
-        'scheduled',
-      );
-      await projectPackage(
-        transaction,
-        this.projector,
-        scope.tenantId,
-        target.packageId,
-        target.packageStatus,
-        target.packageVersion,
-      );
-      await enqueueExecution(transaction, this.outbox, scope, job, scheduledAt);
-      await this.audit.record(transaction, {
-        action: 'publish_job.scheduled',
-        actorId: scope.userId,
-        after: safeJob(job),
-        before: null,
-        ip: scope.ip ?? null,
-        requestId: scope.requestId,
-        resourceId: job.id,
-        resourceType: 'publish_job',
-        tenantId: scope.tenantId,
-      });
-      return mapJob(job);
+    const job = requireInsertedJob(rows, target);
+    await updateVariant(
+      transaction,
+      scope.tenantId,
+      target.variantId,
+      target.variantVersion,
+      'approved',
+      'scheduled',
+    );
+    await projectPackage(
+      transaction,
+      this.projector,
+      scope.tenantId,
+      target.packageId,
+      target.packageStatus,
+      target.packageVersion,
+    );
+    await enqueueExecution(transaction, this.outbox, scope, job, scheduledAt);
+    await this.audit.record(transaction, {
+      action: 'publish_job.scheduled',
+      actorId: scope.userId,
+      after: safeJob(job),
+      before: null,
+      ip: scope.ip ?? null,
+      requestId: scope.requestId,
+      resourceId: job.id,
+      resourceType: 'publish_job',
+      tenantId: scope.tenantId,
     });
+    return mapJob(job);
   }
 
   public cancel(
@@ -231,26 +253,37 @@ export class PublishJobService {
   ): Promise<PublishJobView> {
     assertVersion(expectedVersion);
     const scheduledAt = input.scheduled_at ? parseDate(input.scheduled_at) : new Date();
-    return this.database.begin(async (transaction) => {
-      const before = await loadJob(transaction, scope, jobId);
-      if (before.version !== expectedVersion) throw versionConflict();
-      if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
-        throw stateInvalid('Only a failed publish job with a failed variant can be retried');
-      }
-      if (before.packageStatus === 'archived' || before.packageStatus === 'cancelled') {
-        throw stateInvalid('Terminal content package cannot be retried');
-      }
-      if (before.attemptCount >= 20) throw stateInvalid('Publish job attempt limit was reached');
-      if (before.variantCurrentContentVersionId !== before.contentVersionId) {
-        throw stateInvalid(
-          'The failed publish job no longer points to the current content version',
-        );
-      }
-      if (await latestAttemptIsUnknown(transaction, scope.tenantId, before.id)) {
-        throw stateInvalid('Unknown external publish state requires manual resolution');
-      }
-      assertAccountReady(before);
-      const rows = await transaction<JobRow[]>`
+    return this.database.begin((transaction) =>
+      this.retryInTransaction(transaction, scope, jobId, expectedVersion, input, scheduledAt),
+    );
+  }
+
+  public async retryInTransaction(
+    transaction: TransactionSql,
+    scope: PublishJobScope,
+    jobId: string,
+    expectedVersion: number,
+    input: RetryPublishRequest,
+    scheduledAt = input.scheduled_at ? parseDate(input.scheduled_at) : new Date(),
+  ): Promise<PublishJobView> {
+    assertVersion(expectedVersion);
+    const before = await loadJob(transaction, scope, jobId);
+    if (before.version !== expectedVersion) throw versionConflict();
+    if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
+      throw stateInvalid('Only a failed publish job with a failed variant can be retried');
+    }
+    if (before.packageStatus === 'archived' || before.packageStatus === 'cancelled') {
+      throw stateInvalid('Terminal content package cannot be retried');
+    }
+    if (before.attemptCount >= 20) throw stateInvalid('Publish job attempt limit was reached');
+    if (before.variantCurrentContentVersionId !== before.contentVersionId) {
+      throw stateInvalid('The failed publish job no longer points to the current content version');
+    }
+    if (await latestAttemptIsUnknown(transaction, scope.tenantId, before.id)) {
+      throw stateInvalid('Unknown external publish state requires manual resolution');
+    }
+    assertAccountReady(before);
+    const rows = await transaction<JobRow[]>`
         UPDATE publish_jobs SET
           status='scheduled', scheduled_at=${scheduledAt}, last_error_json=NULL, version=version+1
         WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
@@ -264,47 +297,46 @@ export class PublishJobService {
           last_error_json AS "lastError", created_by AS "createdBy", version,
           created_at AS "createdAt", updated_at AS "updatedAt"
       `;
-      const after = requireChangedJob(rows, before);
-      assertContentVariantTransition({ from: 'publish_failed', to: 'approved' });
-      await updateVariant(
-        transaction,
-        scope.tenantId,
-        before.variantId,
-        before.variantVersion,
-        'publish_failed',
-        'approved',
-      );
-      assertContentVariantTransition({ from: 'approved', to: 'scheduled' });
-      await updateVariant(
-        transaction,
-        scope.tenantId,
-        before.variantId,
-        before.variantVersion + 1,
-        'approved',
-        'scheduled',
-      );
-      await projectPackage(
-        transaction,
-        this.projector,
-        scope.tenantId,
-        before.packageId,
-        before.packageStatus,
-        before.packageVersion,
-      );
-      await enqueueExecution(transaction, this.outbox, scope, after, scheduledAt);
-      await this.audit.record(transaction, {
-        action: 'publish_job.retried',
-        actorId: scope.userId,
-        after: safeJob(after),
-        before: safeJob(before),
-        ip: scope.ip ?? null,
-        requestId: scope.requestId,
-        resourceId: after.id,
-        resourceType: 'publish_job',
-        tenantId: scope.tenantId,
-      });
-      return mapJob(after);
+    const after = requireChangedJob(rows, before);
+    assertContentVariantTransition({ from: 'publish_failed', to: 'approved' });
+    await updateVariant(
+      transaction,
+      scope.tenantId,
+      before.variantId,
+      before.variantVersion,
+      'publish_failed',
+      'approved',
+    );
+    assertContentVariantTransition({ from: 'approved', to: 'scheduled' });
+    await updateVariant(
+      transaction,
+      scope.tenantId,
+      before.variantId,
+      before.variantVersion + 1,
+      'approved',
+      'scheduled',
+    );
+    await projectPackage(
+      transaction,
+      this.projector,
+      scope.tenantId,
+      before.packageId,
+      before.packageStatus,
+      before.packageVersion,
+    );
+    await enqueueExecution(transaction, this.outbox, scope, after, scheduledAt);
+    await this.audit.record(transaction, {
+      action: 'publish_job.retried',
+      actorId: scope.userId,
+      after: safeJob(after),
+      before: safeJob(before),
+      ip: scope.ip ?? null,
+      requestId: scope.requestId,
+      resourceId: after.id,
+      resourceType: 'publish_job',
+      tenantId: scope.tenantId,
     });
+    return mapJob(after);
   }
 }
 

@@ -1,0 +1,236 @@
+import 'reflect-metadata';
+
+import {
+  findPublishingApiContract,
+  type PublishAttemptView,
+  type PublishJobDetail,
+  type PublishJobView,
+  type SignedDownloadView,
+} from '@geo-content-os/contracts';
+import type { CanActivate, ExecutionContext } from '@nestjs/common';
+import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { Test } from '@nestjs/testing';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+import { IdempotencyService } from '../../../common/idempotency/index.js';
+import { PolicyGuard, setPolicyContext } from '../../identity/rbac/index.js';
+import { PlatformAccountService } from '../accounts/index.js';
+import { PublishJobService } from '../jobs/index.js';
+import { PlatformAccountController, PublishJobController } from './publishing-api.controller.js';
+import { PublishingApiService } from './publishing-api.service.js';
+
+const TENANT_ID = '10000000-0000-4000-8000-000000000001';
+const USER_ID = '10000000-0000-4000-8000-000000000002';
+const JOB_ID = '10000000-0000-4000-8000-000000000003';
+const VARIANT_ID = '10000000-0000-4000-8000-000000000004';
+const CONTENT_VERSION_ID = '10000000-0000-4000-8000-000000000005';
+const ACCOUNT_ID = '10000000-0000-4000-8000-000000000006';
+const ATTEMPT_ID = '10000000-0000-4000-8000-000000000007';
+const ARTIFACT_ID = '10000000-0000-4000-8000-000000000008';
+const REQUEST_ID = '10000000-0000-4000-8000-000000000009';
+const NOW = '2026-07-16T08:00:00.000Z';
+
+const job: PublishJobView = {
+  account_id: ACCOUNT_ID,
+  attempt_count: 1,
+  content_version_id: CONTENT_VERSION_ID,
+  created_at: NOW,
+  created_by: USER_ID,
+  external_post_id: null,
+  external_url: null,
+  id: JOB_ID,
+  idempotency_key: 'publish-job-0001',
+  last_error: null,
+  payload_hash: 'a'.repeat(64),
+  scheduled_at: NOW,
+  status: 'scheduled',
+  tenant_id: TENANT_ID,
+  updated_at: NOW,
+  variant_id: VARIANT_ID,
+  version: 3,
+};
+
+const attempt: PublishAttemptView = {
+  adapter_code: 'official_site.delivery',
+  attempt_no: 1,
+  created_at: NOW,
+  error_code: null,
+  finished_at: NOW,
+  id: ATTEMPT_ID,
+  publish_job_id: JOB_ID,
+  request_hash: 'b'.repeat(64),
+  response: { accepted: true },
+  started_at: NOW,
+  status: 'succeeded',
+  tenant_id: TENANT_ID,
+};
+
+const detail: PublishJobDetail = {
+  attempts: [attempt],
+  export_artifact: {
+    content_hash: 'c'.repeat(64),
+    content_version_id: CONTENT_VERSION_ID,
+    created_at: NOW,
+    created_by: USER_ID,
+    expires_at: '2026-07-17T08:00:00.000Z',
+    id: ARTIFACT_ID,
+    manifest: { file_count: 2 },
+    publish_job_id: JOB_ID,
+    tenant_id: TENANT_ID,
+    variant_id: VARIANT_ID,
+  },
+  job,
+};
+
+const download: SignedDownloadView = {
+  artifact_id: ARTIFACT_ID,
+  content_hash: 'c'.repeat(64),
+  content_version_id: CONTENT_VERSION_ID,
+  expires_at: '2026-07-16T08:15:00.000Z',
+  url: 'https://storage.example.test/signed/export.zip',
+};
+
+describe('publishing API mock E2E', () => {
+  let application: NestFastifyApplication;
+  const listJobs = vi.fn(async () => ({ items: [job], nextCursor: 'next-page' }));
+  const api = {
+    attempts: vi.fn(async () => [attempt]),
+    detail: vi.fn(async () => detail),
+    listJobs,
+    signedExport: vi.fn(async () => download),
+  };
+  const jobs = {
+    cancel: vi.fn(async () => ({ ...job, status: 'cancelled' as const, version: 4 })),
+    createInTransaction: vi.fn(async () => job),
+    retryInTransaction: vi.fn(async () => job),
+  };
+  const idempotency = {
+    execute: vi.fn(
+      async (
+        _input: unknown,
+        operation: (transaction: Readonly<Record<string, never>>) => Promise<unknown>,
+      ) => ({ replayed: false, response: await operation({}) }),
+    ),
+  };
+
+  beforeAll(async () => {
+    const module = await Test.createTestingModule({
+      controllers: [PlatformAccountController, PublishJobController],
+      providers: [
+        { provide: IdempotencyService, useValue: idempotency },
+        { provide: PlatformAccountService, useValue: {} },
+        { provide: PublishJobService, useValue: jobs },
+        { provide: PublishingApiService, useValue: api },
+      ],
+    })
+      .overrideGuard(PolicyGuard)
+      .useValue(new MockPublishingGuard())
+      .compile();
+    application = module.createNestApplication<NestFastifyApplication>(
+      new FastifyAdapter({ genReqId: () => REQUEST_ID }),
+    );
+    await application.init();
+    await application.getHttpAdapter().getInstance().ready();
+  });
+
+  afterAll(async () => application.close());
+
+  it('serves the publishing calendar from the filtered job-list endpoint', async () => {
+    const response = await application.inject({
+      method: 'GET',
+      url: `/publish-jobs?from=2026-07-16T00%3A00%3A00.000Z&to=2026-07-17T00%3A00%3A00.000Z&platform_code=official_site&account_id=${ACCOUNT_ID}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    findPublishingApiContract('job.list').responseSchema.parse(body);
+    expect(body.meta.next_cursor).toBe('next-page');
+    expect(listJobs).toHaveBeenCalledWith(
+      { tenantId: TENANT_ID, userId: USER_ID },
+      expect.objectContaining({
+        account_id: ACCOUNT_ID,
+        limit: 50,
+        platform_code: 'official_site',
+      }),
+    );
+  });
+
+  it('returns the aggregate detail and append-only attempts', async () => {
+    const detailResponse = await application.inject({
+      method: 'GET',
+      url: `/publish-jobs/${JOB_ID}`,
+    });
+    const attemptResponse = await application.inject({
+      method: 'GET',
+      url: `/publish-jobs/${JOB_ID}/attempts`,
+    });
+
+    expect(detailResponse.statusCode).toBe(200);
+    expect(detailResponse.headers.etag).toBe('"3"');
+    findPublishingApiContract('job.get').responseSchema.parse(detailResponse.json());
+    expect(attemptResponse.statusCode).toBe(200);
+    findPublishingApiContract('job.attempts').responseSchema.parse(attemptResponse.json());
+  });
+
+  it('returns a short-lived export URL without exposing credentials', async () => {
+    const response = await application.inject({
+      method: 'GET',
+      url: `/publish-jobs/${JOB_ID}/export`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    findPublishingApiContract('job.export').responseSchema.parse(body);
+    expect(JSON.stringify(body)).not.toMatch(/credential|ciphertext|access_token/iu);
+  });
+
+  it('enforces idempotency and optimistic version headers on job writes', async () => {
+    const createResponse = await application.inject({
+      headers: { 'idempotency-key': 'publish-job-create-0001' },
+      method: 'POST',
+      payload: { account_id: ACCOUNT_ID, scheduled_at: NOW, variant_id: VARIANT_ID },
+      url: '/publish-jobs',
+    });
+    const cancelResponse = await application.inject({
+      headers: { 'if-match': '"3"' },
+      method: 'POST',
+      payload: { reason: 'Editorial calendar changed' },
+      url: `/publish-jobs/${JOB_ID}/cancel`,
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.headers.etag).toBe('"3"');
+    findPublishingApiContract('job.create').responseSchema.parse(createResponse.json());
+    expect(jobs.createInTransaction).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ tenantId: TENANT_ID, userId: USER_ID }),
+      expect.objectContaining({ account_id: ACCOUNT_ID, variant_id: VARIANT_ID }),
+      'publish-job-create-0001',
+    );
+    expect(cancelResponse.statusCode).toBe(200);
+    expect(cancelResponse.headers.etag).toBe('"4"');
+    findPublishingApiContract('job.cancel').responseSchema.parse(cancelResponse.json());
+    expect(jobs.cancel).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: TENANT_ID, userId: USER_ID }),
+      JOB_ID,
+      3,
+      'Editorial calendar changed',
+    );
+  });
+});
+
+class MockPublishingGuard implements CanActivate {
+  public canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    setPolicyContext(request, {
+      activeTenantId: TENANT_ID,
+      permissions: new Set(['publishing.manage']),
+      platformRoles: [],
+      roles: ['publisher'],
+      sessionId: 'mock-session',
+      tenantRole: 'publisher',
+      userId: USER_ID,
+    });
+    return true;
+  }
+}

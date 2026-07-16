@@ -65,6 +65,9 @@ importers:
       '@geo-content-os/adapter-model':
         specifier: workspace:*
         version: link:../../packages/adapters/model
+      '@geo-content-os/adapter-platforms':
+        specifier: workspace:*
+        version: link:../../packages/adapters/platforms
       '@geo-content-os/adapter-rerank':
         specifier: workspace:*
         version: link:../../packages/adapters/rerank
