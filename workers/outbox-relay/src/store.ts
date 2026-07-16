@@ -30,6 +30,25 @@ export type FailureDisposition = 'retry' | 'failed' | 'lease_lost';
 export class OutboxRelayStore {
   public constructor(private readonly client: postgres.Sql) {}
 
+  public async replayFailed(eventId: string): Promise<boolean> {
+    const rows = await this.client<{ id: string }[]>`
+      UPDATE outbox_events
+      SET
+        status = 'pending',
+        attempt_count = 0,
+        next_attempt_at = now(),
+        locked_at = NULL,
+        locked_by = NULL,
+        last_error = NULL,
+        published_at = NULL
+      WHERE id = ${eventId}::uuid
+        AND status = 'failed'
+      RETURNING id
+    `;
+
+    return rows.length === 1;
+  }
+
   public async releaseExpiredLeases(leaseDurationMs: number): Promise<number> {
     assertPositiveInteger(leaseDurationMs, 'leaseDurationMs');
 

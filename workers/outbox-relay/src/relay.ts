@@ -27,6 +27,13 @@ export class OutboxRelay {
 
   public async runOnce(): Promise<RelayRunResult> {
     const recoveredLeases = await this.store.releaseExpiredLeases(this.options.leaseDurationMs);
+    if (recoveredLeases > 0) {
+      this.logger.warn('Expired outbox leases recovered', {
+        event: 'queue.outbox.leases_recovered',
+        recovered_leases: recoveredLeases,
+        worker_id: this.owner,
+      });
+    }
     const events = await this.store.claimBatch(this.owner, this.options.batchSize);
     let published = 0;
     let retried = 0;
@@ -62,17 +69,30 @@ export class OutboxRelay {
 
           if (disposition === 'failed') {
             failed += 1;
+            this.logger.error('Outbox event exhausted publish attempts', error, {
+              alert: 'outbox_terminal_failure',
+              disposition,
+              event: 'queue.outbox.terminal_failure',
+              event_type: event.eventType,
+              queue_attempt: event.attemptCount,
+            });
           } else if (disposition === 'retry') {
             retried += 1;
+            this.logger.error('Outbox event publish will retry', error, {
+              disposition,
+              event: 'queue.outbox.publish_retry',
+              event_type: event.eventType,
+              queue_attempt: event.attemptCount,
+            });
           } else {
             leaseLost += 1;
+            this.logger.warn('Outbox lease lost after publish failure', {
+              disposition,
+              event: 'queue.outbox.lease_lost',
+              event_type: event.eventType,
+              queue_attempt: event.attemptCount,
+            });
           }
-          this.logger.error('Outbox event publish failed', error, {
-            disposition,
-            event: 'queue.outbox.publish_failed',
-            event_type: event.eventType,
-            queue_attempt: event.attemptCount,
-          });
         }
       });
     }

@@ -58,6 +58,61 @@ describe('OutboxRelay telemetry', () => {
       expect.objectContaining({ event: 'queue.outbox.published' }),
     );
   });
+
+  it('reports recovered leases and terminal publish failures with stable alert events', async () => {
+    const event = claimedEvent();
+    const store = {
+      claimBatch: vi.fn(async () => [event]),
+      markPublishFailure: vi.fn(async () => 'failed'),
+      releaseExpiredLeases: vi.fn(async () => 2),
+    } as unknown as OutboxRelayStore;
+    const publisher: EventPublisher = {
+      close: vi.fn(async () => undefined),
+      publish: vi.fn(async () => {
+        throw new Error('redis unavailable');
+      }),
+    };
+    const logger: StructuredLogger = {
+      child: vi.fn(() => logger),
+      debug: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+    };
+    const relay = new OutboxRelay(
+      'relay-test',
+      store,
+      publisher,
+      {
+        batchSize: 10,
+        leaseDurationMs: 60_000,
+        maximumAttempts: 3,
+        retryDelayMs: 1_000,
+      },
+      logger,
+    );
+
+    await expect(relay.runOnce()).resolves.toMatchObject({
+      claimed: 1,
+      failed: 1,
+      recoveredLeases: 2,
+    });
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Expired outbox leases recovered',
+      expect.objectContaining({
+        event: 'queue.outbox.leases_recovered',
+        recovered_leases: 2,
+      }),
+    );
+    expect(logger.error).toHaveBeenCalledWith(
+      'Outbox event exhausted publish attempts',
+      expect.any(Error),
+      expect.objectContaining({
+        alert: 'outbox_terminal_failure',
+        event: 'queue.outbox.terminal_failure',
+      }),
+    );
+  });
 });
 
 function claimedEvent(): ClaimedOutboxEvent {

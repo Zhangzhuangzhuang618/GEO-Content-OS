@@ -6,6 +6,10 @@ import { Redis } from 'ioredis';
 import { queueNameFor, type OutboxQueueName } from './queue-router.js';
 import type { ClaimedOutboxEvent, EventPublisher } from './types.js';
 
+export interface BullMqEventPublisherOptions {
+  readonly publishTimeoutMs?: number;
+}
+
 export class BullMqEventPublisher implements EventPublisher {
   private readonly connection: Redis;
   private readonly telemetry = new BullMQOtel({
@@ -16,9 +20,13 @@ export class BullMqEventPublisher implements EventPublisher {
     OutboxQueueName,
     Queue<DomainEventEnvelope, unknown, EventType>
   >();
+  private readonly publishTimeoutMs: number;
 
-  public constructor(redisUrl: string) {
+  public constructor(redisUrl: string, options: BullMqEventPublisherOptions = {}) {
+    this.publishTimeoutMs = options.publishTimeoutMs ?? 5_000;
+    assertPositiveInteger(this.publishTimeoutMs, 'publishTimeoutMs');
     this.connection = new Redis(redisUrl, {
+      enableOfflineQueue: false,
       enableReadyCheck: true,
       maxRetriesPerRequest: null,
     });
@@ -27,16 +35,20 @@ export class BullMqEventPublisher implements EventPublisher {
   public async publish(event: ClaimedOutboxEvent): Promise<void> {
     const queue = this.getQueue(queueNameFor(event.eventType));
 
-    await queue.add(event.eventType, event.payload, {
-      ...(event.eventType.startsWith('knowledge.source.')
-        ? { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } }
-        : event.eventType === 'publishing.job.execution_requested.v1'
-          ? { attempts: 4, backoff: { type: 'publisher' } }
-          : {}),
-      jobId: event.id,
-      removeOnComplete: false,
-      removeOnFail: false,
-    });
+    await withTimeout(
+      queue.add(event.eventType, event.payload, {
+        ...(event.eventType.startsWith('knowledge.source.')
+          ? { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } }
+          : event.eventType === 'publishing.job.execution_requested.v1'
+            ? { attempts: 4, backoff: { type: 'publisher' } }
+            : {}),
+        jobId: event.id,
+        removeOnComplete: false,
+        removeOnFail: false,
+      }),
+      this.publishTimeoutMs,
+      `Timed out publishing outbox event ${event.id}`,
+    );
   }
 
   public async hasJob(event: Pick<ClaimedOutboxEvent, 'eventType' | 'id'>): Promise<boolean> {
@@ -80,5 +92,28 @@ export class BullMqEventPublisher implements EventPublisher {
     });
     this.queues.set(name, queue);
     return queue;
+  }
+}
+
+async function withTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  let timeout: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([operation, timeoutPromise]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function assertPositiveInteger(value: number, name: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer`);
   }
 }
