@@ -13,7 +13,6 @@ const PLATFORM_CODES = new Set([
   'wechat_mp',
   'douyin',
 ]);
-const HASH = /^[0-9a-f]{64}$/u;
 const IMAGE_TYPES = new Map([
   ['image/jpeg', 'jpg'],
   ['image/png', 'png'],
@@ -60,7 +59,7 @@ export interface VisibilityObservationView {
 export interface VisibilityTrendQuery {
   readonly from: string;
   readonly platformCode?: string;
-  readonly queryHash?: string;
+  readonly queryText?: string;
   readonly to: string;
 }
 
@@ -196,15 +195,18 @@ export class VisibilityService {
     scope: VisibilityScope,
     query: VisibilityTrendQuery,
   ): Promise<readonly VisibilityTrendPoint[]> {
+    const queryText =
+      query.queryText === undefined ? undefined : normalizeDisplayQuery(query.queryText);
     if (
       !validDate(query.from) ||
       !validDate(query.to) ||
       query.from > query.to ||
-      (query.queryHash !== undefined && !HASH.test(query.queryHash)) ||
+      (queryText !== undefined && (!queryText || queryText.length > 1_000)) ||
       (query.platformCode !== undefined && !PLATFORM_CODES.has(query.platformCode))
     ) {
       throw new VisibilityValidationError();
     }
+    const queryHash = queryText === undefined ? undefined : hashQuery(queryText);
     return resolveClient(this.client).begin(async (transaction) => {
       await assertVisibilityAccess(transaction, scope);
       const rows = await transaction<TrendRow[]>`
@@ -222,7 +224,7 @@ export class VisibilityService {
           AND observation.workspace_id = ${scope.workspaceId}::uuid
           AND observation.observed_at >= ${query.from}::date
           AND observation.observed_at < (${query.to}::date + INTERVAL '1 day')
-          AND (${query.queryHash ?? null}::char(64) IS NULL OR observation.query_hash = ${query.queryHash ?? null})
+          AND (${queryHash ?? null}::char(64) IS NULL OR observation.query_hash = ${queryHash ?? null})
           AND (${query.platformCode ?? null}::varchar IS NULL OR observation.platform_code = ${query.platformCode ?? null})
           AND has_project_scope_access(
             observation.tenant_id, observation.workspace_id, NULL, ${scope.userId}::uuid
@@ -272,14 +274,13 @@ function normalizeObservation(input: VisibilityObservationInput): NormalizedObse
   ) {
     throw new VisibilityValidationError();
   }
-  const canonicalQuery = queryText.normalize('NFKC').toLocaleLowerCase('en-US');
   return Object.freeze({
     evidenceAssetId,
     isCited: input.isCited,
     notes,
     observedAt,
     platformCode: input.platformCode,
-    queryHash: createHash('sha256').update(canonicalQuery).digest('hex'),
+    queryHash: hashQuery(queryText),
     queryText,
     rankPosition,
   });
@@ -388,6 +389,10 @@ function screenshotKey(scope: VisibilityScope, assetId: string, mimeType: string
 
 function normalizeDisplayQuery(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+}
+
+function hashQuery(value: string): string {
+  return createHash('sha256').update(value.toLocaleLowerCase('en-US')).digest('hex');
 }
 
 function validDate(value: string): boolean {

@@ -8,7 +8,9 @@ import {
   ImportJobParamsSchema,
   ManualMetricsRequestSchema,
   RollbackImportRequestSchema,
+  VisibilityImportRequestSchema,
   VisibilityObservationRequestSchema,
+  VisibilityTrendQuerySchema,
 } from '@geo-content-os/contracts';
 import {
   Controller,
@@ -354,6 +356,75 @@ export class AnalyticsApiController {
         },
       );
       await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Post('visibility-observations/import')
+  @RequirePermissions('analytics.read')
+  public async importVisibility(
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = VisibilityImportRequestSchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      const scope = requireScope(request);
+      const result = await this.idempotency.execute(
+        idempotencyInput(request, scope, '/visibility-observations/import', parsed.data),
+        async () => ({
+          body: apiResponse(
+            await this.visibility.importRows(
+              { ...scope, workspaceId: parsed.data.workspace_id },
+              parsed.data.rows.map((row) => ({
+                ...(row.evidence_asset_id !== undefined
+                  ? { evidenceAssetId: row.evidence_asset_id }
+                  : {}),
+                isCited: row.is_cited,
+                ...(row.notes !== undefined ? { notes: row.notes } : {}),
+                observedAt: row.observed_at,
+                platformCode: row.platform_code,
+                queryText: row.query_text,
+                ...(row.rank_position !== undefined ? { rankPosition: row.rank_position } : {}),
+              })),
+            ),
+            request.id,
+          ),
+          statusCode: HttpStatus.CREATED,
+        }),
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Get('visibility-observations/trend')
+  @RequirePermissions('analytics.read')
+  public async visibilityTrend(
+    @Query() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = VisibilityTrendQuerySchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      const scope = requireScope(request);
+      return sendData(
+        reply,
+        request.id,
+        await this.visibility.trend(
+          { ...scope, workspaceId: parsed.data.workspace_id },
+          {
+            from: parsed.data.from,
+            ...(parsed.data.platform_code ? { platformCode: parsed.data.platform_code } : {}),
+            ...(parsed.data.query_text ? { queryText: parsed.data.query_text } : {}),
+            to: parsed.data.to,
+          },
+        ),
+      );
     } catch (error) {
       return sendAnalyticsError(reply, request.id, error);
     }
