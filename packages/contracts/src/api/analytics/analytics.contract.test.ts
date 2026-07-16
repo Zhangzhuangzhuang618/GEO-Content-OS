@@ -4,17 +4,21 @@ import {
   ANALYTICS_API_CONTRACTS,
   ANALYTICS_OPENAPI_DOCUMENT,
   AnalyticsExportJobResponseSchema,
+  CostBudgetQuerySchema,
+  CostReconciliationRequestSchema,
   VisibilityImportRequestSchema,
   VisibilityTrendQuerySchema,
 } from './index.js';
 
 describe('analytics API contract', () => {
-  it('freezes all thirteen executable analytics, import, visibility and cost endpoints', () => {
+  it('freezes all fifteen executable analytics, import, visibility and cost endpoints', () => {
     expect(ANALYTICS_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /analytics/overview',
       'GET /analytics/platforms',
       'GET /analytics/contents',
       'GET /analytics/costs',
+      'GET /analytics/costs/budget',
+      'POST /analytics/costs/reconcile',
       'POST /metrics/import',
       'GET /metrics/import-jobs/{id}',
       'POST /metrics/import-jobs/{id}/rollback',
@@ -29,7 +33,7 @@ describe('analytics API contract', () => {
     const operations = Object.values(ANALYTICS_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(13);
+    expect(operations).toHaveLength(15);
     for (const contract of ANALYTICS_API_CONTRACTS) {
       const operation = ANALYTICS_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -47,6 +51,29 @@ describe('analytics API contract', () => {
         }
       ).requestBody?.content,
     ).toHaveProperty('multipart/form-data');
+  });
+
+  it('validates cost budget and provider statement reconciliation inputs', () => {
+    expect(
+      CostBudgetQuerySchema.safeParse({
+        month: '2026-07',
+        workspace_id: '20000000-0000-4000-8000-000000000097',
+      }).success,
+    ).toBe(true);
+    expect(
+      CostReconciliationRequestSchema.safeParse({
+        from: '2026-07-01',
+        statement_lines: [{ billed_cost_cents: 150, currency: 'CNY', provider: 'deepseek' }],
+        to: '2026-08-01',
+      }).success,
+    ).toBe(true);
+    expect(
+      CostReconciliationRequestSchema.safeParse({
+        from: '2026-08-01',
+        statement_lines: [{ billed_cost_cents: 150, currency: 'CNY', provider: 'deepseek' }],
+        to: '2026-07-01',
+      }).success,
+    ).toBe(false);
   });
 
   it('uses the independent analytics export job view', () => {
