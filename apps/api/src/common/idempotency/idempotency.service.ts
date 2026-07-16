@@ -39,7 +39,7 @@ export class IdempotencyService {
     input: IdempotencyExecutionInput,
     operation: (transaction: IdempotencyTransaction) => Promise<CachedHttpResponse<TBody>>,
   ): Promise<IdempotencyExecutionResult<TBody>> {
-    const tenantId = UuidSchema.parse(input.tenantId);
+    const tenantId = input.tenantId === null ? null : UuidSchema.parse(input.tenantId);
     const scopeKey = parseScopeKey(input.scopeKey);
     const idempotencyKey = parseIdempotencyKey(input.idempotencyKey);
     const requestHash = hashRequest(input.fingerprint);
@@ -105,7 +105,7 @@ export class IdempotencyService {
           status = ${terminalStatus},
           response_status = ${response.statusCode},
           response_json = ${JSON.stringify(response.body)}::text::jsonb
-        WHERE tenant_id = ${tenantId}::uuid
+        WHERE tenant_id IS NOT DISTINCT FROM ${tenantId}::uuid
           AND scope_key = ${scopeKey}
           AND idempotency_key = ${idempotencyKey}
           AND request_hash = ${requestHash}
@@ -126,7 +126,7 @@ export class IdempotencyService {
 }
 
 interface InsertInput {
-  readonly tenantId: string;
+  readonly tenantId: string | null;
   readonly scopeKey: string;
   readonly idempotencyKey: string;
   readonly requestHash: string;
@@ -153,7 +153,7 @@ async function insertProcessingRecord(
       'processing',
       now() + (${input.ttlMs} * interval '1 millisecond')
     )
-    ON CONFLICT (tenant_id, scope_key, idempotency_key) DO NOTHING
+    ON CONFLICT ON CONSTRAINT idempotency_records_unique_key DO NOTHING
     RETURNING id
   `;
   return rows.length === 1;
@@ -161,7 +161,7 @@ async function insertProcessingRecord(
 
 async function lockRecord(
   transaction: IdempotencyTransaction,
-  tenantId: string,
+  tenantId: string | null,
   scopeKey: string,
   idempotencyKey: string,
 ): Promise<IdempotencyRow | undefined> {
@@ -176,7 +176,7 @@ async function lockRecord(
       updated_at <= now() - (${PROCESSING_STALE_AFTER_MS} * interval '1 millisecond')
         AS processing_stale
     FROM idempotency_records
-    WHERE tenant_id = ${tenantId}::uuid
+    WHERE tenant_id IS NOT DISTINCT FROM ${tenantId}::uuid
       AND scope_key = ${scopeKey}
       AND idempotency_key = ${idempotencyKey}
     FOR UPDATE

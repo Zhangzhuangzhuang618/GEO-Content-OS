@@ -132,8 +132,8 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 | `fact_check_results` | 每次运行的 claim 判定 |
 | `fact_evidences` | Fact Checker 实际证据；unsupported 不写行 |
 | `quality_reports` | 不可变质量检查报告 |
-| `prompt_versions` | 不可覆盖 Prompt 版本 |
-| `platform_rule_versions` | 七平台硬约束版本 |
+| `prompt_versions` | 不可覆盖 Prompt 版本；`semantic_version` 映射数据库 `version`，整数 `lock_version` 映射 API `version` |
+| `platform_rule_versions` | 七平台硬约束版本；`semantic_version` 映射数据库 `version`，整数 `lock_version` 映射 API `version` |
 | `model_rate_cards` | 模型能力和费率版本 |
 | `review_snapshots` | 不可变审核快照头 |
 | `review_snapshot_variants` | 审核范围和精确内容版本 |
@@ -150,9 +150,9 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 | `visibility_observations` | 问答/搜索可见性观察 |
 | `analytics_export_jobs` | 分析数据异步导出任务 |
 | `usage_ledger` | 全成本 append-only 用量账本 |
-| `idempotency_records` | HTTP 写请求幂等结果 |
+| `idempotency_records` | HTTP 写请求幂等结果；平台级全局写入允许空 tenant，并以 NULLS NOT DISTINCT 保证唯一 |
 | `outbox_events` | 事务事件箱和投递租约 |
-| `audit_events` | 不可变审计事件 |
+| `audit_events` | 不可变审计事件；平台级全局配置事件允许空 tenant |
 | `tenant_export_jobs` | 租户数据导出和删除前归档 |
 
 ### 审核冻结
@@ -179,7 +179,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，当前可执行端点数为 121。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，当前可执行端点数为 121。ADR-0007 仅补齐既有 SET-03 端点的数据契约与迁移，不增加端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|

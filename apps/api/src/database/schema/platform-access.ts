@@ -88,7 +88,7 @@ export const auditEvents = pgTable(
   'audit_events',
   {
     id: uuid().primaryKey().defaultRandom(),
-    tenantId: uuid('tenant_id').notNull(),
+    tenantId: uuid('tenant_id'),
     actorId: uuid('actor_id'),
     supportAccessGrantId: uuid('support_access_grant_id'),
     action: varchar({ length: 80 }).notNull(),
