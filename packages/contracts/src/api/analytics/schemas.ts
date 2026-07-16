@@ -179,6 +179,9 @@ export const ManualMetricsRequestSchema = z
   .strict();
 
 export const ImportJobParamsSchema = z.object({ id: UuidSchema }).strict();
+export const RollbackImportRequestSchema = z
+  .object({ reason: z.string().trim().min(1).max(1_000) })
+  .strict();
 export const ImportJobViewSchema = z
   .object({
     content_hash: HashSchema.nullable(),

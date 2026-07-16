@@ -112,7 +112,9 @@ describe('metrics import', () => {
     expect(jobs[0]).toMatchObject({ rowCount: 2, status: 'succeeded' });
     expect(jobs[0]?.error).toMatchObject({ schema_version: 'import-error@1' });
 
-    await database.begin((transaction) => service.rollback(transaction, SCOPE, result.importJobId));
+    await database.begin((transaction) =>
+      service.rollback(transaction, SCOPE, result.importJobId, 'duplicate source batch'),
+    );
     expect(await database`SELECT status FROM import_jobs`).toEqual([{ status: 'rolled_back' }]);
     expect(await database`SELECT id FROM metric_records`).toHaveLength(1);
     expect(
@@ -124,7 +126,9 @@ describe('metrics import', () => {
       `,
     ).toHaveLength(0);
     await expect(
-      database.begin((transaction) => service.rollback(transaction, SCOPE, result.importJobId)),
+      database.begin((transaction) =>
+        service.rollback(transaction, SCOPE, result.importJobId, 'repeat rollback'),
+      ),
     ).rejects.toBeInstanceOf(MetricsImportStateError);
   });
 

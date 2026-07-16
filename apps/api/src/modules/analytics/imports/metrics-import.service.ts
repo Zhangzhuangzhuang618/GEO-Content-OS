@@ -225,7 +225,12 @@ export class MetricsImportService {
     transaction: TransactionSql,
     scope: MetricsImportScope,
     importJobId: string,
+    reason: string,
   ): Promise<void> {
+    const normalizedReason = reason.trim();
+    if (!normalizedReason || normalizedReason.length > 1_000) {
+      throw new MetricsImportValidationError();
+    }
     await assertImportAccess(transaction, scope);
     const rows = await transaction<{ status: string }[]>`
       UPDATE import_jobs
@@ -238,6 +243,7 @@ export class MetricsImportService {
     `;
     if (rows.length !== 1) throw new MetricsImportStateError();
     await audit(transaction, scope, 'metrics_import.rolled_back', importJobId, null, {
+      reason: normalizedReason,
       status: 'rolled_back',
     });
   }
