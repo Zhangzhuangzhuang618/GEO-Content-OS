@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geo-content-os.local/schemas/platform-rollout.v1.json",
+  "title": "GEO Content OS platform rollout",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "release",
+    "environment",
+    "default_enabled",
+    "kill_switch",
+    "gates",
+    "phases",
+    "flags"
+  ],
+  "properties": {
+    "schema_version": { "const": "platform-rollout@1" },
+    "release": { "const": "v2.1" },
+    "environment": { "const": "production" },
+    "default_enabled": { "const": false },
+    "kill_switch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment_variable", "safe_value"],
+      "properties": {
+        "environment_variable": { "const": "GEO_PUBLISHING_KILL_SWITCH" },
+        "safe_value": { "const": "true" }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api_p95_ms_max",
+        "queue_enqueue_p95_ms_max",
+        "request_failure_rate_max",
+        "security_blockers_max",
+        "accessibility_serious_or_critical_max",
+        "cost_regression_percent_max",
+        "rpo_seconds_max",
+        "rto_seconds_max"
+      ],
+      "properties": {
+        "api_p95_ms_max": { "const": 800 },
+        "queue_enqueue_p95_ms_max": { "const": 2000 },
+        "request_failure_rate_max": { "const": 0.01 },
+        "security_blockers_max": { "const": 0 },
+        "accessibility_serious_or_critical_max": { "const": 0 },
+        "cost_regression_percent_max": { "const": 15 },
+        "rpo_seconds_max": { "const": 900 },
+        "rto_seconds_max": { "const": 3600 }
+      }
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "platforms", "requires_previous_phase"],
+        "properties": {
+          "id": { "enum": ["phase-1", "phase-2"] },
+          "platforms": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "official_site",
+                "baijiahao",
+                "toutiao",
+                "zhihu",
+                "xiaohongshu",
+                "wechat_mp",
+                "douyin"
+              ]
+            }
+          },
+          "requires_previous_phase": {
+            "type": ["string", "null"],
+            "enum": [null, "phase-1"]
+          }
+        }
+      }
+    },
+    "flags": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "environment_variable", "platform", "phase", "enabled"],
+        "properties": {
+          "key": { "type": "string", "pattern": "^publishing\\.[a-z_]+$" },
+          "environment_variable": {
+            "type": "string",
+            "pattern": "^GEO_PUBLISH_[A-Z_]+_ENABLED$"
+          },
+          "platform": {
+            "enum": [
+              "official_site",
+              "baijiahao",
+              "toutiao",
+              "zhihu",
+              "xiaohongshu",
+              "wechat_mp",
+              "douyin"
+            ]
+          },
+          "phase": { "enum": ["phase-1", "phase-2"] },
+          "enabled": { "const": false }
+        }
+      }
+    }
+  }
+}

@@ -29,7 +29,9 @@ export function ContentPackageList() {
   const [canCopy, setCanCopy] = useState(false);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [copyingId, setCopyingId] = useState<string | null>(null);
-  const [message, setMessage] = useState<{ readonly id?: string; readonly text: string } | null>(null);
+  const [message, setMessage] = useState<{ readonly id?: string; readonly text: string } | null>(
+    null,
+  );
 
   const load = useCallback(async (next: PackageFilters, signal?: AbortSignal) => {
     setState('loading');
@@ -234,12 +236,16 @@ function PackageRow({
         <Link className="font-medium text-brand-700" href={`/cont-04?id=${item.package.id}`}>
           {shortId(item.package.id)}
         </Link>
-        <p className="mt-1 font-mono text-xs text-ink-500">项目 {shortId(item.package.project_id)}</p>
+        <p className="mt-1 font-mono text-xs text-ink-500">
+          项目 {shortId(item.package.project_id)}
+        </p>
       </td>
       <td className="p-4">{statusLabel(item.package.status)}</td>
       <td className="p-4">{scored.length ? `${average(scored)} 分` : '待检查'}</td>
       <td className="p-4">
-        <span className="font-medium">已产出 {produced}/{item.variants.length}</span>
+        <span className="font-medium">
+          已产出 {produced}/{item.variants.length}
+        </span>
         <p className="mt-1 text-xs text-ink-500">
           {item.variants.map((variant) => platformLabel(variant.platform_code)).join('、')}
         </p>
@@ -322,7 +328,8 @@ function filterFormKey(filters: PackageFilters) {
   ].join('|');
 }
 function isAccessError(error: unknown) {
-  if (error instanceof ContentPackageListRequestError) return [401, 403, 404].includes(error.status);
+  if (error instanceof ContentPackageListRequestError)
+    return [401, 403, 404].includes(error.status);
   if (!error || typeof error !== 'object') return false;
   const status = (error as { readonly status?: unknown }).status;
   return typeof status === 'number' && [401, 403, 404].includes(status);

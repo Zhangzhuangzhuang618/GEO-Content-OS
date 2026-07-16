@@ -1,9 +1,5 @@
 import { WechatMpDeliveryError } from './errors.js';
-import type {
-  WechatMpHttpRequest,
-  WechatMpHttpResponse,
-  WechatMpHttpTransport,
-} from './types.js';
+import type { WechatMpHttpRequest, WechatMpHttpResponse, WechatMpHttpTransport } from './types.js';
 
 export class FetchWechatMpTransport implements WechatMpHttpTransport {
   public constructor(private readonly timeoutMs: number) {}

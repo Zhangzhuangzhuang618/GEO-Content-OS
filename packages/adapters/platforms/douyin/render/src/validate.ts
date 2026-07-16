@@ -21,7 +21,9 @@ export function validateDouyinContent(input: unknown): DouyinValidationResult {
   const { duration_seconds: duration, storyboard, subtitles, topics } = value.content.platform_meta;
   const issues: DouyinValidationIssue[] = [];
   if (storyboard.length === 0) {
-    issues.push(blocker('STORYBOARD_REQUIRED', '必须提供至少一个分镜。', 'content.platform_meta.storyboard'));
+    issues.push(
+      blocker('STORYBOARD_REQUIRED', '必须提供至少一个分镜。', 'content.platform_meta.storyboard'),
+    );
   }
   const first = storyboard[0];
   if (
@@ -33,18 +35,30 @@ export function validateDouyinContent(input: unknown): DouyinValidationResult {
     !first.voiceover.trim()
   ) {
     issues.push(
-      blocker('HOOK_REQUIRED', '首个分镜必须从 0 秒开始，在 3 秒内结束，并包含画面与口播。', 'content.platform_meta.storyboard.0'),
+      blocker(
+        'HOOK_REQUIRED',
+        '首个分镜必须从 0 秒开始，在 3 秒内结束，并包含画面与口播。',
+        'content.platform_meta.storyboard.0',
+      ),
     );
   }
   if (subtitles.length === 0) {
-    issues.push(blocker('SUBTITLE_REQUIRED', '必须提供至少一条字幕。', 'content.platform_meta.subtitles'));
+    issues.push(
+      blocker('SUBTITLE_REQUIRED', '必须提供至少一条字幕。', 'content.platform_meta.subtitles'),
+    );
   }
   if (topics.length === 0) {
-    issues.push(blocker('TOPIC_REQUIRED', '必须提供至少一个话题。', 'content.platform_meta.topics'));
+    issues.push(
+      blocker('TOPIC_REQUIRED', '必须提供至少一个话题。', 'content.platform_meta.topics'),
+    );
   }
   if (!timelineMatchesDuration(storyboard, subtitles, duration)) {
     issues.push(
-      blocker('DURATION_MISMATCH', '分镜和字幕时间必须递增、位于总时长内，且至少一项结束于总时长。', 'content.platform_meta.duration_seconds'),
+      blocker(
+        'DURATION_MISMATCH',
+        '分镜和字幕时间必须递增、位于总时长内，且至少一项结束于总时长。',
+        'content.platform_meta.duration_seconds',
+      ),
     );
   }
   const allText = [
@@ -57,7 +71,11 @@ export function validateDouyinContent(input: unknown): DouyinValidationResult {
   ].join('\n');
   if (DOUYIN_RENDER_RULES_V1.productionClaimMarkers.some((marker) => allText.includes(marker))) {
     issues.push(
-      blocker('PRODUCTION_CLAIM_FORBIDDEN', '只能输出脚本包，不得声称视频已制作、拍摄或发布。', 'content'),
+      blocker(
+        'PRODUCTION_CLAIM_FORBIDDEN',
+        '只能输出脚本包，不得声称视频已制作、拍摄或发布。',
+        'content',
+      ),
     );
   }
   const referenced = new Set(value.content.citation_map.flatMap((claim) => claim.citation_ids));
@@ -100,11 +118,7 @@ function timelineIsOrdered(
   });
 }
 
-function blocker(
-  code: DouyinValidationCode,
-  message: string,
-  path: string,
-): DouyinValidationIssue {
+function blocker(code: DouyinValidationCode, message: string, path: string): DouyinValidationIssue {
   return { code, message, path, severity: 'blocker' };
 }
 function pathOf(path: readonly PropertyKey[]): string {

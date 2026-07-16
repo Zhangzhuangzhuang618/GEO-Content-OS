@@ -48,7 +48,8 @@ export class WechatMpDeliveryAdapter {
         this.configuration.endpoints.capabilities,
         signal,
       );
-      if (!isSuccess(response.status_code)) return exportOnlyCapabilities('CAPABILITY_PROBE_FAILED');
+      if (!isSuccess(response.status_code))
+        return exportOnlyCapabilities('CAPABILITY_PROBE_FAILED');
       const parsed = WechatMpCapabilityResponseSchema.safeParse(response.body);
       if (!parsed.success) return exportOnlyCapabilities('CAPABILITY_PROBE_FAILED');
       return Object.freeze({

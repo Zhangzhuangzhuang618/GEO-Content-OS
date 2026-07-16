@@ -58,15 +58,18 @@ export async function regenerateVariant(
   modelPolicy: ModelPolicy,
   csrf: string,
 ) {
-  const response = await fetch(`${API_ORIGIN}/api/v1/content-variants/${detail.variant.id}/regenerate`, {
-    body: JSON.stringify({
-      locked_block_keys: detail.locks.map((lock) => lock.block_key),
-      model_policy: modelPolicy,
-    }),
-    credentials: 'include',
-    headers: writeHeaders('content-variant-regenerate', csrf, detail.variant.version),
-    method: 'POST',
-  });
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/content-variants/${detail.variant.id}/regenerate`,
+    {
+      body: JSON.stringify({
+        locked_block_keys: detail.locks.map((lock) => lock.block_key),
+        model_policy: modelPolicy,
+      }),
+      credentials: 'include',
+      headers: writeHeaders('content-variant-regenerate', csrf, detail.variant.version),
+      method: 'POST',
+    },
+  );
   if (!response.ok) throw new ContentEditorRequestError(response.status);
   const parsed = GenerationResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new ContentEditorRequestError(502);

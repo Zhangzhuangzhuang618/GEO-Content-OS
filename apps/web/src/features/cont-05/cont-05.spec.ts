@@ -9,7 +9,9 @@ const BLOCK_ID = '90000000-0000-4000-8000-000000000086';
 const HASH = 'a'.repeat(64);
 
 test.beforeEach(async ({ context, page }) => {
-  await context.addCookies([{ name: 'geo_csrf', url: 'http://127.0.0.1:34115', value: 'x'.repeat(43) }]);
+  await context.addCookies([
+    { name: 'geo_csrf', url: 'http://127.0.0.1:34115', value: 'x'.repeat(43) },
+  ]);
   await mockRole(page, 'content_editor');
   await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, (route) => json(route, detail()));
 });
@@ -64,11 +66,14 @@ test('locks a stored block and regenerates with frozen lock keys', async ({ page
   let lockHeader: string | undefined;
   let regenerate: { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
   let locked = false;
-  await page.route(`**/api/v1/content-variants/${VARIANT_ID}/blocks/${BLOCK_ID}/lock`, async (route) => {
-    lockHeader = route.request().headers()['if-match'];
-    locked = true;
-    await json(route, { id: 'a0000000-0000-4000-8000-000000000086', variant_version: 5 }, 201);
-  });
+  await page.route(
+    `**/api/v1/content-variants/${VARIANT_ID}/blocks/${BLOCK_ID}/lock`,
+    async (route) => {
+      lockHeader = route.request().headers()['if-match'];
+      locked = true;
+      await json(route, { id: 'a0000000-0000-4000-8000-000000000086', variant_version: 5 }, 201);
+    },
+  );
   await page.route(`**/api/v1/content-variants/${VARIANT_ID}/regenerate`, async (route) => {
     regenerate = { body: route.request().postDataJSON(), headers: route.request().headers() };
     await json(route, { id: 'a1000000-0000-4000-8000-000000000086' }, 202);
@@ -122,17 +127,112 @@ test('keeps permission and mobile states safe', async ({ page }) => {
 
 function detail() {
   return {
-    citations: [{ chunk_id: 'b0000000-0000-4000-8000-000000000086', claim_key: 'claim-1', claim_text: '声明', content_version_id: CURRENT_ID, created_at: '2026-07-15T00:00:00.000Z', id: 'b1000000-0000-4000-8000-000000000086', quote_hash: HASH, quote_text: '证据摘录', tenant_id: TENANT_ID }],
+    citations: [
+      {
+        chunk_id: 'b0000000-0000-4000-8000-000000000086',
+        claim_key: 'claim-1',
+        claim_text: '声明',
+        content_version_id: CURRENT_ID,
+        created_at: '2026-07-15T00:00:00.000Z',
+        id: 'b1000000-0000-4000-8000-000000000086',
+        quote_hash: HASH,
+        quote_text: '证据摘录',
+        tenant_id: TENANT_ID,
+      },
+    ],
     current_content: version(CURRENT_ID, 2),
     locks: [] as ReturnType<typeof blockLock>[],
-    quality_report: { content_version_id: CURRENT_ID, decision: 'pass', id: 'b2000000-0000-4000-8000-000000000086', score: 91, variant_id: VARIANT_ID },
-    variant: { created_at: '2026-07-15T00:00:00.000Z', current_content_version_id: CURRENT_ID, id: VARIANT_ID, is_required: true, package_id: PACKAGE_ID, platform_code: 'zhihu', quality_score: 91, status: 'quality_passed', tenant_id: TENANT_ID, updated_at: '2026-07-15T01:00:00.000Z', version: 4 },
+    quality_report: {
+      content_version_id: CURRENT_ID,
+      decision: 'pass',
+      id: 'b2000000-0000-4000-8000-000000000086',
+      score: 91,
+      variant_id: VARIANT_ID,
+    },
+    variant: {
+      created_at: '2026-07-15T00:00:00.000Z',
+      current_content_version_id: CURRENT_ID,
+      id: VARIANT_ID,
+      is_required: true,
+      package_id: PACKAGE_ID,
+      platform_code: 'zhihu',
+      quality_score: 91,
+      status: 'quality_passed',
+      tenant_id: TENANT_ID,
+      updated_at: '2026-07-15T01:00:00.000Z',
+      version: 4,
+    },
     versions: [version(CURRENT_ID, 2), version(OLD_ID, 1)],
   };
 }
 function version(id: string, versionNo: number) {
-  return { blocks: [{ block_key: 'intro', block_type: 'paragraph', content_version_id: id, created_at: '2026-07-15T00:00:00.000Z', id: BLOCK_ID, position: 0, tenant_id: TENANT_ID, text_hash: HASH }], content_hash: HASH, content_json: { blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '正文' }], citation_map: [{ citation_ids: [], claim_key: 'claim-1', claim_text: '声明' }], cta: null, hashtags: ['GEO'], platform_code: 'zhihu', platform_meta: { content_type: 'answer' }, schema_version: 'content-writer-data@1', summary: '摘要', title: '原始 GEO 标题' }, created_at: '2026-07-15T00:00:00.000Z', created_by: '40000000-0000-4000-8000-000000000086', id, package_id: PACKAGE_ID, schema_version: 'content-writer-data@1', source_run_id: null, tenant_id: TENANT_ID, variant_id: VARIANT_ID, version_no: versionNo };
+  return {
+    blocks: [
+      {
+        block_key: 'intro',
+        block_type: 'paragraph',
+        content_version_id: id,
+        created_at: '2026-07-15T00:00:00.000Z',
+        id: BLOCK_ID,
+        position: 0,
+        tenant_id: TENANT_ID,
+        text_hash: HASH,
+      },
+    ],
+    content_hash: HASH,
+    content_json: {
+      blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '正文' }],
+      citation_map: [{ citation_ids: [], claim_key: 'claim-1', claim_text: '声明' }],
+      cta: null,
+      hashtags: ['GEO'],
+      platform_code: 'zhihu',
+      platform_meta: { content_type: 'answer' },
+      schema_version: 'content-writer-data@1',
+      summary: '摘要',
+      title: '原始 GEO 标题',
+    },
+    created_at: '2026-07-15T00:00:00.000Z',
+    created_by: '40000000-0000-4000-8000-000000000086',
+    id,
+    package_id: PACKAGE_ID,
+    schema_version: 'content-writer-data@1',
+    source_run_id: null,
+    tenant_id: TENANT_ID,
+    variant_id: VARIANT_ID,
+    version_no: versionNo,
+  };
 }
-function blockLock() { return { block_key: 'intro', created_at: '2026-07-15T00:00:00.000Z', id: 'a0000000-0000-4000-8000-000000000086', locked_by: '40000000-0000-4000-8000-000000000086', locked_content_hash: HASH, reason: null, tenant_id: TENANT_ID, updated_at: '2026-07-15T00:00:00.000Z', variant_id: VARIANT_ID }; }
-async function mockRole(page: Page, role: string) { await page.route('**/api/v1/auth/tenants', (route) => json(route, [{ id: TENANT_ID, is_active: true, last_used_at: null, name: '内容企业', role_code: role, slug: 'content' }])); }
-async function json(route: Route, data: unknown, status = 200) { await route.fulfill({ body: JSON.stringify({ data, meta: { request_id: 'cont-05' } }), contentType: 'application/json', status }); }
+function blockLock() {
+  return {
+    block_key: 'intro',
+    created_at: '2026-07-15T00:00:00.000Z',
+    id: 'a0000000-0000-4000-8000-000000000086',
+    locked_by: '40000000-0000-4000-8000-000000000086',
+    locked_content_hash: HASH,
+    reason: null,
+    tenant_id: TENANT_ID,
+    updated_at: '2026-07-15T00:00:00.000Z',
+    variant_id: VARIANT_ID,
+  };
+}
+async function mockRole(page: Page, role: string) {
+  await page.route('**/api/v1/auth/tenants', (route) =>
+    json(route, [
+      {
+        id: TENANT_ID,
+        is_active: true,
+        last_used_at: null,
+        name: '内容企业',
+        role_code: role,
+        slug: 'content',
+      },
+    ]),
+  );
+}
+async function json(route: Route, data: unknown, status = 200) {
+  await route.fulfill({
+    body: JSON.stringify({ data, meta: { request_id: 'cont-05' } }),
+    contentType: 'application/json',
+    status,
+  });
+}

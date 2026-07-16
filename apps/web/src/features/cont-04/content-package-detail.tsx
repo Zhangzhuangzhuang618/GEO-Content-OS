@@ -107,7 +107,9 @@ export function ContentPackageDetail() {
   const producer = PRODUCER_ROLES.has(role);
   const administrator = ADMIN_ROLES.has(role);
   const guards = actionGuards(detail);
-  const reviewable = new Set(detail.variants.filter(canSubmitVariant).map((item) => item.variant.id));
+  const reviewable = new Set(
+    detail.variants.filter(canSubmitVariant).map((item) => item.variant.id),
+  );
   const canSubmitSelection =
     selectedReviewIds.length > 0 && selectedReviewIds.every((id) => reviewable.has(id));
 
@@ -121,7 +123,8 @@ export function ContentPackageDetail() {
               内容包 · {shortId(detail.package.id)}
             </h2>
             <p className="mt-2 text-sm text-ink-500">
-              包状态“{packageStatusLabel(detail.package.status)}”仅作摘要，所有动作按下方变体状态判断。
+              包状态“{packageStatusLabel(detail.package.status)}
+              ”仅作摘要，所有动作按下方变体状态判断。
             </p>
           </div>
           <Link className={secondaryButton} href="/cont-03">
@@ -435,7 +438,9 @@ function ActionButton({
 }) {
   return (
     <button
-      className={action === 'generate' || action === 'submit-review' ? primaryButton : secondaryButton}
+      className={
+        action === 'generate' || action === 'submit-review' ? primaryButton : secondaryButton
+      }
       disabled={busy !== null || disabled}
       onClick={() => void onRun(action)}
       type="button"
@@ -496,9 +501,11 @@ function decisionLabel(decision: string) {
   return { block: '阻断', pass: '通过', revise: '需修改' }[decision] ?? decision;
 }
 function runStatusLabel(status: string) {
-  return { cancelled: '已取消', failed: '失败', queued: '排队中', running: '运行中', succeeded: '成功' }[
-    status
-  ] ?? status;
+  return (
+    { cancelled: '已取消', failed: '失败', queued: '排队中', running: '运行中', succeeded: '成功' }[
+      status
+    ] ?? status
+  );
 }
 function StatePanel({ title, text }: { readonly title: string; readonly text: string }) {
   return (

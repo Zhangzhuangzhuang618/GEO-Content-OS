@@ -39,7 +39,9 @@ test.beforeEach(async ({ context, page }) => {
   );
 });
 
-test('shows variant-derived quality and progress while package status remains a summary', async ({ page }) => {
+test('shows variant-derived quality and progress while package status remains a summary', async ({
+  page,
+}) => {
   await page.goto('/cont-03');
   await expect(page.getByText('包状态由各平台变体投影得出，仅作列表摘要')).toBeVisible();
   await expect(page.getByRole('cell', { name: '已生成' })).toBeVisible();
@@ -60,7 +62,9 @@ test('keeps filters and cursor pagination reproducible', async ({ page }) => {
   await page.getByLabel('包状态').selectOption('generated');
   await page.getByLabel('平台').selectOption('zhihu');
   await page.getByRole('button', { name: '应用筛选' }).click();
-  await expect(page).toHaveURL(/workspace_id=.*project_id=.*created_by=.*status=generated.*platform_code=zhihu/u);
+  await expect(page).toHaveURL(
+    /workspace_id=.*project_id=.*created_by=.*status=generated.*platform_code=zhihu/u,
+  );
   await page.getByRole('button', { name: '下一页' }).click();
   await expect(page).toHaveURL(new RegExp(`cursor=${NEXT_CURSOR}`, 'u'));
   await page.reload();
@@ -178,12 +182,7 @@ async function mockRole(page: Page, role: string) {
   );
 }
 
-async function json(
-  route: Route,
-  data: unknown,
-  meta: Record<string, unknown>,
-  status = 200,
-) {
+async function json(route: Route, data: unknown, meta: Record<string, unknown>, status = 200) {
   await route.fulfill({
     body: JSON.stringify({ data, meta }),
     contentType: 'application/json',

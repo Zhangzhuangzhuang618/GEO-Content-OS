@@ -79,7 +79,10 @@ export async function copyContentPackage(item: ContentPackage, csrf: string) {
 }
 
 async function loadSettledCosts(signal?: AbortSignal) {
-  const query = new URLSearchParams({ from: '1970-01-01', to: new Date().toISOString().slice(0, 10) });
+  const query = new URLSearchParams({
+    from: '1970-01-01',
+    to: new Date().toISOString().slice(0, 10),
+  });
   const response = await request(`/api/v1/analytics/costs?${query}`, signal);
   const parsed = CostBreakdownResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new ContentPackageListRequestError(502);
