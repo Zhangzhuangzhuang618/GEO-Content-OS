@@ -23,7 +23,9 @@ async function main(): Promise<void> {
     max: 5,
     prepare: false,
   });
-  const publisher = new BullMqEventPublisher(config.redisUrl);
+  const publisher = new BullMqEventPublisher(config.redisUrl, {
+    publishTimeoutMs: config.publishTimeoutMs,
+  });
   const store = new OutboxRelayStore(client);
   const relay = new OutboxRelay(
     config.owner,

@@ -7,6 +7,7 @@ export interface OutboxRelayConfig {
   readonly batchSize: number;
   readonly leaseDurationMs: number;
   readonly maximumAttempts: number;
+  readonly publishTimeoutMs: number;
   readonly retryDelayMs: number;
   readonly pollIntervalMs: number;
   readonly healthPort: number;
@@ -32,6 +33,11 @@ export function readOutboxRelayConfig(environment = process.env): OutboxRelayCon
       environment['OUTBOX_POLL_INTERVAL_MS'],
       1_000,
       'OUTBOX_POLL_INTERVAL_MS',
+    ),
+    publishTimeoutMs: readPositiveInteger(
+      environment['OUTBOX_PUBLISH_TIMEOUT_MS'],
+      5_000,
+      'OUTBOX_PUBLISH_TIMEOUT_MS',
     ),
     redisUrl: readRequired(environment['REDIS_URL'], 'REDIS_URL'),
     retryDelayMs: readPositiveInteger(

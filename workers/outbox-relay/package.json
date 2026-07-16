@@ -15,6 +15,7 @@
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/observability build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
+    "test:chaos": "pnpm --filter @geo-content-os/testkit build && pnpm build && vitest run --config vitest.chaos.config.ts",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/observability build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "postgres": "3.4.9"
   },
   "devDependencies": {
+    "@geo-content-os/testkit": "workspace:*",
     "vitest": "4.1.10"
   },
   "files": [
