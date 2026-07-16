@@ -1,0 +1,12 @@
+{
+  "name": "@geo-content-os/load-tests",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "k6 load tests for API, RAG, queue recovery, and 100 active workspaces",
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "test:load": "pnpm test && node src/runner.mjs",
+    "typecheck": "node --check src/config.mjs && node --check src/fixture-server.mjs && node --check src/report.mjs && node --check src/runner.mjs && node --check k6/load-test.js"
+  }
+}
