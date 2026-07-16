@@ -211,6 +211,13 @@
       "when": 1784181600000,
       "tag": "0029_platform_tenant_version",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784185200000,
+      "tag": "0030_freeze_v21",
+      "breakpoints": true
     }
   ]
 }
