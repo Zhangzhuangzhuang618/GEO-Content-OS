@@ -6,6 +6,7 @@ import {
   customType,
   foreignKey,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -116,6 +117,7 @@ export const memberships = pgTable(
     userId: uuid('user_id').notNull(),
     roleCode: varchar('role_code', { length: 32 }).$type<TenantRoleCode>().notNull(),
     status: varchar({ length: 16 }).$type<MembershipStatus>().notNull().default('invited'),
+    version: integer().notNull().default(1),
     invitedBy: uuid('invited_by'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -140,11 +142,13 @@ export const memberships = pgTable(
     }).onDelete('set null'),
     index('memberships_user_status_idx').on(table.userId, table.status, table.updatedAt.desc()),
     index('memberships_tenant_status_idx').on(table.tenantId, table.status, table.createdAt),
+    index('memberships_tenant_version_idx').on(table.tenantId, table.id, table.version),
     check(
       'memberships_role_code_check',
       sql`${table.roleCode} IN ('tenant_owner', 'tenant_admin', 'strategy_editor', 'content_editor', 'reviewer', 'publisher', 'analyst', 'viewer')`,
     ),
     check('memberships_status_check', sql`${table.status} IN ('invited', 'active', 'disabled')`),
+    check('memberships_version_check', sql`${table.version} > 0`),
   ],
 );
 
