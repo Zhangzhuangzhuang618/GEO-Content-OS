@@ -179,7 +179,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为满足 REV-01 的领取闭环新增 1 个修正端点，当前可执行端点数为 115。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，当前可执行端点数为 116。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -291,6 +291,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 分析 | GET | `/analytics/costs` | owner_or_analyst_or_admin | CostQuery | CostBreakdown | - |
 | 分析 | POST | `/metrics/import` | analyst_or_admin | multipart MetricsImport | ImportJobView | key+content_hash |
 | 分析 | GET | `/metrics/import-jobs/{id}` | analyst_or_admin | - | ImportJobView | - |
+| 分析 | POST | `/metrics/import-jobs/{id}/rollback` | analyst_or_admin | RollbackImportRequest | ImportJobView | key+body_hash |
 | 分析 | POST | `/metrics/manual` | analyst_or_admin | ManualMetricsRequest | MetricRecord[] | key+body_hash |
 | 分析 | POST | `/visibility-observations` | analyst_or_admin | VisibilityObservationRequest | VisibilityObservationView | key+body_hash |
 | 分析 | GET | `/usage/summary` | owner_or_analyst_or_admin | CostQuery | UsageSummary | - |

@@ -7,6 +7,7 @@ import {
   ERROR_DEFINITIONS,
   ImportJobParamsSchema,
   ManualMetricsRequestSchema,
+  RollbackImportRequestSchema,
   VisibilityObservationRequestSchema,
 } from '@geo-content-os/contracts';
 import {
@@ -230,6 +231,50 @@ export class AnalyticsApiController {
         await this.api.getImport(requireScope(request), params.data.id),
       );
     } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Post('metrics/import-jobs/:id/rollback')
+  @RequirePermissions('analytics.read')
+  public async rollbackImport(
+    @Param() rawParams: unknown,
+    @Body() rawBody: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const params = ImportJobParamsSchema.safeParse(rawParams);
+    const body = RollbackImportRequestSchema.safeParse(rawBody);
+    if (!params.success || !body.success) {
+      return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    }
+    try {
+      const scope = requireScope(request);
+      const route = `/metrics/import-jobs/${params.data.id}/rollback`;
+      const result = await this.idempotency.execute(
+        idempotencyInput(request, scope, route, body.data),
+        async (transaction) => {
+          const before = await this.api.getImportInTransaction(transaction, scope, params.data.id);
+          await this.metrics.rollback(
+            transaction,
+            { ...scope, workspaceId: before.workspaceId },
+            params.data.id,
+            body.data.reason,
+          );
+          return {
+            body: apiResponse(
+              await this.api.getImportInTransaction(transaction, scope, params.data.id),
+              request.id,
+            ),
+            statusCode: HttpStatus.OK,
+          };
+        },
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      if (error instanceof MetricsImportStateError) {
+        return sendError(reply, request.id, 'STATE_TRANSITION_INVALID');
+      }
       return sendAnalyticsError(reply, request.id, error);
     }
   }

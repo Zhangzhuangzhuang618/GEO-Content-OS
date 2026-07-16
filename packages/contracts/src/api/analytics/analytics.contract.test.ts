@@ -7,7 +7,7 @@ import {
 } from './index.js';
 
 describe('analytics API contract', () => {
-  it('freezes all ten analytics, import, visibility and cost endpoints', () => {
+  it('freezes all eleven analytics, import, visibility and cost endpoints', () => {
     expect(ANALYTICS_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /analytics/overview',
       'GET /analytics/platforms',
@@ -15,6 +15,7 @@ describe('analytics API contract', () => {
       'GET /analytics/costs',
       'POST /metrics/import',
       'GET /metrics/import-jobs/{id}',
+      'POST /metrics/import-jobs/{id}/rollback',
       'POST /metrics/manual',
       'POST /visibility-observations',
       'GET /usage/summary',
@@ -24,7 +25,7 @@ describe('analytics API contract', () => {
     const operations = Object.values(ANALYTICS_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(10);
+    expect(operations).toHaveLength(11);
     for (const contract of ANALYTICS_API_CONTRACTS) {
       const operation = ANALYTICS_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
