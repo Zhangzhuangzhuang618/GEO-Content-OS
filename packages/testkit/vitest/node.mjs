@@ -6,6 +6,7 @@ export function createNodeVitestConfig(options) {
       clearMocks: true,
       environment: 'node',
       exclude: options.exclude ?? [],
+      hookTimeout: options.hookTimeout ?? 10_000,
       include: options.include,
       passWithNoTests: false,
       restoreMocks: true,

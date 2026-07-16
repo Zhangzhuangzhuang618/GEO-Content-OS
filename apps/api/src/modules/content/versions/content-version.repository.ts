@@ -251,6 +251,7 @@ export class ContentVersionRepository {
     const version = inserted[0];
     if (!version) throw new Error('Content Version insert did not return a row');
     const blockRows = await insertBlocks(transaction, scope.tenantId, version.id, blocks);
+    await insertDocumentCitations(transaction, scope.tenantId, version.id, input.contentJson);
     await pointToVersion(transaction, scope.tenantId, object, version.id, input.expectedVersion);
     await insertVersionAudit(transaction, {
       action: 'content_version.created',
@@ -604,6 +605,64 @@ async function insertBlocks(
     rows.push(row);
   }
   return rows;
+}
+
+async function insertDocumentCitations(
+  transaction: TransactionSql,
+  tenantId: string,
+  contentVersionId: string,
+  content: ContentDocument,
+): Promise<void> {
+  const raw = content.citation_map;
+  if (!Array.isArray(raw)) {
+    throw new ContentVersionValidationError('contentJson.citation_map must be an array');
+  }
+  const inserted = new Set<string>();
+  for (const value of raw) {
+    if (!isRecord(value)) {
+      throw new ContentVersionValidationError('contentJson citation mapping is invalid');
+    }
+    const citationIds = value['citation_ids'];
+    const claimKey = value['claim_key'];
+    const claimText = value['claim_text'];
+    if (
+      !Array.isArray(citationIds) ||
+      citationIds.length === 0 ||
+      citationIds.some((id) => typeof id !== 'string') ||
+      new Set(citationIds).size !== citationIds.length ||
+      typeof claimKey !== 'string' ||
+      claimKey.trim().length < 1 ||
+      claimKey.length > 80 ||
+      typeof claimText !== 'string' ||
+      claimText.trim().length < 1
+    ) {
+      throw new ContentVersionValidationError('contentJson citation mapping is invalid');
+    }
+    for (const chunkId of citationIds as readonly string[]) {
+      const key = `${claimKey}:${chunkId}`;
+      if (inserted.has(key)) continue;
+      inserted.add(key);
+      const rows = await transaction<{ id: string }[]>`
+        INSERT INTO ai_citations (
+          tenant_id, content_version_id, claim_key, claim_text,
+          chunk_id, quote_text, quote_hash
+        )
+        SELECT
+          ${tenantId}::uuid, ${contentVersionId}::uuid, ${claimKey}, ${claimText},
+          chunk.id, chunk.text, encode(digest(chunk.text, 'sha256'), 'hex')
+        FROM source_chunks AS chunk
+        WHERE chunk.id = ${chunkId}::uuid
+          AND chunk.tenant_id = ${tenantId}::uuid
+          AND chunk.status = 'active'
+        RETURNING id
+      `;
+      if (rows.length !== 1) {
+        throw new ContentVersionValidationError(
+          'contentJson citation references an unavailable source chunk',
+        );
+      }
+    }
+  }
 }
 
 async function listBlocks(

@@ -630,7 +630,115 @@ async function insertVersion(
       )
     `;
   }
+  await insertCitations(transaction, event, row.id, content);
   return row.id;
+}
+
+async function insertCitations(
+  transaction: postgres.TransactionSql,
+  event: ValidatedGenerationEvent,
+  contentVersionId: string,
+  content: GeneratedContent,
+): Promise<void> {
+  const available = parseEvidenceCitations(event.data.writerInput);
+  const mappings = parseCitationMappings(content);
+  const inserted = new Set<string>();
+  for (const mapping of mappings) {
+    for (const citationId of mapping.citationIds) {
+      const citation = available.get(citationId);
+      if (!citation) {
+        throw new GenerationWorkerError(
+          'GENERATED_CONTENT_INVALID',
+          `Generated citation ${citationId} was not supplied to the writer`,
+        );
+      }
+      const key = `${mapping.claimKey}:${citation.chunkId}:${textHash(citation.quoteText)}`;
+      if (inserted.has(key)) continue;
+      inserted.add(key);
+      const rows = await transaction<{ id: string }[]>`
+        INSERT INTO ai_citations (
+          tenant_id, content_version_id, claim_key, claim_text,
+          chunk_id, quote_text, quote_hash
+        )
+        SELECT
+          ${event.tenantId}::uuid, ${contentVersionId}::uuid, ${mapping.claimKey},
+          ${mapping.claimText}, chunk.id, ${citation.quoteText}, ${textHash(citation.quoteText)}
+        FROM source_chunks AS chunk
+        WHERE chunk.id = ${citation.chunkId}::uuid
+          AND chunk.tenant_id = ${event.tenantId}::uuid
+          AND chunk.status = 'active'
+        RETURNING id
+      `;
+      if (rows.length !== 1) throw scopeInvalid();
+    }
+  }
+}
+
+function parseEvidenceCitations(
+  writerInput: ValidatedGenerationEvent['data']['writerInput'],
+): ReadonlyMap<string, { readonly chunkId: string; readonly quoteText: string }> {
+  const raw = writerInput['citations'];
+  if (raw === undefined) return new Map();
+  if (!Array.isArray(raw)) throw generatedContentInvalid('Writer citations must be an array');
+  const citations = new Map<string, { readonly chunkId: string; readonly quoteText: string }>();
+  for (const value of raw) {
+    if (!isRecord(value)) throw generatedContentInvalid('Writer citation must be an object');
+    const citationId = value['citation_id'];
+    const chunkId = value['chunk_id'];
+    const quoteText = value['quote_text'];
+    if (
+      typeof citationId !== 'string' ||
+      typeof chunkId !== 'string' ||
+      typeof quoteText !== 'string' ||
+      quoteText.trim().length === 0 ||
+      citations.has(citationId)
+    ) {
+      throw generatedContentInvalid('Writer citation is invalid or duplicated');
+    }
+    citations.set(citationId, { chunkId, quoteText });
+  }
+  return citations;
+}
+
+function parseCitationMappings(content: GeneratedContent): readonly {
+  readonly citationIds: readonly string[];
+  readonly claimKey: string;
+  readonly claimText: string;
+}[] {
+  const raw = content['citation_map'];
+  if (!Array.isArray(raw)) throw generatedContentInvalid('Generated citation_map is required');
+  return raw.map((value) => {
+    if (!isRecord(value)) throw generatedContentInvalid('Generated citation mapping is invalid');
+    const citationIds = value['citation_ids'];
+    const claimKey = value['claim_key'];
+    const claimText = value['claim_text'];
+    if (
+      !Array.isArray(citationIds) ||
+      citationIds.length === 0 ||
+      citationIds.some((id) => typeof id !== 'string') ||
+      new Set(citationIds).size !== citationIds.length ||
+      typeof claimKey !== 'string' ||
+      claimKey.trim().length < 1 ||
+      claimKey.length > 80 ||
+      typeof claimText !== 'string' ||
+      claimText.trim().length < 1
+    ) {
+      throw generatedContentInvalid('Generated citation mapping is invalid');
+    }
+    return {
+      citationIds: citationIds as readonly string[],
+      claimKey,
+      claimText,
+    };
+  });
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function generatedContentInvalid(message: string): GenerationWorkerError {
+  return new GenerationWorkerError('GENERATED_CONTENT_INVALID', message);
 }
 
 async function assertLocks(
