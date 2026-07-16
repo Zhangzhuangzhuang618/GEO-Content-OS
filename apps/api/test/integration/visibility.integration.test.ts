@@ -118,6 +118,13 @@ describe('visibility observations', () => {
         observationCount: 1,
       }),
     ]);
+    await expect(
+      service.trend(SCOPE, {
+        from: '2026-07-14',
+        queryText: '  GEO   content os ',
+        to: '2026-07-15',
+      }),
+    ).resolves.toHaveLength(2);
   });
 
   it('rejects invalid imports and users outside analyst/admin roles', async () => {

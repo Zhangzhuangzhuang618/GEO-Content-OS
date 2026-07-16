@@ -225,7 +225,7 @@ export const MetricRecordViewSchema = z
   })
   .strict();
 
-export const VisibilityObservationRequestSchema = z
+const VisibilityObservationInputSchema = z
   .object({
     evidence_asset_id: UuidSchema.nullable().optional(),
     is_cited: z.boolean(),
@@ -234,19 +234,41 @@ export const VisibilityObservationRequestSchema = z
     platform_code: PlatformCodeSchema,
     query_text: z.string().trim().min(1).max(1_000),
     rank_position: z.number().int().positive().nullable().optional(),
-    screenshot: z
-      .object({
-        body_base64: z.string().min(1),
-        mime_type: z.enum(['image/jpeg', 'image/png', 'image/webp']),
-      })
-      .strict()
-      .optional(),
-    workspace_id: UuidSchema,
   })
+  .strict();
+
+export const VisibilityObservationRequestSchema = VisibilityObservationInputSchema.extend({
+  screenshot: z
+    .object({
+      body_base64: z.string().min(1),
+      mime_type: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+    })
+    .strict()
+    .optional(),
+  workspace_id: UuidSchema,
+})
   .strict()
   .refine((input) => !(input.evidence_asset_id && input.screenshot), {
     message: 'evidence_asset_id and screenshot are mutually exclusive',
   });
+
+export const VisibilityImportRequestSchema = z
+  .object({
+    rows: z.array(VisibilityObservationInputSchema).min(1).max(1_000),
+    workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const VisibilityTrendQuerySchema = z
+  .object({
+    from: DateSchema,
+    platform_code: PlatformCodeSchema.optional(),
+    query_text: z.string().trim().min(1).max(1_000).optional(),
+    to: DateSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict()
+  .refine((query) => query.from <= query.to, { message: 'from must not be after to' });
 
 export const VisibilityObservationViewSchema = z
   .object({
@@ -262,6 +284,20 @@ export const VisibilityObservationViewSchema = z
     rank_position: z.number().int().positive().nullable(),
     tenant_id: UuidSchema,
     workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const VisibilityTrendPointSchema = z
+  .object({
+    average_rank: z.number().finite().nullable(),
+    best_rank: z.number().int().positive().nullable(),
+    citation_count: z.number().int().nonnegative(),
+    citation_rate: z.number().min(0).max(1),
+    day: DateSchema,
+    observation_count: z.number().int().nonnegative(),
+    platform_code: PlatformCodeSchema,
+    query_hash: HashSchema,
+    query_text: z.string().min(1),
   })
   .strict();
 
@@ -299,6 +335,12 @@ export const ManualMetricsResponseSchema = createDataResponseSchema(
 export const VisibilityObservationResponseSchema = createDataResponseSchema(
   VisibilityObservationViewSchema,
 );
+export const VisibilityImportResponseSchema = createDataResponseSchema(
+  z.array(VisibilityObservationViewSchema),
+);
+export const VisibilityTrendResponseSchema = createDataResponseSchema(
+  z.array(VisibilityTrendPointSchema),
+);
 export const UsageSummaryResponseSchema = CostBreakdownResponseSchema;
 export const AnalyticsExportJobResponseSchema = createDataResponseSchema(
   AnalyticsExportJobViewSchema,
@@ -308,4 +350,6 @@ export type AnalyticsExportQuery = z.infer<typeof AnalyticsExportQuerySchema>;
 export type AnalyticsQuery = z.infer<typeof AnalyticsQuerySchema>;
 export type CostQuery = z.infer<typeof CostQuerySchema>;
 export type ManualMetricsRequest = z.infer<typeof ManualMetricsRequestSchema>;
+export type VisibilityImportRequest = z.infer<typeof VisibilityImportRequestSchema>;
 export type VisibilityObservationRequest = z.infer<typeof VisibilityObservationRequestSchema>;
+export type VisibilityTrendQuery = z.infer<typeof VisibilityTrendQuerySchema>;
