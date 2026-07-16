@@ -179,7 +179,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，当前可执行端点数为 120。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，当前可执行端点数为 121。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -191,6 +191,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 身份 | POST | `/auth/password/forgot` | public | ForgotPasswordRequest | 202 | - |
 | 身份 | POST | `/auth/password/reset` | public | ResetPasswordRequest | 204 | token |
 | 身份 | POST | `/auth/password/change` | authenticated | ChangePasswordRequest | 204 | key+body_hash |
+| 身份 | GET | `/invitations` | tenant_admin_or_owner | InvitationListQuery | InvitationPage | - |
 | 身份 | POST | `/invitations` | tenant_admin_or_owner | CreateInvitationRequest | InvitationView | key+body_hash |
 | 身份 | POST | `/invitations/{token}/accept` | public | AcceptInvitationRequest | SessionView | token |
 | 身份 | DELETE | `/invitations/{id}` | tenant_admin_or_owner | - | 204 | resource+version |

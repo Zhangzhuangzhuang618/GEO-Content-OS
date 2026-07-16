@@ -1,15 +1,18 @@
-import { ERROR_DEFINITIONS } from '@geo-content-os/contracts';
+import { ERROR_DEFINITIONS, InvitationListQuerySchema } from '@geo-content-os/contracts';
 import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '@geo-content-os/security';
 import {
   Body,
   Controller,
   Delete,
+  Get,
   HttpStatus,
   Inject,
   Param,
   Post,
+  Query,
   Req,
   Res,
+  UseGuards,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -24,6 +27,7 @@ import {
 } from '../../../common/idempotency/index.js';
 import { setCsrfCookie, setSessionCookie } from '../auth/auth.cookies.js';
 import { AuthService } from '../auth/auth.service.js';
+import { getPolicyContext, PolicyGuard, RequirePermissions } from '../rbac/index.js';
 import {
   AcceptInvitationRequestSchema,
   CreateInvitationRequestSchema,
@@ -54,6 +58,39 @@ export class InvitationController {
     @Inject(InvitationService) private readonly invitationService: InvitationService,
   ) {}
 
+  @Get()
+  @UseGuards(PolicyGuard)
+  @RequirePermissions('tenant.members.read')
+  public async list(
+    @Query() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = InvitationListQuerySchema.safeParse(raw);
+    if (!parsed.success) {
+      await sendSchemaError(reply, request.id, parsed.error.issues);
+      return;
+    }
+    const policy = getPolicyContext(request);
+    if (!policy?.activeTenantId) {
+      await sendError(reply, request.id, 'TENANT_CONTEXT_REQUIRED');
+      return;
+    }
+    try {
+      const page = await this.invitationService.list(
+        policy.userId,
+        policy.activeTenantId,
+        parsed.data,
+      );
+      await reply.status(HttpStatus.OK).send({
+        data: { items: page.items, next_cursor: page.nextCursor },
+        meta: { request_id: request.id },
+      });
+    } catch (error) {
+      await sendInvitationError(reply, request.id, error);
+    }
+  }
+
   @Post()
   public async create(
     @Body() body: unknown,
@@ -67,13 +104,20 @@ export class InvitationController {
     }
     const principal = await this.authenticateTenantWrite(request, reply);
     if (!principal) return;
+    const normalizedRequest = {
+      ...parsed.data,
+      email: parsed.data.email.trim().toLowerCase(),
+      workspace_scope: parsed.data.workspace_scope.workspace_ids
+        ? { workspace_ids: [...parsed.data.workspace_scope.workspace_ids].sort() }
+        : {},
+    };
 
     try {
       const idempotencyKey = parseIdempotencyKey(request.headers['idempotency-key']);
       const result = await this.idempotencyService.execute(
         {
           fingerprint: {
-            body: parsed.data as JsonValue,
+            body: normalizedRequest as JsonValue,
             method: request.method,
             path: '/invitations',
           },
@@ -89,7 +133,7 @@ export class InvitationController {
         async () => {
           const invitation = await this.invitationService.create({
             actorUserId: principal.userId,
-            request: parsed.data,
+            request: normalizedRequest,
             tenantId: principal.tenantId,
           });
           return {

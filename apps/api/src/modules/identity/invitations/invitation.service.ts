@@ -1,5 +1,5 @@
 import type { EmailAdapter } from '@geo-content-os/adapter-email';
-import type { TenantRoleCode } from '@geo-content-os/contracts';
+import type { InvitationListQuery, TenantRoleCode } from '@geo-content-os/contracts';
 import { generateSecureToken } from '@geo-content-os/security';
 import { Inject, Injectable } from '@nestjs/common';
 import { createHash } from 'node:crypto';
@@ -27,6 +27,7 @@ interface InvitationActor {
 interface InvitationRow {
   readonly acceptedAt: Date | string | null;
   readonly createdAt: Date | string;
+  readonly cursorCreatedAt?: string;
   readonly email: string;
   readonly expiresAt: Date | string;
   readonly id: string;
@@ -36,6 +37,16 @@ interface InvitationRow {
   readonly tenantId: string;
   readonly tenantName?: string;
   readonly workspaceScope: CreateInvitationRequest['workspace_scope'];
+}
+
+interface InvitationCursor {
+  readonly createdAt: string;
+  readonly id: string;
+}
+
+export interface InvitationPageResult {
+  readonly items: readonly InvitationView[];
+  readonly nextCursor: string | null;
 }
 
 interface InvitationUser {
@@ -70,6 +81,70 @@ export class InvitationService {
     @Inject(IDENTITY_EMAIL_ADAPTER) private readonly emailAdapter: EmailAdapter,
   ) {
     this.configuration = readInvitationConfiguration();
+  }
+
+  public async list(
+    actorUserId: string,
+    tenantId: string,
+    query: InvitationListQuery,
+  ): Promise<InvitationPageResult> {
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+    const rows = await this.database.client.begin(async (transaction) => {
+      if (!(await findInvitationActor(transaction, actorUserId, tenantId))) {
+        throw new InvitationPermissionError();
+      }
+      return transaction<InvitationRow[]>`
+        SELECT
+          invitation.id,
+          invitation.tenant_id AS "tenantId",
+          invitation.email::text AS email,
+          invitation.role_code AS "roleCode",
+          invitation.workspace_scope_json AS "workspaceScope",
+          invitation.expires_at AS "expiresAt",
+          invitation.accepted_at AS "acceptedAt",
+          invitation.revoked_at AS "revokedAt",
+          invitation.invited_by AS "invitedBy",
+          invitation.created_at AS "createdAt",
+          invitation.created_at::text AS "cursorCreatedAt"
+        FROM invitations AS invitation
+        WHERE invitation.tenant_id = ${tenantId}::uuid
+          AND (
+            ${query.search ?? null}::text IS NULL
+            OR invitation.email::text ILIKE ${query.search ? `%${query.search}%` : null}
+          )
+          AND (
+            ${query.status ?? null}::text IS NULL
+            OR CASE
+              WHEN invitation.accepted_at IS NOT NULL THEN 'accepted'
+              WHEN invitation.revoked_at IS NOT NULL THEN 'revoked'
+              WHEN invitation.expires_at <= now() THEN 'expired'
+              ELSE 'pending'
+            END = ${query.status ?? null}
+          )
+          AND (
+            ${cursor?.createdAt ?? null}::timestamptz IS NULL
+            OR (invitation.created_at, invitation.id) < (
+              ${cursor?.createdAt ?? null}::timestamptz,
+              ${cursor?.id ?? null}::uuid
+            )
+          )
+        ORDER BY invitation.created_at DESC, invitation.id DESC
+        LIMIT ${query.limit + 1}
+      `;
+    });
+    const hasMore = rows.length > query.limit;
+    const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+    const last = pageRows.at(-1);
+    return {
+      items: pageRows.map(toInvitationView),
+      nextCursor:
+        hasMore && last
+          ? encodeCursor({
+              createdAt: last.cursorCreatedAt ?? toIso(last.createdAt),
+              id: last.id,
+            })
+          : null,
+    };
   }
 
   public async create(input: CreateInvitationInput): Promise<InvitationView> {
@@ -265,7 +340,10 @@ export class InvitationService {
       if (membership) {
         await transaction`
           UPDATE memberships
-          SET role_code = ${invitation.roleCode}, status = 'active'
+          SET role_code = ${invitation.roleCode},
+              status = 'active',
+              updated_at = now(),
+              version = version + 1
           WHERE tenant_id = ${invitation.tenantId} AND user_id = ${user.id} AND status = 'invited'
         `;
       } else {
@@ -453,4 +531,28 @@ function sha256(value: string): string {
 
 function toIso(value: Date | string): string {
   return new Date(value).toISOString();
+}
+
+function encodeCursor(cursor: InvitationCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+}
+
+function decodeCursor(value: string): InvitationCursor {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object') throw new Error();
+    const createdAt = Reflect.get(parsed, 'createdAt');
+    const id = Reflect.get(parsed, 'id');
+    if (
+      typeof createdAt !== 'string' ||
+      typeof id !== 'string' ||
+      Number.isNaN(Date.parse(createdAt)) ||
+      !/^[0-9a-f-]{36}$/iu.test(id)
+    ) {
+      throw new Error();
+    }
+    return { createdAt, id };
+  } catch {
+    throw new InvitationNotFoundError();
+  }
 }
