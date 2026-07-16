@@ -1,5 +1,18 @@
 export { createDatabaseDebugLogger } from './database.js';
 export {
+  createPrometheusMetricsHandler,
+  geoMetrics,
+  GeoMetricsRegistry,
+  OBSERVABILITY_METRIC_NAMES,
+  PROMETHEUS_CONTENT_TYPE,
+  type AiSchemaResult,
+  type AiUsageMetric,
+  type ApiRequestMetric,
+  type PublishAttemptMetric,
+  type PublishMetricStatus,
+  type QueueSnapshotMetric,
+} from './metrics.js';
+export {
   enrichTelemetryContext,
   getTelemetryContext,
   initializeTelemetryContextManager,
