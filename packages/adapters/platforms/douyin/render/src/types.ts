@@ -31,7 +31,10 @@ export interface DouyinCitationLink {
   readonly url: string;
 }
 
-export interface DouyinContent extends Omit<ContentWriterContent, 'platform_code' | 'platform_meta'> {
+export interface DouyinContent extends Omit<
+  ContentWriterContent,
+  'platform_code' | 'platform_meta'
+> {
   readonly platform_code: typeof DOUYIN_PLATFORM_CODE;
   readonly platform_meta: DouyinPlatformMeta;
 }

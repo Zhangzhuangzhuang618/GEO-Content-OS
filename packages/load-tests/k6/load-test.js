@@ -1,5 +1,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
+import execution from 'k6/execution';
 import { Counter, Rate, Trend } from 'k6/metrics';
 
 const environment = globalThis.__ENV;
@@ -22,10 +23,11 @@ const expectedTemporaryQueueFailure = http.expectedStatuses(503);
 
 const scenarios = {
   workspace_coverage: {
-    executor: 'constant-vus',
+    executor: 'shared-iterations',
     exec: 'coverWorkspace',
     vus: WORKSPACE_COUNT,
-    duration: duration(environment.LOAD_DURATION, '3s'),
+    iterations: WORKSPACE_COUNT,
+    maxDuration: '30s',
   },
   api: {
     executor: 'constant-vus',
@@ -82,7 +84,7 @@ export const options = {
 };
 
 export function coverWorkspace() {
-  const workspaceId = workspaceForVirtualUser();
+  const workspaceId = workspaceForIndex(execution.scenario.iterationInTest);
   const response = http.get(`${BASE_URL}${API_PATH}`, {
     headers: headers(workspaceId),
     tags: { operation: 'workspace_coverage' },
@@ -91,8 +93,7 @@ export function coverWorkspace() {
     'workspace endpoint accepted': (value) => value.status === 200,
   });
   loadFailures.add(!passed);
-  if (passed && Number(globalThis.__ITER) === 0) workspaceCoverage.add(1);
-  sleep(0.1);
+  if (passed) workspaceCoverage.add(1);
 }
 
 export function apiLoad() {
@@ -191,6 +192,10 @@ function headers(workspaceId, idempotency) {
 function workspaceForVirtualUser() {
   const virtualUser = Number(globalThis.__VU);
   const index = (virtualUser - 1) % WORKSPACE_COUNT;
+  return workspaceForIndex(index);
+}
+
+function workspaceForIndex(index) {
   return `workspace-${String(index).padStart(3, '0')}`;
 }
 

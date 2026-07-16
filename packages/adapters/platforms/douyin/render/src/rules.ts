@@ -11,11 +11,6 @@ export const DOUYIN_RENDER_RULES_V1 = Object.freeze({
     '已生成视频',
     '已拍摄完成',
   ]),
-  requiredPlatformMeta: Object.freeze([
-    'duration_seconds',
-    'storyboard',
-    'subtitles',
-    'topics',
-  ]),
+  requiredPlatformMeta: Object.freeze(['duration_seconds', 'storyboard', 'subtitles', 'topics']),
   version: DOUYIN_RENDER_RULE_VERSION,
 });

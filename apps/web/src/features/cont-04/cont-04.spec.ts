@@ -87,7 +87,8 @@ test('allows exact draft abandonment and administrator archive only', async ({ p
   expect(abandonBody).toEqual({ reason: '需求已撤回' });
 
   await mockRole(page, 'tenant_admin');
-  let archiveRequest: { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
+  let archiveRequest:
+    { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
   await page.route(`**/api/v1/content-packages/${PACKAGE_ID}/archive`, async (route) => {
     archiveRequest = { body: route.request().postDataJSON(), headers: route.request().headers() };
     await json(route, contentPackage('archived'), 200);
@@ -169,7 +170,11 @@ function variant(id: string, platform: string, status: string, versionId: string
   };
 }
 
-function variantDetail(summary: ReturnType<typeof variant>, versionId: string, reviewable: boolean) {
+function variantDetail(
+  summary: ReturnType<typeof variant>,
+  versionId: string,
+  reviewable: boolean,
+) {
   const current = summary.current_content_version_id ? contentVersion(versionId, summary.id) : null;
   return {
     citations: reviewable

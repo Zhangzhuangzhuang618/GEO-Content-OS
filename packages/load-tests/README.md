@@ -1,7 +1,8 @@
 # T139 load tests
 
-This package measures API, RAG and queue enqueue latency and throughput while sustaining exactly 100
-workspace identities for the configured duration. It also records a queue recovery probe when the
+This package measures API, RAG and queue enqueue latency and throughput while covering exactly 100
+workspace identities. Workspace coverage uses one indexed iteration per identity, while the API, RAG
+and queue workloads run for the configured duration. It also records a queue recovery probe when the
 target exposes a controlled fault endpoint.
 
 ## Acceptance run

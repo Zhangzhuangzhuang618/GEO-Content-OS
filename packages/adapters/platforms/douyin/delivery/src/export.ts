@@ -34,11 +34,7 @@ export function exportDouyin(input: unknown): DouyinExportBundle {
     topics: parsed.payload.topics,
   };
   const contentFiles = [
-    file(
-      `${basePath}/script.json`,
-      'application/json',
-      `${stableStringify(parsed.payload)}\n`,
-    ),
+    file(`${basePath}/script.json`, 'application/json', `${stableStringify(parsed.payload)}\n`),
     file(`${basePath}/script.txt`, 'text/plain; charset=utf-8', parsed.payload.script_text),
     file(
       `${basePath}/subtitles.srt`,

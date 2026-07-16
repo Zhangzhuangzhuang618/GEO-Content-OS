@@ -20,9 +20,7 @@ describe('douyin render contract', () => {
     expect(DOUYIN_RENDER_INPUT_JSON_SCHEMA.$schema).toBe(
       'https://json-schema.org/draft/2020-12/schema',
     );
-    expect(DOUYIN_PAYLOAD_JSON_SCHEMA.$schema).toBe(
-      'https://json-schema.org/draft/2020-12/schema',
-    );
+    expect(DOUYIN_PAYLOAD_JSON_SCHEMA.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     const input = await readJson('douyin.valid.input.json');
     const inputValidator = validator(DOUYIN_RENDER_INPUT_JSON_SCHEMA);
     expect(inputValidator(input), errors(inputValidator.errors)).toBe(true);
@@ -70,7 +68,9 @@ describe('douyin render contract', () => {
 
   it('requires storyboard, subtitles and topics', async () => {
     const input = (await readJson('douyin.valid.input.json')) as {
-      content: { platform_meta: { storyboard: unknown[]; subtitles: unknown[]; topics: unknown[] } };
+      content: {
+        platform_meta: { storyboard: unknown[]; subtitles: unknown[]; topics: unknown[] };
+      };
     };
     input.content.platform_meta.storyboard = [];
     input.content.platform_meta.subtitles = [];

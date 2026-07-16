@@ -7,10 +7,7 @@ import { describe, expect, it } from 'vitest';
 
 import { renderWechatMp } from './src/render.js';
 import { WECHAT_MP_RENDER_RULES_V1 } from './src/rules.js';
-import {
-  WECHAT_MP_PAYLOAD_JSON_SCHEMA,
-  WECHAT_MP_RENDER_INPUT_JSON_SCHEMA,
-} from './src/schema.js';
+import { WECHAT_MP_PAYLOAD_JSON_SCHEMA, WECHAT_MP_RENDER_INPUT_JSON_SCHEMA } from './src/schema.js';
 import { validateWechatMpContent } from './src/validate.js';
 
 const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.url);
@@ -85,7 +82,12 @@ describe('wechat mp render contract', () => {
     input.content.cta = null;
     input.internal_links = [];
     expect(codes(validateWechatMpContent(input))).toEqual(
-      expect.arrayContaining(['DIGEST_REQUIRED', 'LEAD_REQUIRED', 'INTERNAL_LINK_REQUIRED', 'CTA_REQUIRED']),
+      expect.arrayContaining([
+        'DIGEST_REQUIRED',
+        'LEAD_REQUIRED',
+        'INTERNAL_LINK_REQUIRED',
+        'CTA_REQUIRED',
+      ]),
     );
   });
 

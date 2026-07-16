@@ -64,7 +64,9 @@ export function ContentEditor() {
   function applyLoaded(loaded: VariantDetail) {
     setDetail(loaded);
     setDraft(loaded.current_content?.content_json ?? null);
-    setPlatformMetaText(JSON.stringify(loaded.current_content?.content_json.platform_meta ?? {}, null, 2));
+    setPlatformMetaText(
+      JSON.stringify(loaded.current_content?.content_json.platform_meta ?? {}, null, 2),
+    );
     setBaseVersionId(loaded.current_content?.id ?? loaded.versions[0]?.id ?? '');
     setTargetVersionId(
       loaded.versions.find((version) => version.id !== loaded.current_content?.id)?.id ?? '',
@@ -118,15 +120,21 @@ export function ContentEditor() {
       setMessage(parsed.error.issues[0]?.message ?? '内容格式无效。');
       return;
     }
-    await mutate(async (csrf) => applyLoaded(await saveVariant(detail, parsed.data, csrf)), '内容已保存。');
+    await mutate(
+      async (csrf) => applyLoaded(await saveVariant(detail, parsed.data, csrf)),
+      '内容已保存。',
+    );
   }
 
   async function toggleLock(blockId: string, locked: boolean) {
     if (!detail) return;
-    await mutate(async (csrf) => {
-      await setBlockLock(detail, blockId, !locked, lockReason, csrf);
-      applyLoaded(await getVariantDetail(detail.variant.id));
-    }, locked ? '段落锁已解除。' : '段落已锁定。');
+    await mutate(
+      async (csrf) => {
+        await setBlockLock(detail, blockId, !locked, lockReason, csrf);
+        applyLoaded(await getVariantDetail(detail.variant.id));
+      },
+      locked ? '段落锁已解除。' : '段落已锁定。',
+    );
   }
 
   async function regenerate() {
@@ -261,7 +269,10 @@ export function ContentEditor() {
                 {Math.round(detail.quality_report.score)} 分
               </p>
               <p className="mt-2">decision: {detail.quality_report.decision}</p>
-              <Link className="mt-3 inline-block text-brand-700" href={`/qual-01?id=${detail.variant.id}`}>
+              <Link
+                className="mt-3 inline-block text-brand-700"
+                href={`/qual-01?id=${detail.variant.id}`}
+              >
                 查看完整质量报告
               </Link>
             </div>
@@ -314,7 +325,10 @@ export function ContentEditor() {
       />
 
       {message ? (
-        <p aria-live="polite" className="rounded-control bg-white p-4 text-sm text-ink-700 shadow-panel">
+        <p
+          aria-live="polite"
+          className="rounded-control bg-white p-4 text-sm text-ink-700 shadow-panel"
+        >
           {message}
         </p>
       ) : null}
@@ -351,7 +365,11 @@ function EditorForm({
     onChange({ ...draft, ...value });
   }
   function patchBlock(index: number, value: Partial<EditableBlock>) {
-    patch({ blocks: draft.blocks.map((block, position) => (position === index ? { ...block, ...value } : block)) });
+    patch({
+      blocks: draft.blocks.map((block, position) =>
+        position === index ? { ...block, ...value } : block,
+      ),
+    });
   }
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
@@ -363,18 +381,24 @@ function EditorForm({
           value={draft.hashtags.join(',')}
           onChange={(value) => patch({ hashtags: splitList(value) })}
         />
-        <TextArea label="摘要" value={draft.summary} onChange={(value) => patch({ summary: value })} />
-        <TextArea label="CTA" value={draft.cta ?? ''} onChange={(value) => patch({ cta: value || null })} />
         <TextArea
-          label="平台字段 JSON"
-          value={platformMetaText}
-          onChange={onPlatformMeta}
+          label="摘要"
+          value={draft.summary}
+          onChange={(value) => patch({ summary: value })}
         />
+        <TextArea
+          label="CTA"
+          value={draft.cta ?? ''}
+          onChange={(value) => patch({ cta: value || null })}
+        />
+        <TextArea label="平台字段 JSON" value={platformMetaText} onChange={onPlatformMeta} />
         <TextField label="锁定原因（可选）" value={lockReason} onChange={onLockReason} />
       </div>
       <div className="mt-6 space-y-4">
         {draft.blocks.map((block, index) => {
-          const stored = detail.current_content?.blocks.find((item) => item.block_key === block.block_key);
+          const stored = detail.current_content?.blocks.find(
+            (item) => item.block_key === block.block_key,
+          );
           const locked = detail.locks.some((item) => item.block_key === block.block_key);
           return (
             <fieldset
@@ -394,17 +418,25 @@ function EditorForm({
                   <select
                     className={controlClass}
                     onChange={(event) =>
-                      patchBlock(index, { block_type: event.target.value as EditableBlock['block_type'] })
+                      patchBlock(index, {
+                        block_type: event.target.value as EditableBlock['block_type'],
+                      })
                     }
                     value={block.block_type}
                   >
                     {['heading', 'paragraph', 'list', 'quote', 'media', 'cta'].map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
                     ))}
                   </select>
                 </label>
               </div>
-              <TextArea label="正文" value={block.text} onChange={(value) => patchBlock(index, { text: value })} />
+              <TextArea
+                label="正文"
+                value={block.text}
+                onChange={(value) => patchBlock(index, { text: value })}
+              />
               <div className="mt-3 flex flex-wrap gap-3">
                 {stored ? (
                   <button
@@ -420,7 +452,9 @@ function EditorForm({
                   <button
                     className={secondaryButton}
                     disabled={busy || locked}
-                    onClick={() => patch({ blocks: draft.blocks.filter((_, position) => position !== index) })}
+                    onClick={() =>
+                      patch({ blocks: draft.blocks.filter((_, position) => position !== index) })
+                    }
                     type="button"
                   >
                     删除内容块
@@ -439,7 +473,11 @@ function EditorForm({
             patch({
               blocks: [
                 ...draft.blocks,
-                { block_key: `block_${draft.blocks.length + 1}`, block_type: 'paragraph', text: '' },
+                {
+                  block_key: `block_${draft.blocks.length + 1}`,
+                  block_type: 'paragraph',
+                  text: '',
+                },
               ],
             })
           }
@@ -491,8 +529,18 @@ function VersionHistory({
     <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
       <h2 className="text-lg font-semibold text-ink-950">版本历史</h2>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <VersionSelect label="基准版本" onChange={onBase} value={baseVersionId} versions={detail.versions} />
-        <VersionSelect label="对比版本" onChange={onTarget} value={targetVersionId} versions={detail.versions} />
+        <VersionSelect
+          label="基准版本"
+          onChange={onBase}
+          value={baseVersionId}
+          versions={detail.versions}
+        />
+        <VersionSelect
+          label="对比版本"
+          onChange={onTarget}
+          value={targetVersionId}
+          versions={detail.versions}
+        />
       </div>
       <div className="mt-4 flex flex-wrap gap-3">
         <button
@@ -537,33 +585,129 @@ function VersionHistory({
   );
 }
 
-function VersionSelect({ label, onChange, value, versions }: { readonly label: string; readonly onChange: (value: string) => void; readonly value: string; readonly versions: VariantDetail['versions'] }) {
+function VersionSelect({
+  label,
+  onChange,
+  value,
+  versions,
+}: {
+  readonly label: string;
+  readonly onChange: (value: string) => void;
+  readonly value: string;
+  readonly versions: VariantDetail['versions'];
+}) {
   return (
     <label className="text-sm text-ink-700">
       {label}
-      <select className={controlClass} onChange={(event) => onChange(event.target.value)} value={value}>
+      <select
+        className={controlClass}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
         <option value="">请选择</option>
-        {versions.map((version) => <option key={version.id} value={version.id}>v{version.version_no}</option>)}
+        {versions.map((version) => (
+          <option key={version.id} value={version.id}>
+            v{version.version_no}
+          </option>
+        ))}
       </select>
     </label>
   );
 }
-function TextField({ label, onChange, value }: { readonly label: string; readonly onChange: (value: string) => void; readonly value: string }) {
-  return <label className="text-sm text-ink-700">{label}<input className={controlClass} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
+function TextField({
+  label,
+  onChange,
+  value,
+}: {
+  readonly label: string;
+  readonly onChange: (value: string) => void;
+  readonly value: string;
+}) {
+  return (
+    <label className="text-sm text-ink-700">
+      {label}
+      <input
+        className={controlClass}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
 }
-function TextArea({ label, onChange, value }: { readonly label: string; readonly onChange: (value: string) => void; readonly value: string }) {
-  return <label className="mt-3 block text-sm text-ink-700">{label}<textarea className={`${controlClass} min-h-24 py-3`} onChange={(event) => onChange(event.target.value)} value={value} /></label>;
+function TextArea({
+  label,
+  onChange,
+  value,
+}: {
+  readonly label: string;
+  readonly onChange: (value: string) => void;
+  readonly value: string;
+}) {
+  return (
+    <label className="mt-3 block text-sm text-ink-700">
+      {label}
+      <textarea
+        className={`${controlClass} min-h-24 py-3`}
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      />
+    </label>
+  );
 }
-function InfoPanel({ children, title }: { readonly children: React.ReactNode; readonly title: string }) {
-  return <section className="rounded-2xl border border-line bg-white p-5 shadow-panel"><h2 className="text-lg font-semibold text-ink-950">{title}</h2><div className="mt-4">{children}</div></section>;
+function InfoPanel({
+  children,
+  title,
+}: {
+  readonly children: React.ReactNode;
+  readonly title: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
+      <h2 className="text-lg font-semibold text-ink-950">{title}</h2>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
 }
 function StatePanel({ title, text }: { readonly title: string; readonly text: string }) {
-  return <div className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-panel"><h2 className="font-semibold text-ink-950">{title}</h2><p className="mt-2 text-sm text-ink-500">{text}</p></div>;
+  return (
+    <div className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-panel">
+      <h2 className="font-semibold text-ink-950">{title}</h2>
+      <p className="mt-2 text-sm text-ink-500">{text}</p>
+    </div>
+  );
 }
-function splitList(value: string) { return value.split(/[,，\n]/u).map((item) => item.trim()).filter(Boolean); }
-function platformLabel(code: string) { return { official_site: '官网', baijiahao: '百家号', toutiao: '头条号', zhihu: '知乎', xiaohongshu: '小红书', wechat_mp: '微信公众号', douyin: '抖音' }[code] ?? code; }
-function isAccessError(error: unknown) { if (error instanceof ContentEditorRequestError) return [401, 403, 404].includes(error.status); if (!error || typeof error !== 'object') return false; const status = (error as { readonly status?: unknown }).status; return typeof status === 'number' && [401, 403, 404].includes(status); }
-function readCookie(name: string) { const entry = document.cookie.split('; ').find((value) => value.startsWith(`${name}=`)); return entry ? decodeURIComponent(entry.slice(name.length + 1)) : ''; }
-const controlClass = 'mt-2 min-h-11 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-950 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100';
-const primaryButton = 'inline-flex h-11 items-center justify-center rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-50';
-const secondaryButton = 'inline-flex h-11 items-center justify-center rounded-control border border-line px-4 text-sm font-semibold text-ink-700 disabled:opacity-50';
+function splitList(value: string) {
+  return value
+    .split(/[,，\n]/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+function platformLabel(code: string) {
+  return (
+    {
+      official_site: '官网',
+      baijiahao: '百家号',
+      toutiao: '头条号',
+      zhihu: '知乎',
+      xiaohongshu: '小红书',
+      wechat_mp: '微信公众号',
+      douyin: '抖音',
+    }[code] ?? code
+  );
+}
+function isAccessError(error: unknown) {
+  if (error instanceof ContentEditorRequestError) return [401, 403, 404].includes(error.status);
+  if (!error || typeof error !== 'object') return false;
+  const status = (error as { readonly status?: unknown }).status;
+  return typeof status === 'number' && [401, 403, 404].includes(status);
+}
+function readCookie(name: string) {
+  const entry = document.cookie.split('; ').find((value) => value.startsWith(`${name}=`));
+  return entry ? decodeURIComponent(entry.slice(name.length + 1)) : '';
+}
+const controlClass =
+  'mt-2 min-h-11 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-950 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100';
+const primaryButton =
+  'inline-flex h-11 items-center justify-center rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-50';
+const secondaryButton =
+  'inline-flex h-11 items-center justify-center rounded-control border border-line px-4 text-sm font-semibold text-ink-700 disabled:opacity-50';

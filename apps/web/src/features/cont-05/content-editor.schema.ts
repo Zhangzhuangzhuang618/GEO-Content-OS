@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-import {
-  CitationSchema,
-  QualityReportSchema,
-} from '../cont-04/content-package-detail.schema';
+import { CitationSchema, QualityReportSchema } from '../cont-04/content-package-detail.schema';
 import { ContentVariantSchema } from '../cont-03/content-package-list.schema';
 
 const HashSchema = z.string().regex(/^[0-9a-f]{64}$/u);
@@ -118,7 +115,11 @@ export const VariantDetailResponseSchema = z
 
 export const ContentDiffSchema = z
   .object({
-    base: z.object({ content_hash: HashSchema, id: z.string().uuid(), version_no: z.number().int() }),
+    base: z.object({
+      content_hash: HashSchema,
+      id: z.string().uuid(),
+      version_no: z.number().int(),
+    }),
     blocks: z.array(
       z.object({
         after: z.unknown().optional(),
@@ -128,18 +129,32 @@ export const ContentDiffSchema = z
       }),
     ),
     fields: z.array(
-      z.object({ after: z.unknown().optional(), before: z.unknown().optional(), field: z.string() }),
+      z.object({
+        after: z.unknown().optional(),
+        before: z.unknown().optional(),
+        field: z.string(),
+      }),
     ),
-    target: z.object({ content_hash: HashSchema, id: z.string().uuid(), version_no: z.number().int() }),
+    target: z.object({
+      content_hash: HashSchema,
+      id: z.string().uuid(),
+      version_no: z.number().int(),
+    }),
   })
   .strict();
 
 export const ContentDiffResponseSchema = z
-  .object({ data: ContentDiffSchema, meta: z.object({ request_id: z.string().min(1) }).passthrough() })
+  .object({
+    data: ContentDiffSchema,
+    meta: z.object({ request_id: z.string().min(1) }).passthrough(),
+  })
   .strict();
 
 export const GenerationResponseSchema = z
-  .object({ data: z.object({ id: z.string().uuid() }).passthrough(), meta: z.object({ request_id: z.string() }).passthrough() })
+  .object({
+    data: z.object({ id: z.string().uuid() }).passthrough(),
+    meta: z.object({ request_id: z.string() }).passthrough(),
+  })
   .strict();
 
 export type ContentDocument = z.infer<typeof ContentDocumentSchema>;

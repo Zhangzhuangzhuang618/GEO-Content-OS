@@ -1,0 +1,82 @@
+{
+  "schema_version": "release-manifest@1",
+  "release": "v2.1",
+  "baseline_date": "2026-07-15",
+  "task_range": {
+    "first": "T001",
+    "last": "T144",
+    "count": 144
+  },
+  "development_freeze": "automated_gate_required",
+  "production_release": "not_authorized",
+  "rollout_manifest": "infra/feature-flags/platform-rollout.v1.json",
+  "frozen_documents": {
+    "AI Skills & Prompt设计规范.docx": "65d30f941193a5c901fed640b410ce5bd44f2db5b77fcce1b5b9ababd126ac69",
+    "Claude Code开发任务拆解.docx": "2e73f5b51801fe91657d9d89daa4de13a1bfeec303f5e022f4463ced923499c5",
+    "PRD产品需求文档.docx": "9ad186b234d101dad2286d7d8f33c1ada10f19731cabe846156aff31376d53ef",
+    "技术设计文档（AI开发友好）.docx": "9ded508ec5228005ef38fffd63f27663932f5e5cc1fa6365c520e8f3b533a87d",
+    "数据库设计手册.docx": "b3fbf02d85e434eb759c5be6cb63079eae21a4680dac34821e8382209bcb66e4"
+  },
+  "gates": [
+    {
+      "id": "feature_flags",
+      "category": "rollout",
+      "command": "pnpm feature-flags:check"
+    },
+    {
+      "id": "openapi",
+      "category": "version",
+      "command": "pnpm verify:openapi"
+    },
+    {
+      "id": "database",
+      "category": "data",
+      "command": "pnpm db:verify:fresh"
+    },
+    {
+      "id": "ai_evaluations",
+      "category": "quality",
+      "command": "pnpm eval:all"
+    },
+    {
+      "id": "cost_regression",
+      "category": "cost",
+      "command": "pnpm --filter @geo-content-os/api test -- brief-cost-estimator"
+    },
+    {
+      "id": "security",
+      "category": "security",
+      "command": "pnpm test:security"
+    },
+    {
+      "id": "outbox_recovery",
+      "category": "reliability",
+      "command": "pnpm test:chaos -- outbox"
+    },
+    {
+      "id": "accessibility",
+      "category": "experience",
+      "command": "pnpm test:a11y"
+    },
+    {
+      "id": "load",
+      "category": "performance",
+      "command": "pnpm test:load"
+    },
+    {
+      "id": "restore",
+      "category": "operations",
+      "command": "pnpm verify:restore"
+    },
+    {
+      "id": "system_e2e",
+      "category": "function",
+      "command": "pnpm test:e2e -- system"
+    },
+    {
+      "id": "observability",
+      "category": "operations",
+      "command": "pnpm verify:observability"
+    }
+  ]
+}

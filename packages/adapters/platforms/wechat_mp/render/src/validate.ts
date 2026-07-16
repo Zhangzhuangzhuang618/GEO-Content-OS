@@ -41,7 +41,9 @@ export function validateWechatMpContent(input: unknown): WechatMpValidationResul
     issues.push(blocker('LEAD_REQUIRED', '正文首块必须是非空导语段。', 'content.blocks.0'));
   }
   if (value.internal_links.length === 0) {
-    issues.push(blocker('INTERNAL_LINK_REQUIRED', '必须提供至少一个结构化内链。', 'internal_links'));
+    issues.push(
+      blocker('INTERNAL_LINK_REQUIRED', '必须提供至少一个结构化内链。', 'internal_links'),
+    );
   }
   if (!resolveWechatMpCta(value.content)) {
     issues.push(blocker('CTA_REQUIRED', '必须提供非空 CTA。', 'content.cta'));

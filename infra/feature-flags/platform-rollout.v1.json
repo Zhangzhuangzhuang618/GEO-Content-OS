@@ -1,0 +1,83 @@
+{
+  "schema_version": "platform-rollout@1",
+  "release": "v2.1",
+  "environment": "production",
+  "default_enabled": false,
+  "kill_switch": {
+    "environment_variable": "GEO_PUBLISHING_KILL_SWITCH",
+    "safe_value": "true"
+  },
+  "gates": {
+    "api_p95_ms_max": 800,
+    "queue_enqueue_p95_ms_max": 2000,
+    "request_failure_rate_max": 0.01,
+    "security_blockers_max": 0,
+    "accessibility_serious_or_critical_max": 0,
+    "cost_regression_percent_max": 15,
+    "rpo_seconds_max": 900,
+    "rto_seconds_max": 3600
+  },
+  "phases": [
+    {
+      "id": "phase-1",
+      "platforms": ["official_site", "zhihu", "xiaohongshu"],
+      "requires_previous_phase": null
+    },
+    {
+      "id": "phase-2",
+      "platforms": ["baijiahao", "toutiao", "wechat_mp", "douyin"],
+      "requires_previous_phase": "phase-1"
+    }
+  ],
+  "flags": [
+    {
+      "key": "publishing.official_site",
+      "environment_variable": "GEO_PUBLISH_OFFICIAL_SITE_ENABLED",
+      "platform": "official_site",
+      "phase": "phase-1",
+      "enabled": false
+    },
+    {
+      "key": "publishing.zhihu",
+      "environment_variable": "GEO_PUBLISH_ZHIHU_ENABLED",
+      "platform": "zhihu",
+      "phase": "phase-1",
+      "enabled": false
+    },
+    {
+      "key": "publishing.xiaohongshu",
+      "environment_variable": "GEO_PUBLISH_XIAOHONGSHU_ENABLED",
+      "platform": "xiaohongshu",
+      "phase": "phase-1",
+      "enabled": false
+    },
+    {
+      "key": "publishing.baijiahao",
+      "environment_variable": "GEO_PUBLISH_BAIJIAHAO_ENABLED",
+      "platform": "baijiahao",
+      "phase": "phase-2",
+      "enabled": false
+    },
+    {
+      "key": "publishing.toutiao",
+      "environment_variable": "GEO_PUBLISH_TOUTIAO_ENABLED",
+      "platform": "toutiao",
+      "phase": "phase-2",
+      "enabled": false
+    },
+    {
+      "key": "publishing.wechat_mp",
+      "environment_variable": "GEO_PUBLISH_WECHAT_MP_ENABLED",
+      "platform": "wechat_mp",
+      "phase": "phase-2",
+      "enabled": false
+    },
+    {
+      "key": "publishing.douyin",
+      "environment_variable": "GEO_PUBLISH_DOUYIN_ENABLED",
+      "platform": "douyin",
+      "phase": "phase-2",
+      "enabled": false
+    }
+  ]
+}
