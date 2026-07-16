@@ -43,9 +43,6 @@ temp/
 infra/docker/data/
 infra/docker/minio/
 
-# Generated
-apps/api/openapi/openapi.json
-
 # Claude
 .claude/settings.local.json
 .claude/worktrees/

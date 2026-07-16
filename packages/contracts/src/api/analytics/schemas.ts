@@ -232,6 +232,12 @@ export const ManualMetricsRequestSchema = z
   .strict();
 
 export const ImportJobParamsSchema = z.object({ id: UuidSchema }).strict();
+export const MetricsImportMultipartSchema = z
+  .object({
+    file: z.string().meta({ format: 'binary' }),
+    workspace_id: UuidSchema,
+  })
+  .strict();
 export const RollbackImportRequestSchema = z
   .object({ reason: z.string().trim().min(1).max(1_000) })
   .strict();

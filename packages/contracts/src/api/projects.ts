@@ -1,6 +1,13 @@
 import { z } from 'zod';
 
-import { CursorSchema, UuidSchema } from './common.js';
+import {
+  CursorPageMetaSchema,
+  CursorSchema,
+  IsoDateTimeSchema,
+  RequestMetaSchema,
+  UuidSchema,
+  VersionSchema,
+} from './common.js';
 
 const IsoDateSchema = z
   .string()
@@ -56,32 +63,37 @@ export const ProjectListQuerySchema = z
 
 export const ProjectIdSchema = UuidSchema;
 
+export const ProjectViewSchema = z
+  .object({
+    created_at: IsoDateTimeSchema,
+    end_date: IsoDateSchema.nullable(),
+    id: UuidSchema,
+    name: z.string().min(1).max(160),
+    objective: z.string().min(1).max(10_000).nullable(),
+    owner_id: UuidSchema,
+    start_date: IsoDateSchema.nullable(),
+    status: z.enum(['active', 'archived']),
+    tenant_id: UuidSchema,
+    updated_at: IsoDateTimeSchema,
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const ProjectResponseSchema = z
+  .object({ data: ProjectViewSchema, meta: RequestMetaSchema })
+  .strict();
+
+export const ProjectPageSchema = z
+  .object({ data: z.array(ProjectViewSchema), meta: CursorPageMetaSchema })
+  .strict();
+
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;
 export type ProjectListQuery = z.infer<typeof ProjectListQuerySchema>;
 
-export interface ProjectView {
-  readonly created_at: string;
-  readonly end_date: string | null;
-  readonly id: string;
-  readonly name: string;
-  readonly objective: string | null;
-  readonly owner_id: string;
-  readonly start_date: string | null;
-  readonly status: 'active' | 'archived';
-  readonly tenant_id: string;
-  readonly updated_at: string;
-  readonly version: number;
-  readonly workspace_id: string;
-}
-
-export interface ProjectPage {
-  readonly data: readonly ProjectView[];
-  readonly meta: {
-    readonly next_cursor: string | null;
-    readonly request_id: string;
-  };
-}
+export type ProjectView = z.infer<typeof ProjectViewSchema>;
+export type ProjectPage = z.infer<typeof ProjectPageSchema>;
 
 function validateDateRange(
   value: {

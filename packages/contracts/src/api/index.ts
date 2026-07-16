@@ -1,4 +1,6 @@
 export * from './common.js';
+export * from './catalog.js';
+export * from './core/index.js';
 export * from './analytics/index.js';
 export * from './audit/index.js';
 export * from './content/index.js';

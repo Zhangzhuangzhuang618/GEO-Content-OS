@@ -43,6 +43,7 @@ export interface KnowledgeApiContract {
     'tenant_member' | 'strategy_or_content_editor_or_admin' | 'reviewer_or_admin'
   >;
   readonly querySchema: z.ZodType | null;
+  readonly requestContentType?: 'application/json' | 'multipart/form-data';
   readonly requestName: string;
   readonly responseName: string;
   readonly responseSchema: z.ZodType;
@@ -61,6 +62,7 @@ const contracts = [
     policy: 'strategy_or_content_editor_or_admin',
     permissions: ['knowledge.sources.manage'],
     requestName: 'SourceCreate',
+    requestContentType: 'multipart/form-data',
     responseName: 'SourceView + IngestJob',
     idempotency: 'key+content_hash',
     successStatus: 201,

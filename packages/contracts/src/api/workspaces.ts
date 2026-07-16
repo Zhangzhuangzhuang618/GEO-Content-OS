@@ -1,7 +1,14 @@
 import { z } from 'zod';
 
 import { PLATFORM_CODES } from '../platforms.js';
-import { CursorSchema, UuidSchema } from './common.js';
+import {
+  CursorPageMetaSchema,
+  CursorSchema,
+  IsoDateTimeSchema,
+  RequestMetaSchema,
+  UuidSchema,
+  VersionSchema,
+} from './common.js';
 
 export const WorkspaceSettingsSchema = z
   .object({
@@ -72,28 +79,33 @@ export const WorkspaceListQuerySchema = z
 
 export const WorkspaceIdSchema = UuidSchema;
 
+export const WorkspaceViewSchema = z
+  .object({
+    created_at: IsoDateTimeSchema,
+    id: UuidSchema,
+    name: z.string().min(1).max(120),
+    settings: WorkspaceSettingsSchema,
+    slug: WorkspaceSlugSchema,
+    status: z.enum(['active', 'archived']),
+    tenant_id: UuidSchema,
+    timezone: WorkspaceTimezoneSchema,
+    updated_at: IsoDateTimeSchema,
+    version: VersionSchema,
+  })
+  .strict();
+
+export const WorkspaceResponseSchema = z
+  .object({ data: WorkspaceViewSchema, meta: RequestMetaSchema })
+  .strict();
+
+export const WorkspacePageSchema = z
+  .object({ data: z.array(WorkspaceViewSchema), meta: CursorPageMetaSchema })
+  .strict();
+
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequestSchema>;
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequestSchema>;
 export type WorkspaceListQuery = z.infer<typeof WorkspaceListQuerySchema>;
 
-export interface WorkspaceView {
-  readonly created_at: string;
-  readonly id: string;
-  readonly name: string;
-  readonly settings: WorkspaceSettings;
-  readonly slug: string;
-  readonly status: 'active' | 'archived';
-  readonly tenant_id: string;
-  readonly timezone: string;
-  readonly updated_at: string;
-  readonly version: number;
-}
-
-export interface WorkspacePage {
-  readonly data: readonly WorkspaceView[];
-  readonly meta: {
-    readonly next_cursor: string | null;
-    readonly request_id: string;
-  };
-}
+export type WorkspaceView = z.infer<typeof WorkspaceViewSchema>;
+export type WorkspacePage = z.infer<typeof WorkspacePageSchema>;
