@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: GEO Content OS
+    orgId: 1
+    folder: GEO Content OS
+    type: file
+    disableDeletion: true
+    editable: false
+    options:
+      path: /var/lib/grafana/dashboards
