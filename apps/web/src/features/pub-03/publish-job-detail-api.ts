@@ -1,0 +1,83 @@
+import type { PublishJob } from '../pub-02/publishing-calendar.schema';
+import {
+  PublishJobDetailResponseSchema,
+  PublishJobResponseSchema,
+  SignedDownloadResponseSchema,
+  type PublishJobDetail,
+  type SignedDownload,
+} from './publish-job-detail.schema';
+
+const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
+
+export async function getPublishJobDetail(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<PublishJobDetail> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${jobId}`, {
+    credentials: 'include',
+    method: 'GET',
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new PublishJobDetailRequestError(response.status);
+  const parsed = PublishJobDetailResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PublishJobDetailRequestError(502);
+  return parsed.data.data;
+}
+
+export async function retryPublishJob(job: PublishJob, csrf: string): Promise<PublishJob> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/retry`, {
+    body: '{}',
+    credentials: 'include',
+    headers: writeHeaders(csrf, job.version, `publish-retry-${job.id}`),
+    method: 'POST',
+  });
+  return parseJob(response);
+}
+
+export async function cancelUnexecutedPublishJob(
+  job: PublishJob,
+  reason: string,
+  csrf: string,
+): Promise<PublishJob> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/cancel`, {
+    body: JSON.stringify({ reason }),
+    credentials: 'include',
+    headers: writeHeaders(csrf, job.version),
+    method: 'POST',
+  });
+  return parseJob(response);
+}
+
+export async function getSignedExport(jobId: string): Promise<SignedDownload> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${jobId}/export`, {
+    credentials: 'include',
+    method: 'GET',
+  });
+  if (!response.ok) throw new PublishJobDetailRequestError(response.status);
+  const parsed = SignedDownloadResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PublishJobDetailRequestError(502);
+  return parsed.data.data;
+}
+
+export class PublishJobDetailRequestError extends Error {
+  public constructor(public readonly status: number) {
+    super('Publish job detail request failed');
+    this.name = 'PublishJobDetailRequestError';
+  }
+}
+
+async function parseJob(response: Response): Promise<PublishJob> {
+  if (!response.ok) throw new PublishJobDetailRequestError(response.status);
+  const parsed = PublishJobResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PublishJobDetailRequestError(502);
+  return parsed.data.data;
+}
+
+function writeHeaders(csrf: string, version: number, idempotencyKey?: string) {
+  return {
+    'content-type': 'application/json',
+    ...(idempotencyKey ? { 'idempotency-key': `${idempotencyKey}-${crypto.randomUUID()}` } : {}),
+    'if-match': `"${version}"`,
+    'x-csrf-token': csrf,
+  };
+}
