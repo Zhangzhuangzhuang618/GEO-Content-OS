@@ -6,7 +6,11 @@ import type {
 import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
 import type { TransactionSql } from 'postgres';
 import type { JsonValue } from '../../../common/idempotency/index.js';
-import type { DatabaseClient } from '../../../database/index.js';
+import {
+  resolveDatabaseClient,
+  type DatabaseClient,
+  type DatabaseClientSource,
+} from '../../../database/index.js';
 import { PlatformAccountError } from './platform-account.errors.js';
 import type {
   PlatformAccountAudit,
@@ -37,33 +41,45 @@ interface Row {
 
 export class PlatformAccountService {
   public constructor(
-    private readonly database: DatabaseClient,
+    private readonly databaseSource: DatabaseClientSource,
     private readonly credentials: CredentialEnvelopeService,
     private readonly connector: PlatformAccountConnector,
   ) {}
+
+  private get database() {
+    return resolveDatabaseClient(this.databaseSource);
+  }
   public async create(
     scope: PlatformAccountScope,
     input: CreatePlatformAccountRequest,
     audit: PlatformAccountAudit,
   ): Promise<PlatformAccountView> {
-    return this.database.begin(async (tx) => {
-      await this.requireWorkspace(tx, scope, input.workspace_id);
-      const probe = await this.connector.probe({
-        credential: input.credential ?? null,
-        platformCode: input.platform_code,
-        publishMode: input.publish_mode,
-      });
-      const stored = input.credential
-        ? await this.credentials.encrypt(JSON.stringify(input.credential))
-        : null;
-      const rows = await tx<
-        Row[]
-      >`INSERT INTO platform_accounts (tenant_id,workspace_id,platform_code,provider_account_id,display_name,credential_ciphertext,credential_key_version,scopes,token_expires_at,capabilities_json,publish_mode,status,timezone) VALUES (${scope.tenantId}::uuid,${input.workspace_id}::uuid,${input.platform_code},${probe.providerAccountId},${input.display_name},${stored?.credentialCiphertext ?? null},${stored?.credentialKeyVersion ?? null},${probe.scopes as string[]},${probe.tokenExpiresAt},${tx.json(probe.capabilities as JsonValue)},${probe.publishMode},${probe.status},${input.timezone}) RETURNING *`;
-      const row = rows[0];
-      if (!row) throw invalid();
-      await this.audit(tx, scope, audit, 'platform_account.connected', row.id, null, safe(row));
-      return map(row);
+    return this.database.begin((transaction) =>
+      this.createInTransaction(transaction, scope, input, audit),
+    );
+  }
+  public async createInTransaction(
+    tx: TransactionSql,
+    scope: PlatformAccountScope,
+    input: CreatePlatformAccountRequest,
+    audit: PlatformAccountAudit,
+  ): Promise<PlatformAccountView> {
+    await this.requireWorkspace(tx, scope, input.workspace_id);
+    const probe = await this.connector.probe({
+      credential: input.credential ?? null,
+      platformCode: input.platform_code,
+      publishMode: input.publish_mode,
     });
+    const stored = input.credential
+      ? await encryptCredential(this.credentials, input.credential)
+      : null;
+    const rows = await tx<
+      Row[]
+    >`INSERT INTO platform_accounts (tenant_id,workspace_id,platform_code,provider_account_id,display_name,credential_ciphertext,credential_key_version,scopes,token_expires_at,capabilities_json,publish_mode,status,timezone) VALUES (${scope.tenantId}::uuid,${input.workspace_id}::uuid,${input.platform_code},${probe.providerAccountId},${input.display_name},${stored?.credentialCiphertext ?? null},${stored?.credentialKeyVersion ?? null},${probe.scopes as string[]},${probe.tokenExpiresAt},${tx.json(probe.capabilities as JsonValue)},${probe.publishMode},${probe.status},${input.timezone}) RETURNING *`;
+    const row = rows[0];
+    if (!row) throw invalid();
+    await this.audit(tx, scope, audit, 'platform_account.connected', row.id, null, safe(row));
+    return map(row);
   }
   public async list(
     scope: PlatformAccountScope,
@@ -89,7 +105,7 @@ export class PlatformAccountService {
       const credential = input.credential ?? (await this.decrypt(row));
       const probe = await this.connector.refresh({ credential, platformCode: row.platform_code });
       const stored = input.credential
-        ? await this.credentials.encrypt(JSON.stringify(input.credential))
+        ? await encryptCredential(this.credentials, input.credential)
         : null;
       const rows = await tx<
         Row[]
@@ -241,4 +257,15 @@ function invalid() {
     'PLATFORM_ACCOUNT_CREDENTIAL_INVALID',
     'Platform account credential is invalid',
   );
+}
+
+async function encryptCredential(
+  credentials: CredentialEnvelopeService,
+  value: Readonly<Record<string, unknown>>,
+) {
+  try {
+    return await credentials.encrypt(JSON.stringify(value));
+  } catch {
+    throw invalid();
+  }
 }
