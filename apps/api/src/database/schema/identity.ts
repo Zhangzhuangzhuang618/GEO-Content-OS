@@ -94,6 +94,7 @@ export const tenants = pgTable(
     planCode: varchar('plan_code', { length: 32 }).notNull().default('trial'),
     timezone: varchar({ length: 64 }).notNull().default('Asia/Shanghai'),
     status: varchar({ length: 16 }).$type<TenantStatus>().notNull().default('active'),
+    version: integer().notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
@@ -106,6 +107,10 @@ export const tenants = pgTable(
       .on(table.status, table.createdAt)
       .where(sql`${table.deletedAt} IS NULL`),
     check('tenants_status_check', sql`${table.status} IN ('active', 'suspended', 'archived')`),
+    check('tenants_version_check', sql`${table.version} > 0`),
+    index('tenants_version_idx')
+      .on(table.id, table.version)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 

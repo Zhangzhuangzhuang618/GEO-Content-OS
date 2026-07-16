@@ -204,6 +204,13 @@
       "when": 1784178000000,
       "tag": "0028_platform_config_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784181600000,
+      "tag": "0029_platform_tenant_version",
+      "breakpoints": true
     }
   ]
 }

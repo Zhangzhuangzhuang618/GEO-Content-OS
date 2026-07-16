@@ -8,6 +8,7 @@ import { IdentityModule } from './modules/identity/identity.module.js';
 import { FactAdjudicationModule, SourceModule } from './modules/knowledge/index.js';
 import { PlatformAccessModule } from './modules/platform-access/platform-access.module.js';
 import { PlatformConfigModule } from './modules/platform-config/index.js';
+import { PlatformTenantModule } from './modules/platform-tenants/index.js';
 import { PublishingModule } from './modules/publishing/index.js';
 import { ReviewApiModule } from './modules/review/index.js';
 import { TenantLifecycleModule } from './modules/tenant-lifecycle/index.js';
@@ -32,6 +33,7 @@ import {
     KeywordModule,
     PlatformAccessModule,
     PlatformConfigModule,
+    PlatformTenantModule,
     ProjectModule,
     PublishingModule,
     ReviewApiModule,
