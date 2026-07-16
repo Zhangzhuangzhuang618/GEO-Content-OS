@@ -3,7 +3,9 @@ import {
   AnalyticsExportQuerySchema,
   AnalyticsQuerySchema,
   ContentAnalyticsQuerySchema,
+  CostBudgetQuerySchema,
   CostQuerySchema,
+  CostReconciliationRequestSchema,
   ERROR_DEFINITIONS,
   ImportJobParamsSchema,
   ManualMetricsRequestSchema,
@@ -171,6 +173,59 @@ export class AnalyticsApiController {
     @Res() reply: FastifyReply,
   ) {
     return this.costResponse(raw, request, reply);
+  }
+
+  @Get('analytics/costs/budget')
+  @RequirePermissions('cost.read')
+  public async costBudget(
+    @Query() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = CostBudgetQuerySchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      const scope = requireScope(request);
+      return sendData(
+        reply,
+        request.id,
+        await this.costs.budget(
+          { tenantId: scope.tenantId, userId: scope.userId },
+          { month: parsed.data.month, workspaceId: parsed.data.workspace_id },
+        ),
+      );
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Post('analytics/costs/reconcile')
+  @RequirePermissions('cost.read')
+  public async reconcileCosts(
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = CostReconciliationRequestSchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      const scope = requireScope(request);
+      return sendData(
+        reply,
+        request.id,
+        await this.costs.reconcileProviders(
+          { tenantId: scope.tenantId, userId: scope.userId },
+          toCostFilter(parsed.data),
+          parsed.data.statement_lines.map((line) => ({
+            billedCostCents: line.billed_cost_cents,
+            currency: line.currency,
+            provider: line.provider,
+          })),
+        ),
+      );
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
   }
 
   @Get('usage/summary')
@@ -467,24 +522,35 @@ export class AnalyticsApiController {
         request.id,
         await this.costs.report(
           { tenantId: scope.tenantId, userId: scope.userId },
-          {
-            ...(parsed.data.currency ? { currency: parsed.data.currency } : {}),
-            from: parsed.data.from,
-            ...(parsed.data.generation_run_id
-              ? { generationRunId: parsed.data.generation_run_id }
-              : {}),
-            ...(parsed.data.package_id ? { packageId: parsed.data.package_id } : {}),
-            ...(parsed.data.project_id ? { projectId: parsed.data.project_id } : {}),
-            to: parsed.data.to,
-            ...(parsed.data.variant_id ? { variantId: parsed.data.variant_id } : {}),
-            ...(parsed.data.workspace_id ? { workspaceId: parsed.data.workspace_id } : {}),
-          },
+          toCostFilter(parsed.data),
         ),
       );
     } catch (error) {
       return sendAnalyticsError(reply, request.id, error);
     }
   }
+}
+
+function toCostFilter(query: {
+  currency?: string | undefined;
+  from: string;
+  generation_run_id?: string | undefined;
+  package_id?: string | undefined;
+  project_id?: string | undefined;
+  to: string;
+  variant_id?: string | undefined;
+  workspace_id?: string | undefined;
+}) {
+  return {
+    ...(query.currency ? { currency: query.currency } : {}),
+    from: query.from,
+    ...(query.generation_run_id ? { generationRunId: query.generation_run_id } : {}),
+    ...(query.package_id ? { packageId: query.package_id } : {}),
+    ...(query.project_id ? { projectId: query.project_id } : {}),
+    to: query.to,
+    ...(query.variant_id ? { variantId: query.variant_id } : {}),
+    ...(query.workspace_id ? { workspaceId: query.workspace_id } : {}),
+  };
 }
 
 function requireScope(request: FastifyRequest): AnalyticsApiScope {

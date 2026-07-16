@@ -163,6 +163,59 @@ export const CostBreakdownSchema = z
   })
   .strict();
 
+export const CostBudgetQuerySchema = z
+  .object({
+    month: z.string().regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/u),
+    workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const CostBudgetStatusSchema = z
+  .object({
+    consumed_cents: z.number().int().nonnegative(),
+    currency: z.literal('CNY'),
+    hard_limit: z.boolean(),
+    is_exceeded: z.boolean(),
+    is_exhausted: z.boolean(),
+    limit_cents: z.number().int().nonnegative().nullable(),
+    month: z.string().regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/u),
+    remaining_cents: z.number().int().nonnegative().nullable(),
+    workspace_id: UuidSchema,
+  })
+  .strict();
+
+export const ProviderStatementLineSchema = z
+  .object({
+    billed_cost_cents: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    currency: z.string().regex(/^[A-Z]{3}$/u),
+    provider: z.string().trim().min(1).max(80),
+  })
+  .strict();
+
+export const CostReconciliationRequestSchema = CostQuerySchema.extend({
+  statement_lines: z.array(ProviderStatementLineSchema).min(1).max(500),
+});
+
+export const CostReconciliationReportSchema = z
+  .object({
+    from: IsoDateTimeSchema,
+    items: z.array(
+      z
+        .object({
+          billed_cost_cents: z.number().int().nonnegative().nullable(),
+          currency: z.string().regex(/^[A-Z]{3}$/u),
+          delta_cents: z.number().int().nullable(),
+          ledger_cost_cents: z.number().int().nonnegative(),
+          provider: z.string().nullable(),
+          status: z.enum(['matched', 'mismatch', 'missing_ledger', 'missing_statement']),
+        })
+        .strict(),
+    ),
+    settled_only: z.literal(true),
+    to: IsoDateTimeSchema,
+  })
+  .strict();
+
 export const ManualMetricRowSchema = z
   .object({
     account_id: UuidSchema.nullable().optional(),
@@ -328,6 +381,10 @@ export const OverviewMetricsResponseSchema = createDataResponseSchema(OverviewMe
 export const PlatformMetricsResponseSchema = createDataResponseSchema(PlatformMetricsSchema);
 export const ContentMetricsResponseSchema = createDataResponseSchema(ContentMetricsPageSchema);
 export const CostBreakdownResponseSchema = createDataResponseSchema(CostBreakdownSchema);
+export const CostBudgetStatusResponseSchema = createDataResponseSchema(CostBudgetStatusSchema);
+export const CostReconciliationResponseSchema = createDataResponseSchema(
+  CostReconciliationReportSchema,
+);
 export const ImportJobResponseSchema = createDataResponseSchema(ImportJobViewSchema);
 export const ManualMetricsResponseSchema = createDataResponseSchema(
   z.array(MetricRecordViewSchema),
@@ -349,6 +406,8 @@ export const AnalyticsExportJobResponseSchema = createDataResponseSchema(
 export type AnalyticsExportQuery = z.infer<typeof AnalyticsExportQuerySchema>;
 export type AnalyticsQuery = z.infer<typeof AnalyticsQuerySchema>;
 export type CostQuery = z.infer<typeof CostQuerySchema>;
+export type CostBudgetQuery = z.infer<typeof CostBudgetQuerySchema>;
+export type CostReconciliationRequest = z.infer<typeof CostReconciliationRequestSchema>;
 export type ManualMetricsRequest = z.infer<typeof ManualMetricsRequestSchema>;
 export type VisibilityImportRequest = z.infer<typeof VisibilityImportRequestSchema>;
 export type VisibilityObservationRequest = z.infer<typeof VisibilityObservationRequestSchema>;
