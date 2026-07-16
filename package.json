@@ -26,6 +26,7 @@
     "db:test": "pnpm --filter @geo-content-os/api test:database",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
+    "generate:openapi": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/api exec tsx openapi/generate.ts",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "test": "node scripts/run-tests.mjs",
@@ -38,6 +39,7 @@
     "typecheck": "pnpm typecheck:root && pnpm --recursive --if-present typecheck",
     "typecheck:root": "tsc --project tsconfig.json --noEmit --pretty false",
     "verify:observability": "pnpm --filter @geo-content-os/observability test && pnpm --filter @geo-content-os/observability build && node infra/observability/verify.mjs",
+    "verify:openapi": "pnpm --filter @geo-content-os/contracts test -- src/api/catalog.test.ts && pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/api exec tsx openapi/generate.ts --check && pnpm --filter @geo-content-os/sdk typecheck && pnpm --filter @geo-content-os/sdk build",
     "verify:restore": "node infra/backup/verify-restore.mjs"
   },
   "devDependencies": {
