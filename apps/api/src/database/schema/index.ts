@@ -88,6 +88,11 @@ export {
   type SupportAccessScope,
 } from './platform-access.js';
 export {
+  platformRuleVersions,
+  promptVersions,
+  type PlatformConfigStatus,
+} from './platform-config.js';
+export {
   brandProfiles,
   generationRuns,
   keywordSets,

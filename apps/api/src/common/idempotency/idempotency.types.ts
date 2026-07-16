@@ -17,7 +17,8 @@ export interface CachedHttpResponse<TBody extends JsonValue = JsonValue> {
 }
 
 export interface IdempotencyExecutionInput {
-  readonly tenantId: string;
+  /** Null identifies a global platform-scoped operation. */
+  readonly tenantId: string | null;
   readonly scopeKey: string;
   readonly idempotencyKey: string;
   readonly fingerprint: RequestFingerprint;
