@@ -32,6 +32,7 @@
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --max-warnings=0 --fix",
     "test": "node scripts/run-tests.mjs",
+    "test:a11y": "pnpm --filter web build && pnpm exec playwright test --config apps/web/test/a11y/playwright.config.ts",
     "test:chaos": "node scripts/run-chaos-tests.mjs",
     "test:contract": "node scripts/run-contract-tests.mjs",
     "test:e2e": "pnpm --filter @geo-content-os/worker-ai build && pnpm --filter api build && pnpm --filter web build && node scripts/run-e2e.mjs",
@@ -45,6 +46,7 @@
     "verify:restore": "node infra/backup/verify-restore.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.12.1",
     "@commitlint/cli": "21.2.1",
     "@eslint/js": "9.39.5",
     "@next/eslint-plugin-next": "15.5.20",
