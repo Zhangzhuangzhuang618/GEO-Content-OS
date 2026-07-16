@@ -956,6 +956,34 @@ async function buildWriterInput(
   const brand = brandRows[0];
   if (!brief || !brand)
     throw contentStateInvalid('Published brand strategy and Brief are required');
+  const citations = await client<{ chunkId: string; quoteText: string; sourceId: string }[]>`
+    SELECT
+      chunk.id AS "chunkId",
+      chunk.text AS "quoteText",
+      source.id AS "sourceId"
+    FROM content_packages AS package
+    JOIN brief_sources AS link
+      ON link.brief_id = package.brief_id
+      AND link.tenant_id = package.tenant_id
+    JOIN source_documents AS source
+      ON source.id = link.source_document_id
+      AND source.tenant_id = link.tenant_id
+    JOIN source_chunks AS chunk
+      ON chunk.source_document_id = source.id
+      AND chunk.tenant_id = source.tenant_id
+    WHERE package.id = ${packageId}::uuid
+      AND package.tenant_id = ${scope.tenantId}::uuid
+      AND package.workspace_id = ${scope.workspaceId}::uuid
+      AND package.project_id = ${scope.projectId}::uuid
+      AND source.status = 'active'
+      AND source.deleted_at IS NULL
+      AND source.trust_level IN ('normal', 'verified')
+      AND (source.effective_from IS NULL OR source.effective_from <= current_date)
+      AND (source.effective_to IS NULL OR source.effective_to >= current_date)
+      AND chunk.status = 'active'
+    ORDER BY link.required DESC, source.id, chunk.chunk_no, chunk.id
+    LIMIT 100
+  `;
   const rules = readPlatformRules(platformCodes);
   const locked = await loadLockedBlocks(client, scope.tenantId, null, lockedBlockKeys, packageId);
   return {
@@ -967,7 +995,12 @@ async function buildWriterInput(
       platform_codes: platformCodes,
       title: brief.title,
     },
-    citations: [],
+    citations: citations.map((citation) => ({
+      chunk_id: citation.chunkId,
+      citation_id: citation.chunkId,
+      quote_text: citation.quoteText,
+      source_id: citation.sourceId,
+    })),
     generation_mode: brief.generationMode,
     locked_blocks: locked,
     platform_rules_by_code: rules,
@@ -1035,7 +1068,15 @@ async function loadLockedBlocks(
     }[]
   >`
     SELECT lock.block_key AS "blockKey", variant.platform_code AS "platformCode",
-      block_item->>'text' AS text, ARRAY[]::uuid[] AS "citationIds"
+      block_item->>'text' AS text,
+      ARRAY(
+        SELECT DISTINCT citation.chunk_id
+        FROM ai_citations AS citation
+        WHERE citation.tenant_id = lock.tenant_id
+          AND citation.content_version_id = version.id
+          AND citation.claim_text = block_item->>'text'
+        ORDER BY citation.chunk_id
+      ) AS "citationIds"
     FROM content_block_locks AS lock
     JOIN content_variants AS variant ON variant.id = lock.variant_id AND variant.tenant_id = lock.tenant_id
     JOIN content_versions AS version ON version.id = variant.current_content_version_id AND version.tenant_id = variant.tenant_id
