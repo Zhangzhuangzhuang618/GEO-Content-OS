@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AnalyticsApiModule } from './modules/analytics/index.js';
+import { AuditQueryModule } from './modules/audit/index.js';
 import { BriefModule, ContentApiModule } from './modules/content/index.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
@@ -21,6 +22,7 @@ import {
 @Module({
   imports: [
     AnalyticsApiModule,
+    AuditQueryModule,
     BrandProfileModule,
     BriefModule,
     ContentApiModule,
