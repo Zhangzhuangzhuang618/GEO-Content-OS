@@ -1,5 +1,5 @@
 {
-  "rule_version": "official-site-render-rules@1.0.0",
+  "rule_version": "official-site-render-rules@1.1.0",
   "content": {
     "platform_code": "official_site",
     "title": "标题太短",

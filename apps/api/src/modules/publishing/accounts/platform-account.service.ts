@@ -138,6 +138,9 @@ export class PlatformAccountService {
         });
         const stored = credential ? await encryptCredential(this.credentials, credential) : null;
         const nextStatus = row.status === 'disabled' ? 'disabled' : probe.status;
+        if (probe.publishMode !== 'api' || nextStatus !== 'active') {
+          await disableAutomationPolicies(tx, scope.tenantId, id);
+        }
         return requireRow(
           await tx<
             Row[]
@@ -188,6 +191,7 @@ export class PlatformAccountService {
       'platform_account.disabled',
       async (_row, tx) => {
         await this.requireNoActiveJobs(tx, scope, id);
+        await disableAutomationPolicies(tx, scope.tenantId, id);
         return requireRow(
           await tx<
             Row[]
@@ -244,6 +248,7 @@ export class PlatformAccountService {
       'platform_account.removed',
       async (_row, tx) => {
         await this.requireNoActiveJobs(tx, scope, id);
+        await disableAutomationPolicies(tx, scope.tenantId, id);
         return requireRow(
           await tx<
             Row[]
@@ -330,6 +335,18 @@ export class PlatformAccountService {
   ) {
     await tx`INSERT INTO audit_events(tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,ip,request_id) VALUES(${scope.tenantId}::uuid,${scope.userId}::uuid,${action},'platform_account',${id}::uuid,${before ? tx.json(before as JsonValue) : null},${tx.json(after as JsonValue)},${audit.ip ?? null},${audit.requestId})`;
   }
+}
+
+async function disableAutomationPolicies(
+  transaction: TransactionSql,
+  tenantId: string,
+  accountId: string,
+): Promise<void> {
+  await transaction`
+    UPDATE official_site_automation_policies
+    SET enabled=false,version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND account_id=${accountId}::uuid AND enabled
+  `;
 }
 function map(row: Row): PlatformAccountView {
   return {

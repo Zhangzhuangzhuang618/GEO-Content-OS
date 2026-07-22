@@ -217,16 +217,38 @@ export function ContentPackageDetail() {
                     <td className="p-3">
                       <VersionSummary item={item} />
                     </td>
-                    <td className="p-3">{reviewLabel(item.variant.status)}</td>
-                    <td className="p-3">{publishLabel(item.variant.status)}</td>
+                    <td className="p-3">
+                      {item.automationRun ? '官网自动流程' : reviewLabel(item.variant.status)}
+                    </td>
+                    <td className="p-3">
+                      {item.automationRun
+                        ? automationStatusLabel(
+                            item.automationRun.status,
+                            item.automationRun.rewrite_count,
+                          )
+                        : publishLabel(item.variant.status)}
+                    </td>
                     <td className="p-3">
                       <div className="flex gap-3">
                         <Link className="text-brand-700" href={`/cont-05?id=${item.variant.id}`}>
                           编辑
                         </Link>
                         <Link className="text-brand-700" href={`/qual-01?id=${item.variant.id}`}>
-                          {item.qualityReport ? '查看检查' : '检查质量'}
+                          {item.automationRun?.status === 'manual_required'
+                            ? '查看问题并处理'
+                            : item.qualityReport
+                              ? '查看检查'
+                              : '检查质量'}
                         </Link>
+                        {item.automationRun?.status === 'publish_failed' &&
+                        item.automationRun.publish_job_id ? (
+                          <Link
+                            className="text-brand-700"
+                            href={`/pub-03?id=${item.automationRun.publish_job_id}`}
+                          >
+                            查看失败并重试
+                          </Link>
+                        ) : null}
                         {item.variant.status === 'approved' ? (
                           <Link
                             className="text-brand-700"
@@ -251,7 +273,7 @@ export function ContentPackageDetail() {
         <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
           <h2 className="text-lg font-semibold text-ink-950">下一步操作</h2>
           <p className="mt-1 text-sm text-ink-500">
-            按顺序完成内容生成、质量检查和提交审核。系统会自动刷新处理结果。
+            普通平台按顺序完成质量检查和提交审核；已开启自动发布的官网内容会自行质检、重写并发布。
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="text-sm text-ink-700">
@@ -320,7 +342,8 @@ export function ContentPackageDetail() {
             ) : null}
           </div>
           <p className="mt-4 text-xs leading-5 text-ink-500">
-            质量检查通过的平台会自动勾选；确认后即可提交审核。重新生成会产生新版本，并使旧检查结果失效。
+            普通平台质量通过后会自动勾选。官网自动流程连续 3
+            次仍未通过时，请先编辑内容，再点击“检查内容质量”重新启动流程。
           </p>
           {message ? (
             <p aria-live="polite" className="mt-4 text-sm text-ink-700">
@@ -374,6 +397,7 @@ export function actionGuards(detail: PackageDetail) {
 
 function canSubmitVariant(item: VariantDetail) {
   return (
+    item.automationRun === null &&
     item.variant.status === 'quality_passed' &&
     item.currentContent !== null &&
     item.qualityReport?.decision === 'pass' &&
@@ -532,16 +556,24 @@ function applyDetail(
 }
 function qualityCheckVariantIds(detail: PackageDetail) {
   return detail.variants
-    .filter(
-      (item) =>
+    .filter((item) => {
+      if (item.automationRun) {
+        return (
+          item.automationRun.status === 'manual_required' &&
+          item.currentContent !== null &&
+          item.variant.status === 'quality_failed'
+        );
+      }
+      return (
         item.currentContent !== null &&
         ['generated', 'quality_failed', 'quality_passed'].includes(item.variant.status) &&
         !(
           item.variant.status === 'quality_passed' &&
           item.qualityReport?.decision === 'pass' &&
           item.qualityReport.content_version_id === item.currentContent.id
-        ),
-    )
+        )
+      );
+    })
     .map((item) => item.variant.id);
 }
 function isAccessError(error: unknown) {
@@ -586,6 +618,20 @@ function publishLabel(status: string) {
   if (status === 'publish_failed') return '发布失败';
   if (status === 'approved') return '待排期';
   return '未就绪';
+}
+function automationStatusLabel(status: string, rewriteCount: number) {
+  const labels: Record<string, string> = {
+    disabled: '自动发布已关闭',
+    manual_required: `需人工处理（已重写 ${rewriteCount}/3 次）`,
+    publish_failed: '官网发布失败',
+    publish_pending: '等待发布',
+    published: '已自动发布',
+    publishing: '正在自动发布',
+    quality_pending: '正在机器质检',
+    rewrite_pending: `等待第 ${rewriteCount} 次重写`,
+    rewriting: `正在第 ${rewriteCount} 次重写`,
+  };
+  return labels[status] ?? status;
 }
 function decisionLabel(decision: string) {
   return { block: '阻断', pass: '通过', revise: '需修改' }[decision] ?? decision;

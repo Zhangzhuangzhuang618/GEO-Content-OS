@@ -55,7 +55,9 @@ export interface PublishJobView {
   readonly id: string;
   readonly idempotencyKey: string;
   readonly lastError: Readonly<Record<string, unknown>> | null;
+  readonly origin: 'manual' | 'official_site_automation';
   readonly payloadHash: string;
+  readonly publishedAt: Date | null;
   readonly scheduledAt: Date;
   readonly status:
     'scheduled' | 'publishing' | 'published' | 'failed' | 'cancel_requested' | 'cancelled';
@@ -310,6 +312,8 @@ function selectJobs(
       job.external_post_id AS "externalPostId",
       job.external_url AS "externalUrl",
       job.last_error_json AS "lastError",
+      job.origin,
+      job.published_at AS "publishedAt",
       job.created_by AS "createdBy",
       job.created_at AS "createdAt",
       job.updated_at AS "updatedAt"

@@ -5,12 +5,27 @@ import { OfficialSiteDeliveryInputSchema } from './schema.js';
 import {
   OFFICIAL_SITE_EXPORT_SCHEMA_VERSION,
   type OfficialSiteDeliveryInput,
+  type OfficialSiteApiPayload,
   type OfficialSiteExportBundle,
   type OfficialSiteExportFile,
 } from './types.js';
 
 export function hashOfficialSitePayload(payload: OfficialSiteDeliveryInput['payload']): string {
-  return sha256(stableStringify(payload));
+  return sha256(stableStringify(toOfficialSiteApiPayload(payload)));
+}
+
+export function toOfficialSiteApiPayload(
+  payload: OfficialSiteDeliveryInput['payload'],
+): OfficialSiteApiPayload {
+  return Object.freeze({
+    body_html: payload.body_html,
+    meta_description: payload.meta_description,
+    platform_code: 'official_site',
+    schema_version: 'zhiyuan-news-payload@1',
+    seo_keywords: Object.freeze([...payload.seo_keywords]),
+    summary: payload.summary,
+    title: payload.title,
+  });
 }
 
 export function exportOfficialSite(input: unknown): OfficialSiteExportBundle {

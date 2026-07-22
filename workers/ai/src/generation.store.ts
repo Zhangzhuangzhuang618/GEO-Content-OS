@@ -8,6 +8,7 @@ import {
   validateGeneratedContent,
 } from './generation.content.js';
 import { GenerationWorkerError } from './generation.errors.js';
+import type { OfficialSiteAutomation } from './official-site-automation.js';
 import type {
   GeneratedContent,
   GenerationClaimResult,
@@ -60,6 +61,7 @@ export class PostgresGenerationStore implements GenerationStorePort {
   public constructor(
     private readonly client: postgres.Sql,
     private readonly staleAfterMs = 60_000,
+    private readonly automation?: OfficialSiteAutomation,
   ) {
     if (!Number.isSafeInteger(staleAfterMs) || staleAfterMs < 1_000 || staleAfterMs > 900_000) {
       throw new TypeError('Generation stale lease duration is invalid');
@@ -237,7 +239,7 @@ export class PostgresGenerationStore implements GenerationStorePort {
         FOR UPDATE
       `;
       if (packages.length !== 1) throw stateInvalid();
-      const versionId = await insertVersion(
+      const versionId = await insertGeneratedVersion(
         transaction,
         event,
         null,
@@ -273,7 +275,7 @@ export class PostgresGenerationStore implements GenerationStorePort {
         throw stateInvalid();
       }
       await assertLocks(transaction, event.tenantId, claim.run.variantId, content);
-      const versionId = await insertVersion(
+      const versionId = await insertGeneratedVersion(
         transaction,
         event,
         claim.run.variantId,
@@ -296,6 +298,15 @@ export class PostgresGenerationStore implements GenerationStorePort {
       if (pointed.length !== 1) throw stateInvalid();
       await succeedRun(transaction, event, claim.run.runId, claim.leaseVersion);
       await insertAudit(transaction, event, versionId, claim.run.platformCode);
+      if (claim.run.platformCode === 'official_site') {
+        await this.automation?.queueQualityAfterGeneration(
+          transaction,
+          event,
+          claim.run.variantId,
+          versionId,
+          contentHash(content),
+        );
+      }
     });
   }
 
@@ -573,7 +584,7 @@ async function failRun(
   if (rows.length !== 1) throw leaseLost();
 }
 
-async function insertVersion(
+export async function insertGeneratedVersion(
   transaction: postgres.TransactionSql,
   event: ValidatedGenerationEvent,
   variantId: string | null,

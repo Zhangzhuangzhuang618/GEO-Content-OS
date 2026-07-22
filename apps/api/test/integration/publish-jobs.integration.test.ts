@@ -22,6 +22,9 @@ const PACKAGE_ID = '61000000-0000-4000-8000-000000000124';
 const VARIANT_ID = '71000000-0000-4000-8000-000000000124';
 const VERSION_ID = '81000000-0000-4000-8000-000000000124';
 const ACCOUNT_ID = '91000000-0000-4000-8000-000000000124';
+const AUTO_JOB_ID = 'a1000000-0000-4000-8000-000000000124';
+const POLICY_ID = 'a2000000-0000-4000-8000-000000000124';
+const AUTOMATION_RUN_ID = 'a3000000-0000-4000-8000-000000000124';
 const CONTENT_HASH = 'a'.repeat(64);
 const SCHEDULED_AT = '2027-01-02T03:04:05.000Z';
 
@@ -235,6 +238,70 @@ describe('publish jobs', () => {
     `;
     expect(state).toEqual([{ status: 'failed', version: 2 }]);
   });
+
+  it('cancels a queued website automation and returns the article to quality-passed', async () => {
+    const database = requireClient(client);
+    await seedAutomationJob(database, 'scheduled', 0);
+    const service = new PublishJobService(database);
+
+    const cancelled = await service.cancel(
+      { ...SCOPE, requestId: 'req-auto-cancel-124' },
+      AUTO_JOB_ID,
+      1,
+      'Stop website automation',
+    );
+
+    expect(cancelled).toMatchObject({ origin: 'official_site_automation', status: 'cancelled' });
+    await expect(automationState(database)).resolves.toMatchObject({
+      automationStatus: 'disabled',
+      jobStatus: 'cancelled',
+      variantStatus: 'quality_passed',
+    });
+  });
+
+  it('retries a conclusive website automation failure and enforces the three-attempt limit', async () => {
+    const database = requireClient(client);
+    await seedAutomationJob(database, 'failed', 1);
+    const service = new PublishJobService(database);
+
+    const retried = await service.retry(
+      { ...SCOPE, requestId: 'req-auto-retry-124' },
+      AUTO_JOB_ID,
+      1,
+      { scheduled_at: SCHEDULED_AT },
+    );
+    expect(retried).toMatchObject({
+      attempt_count: 1,
+      origin: 'official_site_automation',
+      status: 'scheduled',
+      version: 2,
+    });
+    await expect(automationState(database)).resolves.toMatchObject({
+      automationStatus: 'publishing',
+      jobStatus: 'scheduled',
+      variantStatus: 'scheduled',
+    });
+
+    await database`
+      UPDATE publish_jobs SET status='failed',attempt_count=3,version=version+1
+      WHERE id=${AUTO_JOB_ID}::uuid
+    `;
+    await database`
+      UPDATE content_variants SET status='publish_failed',version=version+1
+      WHERE id=${VARIANT_ID}::uuid
+    `;
+    await database`
+      UPDATE content_packages SET status='publish_failed',version=version+1
+      WHERE id=${PACKAGE_ID}::uuid
+    `;
+    await database`
+      UPDATE official_site_automation_runs SET status='publish_failed',finished_at=now(),version=version+1
+      WHERE id=${AUTOMATION_RUN_ID}::uuid
+    `;
+    await expect(
+      service.retry(SCOPE, AUTO_JOB_ID, 3, { scheduled_at: SCHEDULED_AT }),
+    ).rejects.toMatchObject({ code: 'PUBLISH_JOB_STATE_INVALID' });
+  });
 });
 
 async function schedule(service: PublishJobService) {
@@ -315,6 +382,76 @@ async function auditActions(database: Sql, jobId: string): Promise<readonly stri
     SELECT action FROM audit_events WHERE resource_id=${jobId}::uuid ORDER BY created_at,id
   `;
   return rows.map(({ action }) => action);
+}
+
+async function seedAutomationJob(
+  database: Sql,
+  status: 'failed' | 'scheduled',
+  attemptCount: number,
+): Promise<void> {
+  const variantStatus = status === 'failed' ? 'publish_failed' : 'scheduled';
+  await database`
+    UPDATE content_variants SET status=${variantStatus},platform_account_id=${ACCOUNT_ID}::uuid
+    WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    UPDATE content_packages SET status=${variantStatus}
+    WHERE id=${PACKAGE_ID}::uuid
+  `;
+  await database`
+    INSERT INTO official_site_automation_policies(
+      id,tenant_id,workspace_id,project_id,account_id,enabled,created_by
+    ) VALUES(
+      ${POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,true,${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO publish_jobs(
+      id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+      idempotency_key,payload_hash,status,attempt_count,last_error_json,origin,created_by
+    ) VALUES(
+      ${AUTO_JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,${SCHEDULED_AT},'official-site:auto-job-124',${CONTENT_HASH},
+      ${status},${attemptCount},
+      ${status === 'failed' ? database.json({ code: 'PUBLISH_REJECTED' }) : null},
+      'official_site_automation',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO official_site_automation_runs(
+      id,tenant_id,policy_id,variant_id,content_version_id,status,publish_job_id,finished_at
+    ) VALUES(
+      ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,${VARIANT_ID}::uuid,
+      ${VERSION_ID}::uuid,${status === 'failed' ? 'publish_failed' : 'publishing'},
+      ${AUTO_JOB_ID}::uuid,${status === 'failed' ? new Date() : null}
+    )
+  `;
+  if (status === 'failed') {
+    await database`
+      INSERT INTO publish_attempts(
+        tenant_id,publish_job_id,attempt_no,adapter_code,status,request_hash,
+        error_code,started_at,finished_at
+      ) VALUES(
+        ${TENANT_ID}::uuid,${AUTO_JOB_ID}::uuid,${attemptCount},'official-site@1','failed',
+        ${'c'.repeat(64)},'PUBLISH_REJECTED',now(),now()
+      )
+    `;
+  }
+}
+
+async function automationState(database: Sql) {
+  const rows = await database<
+    { automationStatus: string; jobStatus: string; variantStatus: string }[]
+  >`
+    SELECT automation.status AS "automationStatus",job.status AS "jobStatus",
+      variant.status AS "variantStatus"
+    FROM official_site_automation_runs AS automation
+    JOIN publish_jobs AS job ON job.id=automation.publish_job_id
+    JOIN content_variants AS variant ON variant.id=automation.variant_id
+    WHERE automation.id=${AUTOMATION_RUN_ID}::uuid
+  `;
+  return rows[0];
 }
 
 async function seed(database: Sql): Promise<void> {

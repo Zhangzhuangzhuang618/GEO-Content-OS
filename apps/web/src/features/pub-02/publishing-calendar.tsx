@@ -296,7 +296,7 @@ export function PublishingCalendar() {
         </div>
         {approvedContent.length === 0 ? (
           <div className="mt-5 rounded-xl bg-surface-subtle p-5 text-sm text-ink-600">
-            当前没有待发布内容。内容审核通过后会自动进入这里，不会自动发布。
+            当前没有待发布内容。普通平台审核通过后会进入这里；已开启官网自动发布的项目会在机器质检通过后直接创建发布任务。
           </div>
         ) : (
           <div className="mt-5 overflow-x-auto">
@@ -500,7 +500,9 @@ function JobRow({
       <td className="p-4">{formatDate(job.scheduled_at)}</td>
       <td className="p-4">{account ? platformLabel(account.platform_code) : '账号不可用'}</td>
       <td className="p-4">{account?.display_name ?? '账号不可用'}</td>
-      <td className="p-4">已审核内容</td>
+      <td className="p-4">
+        {job.origin === 'official_site_automation' ? '官网机器质检通过后自动发布' : '人工审核内容'}
+      </td>
       <td className="p-4">
         <StatusBadge status={job.status} />
       </td>

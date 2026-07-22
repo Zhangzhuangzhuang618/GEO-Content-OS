@@ -59,6 +59,33 @@ export const CapabilityResponseSchema = z
   })
   .strict();
 
+export const OfficialSiteAutomationPolicySchema = z
+  .object({
+    account_id: z.string().uuid(),
+    brand_consistency_min: z.literal(90),
+    enabled: z.boolean(),
+    factual_accuracy_min: z.literal(90),
+    geo_total_min: z.literal(85),
+    id: z.string().uuid(),
+    max_rewrites: z.literal(3),
+    platform_fit_min: z.literal(80),
+    project_id: z.string().uuid(),
+    publish_attempt_limit: z.literal(3),
+    question_coverage_min: z.literal(80),
+    readability_safety_min: z.literal(85),
+    tenant_id: z.string().uuid(),
+    updated_at: z.iso.datetime(),
+    version: z.number().int().positive(),
+    workspace_id: z.string().uuid(),
+  })
+  .strict();
+export const OfficialSiteAutomationPolicyPageSchema = z
+  .object({ data: z.array(OfficialSiteAutomationPolicySchema), meta: ResponseMetaSchema })
+  .strict();
+export const OfficialSiteAutomationPolicyResponseSchema = z
+  .object({ data: OfficialSiteAutomationPolicySchema, meta: ResponseMetaSchema })
+  .strict();
+
 export const PlatformAccountFormSchema = z
   .object({
     base_url: z.string(),
@@ -145,6 +172,7 @@ export type PlatformAccountForm = z.infer<typeof PlatformAccountFormSchema>;
 export type PlatformAccountEdit = z.infer<typeof PlatformAccountEditSchema>;
 export type PlatformAccountStatus = z.infer<typeof PlatformAccountStatusSchema>;
 export type PlatformCode = z.infer<typeof PlatformCodeSchema>;
+export type OfficialSiteAutomationPolicy = z.infer<typeof OfficialSiteAutomationPolicySchema>;
 
 export interface PlatformAccountFilters {
   readonly platformCode?: PlatformCode;

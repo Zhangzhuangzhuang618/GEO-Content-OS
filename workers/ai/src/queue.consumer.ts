@@ -3,6 +3,7 @@ import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 import type { ContentGenerationWorker } from './generation.worker.js';
+import type { OfficialSiteAutomation } from './official-site-automation.js';
 import type { QualityCheckWorker } from './quality.worker.js';
 
 export interface AiQueueConsumerOptions {
@@ -18,6 +19,7 @@ export class AiQueueConsumer {
   public constructor(
     generation: ContentGenerationWorker,
     quality: QualityCheckWorker,
+    automation: OfficialSiteAutomation,
     options: AiQueueConsumerOptions,
   ) {
     const onError = options.onError ?? (() => undefined);
@@ -35,6 +37,9 @@ export class AiQueueConsumer {
         }
         if (job.name === 'content.variant.quality_check_requested.v1') {
           return quality.run(job.data);
+        }
+        if (job.name === 'content.variant.official_site_rewrite_requested.v1') {
+          return automation.runRewrite(job.data);
         }
         throw new Error(`AI Worker does not handle ${job.name}`);
       },

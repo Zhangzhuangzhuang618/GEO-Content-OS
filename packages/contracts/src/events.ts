@@ -8,6 +8,7 @@ export const EVENT_TYPES = Object.freeze([
   'strategy.topic_plan.generation_requested.v1',
   'content.package.generation_requested.v1',
   'content.variant.quality_check_requested.v1',
+  'content.variant.official_site_rewrite_requested.v1',
   'publishing.job.execution_requested.v1',
   'analytics.metrics.import_requested.v1',
   'analytics.export.requested.v1',

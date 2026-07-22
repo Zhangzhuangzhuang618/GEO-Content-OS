@@ -45,6 +45,17 @@ describe('Content Writer semantic quality gate', () => {
       ).issues,
     ).toContain('master:包含高风险权威或绝对化表述，必须有直接证据或删除');
   });
+
+  it('rejects an official-site title outside the publish contract', () => {
+    const official = complete('official_site', 190);
+
+    expect(
+      assessContentWriterData(
+        { master_content: complete('master', 190), variants: [official] },
+        'quality',
+      ).issues,
+    ).toContain('official_site:标题为 10 个字符，必须为 20–60 个字符');
+  });
 });
 
 function complete(

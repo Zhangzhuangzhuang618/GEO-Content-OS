@@ -1,3 +1,4 @@
+export * from './config.js';
 export * from './platform.publisher.js';
 export * from './publisher.errors.js';
 export * from './publisher.event.js';

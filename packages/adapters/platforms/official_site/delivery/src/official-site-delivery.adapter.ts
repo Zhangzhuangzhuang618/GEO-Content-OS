@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import { parseOfficialSiteDeliveryConfig, type OfficialSiteDeliveryConfig } from './config.js';
 import { OfficialSiteDeliveryError } from './errors.js';
-import { exportOfficialSite, hashOfficialSitePayload } from './export.js';
+import { exportOfficialSite, hashOfficialSitePayload, toOfficialSiteApiPayload } from './export.js';
 import {
   OfficialSiteCapabilityResponseSchema,
   OfficialSiteDeliveryInputSchema,
@@ -67,7 +67,15 @@ export class OfficialSiteDeliveryAdapter {
 
   public async deliver(input: unknown, signal?: AbortSignal): Promise<OfficialSiteDeliveryResult> {
     const capabilities = await this.capabilities(signal);
-    if (!capabilities.publish) return { export: this.export(input), mode: 'export' };
+    if (!capabilities.publish) {
+      if (this.configuration.mode === 'export_only') {
+        return { export: this.export(input), mode: 'export' };
+      }
+      throw new OfficialSiteDeliveryError(
+        'CAPABILITY_UNAVAILABLE',
+        'Configured official site API does not currently support publication',
+      );
+    }
     return { mode: 'api', publish: await this.publish(input, signal) };
   }
 
@@ -88,9 +96,10 @@ export class OfficialSiteDeliveryAdapter {
         signal,
         {
           content_version_id: parsed.content_version_id,
-          payload: parsed.payload,
+          payload: toOfficialSiteApiPayload(parsed.payload),
           payload_hash: parsed.payload_hash,
         },
+        parsed.idempotency_key,
         parsed.idempotency_key,
       );
     } catch {
@@ -168,6 +177,7 @@ export class OfficialSiteDeliveryAdapter {
     signal?: AbortSignal,
     body?: unknown,
     idempotencyKey?: string,
+    requestId?: string,
   ): Promise<OfficialSiteHttpResponse> {
     return this.transport.request({
       ...(body === undefined ? {} : { body }),
@@ -176,10 +186,11 @@ export class OfficialSiteDeliveryAdapter {
         authorization: `Bearer ${configuration.bearer_token}`,
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+        ...(requestId ? { 'x-request-id': requestId } : {}),
       },
       method,
       ...(signal ? { signal } : {}),
-      url: new URL(path, normalizedBaseUrl(configuration.base_url)).toString(),
+      url: new URL(path.replace(/^\//u, ''), normalizedBaseUrl(configuration.base_url)).toString(),
     });
   }
 }

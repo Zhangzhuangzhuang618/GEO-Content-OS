@@ -12,6 +12,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
 import {
+  OfficialSiteAutomationPolicyService,
   PlatformAccountService,
   type PlatformAccountConnector,
   type PlatformAccountScope,
@@ -22,6 +23,7 @@ const OTHER_USER_ID = '12000000-0000-4000-8000-000000000123';
 const TENANT_ID = '21000000-0000-4000-8000-000000000123';
 const WORKSPACE_ID = '31000000-0000-4000-8000-000000000123';
 const OTHER_WORKSPACE_ID = '32000000-0000-4000-8000-000000000123';
+const PROJECT_ID = '41000000-0000-4000-8000-000000000123';
 const SECRET = 'platform-secret-123';
 const ROTATED_SECRET = 'platform-secret-rotated-456';
 
@@ -227,6 +229,59 @@ describe('platform accounts', () => {
       code: 'PLATFORM_ACCOUNT_NOT_FOUND',
     });
   });
+
+  it('configures one fixed official-site automation policy per project and disables it with the account', async () => {
+    const database = requireClient(client);
+    const accounts = createService(database, requireKms(kms));
+    const policies = new OfficialSiteAutomationPolicyService(database);
+    const account = await accounts.create(
+      SCOPE,
+      {
+        credential: { access_token: SECRET },
+        display_name: 'Automatic Official Site',
+        platform_code: 'official_site',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: WORKSPACE_ID,
+      },
+      { requestId: 'req-automation-account' },
+    );
+
+    const created = await policies.update(
+      SCOPE,
+      account.id,
+      { enabled: true, project_id: PROJECT_ID },
+      { requestId: 'req-automation-enable' },
+    );
+    expect(created).toMatchObject({
+      account_id: account.id,
+      enabled: true,
+      geo_total_min: 85,
+      factual_accuracy_min: 90,
+      brand_consistency_min: 90,
+      readability_safety_min: 85,
+      question_coverage_min: 80,
+      platform_fit_min: 80,
+      max_rewrites: 3,
+      publish_attempt_limit: 3,
+      project_id: PROJECT_ID,
+      version: 1,
+    });
+    await expect(policies.list(SCOPE, account.id)).resolves.toEqual([created]);
+    await expect(
+      policies.update(
+        SCOPE,
+        account.id,
+        { enabled: false, expected_version: 2, project_id: PROJECT_ID },
+        { requestId: 'req-automation-stale' },
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
+
+    await accounts.disable(SCOPE, account.id, 'maintenance', account.version, {
+      requestId: 'req-automation-account-disable',
+    });
+    expect((await policies.list(SCOPE, account.id))[0]?.enabled).toBe(false);
+  });
 });
 
 function createService(database: Sql, localKms: LocalCredentialKms): PlatformAccountService {
@@ -281,6 +336,10 @@ async function seed(database: Sql): Promise<void> {
     INSERT INTO workspace_memberships (workspace_id,user_id,scope_json) VALUES
       (${WORKSPACE_ID}::uuid,${USER_ID}::uuid,'{}'::jsonb),
       (${OTHER_WORKSPACE_ID}::uuid,${OTHER_USER_ID}::uuid,'{}'::jsonb)
+  `;
+  await database`
+    INSERT INTO projects (id,tenant_id,workspace_id,name,owner_id,status)
+    VALUES (${PROJECT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'Automation Project',${USER_ID}::uuid,'active')
   `;
 }
 

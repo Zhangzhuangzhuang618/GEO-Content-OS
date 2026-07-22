@@ -55,10 +55,12 @@ interface JobRow {
   readonly idempotencyKey: string;
   readonly isRequired: boolean;
   readonly lastError: Readonly<Record<string, unknown>> | null;
+  readonly origin: PublishJobView['origin'];
   readonly packageId: string;
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
   readonly payloadHash: string;
+  readonly publishedAt: Date | string | null;
   readonly platformCode: PlatformCode;
   readonly scheduledAt: Date | string;
   readonly status: PublishJobView['status'];
@@ -135,7 +137,8 @@ export class PublishJobService {
           scheduled_at AS "scheduledAt", idempotency_key AS "idempotencyKey",
           payload_hash AS "payloadHash", status, attempt_count AS "attemptCount",
           external_post_id AS "externalPostId", external_url AS "externalUrl",
-          last_error_json AS "lastError", created_by AS "createdBy", version,
+          last_error_json AS "lastError", origin, published_at AS "publishedAt",
+          created_by AS "createdBy", version,
           created_at AS "createdAt", updated_at AS "updatedAt"
       `;
     const job = requireInsertedJob(rows, target);
@@ -198,17 +201,24 @@ export class PublishJobService {
           scheduled_at AS "scheduledAt", idempotency_key AS "idempotencyKey",
           payload_hash AS "payloadHash", status, attempt_count AS "attemptCount",
           external_post_id AS "externalPostId", external_url AS "externalUrl",
-          last_error_json AS "lastError", created_by AS "createdBy", version,
+          last_error_json AS "lastError", origin, published_at AS "publishedAt",
+          created_by AS "createdBy", version,
           created_at AS "createdAt", updated_at AS "updatedAt"
       `;
       const after = requireChangedJob(rows, before);
       if (resolution.variantStatus === 'approved') {
+        const restoredStatus =
+          before.origin === 'official_site_automation' ? 'quality_passed' : 'approved';
         const cause =
-          before.variantStatus === 'publishing' ? 'publish_cancel_before_call' : 'normal';
+          before.origin === 'official_site_automation'
+            ? 'official_site_automation'
+            : before.variantStatus === 'publishing'
+              ? 'publish_cancel_before_call'
+              : 'normal';
         assertContentVariantTransition({
           cause,
           from: before.variantStatus,
-          to: 'approved',
+          to: restoredStatus,
         });
         await updateVariant(
           transaction,
@@ -216,8 +226,11 @@ export class PublishJobService {
           before.variantId,
           before.variantVersion,
           before.variantStatus,
-          'approved',
+          restoredStatus,
         );
+        if (before.origin === 'official_site_automation') {
+          await disableAutomationRun(transaction, scope.tenantId, before.id, normalizedReason);
+        }
         await projectPackage(
           transaction,
           this.projector,
@@ -275,7 +288,10 @@ export class PublishJobService {
     if (before.packageStatus === 'archived' || before.packageStatus === 'cancelled') {
       throw stateInvalid('Terminal content package cannot be retried');
     }
-    if (before.attemptCount >= 20) throw stateInvalid('Publish job attempt limit was reached');
+    const attemptLimit = before.origin === 'official_site_automation' ? 3 : 20;
+    if (before.attemptCount >= attemptLimit) {
+      throw stateInvalid('Publish job attempt limit was reached');
+    }
     if (before.variantCurrentContentVersionId !== before.contentVersionId) {
       throw stateInvalid('The failed publish job no longer points to the current content version');
     }
@@ -294,28 +310,44 @@ export class PublishJobService {
           scheduled_at AS "scheduledAt", idempotency_key AS "idempotencyKey",
           payload_hash AS "payloadHash", status, attempt_count AS "attemptCount",
           external_post_id AS "externalPostId", external_url AS "externalUrl",
-          last_error_json AS "lastError", created_by AS "createdBy", version,
+          last_error_json AS "lastError", origin, published_at AS "publishedAt",
+          created_by AS "createdBy", version,
           created_at AS "createdAt", updated_at AS "updatedAt"
       `;
     const after = requireChangedJob(rows, before);
-    assertContentVariantTransition({ from: 'publish_failed', to: 'approved' });
+    const restoredStatus =
+      before.origin === 'official_site_automation' ? 'quality_passed' : 'approved';
+    const transitionCause =
+      before.origin === 'official_site_automation' ? 'official_site_automation' : 'normal';
+    assertContentVariantTransition({
+      cause: transitionCause,
+      from: 'publish_failed',
+      to: restoredStatus,
+    });
     await updateVariant(
       transaction,
       scope.tenantId,
       before.variantId,
       before.variantVersion,
       'publish_failed',
-      'approved',
+      restoredStatus,
     );
-    assertContentVariantTransition({ from: 'approved', to: 'scheduled' });
+    assertContentVariantTransition({
+      cause: transitionCause,
+      from: restoredStatus,
+      to: 'scheduled',
+    });
     await updateVariant(
       transaction,
       scope.tenantId,
       before.variantId,
       before.variantVersion + 1,
-      'approved',
+      restoredStatus,
       'scheduled',
     );
+    if (before.origin === 'official_site_automation') {
+      await restartAutomationRun(transaction, scope.tenantId, before.id);
+    }
     await projectPackage(
       transaction,
       this.projector,
@@ -393,7 +425,8 @@ async function loadJob(
       job.scheduled_at AS "scheduledAt", job.idempotency_key AS "idempotencyKey",
       job.payload_hash AS "payloadHash", job.status,
       job.attempt_count AS "attemptCount", job.external_post_id AS "externalPostId",
-      job.external_url AS "externalUrl", job.last_error_json AS "lastError",
+      job.external_url AS "externalUrl", job.last_error_json AS "lastError", job.origin,
+      job.published_at AS "publishedAt",
       job.created_by AS "createdBy", job.version, job.created_at AS "createdAt",
       job.updated_at AS "updatedAt", variant.status AS "variantStatus",
       variant.version AS "variantVersion", variant.is_required AS "isRequired",
@@ -543,6 +576,43 @@ async function latestAttemptIsUnknown(
   return rows[0]?.status === 'unknown';
 }
 
+async function disableAutomationRun(
+  transaction: TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  reason: string,
+): Promise<void> {
+  const rows = await transaction<{ id: string }[]>`
+    UPDATE official_site_automation_runs SET
+      status='disabled',
+      last_error_json=${JSON.stringify({
+        code: 'PUBLISH_CANCELLED_BY_USER',
+        message: reason,
+        schema_version: 'official-site-automation-error@1',
+      })}::text::jsonb,
+      finished_at=now(), version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status='publishing'
+    RETURNING id
+  `;
+  if (rows.length !== 1) throw stateInvalid('Official-site automation run is inconsistent');
+}
+
+async function restartAutomationRun(
+  transaction: TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+): Promise<void> {
+  const rows = await transaction<{ id: string }[]>`
+    UPDATE official_site_automation_runs SET
+      status='publishing', last_error_json=NULL, finished_at=NULL, version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status='publish_failed'
+    RETURNING id
+  `;
+  if (rows.length !== 1) throw stateInvalid('Official-site automation run is inconsistent');
+}
+
 function requireInsertedJob(rows: JobRow[], target: PublishTarget): JobRow {
   const row = rows[0];
   if (!row) throw stateInvalid('Publish job insert returned no row');
@@ -597,7 +667,9 @@ function mapJob(row: JobRow): PublishJobView {
     id: row.id,
     idempotency_key: row.idempotencyKey,
     last_error: row.lastError,
+    origin: row.origin,
     payload_hash: row.payloadHash,
+    published_at: row.publishedAt ? isoDate(row.publishedAt) : null,
     scheduled_at: isoDate(row.scheduledAt),
     status: row.status,
     tenant_id: row.tenantId,

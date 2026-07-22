@@ -4,6 +4,7 @@ import postgres from 'postgres';
 import { readAiWorkerConfig } from './config.js';
 import { PostgresGenerationStore } from './generation.store.js';
 import { ContentGenerationWorker } from './generation.worker.js';
+import { OfficialSiteAutomation } from './official-site-automation.js';
 import { AiQueueConsumer } from './queue.consumer.js';
 import { QualityCheckWorker } from './quality.worker.js';
 import { RuntimeContentWriter } from './runtime-content-writer.js';
@@ -19,14 +20,19 @@ async function main(): Promise<void> {
   const writer = new RuntimeContentWriter(database, adapters, (context, modelUsage) =>
     usage.record(context, modelUsage),
   );
-  const generation = new ContentGenerationWorker(new PostgresGenerationStore(database), writer);
+  const automation = new OfficialSiteAutomation(database, writer, config.automation);
+  const generation = new ContentGenerationWorker(
+    new PostgresGenerationStore(database, 60_000, automation),
+    writer,
+  );
   const quality = new QualityCheckWorker(
     database,
     new RuntimeQualityChecker(database, adapters, (context, modelUsage) =>
       usage.record(context, modelUsage),
     ),
+    automation,
   );
-  const consumer = new AiQueueConsumer(generation, quality, {
+  const consumer = new AiQueueConsumer(generation, quality, automation, {
     concurrency: config.queueConcurrency,
     onError: (error) => console.error('AI Worker queue error', error),
     redisUrl: config.redisUrl,

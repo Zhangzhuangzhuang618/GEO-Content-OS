@@ -1,7 +1,11 @@
 import type { ContentVariantStatus } from '../statuses.js';
 
 export type ContentVariantTransitionCause =
-  'drop' | 'generation_cancel' | 'normal' | 'publish_cancel_before_call';
+  | 'drop'
+  | 'generation_cancel'
+  | 'normal'
+  | 'official_site_automation'
+  | 'publish_cancel_before_call';
 
 export type GenerationStableStatus = Exclude<
   ContentVariantStatus,
@@ -76,6 +80,13 @@ export function canTransitionContentVariant(input: ContentVariantTransition): bo
   }
   if (cause === 'publish_cancel_before_call') {
     return input.from === 'publishing' && input.to === 'approved';
+  }
+  if (cause === 'official_site_automation') {
+    return (
+      (input.from === 'quality_passed' && input.to === 'scheduled') ||
+      (input.from === 'publish_failed' && input.to === 'quality_passed') ||
+      ((input.from === 'scheduled' || input.from === 'publishing') && input.to === 'quality_passed')
+    );
   }
   const allowed = NORMAL_TRANSITIONS[input.from] as readonly ContentVariantStatus[];
   return allowed.includes(input.to);

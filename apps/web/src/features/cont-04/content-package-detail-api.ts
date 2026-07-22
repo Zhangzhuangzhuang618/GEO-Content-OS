@@ -23,6 +23,7 @@ export async function getContentPackageDetail(
       const detail = ContentVariantDetailResponseSchema.safeParse(await detailResponse.json());
       if (!detail.success) throw new ContentPackageDetailRequestError(502);
       return {
+        automationRun: detail.data.data.automation_run,
         citations: detail.data.data.citations,
         currentContent: detail.data.data.current_content,
         qualityReport: detail.data.data.quality_report,
@@ -91,10 +92,7 @@ export async function submitPackageReview(
   if (!parsed.success) throw new ContentPackageDetailRequestError(502);
 }
 
-export async function requestPackageQualityChecks(
-  variantIds: readonly string[],
-  csrf: string,
-) {
+export async function requestPackageQualityChecks(variantIds: readonly string[], csrf: string) {
   await Promise.all(
     variantIds.map(async (variantId) => {
       const response = await write(`/api/v1/content-variants/${variantId}/quality-check`, csrf, {

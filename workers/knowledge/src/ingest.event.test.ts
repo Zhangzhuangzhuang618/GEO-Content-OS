@@ -29,7 +29,8 @@ describe('knowledge ingest event validation', () => {
     'accepts a credential-free HTTP(S) URL: %s',
     (sourceUrl) => {
       const base = event();
-      const { object_key: _objectKey, ...filelessData } = base.data;
+      const { object_key: objectKey, ...filelessData } = base.data;
+      expect(objectKey).toBeDefined();
       expect(
         validateKnowledgeIngestEvent({
           ...base,

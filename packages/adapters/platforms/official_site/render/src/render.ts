@@ -19,6 +19,7 @@ export function renderOfficialSite(input: unknown): OfficialSiteRenderResult {
   const linkedIds = new Set(content.citation_map.flatMap((claim) => claim.citation_ids));
   const citationLinks = citations.filter((citation) => linkedIds.has(citation.citation_id));
   const payload: OfficialSitePayload = {
+    body_html: renderPublishBodyHtml(content, citationLinks),
     citation_links: citationLinks,
     faq: content.platform_meta.faq,
     html: renderHtml(content, citationLinks),
@@ -28,7 +29,9 @@ export function renderOfficialSite(input: unknown): OfficialSiteRenderResult {
     rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
     schema_org: content.platform_meta.schema_org,
     schema_version: OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION,
+    seo_keywords: content.hashtags,
     slug: content.platform_meta.slug,
+    summary: content.summary,
     title: content.title,
   };
   const parsedPayload = OfficialSitePayloadSchema.safeParse(payload);
@@ -44,6 +47,19 @@ export function renderOfficialSite(input: unknown): OfficialSiteRenderResult {
     };
   }
   return { issues: [], ok: true, payload: parsedPayload.data as OfficialSitePayload };
+}
+
+function renderPublishBodyHtml(
+  content: OfficialSiteContent,
+  citations: readonly OfficialSiteCitationLink[],
+): string {
+  return [
+    renderContentBlocks(content),
+    renderFaqHtml(content.platform_meta.faq),
+    renderReferencesHtml(citations),
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function renderHtml(
@@ -105,6 +121,7 @@ function renderFaqHtml(faq: readonly OfficialSiteFaqItem[]): string {
 }
 
 function renderReferencesHtml(citations: readonly OfficialSiteCitationLink[]): string {
+  if (citations.length === 0) return '';
   const items = citations
     .map(
       (citation) =>
@@ -148,14 +165,9 @@ function renderMarkdown(
     (citation, index) =>
       `${index + 1}. [${escapeMarkdownLabel(citation.label)}](${citation.url}) <!-- ${citation.citation_id} -->`,
   );
-  return [
-    `# ${content.title}`,
-    ...blocks,
-    '## 常见问题',
-    ...faq,
-    '## 参考资料',
-    ...references,
-  ].join('\n\n');
+  const sections = [`# ${content.title}`, ...blocks, '## 常见问题', ...faq];
+  if (references.length > 0) sections.push('## 参考资料', ...references);
+  return sections.join('\n\n');
 }
 
 function escapeHtml(value: string): string {

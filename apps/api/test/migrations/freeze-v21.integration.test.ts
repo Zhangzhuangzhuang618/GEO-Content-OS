@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 
-const FREEZE_TABLE_COUNT = 57;
+const FREEZE_TABLE_COUNT = 59;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'audit_events_append_only_guard',
@@ -73,7 +73,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database to the exact 57-table freeze', async () => {
+  it('migrates an empty database to the 59-table schema including approved automation tables', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -91,7 +91,12 @@ describe('freeze v2.1 database verification', () => {
 
     expect(tables).toHaveLength(FREEZE_TABLE_COUNT);
     expect(tables.map(({ tablename }) => tablename)).toEqual(
-      expect.arrayContaining(['subscriptions', 'model_rate_cards']),
+      expect.arrayContaining([
+        'subscriptions',
+        'model_rate_cards',
+        'official_site_automation_policies',
+        'official_site_automation_runs',
+      ]),
     );
     expect(migrationRows[0]?.count).toBe(migrationFiles.length);
   });
@@ -286,7 +291,7 @@ describe('freeze v2.1 database verification', () => {
         await transaction`DROP TABLE model_rate_cards`;
         await transaction`DROP FUNCTION protect_model_rate_card_history()`;
         await transaction`DROP TABLE subscriptions`;
-        expect(await countBusinessTables(transaction)).toBe(55);
+        expect(await countBusinessTables(transaction)).toBe(57);
 
         for (const statement of statements) {
           await transaction.unsafe(statement);

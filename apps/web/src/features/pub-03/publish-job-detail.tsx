@@ -172,6 +172,7 @@ function DetailContent({
 }) {
   const { job } = detail;
   const externalUrl = safeHttpUrl(job.external_url);
+  const retryLimitReached = job.origin === 'official_site_automation' && job.attempt_count >= 3;
   return (
     <>
       <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
@@ -182,7 +183,7 @@ function DetailContent({
             <p className="mt-2 text-sm text-ink-500">排期：{formatDate(job.scheduled_at)}</p>
           </div>
           <div className="flex flex-wrap gap-3">
-            {job.status === 'failed' ? (
+            {job.status === 'failed' && !retryLimitReached ? (
               <button
                 className={primaryButton}
                 disabled={busy !== null}
@@ -205,8 +206,25 @@ function DetailContent({
           </div>
         </div>
 
+        {job.status === 'failed' && retryLimitReached ? (
+          <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            官网自动发布已尝试 3
+            次，已停止继续请求。请检查官网接口或账号配置后重新生成内容，或联系管理员处理。
+          </p>
+        ) : null}
+
         <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Field
+            label="任务来源"
+            value={
+              job.origin === 'official_site_automation' ? '官网机器质检通过后自动创建' : '人工创建'
+            }
+          />
           <Field label="尝试次数" value={String(job.attempt_count)} />
+          <Field
+            label="实际发布时间"
+            value={job.published_at ? formatDate(job.published_at) : '尚未发布'}
+          />
           <div className="rounded-xl bg-surface-subtle p-4">
             <dt className="text-xs font-semibold tracking-wide text-ink-500 uppercase">外部 URL</dt>
             <dd className="mt-2 break-all text-sm text-ink-950">

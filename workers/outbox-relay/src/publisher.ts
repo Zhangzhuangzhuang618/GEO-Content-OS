@@ -38,7 +38,8 @@ export class BullMqEventPublisher implements EventPublisher {
     await withTimeout(
       queue.add(event.eventType, event.payload, {
         ...(event.eventType.startsWith('knowledge.source.') ||
-        event.eventType === 'content.package.generation_requested.v1'
+        event.eventType === 'content.package.generation_requested.v1' ||
+        event.eventType === 'content.variant.official_site_rewrite_requested.v1'
           ? { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } }
           : event.eventType === 'publishing.job.execution_requested.v1'
             ? { attempts: 4, backoff: { type: 'publisher' } }

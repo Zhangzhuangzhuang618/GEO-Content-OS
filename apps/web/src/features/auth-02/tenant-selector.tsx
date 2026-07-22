@@ -145,7 +145,11 @@ export function TenantSelector() {
         <p className="mt-3 text-sm leading-6 text-ink-500">
           你的成员资格可能尚未启用。请联系企业管理员完成邀请或恢复权限。
         </p>
-        <button className="mt-6 text-sm font-semibold text-brand-700" onClick={() => void switchAccount()} type="button">
+        <button
+          className="mt-6 text-sm font-semibold text-brand-700"
+          onClick={() => void switchAccount()}
+          type="button"
+        >
           使用其他账号
         </button>
       </section>
@@ -163,7 +167,12 @@ export function TenantSelector() {
         </div>
         <div className="text-right">
           <span className="block text-sm text-ink-500">共 {loadState.tenants.length} 个</span>
-          <button className="mt-1 text-sm font-semibold text-brand-700" disabled={leaving} onClick={() => void switchAccount()} type="button">
+          <button
+            className="mt-1 text-sm font-semibold text-brand-700"
+            disabled={leaving}
+            onClick={() => void switchAccount()}
+            type="button"
+          >
             {leaving ? '正在退出…' : '使用其他账号'}
           </button>
         </div>

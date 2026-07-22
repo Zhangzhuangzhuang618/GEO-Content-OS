@@ -5,6 +5,8 @@ import { PlatformAccountResponseSchema } from './platform-account.schema';
 const TENANT_ID = '10000000-0000-4000-8000-000000000091';
 const WORKSPACE_ID = '20000000-0000-4000-8000-000000000091';
 const ACCOUNT_ID = '30000000-0000-4000-8000-000000000091';
+const PROJECT_ID = '40000000-0000-4000-8000-000000000091';
+const POLICY_ID = '50000000-0000-4000-8000-000000000091';
 const SECRET = 'pub-01-super-secret-token';
 
 test.beforeEach(async ({ context, page }) => {
@@ -224,6 +226,45 @@ test('persists platform, status and workspace filters in the URL', async ({ page
   expect(listUrls.at(-1)).toContain(`workspace_id=${WORKSPACE_ID}`);
 });
 
+test('enables the fixed official-site quality and auto-publish policy for one project', async ({
+  page,
+}) => {
+  let savedBody: unknown;
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '官网内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/official-site-automation')) {
+      if (request.method() === 'PUT') {
+        savedBody = request.postDataJSON();
+        await json(route, {
+          data: automationPolicy(true),
+          meta: { request_id: 'automation-save' },
+        });
+        return;
+      }
+      await json(route, { data: [], meta: { request_id: 'automation-list' } });
+      return;
+    }
+    await json(route, { data: [account({ version: 1 })], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '自动发布设置' }).click();
+  await expect(page.getByRole('heading', { name: '官网自动发布' })).toBeVisible();
+  await expect(page.getByText('GEO 总分 ≥85', { exact: false })).toBeVisible();
+  await page.getByLabel('通过机器质检后立即发布到官网').check();
+  await page.getByRole('button', { name: '保存自动发布设置' }).click();
+
+  await expect(page.getByText('已开启：官网内容通过机器门禁后会直接发布')).toBeVisible();
+  expect(savedBody).toEqual({ enabled: true, project_id: PROJECT_ID });
+});
+
 test('denies non-publisher roles before requesting account data', async ({ page }) => {
   let accountRequests = 0;
   await page.unroute('**/api/v1/auth/tenants');
@@ -284,6 +325,27 @@ function workspace() {
     timezone: 'Asia/Shanghai',
     updated_at: '2026-07-16T00:00:00.000Z',
     version: 1,
+  };
+}
+
+function automationPolicy(enabled: boolean) {
+  return {
+    account_id: ACCOUNT_ID,
+    brand_consistency_min: 90,
+    enabled,
+    factual_accuracy_min: 90,
+    geo_total_min: 85,
+    id: POLICY_ID,
+    max_rewrites: 3,
+    platform_fit_min: 80,
+    project_id: PROJECT_ID,
+    publish_attempt_limit: 3,
+    question_coverage_min: 80,
+    readability_safety_min: 85,
+    tenant_id: TENANT_ID,
+    updated_at: '2026-07-23T00:00:00.000Z',
+    version: 1,
+    workspace_id: WORKSPACE_ID,
   };
 }
 

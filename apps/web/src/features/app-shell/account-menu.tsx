@@ -17,7 +17,10 @@ export function AccountMenu() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void Promise.all([getAccountSession(controller.signal), listAvailableTenants(controller.signal)])
+    void Promise.all([
+      getAccountSession(controller.signal),
+      listAvailableTenants(controller.signal),
+    ])
       .then(([loadedSession, loadedTenants]) => {
         setSession(loadedSession);
         setTenants(loadedTenants);
@@ -27,7 +30,8 @@ export function AccountMenu() {
   }, []);
 
   const tenant = tenants.find((item) => item.id === session?.active_tenant_id);
-  const returnTo = typeof window === 'undefined' ? pathname : `${pathname}${window.location.search}`;
+  const returnTo =
+    typeof window === 'undefined' ? pathname : `${pathname}${window.location.search}`;
   const switchHref = `/auth-02?${new URLSearchParams({ return_to: returnTo })}`;
 
   async function leave(reason: 'logged_out' | 'switch_account') {
@@ -67,21 +71,35 @@ export function AccountMenu() {
           <p className="truncate font-semibold text-ink-950">
             {session?.user.display_name ?? '当前账号'}
           </p>
-          <p className="mt-1 truncate text-xs text-ink-500">{session?.user.email ?? '正在读取账号信息'}</p>
+          <p className="mt-1 truncate text-xs text-ink-500">
+            {session?.user.email ?? '正在读取账号信息'}
+          </p>
           <p className="mt-2 truncate text-sm text-ink-700">企业：{tenant?.name ?? '当前企业'}</p>
         </div>
         <div className="mt-2 grid gap-1">
           <Link className={menuItem} href={switchHref}>
             切换企业
           </Link>
-          <button className={menuButton} disabled={busy} onClick={() => void leave('switch_account')} type="button">
+          <button
+            className={menuButton}
+            disabled={busy}
+            onClick={() => void leave('switch_account')}
+            type="button"
+          >
             切换账号
           </button>
-          <button className={`${menuButton} text-red-700`} disabled={busy} onClick={() => void leave('logged_out')} type="button">
+          <button
+            className={`${menuButton} text-red-700`}
+            disabled={busy}
+            onClick={() => void leave('logged_out')}
+            type="button"
+          >
             {busy ? '正在退出…' : '退出登录'}
           </button>
         </div>
-        {message ? <p className="mt-2 rounded-control bg-red-50 p-2 text-xs text-red-800">{message}</p> : null}
+        {message ? (
+          <p className="mt-2 rounded-control bg-red-50 p-2 text-xs text-red-800">{message}</p>
+        ) : null}
       </div>
     </details>
   );

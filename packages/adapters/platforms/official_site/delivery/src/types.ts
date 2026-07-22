@@ -2,6 +2,7 @@ import type { OfficialSitePayload } from '../../render/src/types.js';
 
 export const OFFICIAL_SITE_DELIVERY_VERSION = 'official-site-delivery@1.0.0' as const;
 export const OFFICIAL_SITE_EXPORT_SCHEMA_VERSION = 'official-site-export@1' as const;
+export const ZHIYUAN_NEWS_PAYLOAD_SCHEMA_VERSION = 'zhiyuan-news-payload@1' as const;
 
 export interface OfficialSiteCapabilities {
   readonly export: true;
@@ -19,14 +20,26 @@ export interface OfficialSiteDeliveryInput {
   readonly payload_hash: string;
 }
 
+export interface OfficialSiteApiPayload {
+  readonly body_html: string;
+  readonly meta_description: string;
+  readonly platform_code: 'official_site';
+  readonly schema_version: typeof ZHIYUAN_NEWS_PAYLOAD_SCHEMA_VERSION;
+  readonly seo_keywords: readonly string[];
+  readonly summary: string;
+  readonly title: string;
+}
+
 export interface OfficialSitePublishResult {
   readonly external_id: string;
+  readonly published_at: string;
   readonly status: 'processing' | 'published';
   readonly url: string | null;
 }
 
 export interface OfficialSiteStatusResult {
   readonly external_id: string;
+  readonly published_at: string;
   readonly status: 'failed' | 'processing' | 'published' | 'unknown';
   readonly url: string | null;
 }

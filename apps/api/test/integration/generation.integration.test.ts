@@ -3,6 +3,7 @@ import {
   ContentGenerationWorker,
   type ContentWriterPort,
   type GeneratedContent,
+  OfficialSiteAutomation,
   PostgresGenerationStore,
 } from '@geo-content-os/worker-ai';
 import {
@@ -41,6 +42,9 @@ const VARIANT_IDS = PLATFORMS.map(
 const ACCOUNT_IDS = PLATFORMS.map(
   (_, index) => `9a000000-0000-4000-8000-000000000${String(53 + index).padStart(3, '0')}`,
 );
+const AUTOMATION_POLICY_ID = 'aa000000-0000-4000-8000-000000000053';
+const QUALITY_PROMPT_ID = '25000000-0000-4000-8000-000000000007';
+const REWRITE_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
 const SCOPE: ContentScope = {
   projectId: PROJECT_ID,
   tenantId: TENANT_ID,
@@ -147,6 +151,64 @@ describe('Master and multi-platform generation orchestration', () => {
         platformCode,
       })).sort((left, right) => left.platformCode.localeCompare(right.platformCode)),
     );
+  });
+
+  it('automatically queues machine quality checking only for an enabled website account', async () => {
+    const database = requireClient(client);
+    await seedPlatformAccounts(database);
+    const officialAccountId = ACCOUNT_IDS[0]!;
+    await database`
+      UPDATE platform_accounts SET publish_mode='api',
+        capabilities_json=${database.json({ export: true, publish: true })}
+      WHERE id=${officialAccountId}::uuid
+    `;
+    await database`
+      INSERT INTO official_site_automation_policies(
+        id,tenant_id,workspace_id,project_id,account_id,enabled,created_by
+      ) VALUES(
+        ${AUTOMATION_POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+        ${PROJECT_ID}::uuid,${officialAccountId}::uuid,true,${USER_ID}::uuid
+      )
+    `;
+    const previous = process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'];
+    process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] = 'true';
+    let request: Awaited<ReturnType<typeof schedule>>;
+    try {
+      request = await schedule(database, 'generation-website-automation');
+    } finally {
+      if (previous === undefined) delete process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'];
+      else process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] = previous;
+    }
+    const automation = new OfficialSiteAutomation(database, null as never, {
+      qualityModelKey: 'deepseek-v4-pro',
+      qualityPromptVersionId: QUALITY_PROMPT_ID,
+      qualitySkillVersion: '1.0.0',
+      rewriteModelKey: 'deepseek-v4-pro',
+      writerPromptVersionId: REWRITE_PROMPT_ID,
+      writerSkillVersion: '1.0.0',
+    });
+    const worker = new ContentGenerationWorker(
+      new PostgresGenerationStore(database, 60_000, automation),
+      new FakeWriter(),
+      3,
+    );
+
+    await expect(worker.run(request.event)).resolves.toMatchObject({
+      failed: 0,
+      succeeded: 7,
+    });
+    const queued = await database<
+      { automationCount: number; qualityEventCount: number; qualityRunCount: number }[]
+    >`
+      SELECT
+        (SELECT count(*)::integer FROM official_site_automation_runs
+          WHERE status='quality_pending') AS "automationCount",
+        (SELECT count(*)::integer FROM generation_runs
+          WHERE skill_name='quality-checker' AND status='queued') AS "qualityRunCount",
+        (SELECT count(*)::integer FROM outbox_events
+          WHERE event_type='content.variant.quality_check_requested.v1') AS "qualityEventCount"
+    `;
+    expect(queued).toEqual([{ automationCount: 1, qualityEventCount: 1, qualityRunCount: 1 }]);
   });
 
   it('commits six successful variants when one platform generation fails', async () => {

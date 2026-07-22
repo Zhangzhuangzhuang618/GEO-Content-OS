@@ -2,11 +2,14 @@ import {
   CapabilityResponseSchema,
   PlatformAccountPageSchema,
   PlatformAccountResponseSchema,
+  OfficialSiteAutomationPolicyPageSchema,
+  OfficialSiteAutomationPolicyResponseSchema,
   type PlatformAccount,
   type PlatformAccountFilters,
   type PlatformAccountEdit,
   type PlatformAccountForm,
 } from './platform-account.schema';
+import type { OfficialSiteAutomationPolicy } from './platform-account.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 
@@ -131,6 +134,52 @@ export async function removePlatformAccount(account: PlatformAccount, csrf: stri
     method: 'DELETE',
   });
   return parseAccount(response);
+}
+
+export async function listOfficialSiteAutomationPolicies(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<readonly OfficialSiteAutomationPolicy[]> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/official-site-automation`,
+    {
+      credentials: 'include',
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = OfficialSiteAutomationPolicyPageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function saveOfficialSiteAutomationPolicy(
+  accountId: string,
+  input: {
+    readonly enabled: boolean;
+    readonly expectedVersion?: number;
+    readonly projectId: string;
+  },
+  csrf: string,
+): Promise<OfficialSiteAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/official-site-automation`,
+    {
+      body: JSON.stringify({
+        enabled: input.enabled,
+        ...(input.expectedVersion === undefined ? {} : { expected_version: input.expectedVersion }),
+        project_id: input.projectId,
+      }),
+      credentials: 'include',
+      headers: { 'content-type': 'application/json', 'x-csrf-token': csrf },
+      method: 'PUT',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = OfficialSiteAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
 }
 
 export class PlatformAccountRequestError extends Error {

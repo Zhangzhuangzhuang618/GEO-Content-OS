@@ -5,6 +5,7 @@ import {
   ERROR_DEFINITIONS,
   PlatformAccountParamsSchema,
   PlatformAccountQuerySchema,
+  OfficialSiteAutomationPolicyRequestSchema,
   PublishJobParamsSchema,
   PublishJobQuerySchema,
   ReasonRequestSchema,
@@ -22,6 +23,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -40,7 +42,11 @@ import {
   type JsonValue,
 } from '../../../common/idempotency/index.js';
 import { getPolicyContext, PolicyGuard, RequirePermissions } from '../../identity/rbac/index.js';
-import { PlatformAccountError, PlatformAccountService } from '../accounts/index.js';
+import {
+  OfficialSiteAutomationPolicyService,
+  PlatformAccountError,
+  PlatformAccountService,
+} from '../accounts/index.js';
 import { PublishJobError, PublishJobService } from '../jobs/index.js';
 import { PublishingApiError } from './publishing-api.errors.js';
 import { PublishingApiService, type PublishingApiScope } from './publishing-api.service.js';
@@ -59,6 +65,8 @@ type PublishingErrorCode =
 export class PlatformAccountController {
   public constructor(
     @Inject(PlatformAccountService) private readonly accounts: PlatformAccountService,
+    @Inject(OfficialSiteAutomationPolicyService)
+    private readonly automation: OfficialSiteAutomationPolicyService,
     @Inject(IdempotencyService) private readonly idempotency: IdempotencyService,
   ) {}
 
@@ -257,6 +265,49 @@ export class PlatformAccountController {
         requireScope(request),
         parsed.data.id,
         parseIfMatch(request.headers['if-match']),
+        audit(request),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/official-site-automation')
+  @RequirePermissions('publishing.manage')
+  public async listOfficialSiteAutomation(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.automation.list(requireScope(request), parsed.data.id);
+      await reply.status(HttpStatus.OK).send({ data, meta: { request_id: request.id } });
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Put(':id/official-site-automation')
+  @RequirePermissions('publishing.manage')
+  public async updateOfficialSiteAutomation(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = OfficialSiteAutomationPolicyRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    try {
+      const data = await this.automation.update(
+        requireScope(request),
+        parsedParams.data.id,
+        parsedBody.data,
         audit(request),
       );
       await sendData(reply, request.id, data, data.version);

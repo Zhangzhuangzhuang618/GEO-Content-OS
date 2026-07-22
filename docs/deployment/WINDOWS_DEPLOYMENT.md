@@ -19,11 +19,12 @@ Desktop 当作长期生产容器平台。
 Web -> API -> PostgreSQL / MinIO / Redis
                     |
                     +-> Outbox Relay -> AI Worker -> DeepSeek
+                                      -> Publisher Worker -> configured platform API
                                       -> Knowledge Worker -> ClamAV / Parser / Embedding
 ```
 
-脚本不会启动仍使用通用健康占位镜像的 `publisher-worker`、`analytics-worker` 和
-`lifecycle-worker`。真实平台发布也不会被自动执行。`knowledge-worker` 是真实队列消费者，
+脚本会启动已接入真实队列消费者的 `publisher-worker`；不会启动仍使用通用健康占位镜像的 `analytics-worker` 和
+`lifecycle-worker`。启用官网自动发布策略并配置真实官网 API 账号后，Publisher Worker 会执行远程发布；首次部署和本地验收不得配置生产官网地址或令牌。`knowledge-worker` 是真实队列消费者，
 会执行安全扫描、网页抓取或文件解析、分块与向量化。
 
 ## 2. 推荐配置
@@ -199,6 +200,7 @@ DEEPSEEK_PROVIDER_MODEL_ID=deepseek-v4-flash
 CONTENT_MODEL_FAST_KEY=deepseek-v4-flash
 CONTENT_MODEL_BALANCED_KEY=deepseek-v4-flash
 CONTENT_MODEL_QUALITY_KEY=deepseek-v4-pro
+QUALITY_CHECKER_MODEL_KEY=deepseek-v4-pro
 
 PUBLISHING_CREDENTIAL_KEY_BASE64=<32字节随机值的Base64>
 PUBLISHING_CREDENTIAL_KEY_VERSION=local-v1
@@ -242,7 +244,7 @@ docker compose `
   -p geo-content-os `
   -f infra\compose.yaml `
   up -d --build `
-  postgres redis minio migrate api web outbox-relay ai-worker
+  postgres redis minio migrate api web outbox-relay publisher-worker ai-worker
 ```
 
 查看状态：
@@ -254,7 +256,7 @@ docker compose --env-file .env -p geo-content-os -f infra\compose.yaml ps
 查看日志：
 
 ```powershell
-docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs -f api web ai-worker outbox-relay
+docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs -f api web ai-worker outbox-relay publisher-worker
 ```
 
 停止但保留数据：
@@ -433,7 +435,7 @@ Invoke-WebRequest http://localhost:3000/api/v1/health/ready
 
 ```powershell
 docker compose --env-file .env -p geo-content-os -f infra\compose.yaml ps
-docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs --tail 200 api ai-worker outbox-relay
+docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs --tail 200 api ai-worker outbox-relay publisher-worker
 ```
 
 常见原因：

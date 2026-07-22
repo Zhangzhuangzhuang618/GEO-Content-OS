@@ -17,7 +17,7 @@ const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.u
 
 describe('official_site render contract', () => {
   it('publishes immutable versioned rules and Draft 2020-12 payload schemas', async () => {
-    expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.0.0');
+    expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.1.0');
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1)).toBe(true);
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1.title)).toBe(true);
     expect(OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA.$schema).toBe(
@@ -61,6 +61,14 @@ describe('official_site render contract', () => {
       slug: golden.slug,
     });
     expect(result.payload.citation_links).toHaveLength(golden.citation_link_count);
+    expect(result.payload.body_html).not.toContain('<h1>');
+    expect(result.payload.body_html).not.toContain('<script');
+    expect(result.payload.summary).toBe(
+      (input as { content: { summary: string } }).content.summary,
+    );
+    expect(result.payload.seo_keywords).toEqual(
+      (input as { content: { hashtags: string[] } }).content.hashtags,
+    );
     expect(sha256(result.payload)).toBe(golden.payload_sha256);
   });
 
@@ -128,6 +136,21 @@ describe('official_site render contract', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.issues.map((issue) => issue.code)).toEqual(['PAYLOAD_SCHEMA_INVALID']);
+  });
+
+  it('allows first-party official-site content without a third-party citation', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      citations: unknown[];
+      content: { citation_map: unknown[] };
+    };
+    input.citations = [];
+    input.content.citation_map = [];
+
+    const result = renderOfficialSite(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.citation_links).toEqual([]);
+    expect(result.payload.body_html).not.toContain('参考资料');
   });
 });
 

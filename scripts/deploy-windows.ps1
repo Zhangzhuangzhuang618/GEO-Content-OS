@@ -26,6 +26,7 @@ $Services = @(
     "api",
     "web",
     "outbox-relay",
+    "publisher-worker",
     "ai-worker",
     "knowledge-worker"
 )
@@ -233,7 +234,7 @@ $UpArguments += $Services
 Invoke-Docker $UpArguments
 
 Write-Step "等待服务健康"
-foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "ai-worker", "knowledge-worker")) {
+foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "ai-worker", "knowledge-worker")) {
     Wait-ServiceHealthy $Service
 }
 

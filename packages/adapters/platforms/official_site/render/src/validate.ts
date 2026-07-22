@@ -92,10 +92,7 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
   const referencedCitationIds = new Set(
     value.content.citation_map.flatMap((claim) => claim.citation_ids),
   );
-  if (
-    referencedCitationIds.size === 0 ||
-    [...referencedCitationIds].some((citationId) => !availableCitationIds.has(citationId))
-  ) {
+  if ([...referencedCitationIds].some((citationId) => !availableCitationIds.has(citationId))) {
     issues.push(
       blocker(
         'CITATION_LINK_MISSING',

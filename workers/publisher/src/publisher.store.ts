@@ -29,6 +29,7 @@ interface JobRow {
   readonly currentContentVersionId: string | null;
   readonly id: string;
   readonly idempotencyKey: string;
+  readonly origin: 'manual' | 'official_site_automation';
   readonly packageId: string;
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
@@ -52,6 +53,7 @@ interface CompletionRow {
   readonly packageId: string;
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
+  readonly origin: 'manual' | 'official_site_automation';
   readonly status: 'cancel_requested' | 'publishing';
   readonly variantId: string;
   readonly variantStatus: ContentVariantStatus;
@@ -89,7 +91,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           job.id, job.tenant_id AS "tenantId", job.content_version_id AS "contentVersionId",
           job.idempotency_key AS "idempotencyKey", job.payload_hash AS "payloadHash",
           job.status, job.attempt_count AS "attemptCount", job.scheduled_at AS "scheduledAt",
-          job.created_by AS "createdBy", job.updated_at AS "updatedAt", job.version,
+          job.created_by AS "createdBy", job.updated_at AS "updatedAt", job.version, job.origin,
           variant.id AS "variantId", variant.status AS "variantStatus",
           variant.version AS "variantVersion",
           variant.current_content_version_id AS "currentContentVersionId",
@@ -248,13 +250,18 @@ export class PostgresPublisherStore implements PublisherStorePort {
       const updated = await transaction<{ id: string }[]>`
         UPDATE publish_jobs SET
           status='published', external_post_id=${delivery.mode === 'api' ? delivery.externalId : null},
-          external_url=${delivery.mode === 'api' ? delivery.url : null}, last_error_json=NULL,
+          external_url=${delivery.mode === 'api' ? delivery.url : null},
+          published_at=${delivery.mode === 'api' ? publishedAt(delivery) : null},
+          last_error_json=NULL,
           version=version+1
         WHERE id=${claim.jobId}::uuid AND tenant_id=${claim.tenantId}::uuid
           AND status IN ('publishing','cancel_requested') AND attempt_count=${claim.attempt}
         RETURNING id
       `;
       if (updated.length !== 1) throw leaseLost();
+      if (row.origin === 'official_site_automation') {
+        await completeAutomationRun(transaction, claim.tenantId, claim.jobId, 'published', null);
+      }
       await transitionVariant(
         transaction,
         claim.tenantId,
@@ -314,6 +321,15 @@ export class PostgresPublisherStore implements PublisherStorePort {
         RETURNING id
       `;
       if (updated.length !== 1) throw leaseLost();
+      if (row.origin === 'official_site_automation') {
+        await completeAutomationRun(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          'publish_failed',
+          error,
+        );
+      }
       await transitionVariant(
         transaction,
         claim.tenantId,
@@ -368,13 +384,20 @@ export class PostgresPublisherStore implements PublisherStorePort {
           RETURNING id
         `;
         if (cancelled.length !== 1) throw leaseLost();
+        if (row.origin === 'official_site_automation') {
+          await completeAutomationRun(transaction, claim.tenantId, claim.jobId, 'disabled', {
+            code: 'PUBLISH_CANCELLED_BY_USER',
+            message: failure.message,
+            schema_version: 'official-site-automation-error@1',
+          });
+        }
         await transitionVariant(
           transaction,
           claim.tenantId,
           row.variantId,
           row.variantVersion,
           'publishing',
-          'approved',
+          row.origin === 'official_site_automation' ? 'quality_passed' : 'approved',
         );
         await projectPackage(
           transaction,
@@ -416,14 +439,14 @@ export class PostgresPublisherStore implements PublisherStorePort {
         row.variantId,
         row.variantVersion + 1,
         'publish_failed',
-        'approved',
+        row.origin === 'official_site_automation' ? 'quality_passed' : 'approved',
       );
       await transitionVariant(
         transaction,
         claim.tenantId,
         row.variantId,
         row.variantVersion + 2,
-        'approved',
+        row.origin === 'official_site_automation' ? 'quality_passed' : 'approved',
         'scheduled',
       );
       await projectPackage(
@@ -457,6 +480,7 @@ async function lockCompletion(
 ): Promise<CompletionRow> {
   const rows = await transaction<CompletionRow[]>`
     SELECT job.status, job.attempt_count AS "attemptCount", job.created_by AS "createdBy",
+      job.origin,
       variant.id AS "variantId", variant.status AS "variantStatus",
       variant.version AS "variantVersion", package.id AS "packageId",
       package.status AS "packageStatus", package.version AS "packageVersion"
@@ -502,6 +526,33 @@ async function insertAttempt(
       ${JSON.stringify(response)}::text::jsonb, ${value.errorCode}, now(), now()
     )
   `;
+}
+
+function publishedAt(delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>): Date {
+  const value = delivery.response['published_at'];
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (Number.isFinite(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+async function completeAutomationRun(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  status: 'disabled' | 'publish_failed' | 'published',
+  error: Readonly<Record<string, unknown>> | null,
+): Promise<void> {
+  const rows = await transaction<{ id: string }[]>`
+    UPDATE official_site_automation_runs SET
+      status=${status}, last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb,
+      finished_at=now(), version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status='publishing'
+    RETURNING id
+  `;
+  if (rows.length !== 1) throw stateInvalid();
 }
 
 async function transitionVariant(

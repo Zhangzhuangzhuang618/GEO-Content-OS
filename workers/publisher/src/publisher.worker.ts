@@ -56,6 +56,22 @@ export class PublisherWorker {
     } catch (error) {
       const failure = asDeliveryFailure(error);
       const unknown = failure.code === 'PUBLISH_STATE_UNKNOWN' || failure.code === undefined;
+      if (
+        claim.platformCode === 'official_site' &&
+        claim.attempt < 3 &&
+        (unknown || failure.code === 'CAPABILITY_UNAVAILABLE')
+      ) {
+        await this.dependencies.store.retry(event, claim, {
+          code: failure.code ?? 'PUBLISH_STATE_UNKNOWN',
+          message: safeMessage(failure.message),
+          requestHash: claim.payloadHash,
+        });
+        throw new PublisherError(
+          'PUBLISHER_DELIVERY_RETRY',
+          'Official site publication will retry with the same idempotency key',
+          true,
+        );
+      }
       await this.dependencies.store.fail(event, claim, {
         code: failure.code ?? 'PUBLISH_STATE_UNKNOWN',
         message: safeMessage(failure.message),

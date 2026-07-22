@@ -80,6 +80,29 @@ export const QualityReportSchema = z
   })
   .passthrough();
 
+export const OfficialSiteAutomationRunSchema = z
+  .object({
+    content_version_id: z.string().uuid(),
+    finished_at: z.iso.datetime().nullable(),
+    id: z.string().uuid(),
+    last_error: z.record(z.string(), z.unknown()).nullable(),
+    publish_job_id: z.string().uuid().nullable(),
+    rewrite_count: z.number().int().min(0).max(3),
+    status: z.enum([
+      'quality_pending',
+      'rewrite_pending',
+      'rewriting',
+      'publish_pending',
+      'publishing',
+      'published',
+      'manual_required',
+      'publish_failed',
+      'disabled',
+    ]),
+    updated_at: z.iso.datetime(),
+  })
+  .strict();
+
 export const ContentPackageBaseDetailResponseSchema = z
   .object({
     data: z
@@ -98,6 +121,7 @@ export const ContentVariantDetailResponseSchema = z
   .object({
     data: z
       .object({
+        automation_run: OfficialSiteAutomationRunSchema.nullable(),
         citations: z.array(CitationSchema),
         current_content: ContentVersionSchema.nullable(),
         locks: z.array(z.unknown()),
@@ -128,8 +152,10 @@ export type GenerationRun = z.infer<typeof GenerationRunSchema>;
 export type ContentVersion = z.infer<typeof ContentVersionSchema>;
 export type Citation = z.infer<typeof CitationSchema>;
 export type QualityReport = z.infer<typeof QualityReportSchema>;
+export type OfficialSiteAutomationRun = z.infer<typeof OfficialSiteAutomationRunSchema>;
 
 export interface VariantDetail {
+  readonly automationRun: OfficialSiteAutomationRun | null;
   readonly citations: readonly Citation[];
   readonly currentContent: ContentVersion | null;
   readonly qualityReport: QualityReport | null;
@@ -144,10 +170,5 @@ export interface PackageDetail {
   readonly variants: readonly VariantDetail[];
 }
 
-export type PackageAction =
-  | 'generate'
-  | 'quality-check'
-  | 'abandon'
-  | 'archive'
-  | 'submit-review';
+export type PackageAction = 'generate' | 'quality-check' | 'abandon' | 'archive' | 'submit-review';
 export type ModelPolicy = 'fast' | 'balanced' | 'quality';

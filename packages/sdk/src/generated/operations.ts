@@ -483,6 +483,20 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_official_site_automation_list: {
+    idempotency: '-',
+    method: 'GET',
+    path: '/platform-accounts/{id}/official-site-automation',
+    permission: 'publishing.manage',
+    security: 'session',
+  },
+  account_official_site_automation_put: {
+    idempotency: '-',
+    method: 'PUT',
+    path: '/platform-accounts/{id}/official-site-automation',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_refresh: {
     idempotency: 'resource+version',
     method: 'POST',

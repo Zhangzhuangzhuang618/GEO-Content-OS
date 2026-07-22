@@ -91,9 +91,13 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 
 审核、排期、发布授权只读取 Variant 状态。取消运行恢复前一稳定状态；只有 abandon package/drop variant 进入 cancelled。编辑 approved 内容产生新 content_version 并使旧审批失效。
 
+### 官网自动化（ADR-0021）
+
+只对 `official_site` 生效。项目策略开启且变体绑定 active API 账号时，生成后自动执行质量门禁：GEO>=85、事实>=90、品牌>=90、可读性与安全>=85、问题覆盖>=80、平台适配>=80，任一 BLOCK 或非 pass 决策均失败。失败按问题清单最多重写 3 次，仍失败进入 `manual_required`；通过后不进入人工审核，直接创建 `origin=official_site_automation` 的发布任务。官网发布调用总计最多 3 次，幂等键为 `official-site:<variant_id>:<content_version_id>`。人工在官网后台删除文章不反向同步。
+
 ## 5. 数据模型
 
-冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址后，当前可执行表数仍为 57，迁移序号为 0035。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表。当前可执行表数为 59，迁移序号为 0037。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -141,6 +145,8 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 | `review_requirements` | 加签和必需审核人 |
 | `review_actions` | 审核动作时间线 |
 | `platform_accounts` | 平台账号和能力 |
+| `official_site_automation_policies` | 项目级官网机器质检、自动重写和自动发布开关；阈值及次数由约束固定 |
+| `official_site_automation_runs` | 官网变体自动化状态、当前版本、重写次数、质量报告、发布任务和错误 |
 | `media_assets` | 图片、视频和证据截图元数据 |
 | `publish_jobs` | 排期和发布状态 |
 | `publish_attempts` | 不可变发布尝试 |
@@ -179,7 +185,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，当前可执行端点数为 125。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，均不增加公开端点。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，当前可执行端点数为 127。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -276,9 +282,14 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 审核 | GET | `/review-snapshots/{id}/actions` | tenant_member | - | ReviewAction[] | - |
 | 发布 | POST | `/platform-accounts` | publisher_or_admin | CreatePlatformAccountRequest | PlatformAccountView | key+body_hash |
 | 发布 | GET | `/platform-accounts` | publisher_or_admin | PlatformAccountQuery | PlatformAccountPage | - |
+| 发布 | PATCH | `/platform-accounts/{id}` | publisher_or_admin | UpdatePlatformAccountRequest | PlatformAccountView | resource+version |
 | 发布 | POST | `/platform-accounts/{id}/refresh` | publisher_or_admin | RefreshAccountRequest | PlatformAccountView | resource+version |
 | 发布 | POST | `/platform-accounts/{id}/test` | publisher_or_admin | - | CapabilityView | resource+version |
 | 发布 | POST | `/platform-accounts/{id}/disable` | publisher_or_admin | ReasonRequest | PlatformAccountView | resource+version |
+| 发布 | POST | `/platform-accounts/{id}/restore` | publisher_or_admin | - | PlatformAccountView | resource+version |
+| 发布 | DELETE | `/platform-accounts/{id}` | publisher_or_admin | - | PlatformAccountView | resource+version |
+| 发布 | GET | `/platform-accounts/{id}/official-site-automation` | publisher_or_admin | - | OfficialSiteAutomationPolicyPage | - |
+| 发布 | PUT | `/platform-accounts/{id}/official-site-automation` | publisher_or_admin | OfficialSiteAutomationPolicyRequest | OfficialSiteAutomationPolicyView | expected_version |
 | 发布 | POST | `/publish-jobs` | publisher_or_admin | CreatePublishJobRequest | PublishJobView | key+body_hash |
 | 发布 | GET | `/publish-jobs` | publisher_or_admin | PublishJobQuery | PublishJobPage | - |
 | 发布 | GET | `/publish-jobs/{id}` | publisher_or_admin | - | PublishJobDetail | - |

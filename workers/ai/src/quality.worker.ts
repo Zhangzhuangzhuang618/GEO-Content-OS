@@ -4,8 +4,13 @@ import type { QualityCheckerData, QualityGeoScores } from '@geo-content-os/contr
 import type postgres from 'postgres';
 
 import { asGenerationFailure } from './generation.errors.js';
+import type {
+  OfficialSiteAutomation,
+  OfficialSiteAutomationPolicy,
+  OfficialSiteQualityGate,
+} from './official-site-automation.js';
 import { validateQualityEvent, type ValidatedQualityEvent } from './quality.event.js';
-import { RuntimeQualityChecker } from './runtime-quality-checker.js';
+import type { RuntimeQualityChecker } from './runtime-quality-checker.js';
 import type { UsageContext } from './usage-recorder.js';
 
 interface QualityContext extends UsageContext {
@@ -40,6 +45,7 @@ export class QualityCheckWorker {
   public constructor(
     private readonly client: postgres.Sql,
     private readonly checker: RuntimeQualityChecker,
+    private readonly automation?: OfficialSiteAutomation,
   ) {}
 
   public async run(raw: unknown): Promise<{ readonly disposition: 'completed' | 'processed' }> {
@@ -88,7 +94,13 @@ export class QualityCheckWorker {
           },
         },
       });
-      await this.persist(event, context, result);
+      const policy = await this.automation?.loadGatePolicy(
+        this.client,
+        event.tenantId,
+        event.data.variantId,
+      );
+      const gate = policy ? this.automation?.calculateGate(policy, result, geoScores) : undefined;
+      await this.persist(event, context, result, policy ?? null, gate);
       return { disposition: 'processed' };
     } catch (error) {
       await this.fail(event, context, error);
@@ -250,13 +262,18 @@ export class QualityCheckWorker {
     event: ValidatedQualityEvent,
     context: QualityContext,
     result: QualityCheckerData,
+    policy: OfficialSiteAutomationPolicy | null,
+    gate: OfficialSiteQualityGate | undefined,
   ): Promise<void> {
     return this.client.begin(async (transaction) => {
-      const targetStatus = result.decision === 'pass' ? 'quality_passed' : 'quality_failed';
+      const targetStatus = (gate ? gate.passed : result.decision === 'pass')
+        ? 'quality_passed'
+        : 'quality_failed';
       const reports = await transaction<{ id: string }[]>`
         INSERT INTO quality_reports (
           tenant_id, variant_id, content_version_id, generation_run_id,
-          checker_version, score, decision, issues_json, geo_scores_json
+          checker_version, score, decision, issues_json, geo_scores_json,
+          automation_gate_json
         ) VALUES (
           ${event.tenantId}::uuid,
           ${event.data.variantId}::uuid,
@@ -266,7 +283,8 @@ export class QualityCheckWorker {
           ${result.score},
           ${result.decision},
           ${JSON.stringify({ issues: result.issues, schema_version: 'quality-checker-data@1' })}::text::jsonb,
-          ${JSON.stringify({ ...result.geo_scores, schema_version: 'geo-scores@1' })}::text::jsonb
+          ${JSON.stringify({ ...result.geo_scores, schema_version: 'geo-scores@1' })}::text::jsonb,
+          ${gate ? JSON.stringify(gate) : null}::text::jsonb
         )
         ON CONFLICT (tenant_id, generation_run_id) DO NOTHING
         RETURNING id
@@ -302,6 +320,16 @@ export class QualityCheckWorker {
         RETURNING id
       `;
       if (runs.length !== 1) throw new Error('Quality run lease was lost');
+      if (policy && gate && this.automation) {
+        await this.automation.advanceAfterQuality(
+          transaction,
+          event,
+          policy,
+          reportId,
+          gate,
+          result,
+        );
+      }
       await transaction`
         INSERT INTO audit_events (
           tenant_id, actor_id, action, resource_type, resource_id,
@@ -357,9 +385,9 @@ function groupCitations(citations: readonly CitationRow[]) {
     citation_ids: group.map((citation) => citation.id),
     claim_key: claimKey,
     claim_text: group[0]!.claimText,
-    confidence: 1,
-    risk_level: 'low',
-    verdict: 'supported',
+    confidence: 0.7,
+    risk_level: 'medium',
+    verdict: 'partially_supported',
   }));
 }
 
@@ -394,7 +422,7 @@ function calculateGeoScores(
     citations.length > 0
       ? Math.min(95, 65 + citations.length * 5)
       : acceptsFirstPartyFacts
-        ? 80
+        ? 95
         : 55;
   const titleLimits: Readonly<Record<PlatformCode, number>> = {
     baijiahao: 40,
@@ -405,7 +433,15 @@ function calculateGeoScores(
     xiaohongshu: 20,
     zhihu: 80,
   };
-  const platformFit = title.length > 0 && [...title].length <= titleLimits[platformCode] ? 90 : 45;
+  const titleLength = [...title].length;
+  const platformFit =
+    platformCode === 'official_site'
+      ? titleLength >= 20 && titleLength <= titleLimits[platformCode]
+        ? 90
+        : 45
+      : titleLength > 0 && titleLength <= titleLimits[platformCode]
+        ? 90
+        : 45;
   const readabilitySafety = characterCount >= 300 && blocks.length >= 3 ? 90 : 68;
   const total = round(
     0.2 * (entity + question + answerability + evidence) + 0.1 * (platformFit + readabilitySafety),

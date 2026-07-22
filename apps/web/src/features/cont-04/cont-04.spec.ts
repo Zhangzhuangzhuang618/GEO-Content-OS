@@ -91,7 +91,11 @@ test('starts quality checks for generated platforms and explains the next step',
   });
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
 
-  await expect(page.getByText('按顺序完成内容生成、质量检查和提交审核。')).toBeVisible();
+  await expect(
+    page.getByText(
+      '普通平台按顺序完成质量检查和提交审核；已开启自动发布的官网内容会自行质检、重写并发布。',
+    ),
+  ).toBeVisible();
   await page.getByRole('button', { name: '检查内容质量' }).click();
   await expect(page.getByText('质量检查已开始，完成后页面会自动刷新。')).toBeVisible();
   expect(body).toEqual({ mode: 'full' });
@@ -113,6 +117,33 @@ test('identifies quality checks separately from content generation in history', 
 
   await expect(page.getByText('检查官网内容质量', { exact: true })).toBeVisible();
   await expect(page.getByText('生成官网内容', { exact: true })).toHaveCount(0);
+});
+
+test('explains when official-site automation needs human recovery after three rewrites', async ({
+  page,
+}) => {
+  await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
+  const detail = baseDetail('generated', ['quality_failed', 'quality_passed']);
+  await mockDetail(page, detail, {
+    content_version_id: SITE_VERSION_ID,
+    finished_at: '2026-07-15T08:00:00.000Z',
+    id: '93000000-0000-4000-8000-000000000085',
+    last_error: { code: 'QUALITY_GATE_FAILED' },
+    publish_job_id: null,
+    rewrite_count: 3,
+    status: 'manual_required',
+    updated_at: '2026-07-15T08:00:00.000Z',
+  });
+
+  await page.goto(`/cont-04?id=${PACKAGE_ID}`);
+  await expect(page.getByRole('cell', { name: '官网自动流程' })).toBeVisible();
+  await expect(page.getByText('需人工处理（已重写 3/3 次）')).toBeVisible();
+  await expect(page.getByRole('link', { name: '查看问题并处理' })).toHaveAttribute(
+    'href',
+    `/qual-01?id=${SITE_ID}`,
+  );
+  await expect(page.getByLabel('提交审核：官网')).toBeDisabled();
+  await expect(page.getByRole('button', { name: '检查内容质量' })).toBeEnabled();
 });
 
 test('allows exact draft abandonment and administrator archive only', async ({ page }) => {
@@ -160,10 +191,17 @@ test('keeps viewer mobile and permission states read-only', async ({ page }) => 
   await expect(page.getByRole('heading', { name: '无权查看这项内容' })).toBeVisible();
 });
 
-async function mockDetail(page: Page, detail: ReturnType<typeof baseDetail>) {
+async function mockDetail(
+  page: Page,
+  detail: ReturnType<typeof baseDetail>,
+  siteAutomationRun: Record<string, unknown> | null = null,
+) {
   await page.route(`**/api/v1/content-packages/${PACKAGE_ID}`, (route) => json(route, detail));
   await page.route(`**/api/v1/content-variants/${SITE_ID}`, (route) =>
-    json(route, variantDetail(detail.variants[0]!, SITE_VERSION_ID, false)),
+    json(route, {
+      ...variantDetail(detail.variants[0]!, SITE_VERSION_ID, false),
+      automation_run: siteAutomationRun,
+    }),
   );
   await page.route(`**/api/v1/content-variants/${ZHIHU_ID}`, (route) =>
     json(route, variantDetail(detail.variants[1]!, ZHIHU_VERSION_ID, true)),
@@ -221,6 +259,7 @@ function variantDetail(
 ) {
   const current = summary.current_content_version_id ? contentVersion(versionId, summary.id) : null;
   return {
+    automation_run: null,
     citations: reviewable
       ? [
           {

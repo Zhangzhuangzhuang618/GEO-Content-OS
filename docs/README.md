@@ -22,8 +22,9 @@
 
 ## 可执行修正
 
-- 冻结基线后的兼容修正记录在 `adr/`；当前有效范围为 ADR-0001 至 ADR-0017。
+- 冻结基线后的兼容修正记录在 `adr/`；当前有效范围为 ADR-0001 至 ADR-0021。
 - [运行能力审计（2026-07-19）](runbooks/RUNTIME_CAPABILITY_AUDIT_2026-07-19.md) 记录页面到消费者、结果落库的真实接线状态。
+- [官网自动质检、重写与发布运行手册](runbooks/OFFICIAL_SITE_AUTOMATION.md) 记录配置、状态、重试、诊断和回滚。
 
 ## 文档职责
 
@@ -32,7 +33,7 @@
 | PRD产品需求文档.docx | 页面、字段、角色权限、业务流程和验收标准 |
 | 技术设计文档（AI开发友好）.docx | 架构、API、RAG、队列、Adapter、部署和成本 |
 | AI Skills & Prompt设计规范.docx | Skills、Prompt、Schema、Few-shot、Tool Calling 和七平台规则 |
-| 数据库设计手册.docx | ER、57 张表、字段、索引、迁移和示例数据 |
+| 数据库设计手册.docx | 冻结基线的 ER、57 张表、字段、索引、迁移和示例数据；当前可执行增量见 ADR-0021（59 张表） |
 | Claude Code开发任务拆解.docx | T001–T144 的依赖、范围、验证命令和完成定义 |
 
 ## 冻结管理

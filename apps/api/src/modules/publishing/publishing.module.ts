@@ -12,7 +12,11 @@ import {
   PublishJobController,
 } from './api/publishing-api.controller.js';
 import { PublishingApiService } from './api/publishing-api.service.js';
-import { PlatformAccountService, type PlatformAccountConnector } from './accounts/index.js';
+import {
+  OfficialSiteAutomationPolicyService,
+  PlatformAccountService,
+  type PlatformAccountConnector,
+} from './accounts/index.js';
 import { PlatformDeliveryAccountConnector } from './accounts/platform-account.connector.js';
 import { PublishJobService } from './jobs/index.js';
 import { createPublishingCredentialService } from './publishing.credentials.js';
@@ -41,6 +45,12 @@ import {
         credentials: CredentialEnvelopeService,
         connector: PlatformAccountConnector,
       ) => new PlatformAccountService(database, credentials, connector),
+    },
+    {
+      inject: [IdentityAuthDatabase],
+      provide: OfficialSiteAutomationPolicyService,
+      useFactory: (database: IdentityAuthDatabase) =>
+        new OfficialSiteAutomationPolicyService(database),
     },
     {
       inject: [IdentityAuthDatabase, OutboxWriter],

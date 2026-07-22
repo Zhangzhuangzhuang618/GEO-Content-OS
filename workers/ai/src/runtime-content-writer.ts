@@ -3,12 +3,14 @@ import {
   GET_PLATFORM_RULES_TOOL,
   GET_STRATEGY_VERSION_TOOL,
   type ContentWriterContent,
+  type ContentWriterData,
   type ContentWriterOutput,
 } from '@geo-content-os/contracts/skills';
 import {
   assessContentWriterData,
   ContentWriterSkill,
   type ContentWriterPublishedPrompt,
+  type ContentWriterRevision,
 } from '@geo-content-os/skills/content-writer';
 import {
   createSkillContext,
@@ -92,6 +94,37 @@ export class RuntimeContentWriter implements ContentWriterPort {
     }
   }
 
+  public async rewriteOfficialSiteVariant(input: {
+    readonly context: ContentWriterRunContext;
+    readonly currentContent: GeneratedContent;
+    readonly issues: readonly string[];
+    readonly masterContent: GeneratedContent;
+    readonly requestId: string;
+    readonly signal?: AbortSignal;
+    readonly writerInput: JsonObject;
+  }): Promise<GeneratedContent> {
+    const revision: ContentWriterRevision = Object.freeze({
+      candidate: Object.freeze({
+        master_content: input.masterContent as unknown as ContentWriterData['master_content'],
+        variants: Object.freeze([
+          input.currentContent as unknown as ContentWriterData['variants'][number],
+        ]),
+      }),
+      issues: Object.freeze([...input.issues]),
+    });
+    const output = await this.execute(input, revision);
+    const variant = output.data.variants.find(
+      (candidate) => candidate.platform_code === 'official_site',
+    );
+    if (!variant) {
+      throw new GenerationWorkerError(
+        'GENERATED_CONTENT_INVALID',
+        'Content Writer omitted official_site during automated rewrite',
+      );
+    }
+    return generated(variant);
+  }
+
   private start(input: {
     readonly context: ContentWriterRunContext;
     readonly requestId: string;
@@ -113,12 +146,15 @@ export class RuntimeContentWriter implements ContentWriterPort {
     return cached;
   }
 
-  private async execute(input: {
-    readonly context: ContentWriterRunContext;
-    readonly requestId: string;
-    readonly signal?: AbortSignal;
-    readonly writerInput: JsonObject;
-  }): Promise<ContentWriterOutput> {
+  private async execute(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    revision?: ContentWriterRevision,
+  ): Promise<ContentWriterOutput> {
     const adapter = this.adapters.get(input.context.modelKey)!;
     const prompt = this.promptLoader
       ? await this.promptLoader(input.context)
@@ -153,6 +189,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       maxOutputTokens: Math.min(32_768, adapter.capabilities().maxOutputTokens),
       prompt,
       recordUsage: (usage: ModelUsage) => this.recordUsage(input.context, usage),
+      ...(revision ? { revision } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       temperature: input.context.modelPolicy === 'quality' ? 0.25 : 0.35,
     } as const;

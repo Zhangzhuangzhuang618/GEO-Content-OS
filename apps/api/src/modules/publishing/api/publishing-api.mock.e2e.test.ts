@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { IdempotencyService } from '../../../common/idempotency/index.js';
 import { PolicyGuard, setPolicyContext } from '../../identity/rbac/index.js';
-import { PlatformAccountService } from '../accounts/index.js';
+import { OfficialSiteAutomationPolicyService, PlatformAccountService } from '../accounts/index.js';
 import { PublishJobService } from '../jobs/index.js';
 import { PlatformAccountController, PublishJobController } from './publishing-api.controller.js';
 import { PublishingApiService } from './publishing-api.service.js';
@@ -41,7 +41,9 @@ const job: PublishJobView = {
   id: JOB_ID,
   idempotency_key: 'publish-job-0001',
   last_error: null,
+  origin: 'manual',
   payload_hash: 'a'.repeat(64),
+  published_at: null,
   scheduled_at: NOW,
   status: 'scheduled',
   tenant_id: TENANT_ID,
@@ -118,6 +120,7 @@ describe('publishing API mock E2E', () => {
       controllers: [PlatformAccountController, PublishJobController],
       providers: [
         { provide: IdempotencyService, useValue: idempotency },
+        { provide: OfficialSiteAutomationPolicyService, useValue: {} },
         { provide: PlatformAccountService, useValue: {} },
         { provide: PublishJobService, useValue: jobs },
         { provide: PublishingApiService, useValue: api },
@@ -133,7 +136,7 @@ describe('publishing API mock E2E', () => {
     await application.getHttpAdapter().getInstance().ready();
   });
 
-  afterAll(async () => application.close());
+  afterAll(async () => application?.close());
 
   it('serves the publishing calendar from the filtered job-list endpoint', async () => {
     const response = await application.inject({

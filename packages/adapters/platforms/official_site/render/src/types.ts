@@ -1,8 +1,8 @@
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
 
 export const OFFICIAL_SITE_PLATFORM_CODE = 'official_site' as const;
-export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.0.0' as const;
-export const OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION = 'official-site-payload@1' as const;
+export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.1.0' as const;
+export const OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION = 'official-site-payload@2' as const;
 
 export interface OfficialSiteFaqItem {
   readonly answer: string;
@@ -37,6 +37,7 @@ export interface OfficialSiteRenderInput {
 }
 
 export interface OfficialSitePayload {
+  readonly body_html: string;
   readonly citation_links: readonly OfficialSiteCitationLink[];
   readonly faq: readonly OfficialSiteFaqItem[];
   readonly html: string;
@@ -46,7 +47,9 @@ export interface OfficialSitePayload {
   readonly rule_version: typeof OFFICIAL_SITE_RENDER_RULE_VERSION;
   readonly schema_org: Readonly<Record<string, unknown>>;
   readonly schema_version: typeof OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION;
+  readonly seo_keywords: readonly string[];
   readonly slug: string;
+  readonly summary: string;
   readonly title: string;
 }
 

@@ -26,6 +26,7 @@ import {
   type PlatformAccountFilters,
 } from './platform-account.schema';
 import { resolvePublishingUrl } from './platform-publishing-url';
+import { OfficialSiteAutomationPanel } from './official-site-automation-panel';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -36,6 +37,7 @@ export function PlatformAccountManager() {
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [showConnect, setShowConnect] = useState(false);
   const [editingAccount, setEditingAccount] = useState<PlatformAccount | null>(null);
+  const [automationAccount, setAutomationAccount] = useState<PlatformAccount | null>(null);
   const [publishMode, setPublishMode] = useState<'api' | 'export' | 'manual'>('export');
   const [editMode, setEditMode] = useState<'api' | 'export' | 'manual'>('export');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -300,6 +302,13 @@ export function PlatformAccountManager() {
         />
       ) : null}
 
+      {automationAccount ? (
+        <OfficialSiteAutomationPanel
+          account={automationAccount}
+          onClose={() => setAutomationAccount(null)}
+        />
+      ) : null}
+
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
         {message}
       </div>
@@ -329,10 +338,16 @@ export function PlatformAccountManager() {
                   key={account.id}
                   onAction={runLifecycleAction}
                   onEdit={(selected) => {
+                    setAutomationAccount(null);
                     setShowConnect(false);
                     setFormError(null);
                     setEditingAccount(selected);
                     setEditMode(selected.publish_mode);
+                  }}
+                  onAutomation={(selected) => {
+                    setEditingAccount(null);
+                    setShowConnect(false);
+                    setAutomationAccount(selected);
                   }}
                 />
               ))}
@@ -594,6 +609,7 @@ function AccountRow({
   account,
   busy,
   onAction,
+  onAutomation,
   onEdit,
 }: {
   readonly account: PlatformAccount;
@@ -602,6 +618,7 @@ function AccountRow({
     account: PlatformAccount,
     action: 'refresh' | 'test' | 'disable' | 'restore' | 'remove',
   ) => Promise<void>;
+  readonly onAutomation: (account: PlatformAccount) => void;
   readonly onEdit: (account: PlatformAccount) => void;
 }) {
   const disabled = account.status === 'disabled';
@@ -641,6 +658,16 @@ function AccountRow({
           >
             编辑
           </button>
+          {account.platform_code === 'official_site' ? (
+            <button
+              className={smallButton}
+              disabled={busy}
+              onClick={() => onAutomation(account)}
+              type="button"
+            >
+              自动发布设置
+            </button>
+          ) : null}
           {account.publish_mode === 'api' && !disabled ? (
             <button
               className={smallButton}

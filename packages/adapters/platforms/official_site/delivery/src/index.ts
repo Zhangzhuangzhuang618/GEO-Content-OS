@@ -4,10 +4,16 @@ export {
   type OfficialSiteDeliveryConfig,
 } from './config.js';
 export { OfficialSiteDeliveryError, type OfficialSiteDeliveryErrorCode } from './errors.js';
-export { exportOfficialSite, hashOfficialSitePayload, stableStringify } from './export.js';
+export {
+  exportOfficialSite,
+  hashOfficialSitePayload,
+  stableStringify,
+  toOfficialSiteApiPayload,
+} from './export.js';
 export { OfficialSiteDeliveryAdapter } from './official-site-delivery.adapter.js';
 export {
   OfficialSiteCapabilityResponseSchema,
+  OfficialSiteApiPayloadSchema,
   OfficialSiteDeliveryInputSchema,
   OfficialSiteMetricsResponseSchema,
   OfficialSitePublishResponseSchema,
@@ -17,7 +23,9 @@ export { FetchOfficialSiteTransport } from './transport.js';
 export {
   OFFICIAL_SITE_DELIVERY_VERSION,
   OFFICIAL_SITE_EXPORT_SCHEMA_VERSION,
+  ZHIYUAN_NEWS_PAYLOAD_SCHEMA_VERSION,
   type OfficialSiteCapabilities,
+  type OfficialSiteApiPayload,
   type OfficialSiteDeliveryInput,
   type OfficialSiteDeliveryResult,
   type OfficialSiteExportBundle,

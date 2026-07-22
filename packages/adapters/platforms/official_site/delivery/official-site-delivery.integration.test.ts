@@ -6,7 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { renderOfficialSite } from '../render/src/render.js';
 import { OfficialSiteDeliveryConfigSchema } from './src/config.js';
 import { OfficialSiteDeliveryError } from './src/errors.js';
-import { hashOfficialSitePayload, stableStringify } from './src/export.js';
+import {
+  hashOfficialSitePayload,
+  stableStringify,
+  toOfficialSiteApiPayload,
+} from './src/export.js';
 import { OfficialSiteDeliveryAdapter } from './src/official-site-delivery.adapter.js';
 import type {
   OfficialSiteDeliveryInput,
@@ -37,6 +41,7 @@ describe('official_site delivery integration', () => {
       response(200, { get_status: true, metrics: true, publish: true }),
       response(201, {
         external_id: 'article-103',
+        published_at: '2026-07-15T08:00:00.000Z',
         status: 'published',
         url: 'https://cms.example.com/articles/article-103',
       }),
@@ -49,6 +54,7 @@ describe('official_site delivery integration', () => {
       mode: 'api',
       publish: {
         external_id: 'article-103',
+        published_at: '2026-07-15T08:00:00.000Z',
         status: 'published',
         url: 'https://cms.example.com/articles/article-103',
       },
@@ -56,34 +62,34 @@ describe('official_site delivery integration', () => {
     expect(transport.requests).toHaveLength(2);
     expect(transport.requests[0]).toMatchObject({
       method: 'GET',
-      url: 'https://cms.example.com/capabilities',
+      url: 'https://cms.example.com/api/capabilities',
     });
     expect(transport.requests[1]).toMatchObject({
       body: {
         content_version_id: input.content_version_id,
-        payload: input.payload,
+        payload: toOfficialSiteApiPayload(input.payload),
         payload_hash: input.payload_hash,
       },
       headers: {
         authorization: 'Bearer test-secret',
         'idempotency-key': input.idempotency_key,
+        'x-request-id': input.idempotency_key,
       },
       method: 'POST',
-      url: 'https://cms.example.com/publish',
+      url: 'https://cms.example.com/api/publish',
     });
     expect(JSON.stringify(result)).not.toContain('test-secret');
   });
 
-  it('falls back to export only when capability probe says publish is unavailable', async () => {
+  it('fails closed when configured API publication is unavailable', async () => {
     const transport = new FakeTransport([
       response(200, { get_status: false, metrics: false, publish: false }),
     ]);
     const adapter = apiAdapter(transport);
-    const result = await adapter.deliver(await deliveryInput());
-
-    expect(result.mode).toBe('export');
+    await expect(adapter.deliver(await deliveryInput())).rejects.toMatchObject({
+      code: 'CAPABILITY_UNAVAILABLE',
+    });
     expect(transport.requests).toHaveLength(1);
-    expect(JSON.stringify(result)).not.toContain('test-secret');
   });
 
   it('does not retry or export after a publish request enters an unknown state', async () => {
@@ -109,10 +115,27 @@ describe('official_site delivery integration', () => {
     expect(transport.requests).toHaveLength(1);
   });
 
+  it('accepts RFC 3339 timestamps with an explicit UTC offset', async () => {
+    const transport = new FakeTransport([
+      response(201, {
+        external_id: 'article-104',
+        published_at: '2026-07-15T16:00:00+08:00',
+        status: 'published',
+        url: 'https://cms.example.com/articles/article-104',
+      }),
+    ]);
+
+    await expect(apiAdapter(transport).publish(await deliveryInput())).resolves.toMatchObject({
+      external_id: 'article-104',
+      published_at: '2026-07-15T16:00:00+08:00',
+    });
+  });
+
   it('reads remote status and metric records without exposing credentials', async () => {
     const transport = new FakeTransport([
       response(200, {
         external_id: 'article/103',
+        published_at: '2026-07-15T08:00:00.000Z',
         status: 'published',
         url: 'https://cms.example.com/articles/103',
       }),
@@ -129,8 +152,8 @@ describe('official_site delivery integration', () => {
     expect(status.status).toBe('published');
     expect(metrics.metrics).toEqual({ conversions: 4, views: 120 });
     expect(transport.requests.map((request) => request.url)).toEqual([
-      'https://cms.example.com/status/article%2F103',
-      'https://cms.example.com/metrics/article%2F103',
+      'https://cms.example.com/api/status/article%2F103',
+      'https://cms.example.com/api/metrics/article%2F103',
     ]);
     expect(JSON.stringify({ metrics, status })).not.toContain('test-secret');
   });
@@ -182,6 +205,23 @@ describe('official_site delivery integration', () => {
         mode: 'api',
       }).success,
     ).toBe(false);
+  });
+
+  it('requires HTTPS except for local loopback integration endpoints', () => {
+    expect(
+      OfficialSiteDeliveryConfigSchema.safeParse({
+        base_url: 'http://cms.example.com/api/geo/v1',
+        bearer_token: 'secret',
+        mode: 'api',
+      }).success,
+    ).toBe(false);
+    expect(
+      OfficialSiteDeliveryConfigSchema.safeParse({
+        base_url: 'http://127.0.0.1:18082/api/geo/v1',
+        bearer_token: 'secret',
+        mode: 'api',
+      }).success,
+    ).toBe(true);
   });
 });
 

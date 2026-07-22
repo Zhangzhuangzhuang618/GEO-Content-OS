@@ -32,5 +32,7 @@ export { ContentGenerationWorker } from './generation.worker.js';
 export { validateQualityEvent } from './quality.event.js';
 export type { ValidatedQualityEvent } from './quality.event.js';
 export { QualityCheckWorker } from './quality.worker.js';
+export { OfficialSiteAutomation } from './official-site-automation.js';
+export { validateOfficialSiteRewriteEvent } from './official-site-rewrite.event.js';
 export { RuntimeQualityChecker } from './runtime-quality-checker.js';
 export type { UsageContext } from './usage-recorder.js';

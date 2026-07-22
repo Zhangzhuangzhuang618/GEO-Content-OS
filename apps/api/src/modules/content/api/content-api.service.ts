@@ -606,6 +606,16 @@ export class ContentApiService {
       throw contentStateInvalid('Variant state does not permit a quality check');
     }
     await assertNoActiveVariantRun(transaction, tenantId, variantId);
+    await transaction`
+      UPDATE official_site_automation_runs AS automation SET
+        status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
+        rewrite_count=0,last_quality_report_id=NULL,
+        publish_job_id=NULL,last_error_json=NULL,finished_at=NULL,version=automation.version+1
+      FROM official_site_automation_policies AS policy
+      WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
+        AND automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
+        AND automation.status='manual_required' AND policy.enabled
+    `;
     const runtime = readQualityRuntime();
     const current = await requireContentVersion(
       transaction,
@@ -840,7 +850,9 @@ export class ContentApiService {
     const locks = await selectLocks(client, scope, variantId);
     const citations = current ? await selectCitations(client, scope, current.id) : [];
     const report = await selectLatestQualityReport(client, scope, variantId);
+    const automation = await selectOfficialSiteAutomationRun(client, scope, variantId);
     return {
+      automation_run: automation ? snake(automation) : null,
       citations: citations.map(snake),
       current_content: current ? versionView(current) : null,
       locks: locks.map(snake),
@@ -861,6 +873,42 @@ export class ContentApiService {
   private scopeForVersion(client: SqlClient, tenantId: string, userId: string, id: string) {
     return resolveScope(client, tenantId, userId, 'version', id);
   }
+}
+
+async function selectOfficialSiteAutomationRun(
+  client: SqlClient,
+  scope: ContentScope,
+  variantId: string,
+) {
+  const rows = await client<
+    {
+      contentVersionId: string;
+      finishedAt: Date | string | null;
+      id: string;
+      lastError: Readonly<Record<string, unknown>> | null;
+      publishJobId: string | null;
+      rewriteCount: number;
+      status: string;
+      updatedAt: Date | string;
+    }[]
+  >`
+    SELECT automation.id,automation.content_version_id AS "contentVersionId",
+      automation.status,automation.rewrite_count AS "rewriteCount",
+      automation.publish_job_id AS "publishJobId",automation.last_error_json AS "lastError",
+      automation.updated_at AS "updatedAt",automation.finished_at AS "finishedAt"
+    FROM official_site_automation_runs AS automation
+    JOIN content_variants AS variant
+      ON variant.id=automation.variant_id AND variant.tenant_id=automation.tenant_id
+    JOIN content_packages AS package
+      ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+    WHERE automation.tenant_id=${scope.tenantId}::uuid
+      AND automation.variant_id=${variantId}::uuid
+      AND has_project_scope_access(
+        package.tenant_id,package.workspace_id,package.project_id,${scope.userId}::uuid
+      )
+    LIMIT 1
+  `;
+  return rows[0];
 }
 
 function scopeFromInput(

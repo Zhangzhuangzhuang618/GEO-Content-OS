@@ -47,10 +47,10 @@ export const OfficialSiteContentSchema = z
     blocks: z.array(BlockSchema).min(1),
     citation_map: z.array(CitationMapItemSchema),
     cta: z.string().max(200).nullable(),
-    hashtags: z.array(z.string().max(40)).refine(unique),
+    hashtags: z.array(z.string().trim().min(1).max(40)).max(20).refine(unique),
     platform_code: z.literal(OFFICIAL_SITE_PLATFORM_CODE),
     platform_meta: OfficialSitePlatformMetaSchema,
-    summary: z.string().max(240),
+    summary: z.string().trim().min(1).max(240),
     title: unicodeText(2, 80),
   })
   .strict();
@@ -76,6 +76,7 @@ export const OfficialSiteRenderInputSchema = z
 
 export const OfficialSitePayloadSchema = z
   .object({
+    body_html: z.string().min(1).max(500_000),
     citation_links: z.array(OfficialSiteCitationLinkSchema).max(200),
     faq: z.array(OfficialSiteFaqItemSchema).min(1).max(20),
     html: z.string().min(1),
@@ -87,10 +88,12 @@ export const OfficialSitePayloadSchema = z
       .object({ '@context': z.string().trim().min(1), '@type': z.string().trim().min(1) })
       .catchall(z.unknown()),
     schema_version: z.literal(OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION),
+    seo_keywords: z.array(z.string().trim().min(1).max(40)).max(20).refine(unique),
     slug: z
       .string()
       .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u)
       .max(160),
+    summary: z.string().trim().min(1).max(240),
     title: unicodeText(20, 60),
   })
   .strict();
@@ -114,10 +117,11 @@ export const OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
 });
 
 export const OFFICIAL_SITE_PAYLOAD_JSON_SCHEMA = Object.freeze({
-  $id: 'https://geo.example/schemas/official-site-payload-1.json',
+  $id: 'https://geo.example/schemas/official-site-payload-2.json',
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   additionalProperties: false,
   properties: {
+    body_html: { maxLength: 500000, minLength: 1, type: 'string' },
     citation_links: { items: { $ref: '#/$defs/citation' }, maxItems: 200, type: 'array' },
     faq: { items: { $ref: '#/$defs/faq' }, maxItems: 20, minItems: 1, type: 'array' },
     html: { minLength: 1, type: 'string' },
@@ -127,13 +131,21 @@ export const OFFICIAL_SITE_PAYLOAD_JSON_SCHEMA = Object.freeze({
     rule_version: { const: OFFICIAL_SITE_RENDER_RULE_VERSION },
     schema_org: { $ref: '#/$defs/schema_org' },
     schema_version: { const: OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION },
+    seo_keywords: {
+      items: { maxLength: 40, minLength: 1, type: 'string' },
+      maxItems: 20,
+      type: 'array',
+      uniqueItems: true,
+    },
     slug: { maxLength: 160, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$', type: 'string' },
+    summary: { maxLength: 240, minLength: 1, type: 'string' },
     title: { maxLength: 60, minLength: 20, type: 'string' },
   },
   required: [
     'schema_version',
     'rule_version',
     'platform_code',
+    'body_html',
     'slug',
     'title',
     'meta_description',
@@ -142,6 +154,8 @@ export const OFFICIAL_SITE_PAYLOAD_JSON_SCHEMA = Object.freeze({
     'faq',
     'schema_org',
     'citation_links',
+    'seo_keywords',
+    'summary',
   ],
   type: 'object',
   $defs: schemaDefinitions(),
@@ -189,7 +203,12 @@ function schemaDefinitions() {
         blocks: { items: { $ref: '#/$defs/block' }, minItems: 1, type: 'array' },
         citation_map: { items: { $ref: '#/$defs/citation_map_item' }, type: 'array' },
         cta: { maxLength: 200, type: ['string', 'null'] },
-        hashtags: { items: { maxLength: 40, type: 'string' }, type: 'array', uniqueItems: true },
+        hashtags: {
+          items: { maxLength: 40, minLength: 1, type: 'string' },
+          maxItems: 20,
+          type: 'array',
+          uniqueItems: true,
+        },
         platform_code: { const: OFFICIAL_SITE_PLATFORM_CODE },
         platform_meta: {
           additionalProperties: false,
@@ -202,7 +221,7 @@ function schemaDefinitions() {
           required: ['slug', 'meta_description', 'faq', 'schema_org'],
           type: 'object',
         },
-        summary: { maxLength: 240, type: 'string' },
+        summary: { maxLength: 240, minLength: 1, type: 'string' },
         title: { maxLength: 80, minLength: 2, type: 'string' },
       },
       required: [

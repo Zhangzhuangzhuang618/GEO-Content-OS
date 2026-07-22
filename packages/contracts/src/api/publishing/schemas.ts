@@ -86,6 +86,42 @@ export const CapabilityViewSchema = z
   .strict();
 export const PlatformAccountResponseSchema = createDataResponseSchema(PlatformAccountViewSchema);
 export const CapabilityResponseSchema = createDataResponseSchema(CapabilityViewSchema);
+export const OfficialSiteAutomationPolicyRequestSchema = z
+  .object({
+    enabled: z.boolean(),
+    expected_version: VersionSchema.optional(),
+    project_id: UuidSchema,
+  })
+  .strict();
+export const OfficialSiteAutomationPolicyViewSchema = z
+  .object({
+    account_id: UuidSchema,
+    brand_consistency_min: z.literal(90),
+    enabled: z.boolean(),
+    factual_accuracy_min: z.literal(90),
+    geo_total_min: z.literal(85),
+    id: UuidSchema,
+    max_rewrites: z.literal(3),
+    platform_fit_min: z.literal(80),
+    project_id: UuidSchema,
+    publish_attempt_limit: z.literal(3),
+    question_coverage_min: z.literal(80),
+    readability_safety_min: z.literal(85),
+    tenant_id: UuidSchema,
+    updated_at: IsoDateTimeSchema,
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict();
+export const OfficialSiteAutomationPolicyResponseSchema = createDataResponseSchema(
+  OfficialSiteAutomationPolicyViewSchema,
+);
+export const OfficialSiteAutomationPolicyPageSchema = z
+  .object({
+    data: z.array(OfficialSiteAutomationPolicyViewSchema),
+    meta: z.object({ request_id: z.string().min(1) }).strict(),
+  })
+  .strict();
 export const PlatformAccountPageSchema = z
   .object({
     data: z.array(PlatformAccountViewSchema),
@@ -96,3 +132,9 @@ export type CreatePlatformAccountRequest = z.infer<typeof CreatePlatformAccountR
 export type RefreshAccountRequest = z.infer<typeof RefreshAccountRequestSchema>;
 export type UpdatePlatformAccountRequest = z.infer<typeof UpdatePlatformAccountRequestSchema>;
 export type PlatformAccountView = z.infer<typeof PlatformAccountViewSchema>;
+export type OfficialSiteAutomationPolicyRequest = z.infer<
+  typeof OfficialSiteAutomationPolicyRequestSchema
+>;
+export type OfficialSiteAutomationPolicyView = z.infer<
+  typeof OfficialSiteAutomationPolicyViewSchema
+>;

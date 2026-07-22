@@ -85,4 +85,28 @@ describe('Content Variant transitions', () => {
       }),
     ).toBe(true);
   });
+
+  it('allows only the explicit official-site automation publish path', () => {
+    expect(
+      canTransitionContentVariant({
+        cause: 'official_site_automation',
+        from: 'quality_passed',
+        to: 'scheduled',
+      }),
+    ).toBe(true);
+    expect(
+      canTransitionContentVariant({
+        cause: 'official_site_automation',
+        from: 'publish_failed',
+        to: 'quality_passed',
+      }),
+    ).toBe(true);
+    expect(
+      canTransitionContentVariant({
+        cause: 'official_site_automation',
+        from: 'generated',
+        to: 'scheduled',
+      }),
+    ).toBe(false);
+  });
 });

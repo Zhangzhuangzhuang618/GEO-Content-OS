@@ -40,8 +40,10 @@ export function parseOfficialSiteDeliveryConfig(input: unknown): OfficialSiteDel
 
 function isSafeBaseUrl(value: string): boolean {
   const url = new URL(value);
+  const loopbackHosts = new Set(['127.0.0.1', '::1', 'localhost']);
   return (
-    ['http:', 'https:'].includes(url.protocol) &&
+    (url.protocol === 'https:' ||
+      (url.protocol === 'http:' && loopbackHosts.has(url.hostname.toLowerCase()))) &&
     !url.username &&
     !url.password &&
     !url.search &&

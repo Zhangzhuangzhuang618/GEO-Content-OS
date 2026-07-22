@@ -23,6 +23,9 @@ import {
   PlatformAccountResponseSchema,
   RefreshAccountRequestSchema,
   UpdatePlatformAccountRequestSchema,
+  OfficialSiteAutomationPolicyPageSchema,
+  OfficialSiteAutomationPolicyRequestSchema,
+  OfficialSiteAutomationPolicyResponseSchema,
 } from './schemas.js';
 import { ReasonRequestSchema } from '../common.js';
 
@@ -34,7 +37,7 @@ export interface PublishingApiContract {
   readonly bodySchema: z.ZodType | null;
   readonly idempotency: '-' | 'key+body_hash' | 'key+version' | 'resource+version';
   readonly key: string;
-  readonly method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
+  readonly method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
   readonly paramsSchema: z.ZodType | null;
   readonly path: string;
   readonly permission: Extract<PermissionCode, 'publishing.manage'>;
@@ -143,6 +146,30 @@ const contracts = [
     '-',
     'PlatformAccountView',
     PlatformAccountResponseSchema,
+  ),
+  contract(
+    'account.official_site_automation.list',
+    'GET',
+    '/platform-accounts/{id}/official-site-automation',
+    '-',
+    null,
+    null,
+    PlatformAccountParamsSchema,
+    '-',
+    'OfficialSiteAutomationPolicyPage',
+    OfficialSiteAutomationPolicyPageSchema,
+  ),
+  contract(
+    'account.official_site_automation.put',
+    'PUT',
+    '/platform-accounts/{id}/official-site-automation',
+    '-',
+    OfficialSiteAutomationPolicyRequestSchema,
+    null,
+    PlatformAccountParamsSchema,
+    'OfficialSiteAutomationPolicyRequest',
+    'OfficialSiteAutomationPolicyView',
+    OfficialSiteAutomationPolicyResponseSchema,
   ),
   contract(
     'job.create',

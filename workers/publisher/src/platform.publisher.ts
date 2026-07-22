@@ -73,6 +73,7 @@ type DeliveryResult =
       readonly mode: 'api';
       readonly publish: {
         readonly external_id: string;
+        readonly published_at?: string;
         readonly status: 'processing' | 'published';
         readonly url: string | null;
       };
@@ -209,7 +210,10 @@ async function execute<TPayload>(
     externalId: result.publish.external_id,
     mode: result.mode,
     payloadHash,
-    response: Object.freeze({ status: result.publish.status }),
+    response: Object.freeze({
+      ...(result.publish.published_at ? { published_at: result.publish.published_at } : {}),
+      status: result.publish.status,
+    }),
     url: result.publish.url,
   });
 }

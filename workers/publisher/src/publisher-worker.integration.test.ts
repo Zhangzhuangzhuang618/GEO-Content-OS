@@ -26,6 +26,8 @@ const VARIANT_ID = '71000000-0000-4000-8000-000000000125';
 const VERSION_ID = '81000000-0000-4000-8000-000000000125';
 const ACCOUNT_ID = '91000000-0000-4000-8000-000000000125';
 const JOB_ID = 'a1000000-0000-4000-8000-000000000125';
+const POLICY_ID = 'a2000000-0000-4000-8000-000000000125';
+const AUTOMATION_RUN_ID = 'a3000000-0000-4000-8000-000000000125';
 const CONTENT_HASH = 'a'.repeat(64);
 const PLATFORM_PAYLOAD_HASH = 'b'.repeat(64);
 const ACCESS_TOKEN = 't125-platform-secret';
@@ -100,21 +102,49 @@ describe('publisher worker', () => {
     expect(audit[0]?.value).not.toContain(ACCESS_TOKEN);
   });
 
-  it('records unknown external state and never blindly retries it', async () => {
+  it('retries an idempotent official-site unknown state twice and stops after attempt three', async () => {
     const database = requireClient(client);
+    await enableAutomation(database);
     const platform = new FakePlatform(undefined, 'PUBLISH_STATE_UNKNOWN');
     const worker = createWorker(database, requireCredentials(credentials), platform);
 
+    await expect(worker.run(event())).rejects.toMatchObject({ retryable: true });
+    await expect(worker.run(event())).rejects.toMatchObject({ retryable: true });
     await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'unknown' });
     await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'completed' });
 
-    expect(platform.claims).toHaveLength(1);
+    expect(platform.claims).toHaveLength(3);
     await expect(state(database)).resolves.toMatchObject({
-      attemptCount: 1,
-      attemptStatus: ['unknown'],
+      attemptCount: 3,
+      attemptStatus: ['failed', 'failed', 'unknown'],
+      automationStatus: 'publish_failed',
       jobStatus: 'failed',
       packageStatus: 'publish_failed',
       variantStatus: 'publish_failed',
+    });
+  });
+
+  it('completes the official-site automation run and records the remote publication time', async () => {
+    const database = requireClient(client);
+    await enableAutomation(database);
+    const worker = createWorker(
+      database,
+      requireCredentials(credentials),
+      new FakePlatform({
+        externalId: 'official-news-136',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { published_at: '2026-07-23T01:02:03.000Z', status: 'published' },
+        url: 'https://www.zhiyuanbj.cn/detail/news136.html',
+      }),
+    );
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(state(database)).resolves.toMatchObject({
+      automationStatus: 'published',
+      jobStatus: 'published',
+      publishedAt: '2026-07-23T01:02:03.000Z',
+      variantStatus: 'published',
     });
   });
 
@@ -240,22 +270,65 @@ async function state(database: Sql) {
   const jobs = await database<
     {
       attemptCount: number;
+      automationStatus: string | null;
       jobStatus: string;
       packageStatus: string;
+      publishedAt: Date | null;
       variantStatus: string;
     }[]
   >`
     SELECT job.status AS "jobStatus", job.attempt_count AS "attemptCount",
+      job.published_at AS "publishedAt", automation.status AS "automationStatus",
       variant.status AS "variantStatus", package.status AS "packageStatus"
     FROM publish_jobs AS job
     JOIN content_variants AS variant ON variant.id=job.variant_id
     JOIN content_packages AS package ON package.id=variant.package_id
+    LEFT JOIN official_site_automation_runs AS automation
+      ON automation.publish_job_id=job.id AND automation.tenant_id=job.tenant_id
     WHERE job.id=${JOB_ID}::uuid
   `;
   const attempts = await database<{ status: string }[]>`
     SELECT status FROM publish_attempts WHERE publish_job_id=${JOB_ID}::uuid ORDER BY attempt_no
   `;
-  return { ...jobs[0], attemptStatus: attempts.map(({ status }) => status) };
+  return {
+    ...jobs[0],
+    attemptStatus: attempts.map(({ status }) => status),
+    publishedAt: jobs[0]?.publishedAt?.toISOString() ?? null,
+  };
+}
+
+async function enableAutomation(database: Sql): Promise<void> {
+  await database`
+    UPDATE content_variants SET platform_account_id=${ACCOUNT_ID}::uuid
+    WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    INSERT INTO official_site_automation_policies(
+      id,tenant_id,workspace_id,project_id,account_id,enabled,created_by
+    ) VALUES(
+      ${POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,true,${USER_ID}::uuid
+    )
+  `;
+  await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+  await database`
+    INSERT INTO publish_jobs(
+      id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+      idempotency_key,payload_hash,status,origin,created_by
+    ) VALUES(
+      ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
+      ${CONTENT_HASH},'scheduled','official_site_automation',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO official_site_automation_runs(
+      id,tenant_id,policy_id,variant_id,content_version_id,status,publish_job_id
+    ) VALUES(
+      ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,${VARIANT_ID}::uuid,
+      ${VERSION_ID}::uuid,'publishing',${JOB_ID}::uuid
+    )
+  `;
 }
 
 async function seed(database: Sql, credentials: CredentialEnvelopeService): Promise<void> {
@@ -351,9 +424,11 @@ async function migrate(database: Sql): Promise<void> {
     .sort((left, right) => left.localeCompare(right));
   for (const file of files) {
     const sql = await readFile(new URL(file, MIGRATIONS), 'utf8');
-    for (const statement of sql.split('--> statement-breakpoint')) {
-      if (statement.trim()) await database.unsafe(statement);
-    }
+    await database.begin(async (transaction) => {
+      for (const statement of sql.split('--> statement-breakpoint')) {
+        if (statement.trim()) await transaction.unsafe(statement);
+      }
+    });
   }
 }
 

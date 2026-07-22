@@ -78,6 +78,13 @@ function assessContent(
   const required = (value: number): number => Math.max(1, Math.ceil(value * factor));
   const issues: string[] = [];
 
+  if (content.platform_code === 'official_site') {
+    const titleLength = [...content.title.trim()].length;
+    if (titleLength < 20 || titleLength > 60) {
+      issues.push(`official_site:标题为 ${titleLength} 个字符，必须为 20–60 个字符`);
+    }
+  }
+
   if (characters < required(target.characters)) {
     issues.push(
       `${content.platform_code}:正文仅 ${characters} 个有效字符，至少需要 ${required(target.characters)} 个`,

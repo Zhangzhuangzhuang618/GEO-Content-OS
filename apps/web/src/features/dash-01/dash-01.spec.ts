@@ -60,7 +60,9 @@ test.beforeEach(async ({ context, page }) => {
   );
 });
 
-test('exposes account, enterprise switching and logout actions in the global header', async ({ page }) => {
+test('exposes account, enterprise switching and logout actions in the global header', async ({
+  page,
+}) => {
   let logoutCalled = false;
   await page.route('**/api/v1/auth/logout', async (route) => {
     logoutCalled = true;
@@ -70,10 +72,9 @@ test('exposes account, enterprise switching and logout actions in the global hea
 
   await page.locator('header details summary').click();
   await expect(page.getByText('admin@example.com')).toBeVisible();
-  await expect(page.locator('header details').getByRole('link', { name: '切换企业' })).toHaveAttribute(
-    'href',
-    new RegExp('^/auth-02\\?return_to=', 'u'),
-  );
+  await expect(
+    page.locator('header details').getByRole('link', { name: '切换企业' }),
+  ).toHaveAttribute('href', new RegExp('^/auth-02\\?return_to=', 'u'));
   await expect(page.getByRole('button', { name: '切换账号' })).toBeVisible();
   await page.getByRole('button', { name: '退出登录' }).click();
   await expect.poll(() => logoutCalled).toBe(true);
