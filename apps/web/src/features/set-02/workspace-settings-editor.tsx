@@ -127,7 +127,7 @@ export function WorkspaceSettingsEditor() {
       reset(toForm(archived));
       setMessage('工作区已归档。');
     } catch {
-      setMessage('归档失败；租户必须至少保留一个 active 工作区。');
+      setMessage('归档失败；企业必须至少保留一个正常使用的工作区。');
     } finally {
       setIsArchiving(false);
     }
@@ -140,10 +140,10 @@ export function WorkspaceSettingsEditor() {
 
   if (state === 'loading') return <EditorSkeleton />;
   if (state === 'permission')
-    return <StatePanel title="无权管理工作区" text="该页面仅对租户所有者和租户管理员开放。" />;
+    return <StatePanel title="无权管理工作区" text="该页面仅对企业所有者和企业管理员开放。" />;
   if (state === 'error')
     return <StatePanel title="无法加载工作区" text="请检查网络或权限后刷新页面。" />;
-  if (!selected) return <StatePanel title="暂无工作区" text="当前租户尚未创建工作区。" />;
+  if (!selected) return <StatePanel title="暂无工作区" text="当前企业尚未创建工作区。" />;
 
   const readOnly = selected.status === 'archived';
   const lastActive = selected.status === 'active' && activeCount(items) <= 1;

@@ -13,7 +13,6 @@ import {
   RiskLevelSchema,
   type ReviewFilters,
   type ReviewInboxItem,
-  type RiskLevel,
 } from './review-inbox.schema';
 
 const REVIEW_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'reviewer']);
@@ -67,83 +66,90 @@ export function ReviewInbox() {
     writeFilters(next);
   }
 
-  async function claim(item: ReviewInboxItem, riskLevel: RiskLevel, dueAt: string) {
+  async function startReview(item: ReviewInboxItem) {
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
       setMessage('安全令牌尚未就绪，请刷新页面后重试。');
       return;
     }
-    const parsedDueAt = new Date(dueAt);
-    if (!Number.isFinite(parsedDueAt.getTime()) || parsedDueAt.getTime() <= Date.now()) {
-      setMessage('截止时间必须晚于当前时间。');
-      return;
-    }
     setClaimingId(item.id);
     setMessage(null);
     try {
-      await claimReview(item.id, item.version, riskLevel, parsedDueAt.toISOString(), csrf);
-      setMessage('审核任务已领取。');
-      await load(filters);
+      await claimReview(
+        item.id,
+        item.version,
+        item.risk_level ?? 'medium',
+        defaultReviewDueAt(),
+        csrf,
+      );
+      window.location.assign(`/rev-02?id=${item.id}`);
     } catch {
-      setMessage('领取失败；任务可能已被他人领取或版本已更新，请刷新后重试。');
+      setMessage('暂时无法开始审核。这条内容可能已由其他成员接手，请刷新后重试。');
     } finally {
       setClaimingId(null);
     }
   }
 
   if (state === 'permission')
-    return <StatePanel title="无权查看审核队列" text="仅租户管理员、所有者和审核员可访问。" />;
+    return <StatePanel title="无权查看审核队列" text="仅企业管理员、所有者和审核员可访问。" />;
   if (state === 'error')
     return <StatePanel title="无法加载审核队列" text="请检查筛选条件或网络后重试。" />;
 
   return (
     <section className="mt-8">
-      <form
-        aria-label="审核队列筛选"
-        className="rounded-2xl border border-line bg-white p-4 shadow-panel"
-        key={JSON.stringify(filters)}
-        onSubmit={applyFilters}
-      >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <TextField defaultValue={filters.workspaceId} label="工作区 UUID" name="workspace_id" />
-          <TextField defaultValue={filters.projectId} label="项目 UUID" name="project_id" />
-          <TextField defaultValue={filters.createdBy} label="提交人 UUID" name="created_by" />
-          <SelectField label="状态" name="status" options={STATUS_OPTIONS} value={filters.status} />
-          <SelectField
-            label="平台"
-            name="platform_code"
-            options={PLATFORM_OPTIONS}
-            value={filters.platformCode}
-          />
-          <SelectField
-            label="风险"
-            name="risk_level"
-            options={RISK_OPTIONS}
-            value={filters.riskLevel}
-          />
-          <SelectField
-            label="领取状态"
-            name="claim_state"
-            options={CLAIM_OPTIONS}
-            value={filters.claimState}
-          />
-          <div className="flex items-end gap-3">
-            <button className={primaryButton} type="submit">
-              应用筛选
-            </button>
-            <button
-              className={secondaryButton}
-              onClick={() => {
-                setFilters({});
-                writeFilters({});
-              }}
-              type="button"
-            >
-              清空
-            </button>
+      <details className="rounded-2xl border border-line bg-white shadow-panel">
+        <summary className="cursor-pointer px-5 py-4 text-sm font-semibold text-ink-800">
+          筛选审核任务
+        </summary>
+        <form
+          aria-label="审核队列筛选"
+          className="border-t border-line p-5"
+          key={JSON.stringify(filters)}
+          onSubmit={applyFilters}
+        >
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <SelectField
+              label="处理进度"
+              name="status"
+              options={STATUS_OPTIONS}
+              value={filters.status}
+            />
+            <SelectField
+              label="发布平台"
+              name="platform_code"
+              options={PLATFORM_OPTIONS}
+              value={filters.platformCode}
+            />
+            <SelectField
+              label="处理优先级"
+              name="risk_level"
+              options={RISK_OPTIONS}
+              value={filters.riskLevel}
+            />
+            <SelectField
+              label="任务归属"
+              name="claim_state"
+              options={CLAIM_OPTIONS}
+              value={filters.claimState}
+            />
+            <div className="flex items-end gap-3">
+              <button className={primaryButton} type="submit">
+                筛选
+              </button>
+              <button
+                className={secondaryButton}
+                onClick={() => {
+                  setFilters({});
+                  writeFilters({});
+                }}
+                type="button"
+              >
+                恢复全部
+              </button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form>
+      </details>
 
       {message ? (
         <p aria-live="polite" className="mt-4 text-sm text-ink-700">
@@ -151,35 +157,19 @@ export function ReviewInbox() {
         </p>
       ) : null}
       {state === 'loading' ? (
-        <StatePanel title="正在加载审核队列" text="正在读取当前权限范围内的冻结快照。" />
+        <StatePanel title="正在加载审核队列" text="正在读取当前可处理的审核内容。" />
       ) : items.length === 0 ? (
-        <StatePanel title="暂无审核任务" text="当前筛选和分页下没有可访问的审核快照。" />
+        <StatePanel title="暂时没有待审核内容" text="新内容提交审核后会出现在这里。" />
       ) : (
-        <div className="mt-5 overflow-x-auto rounded-2xl border border-line bg-white shadow-panel">
-          <table className="w-full min-w-[1320px] text-left text-sm">
-            <thead className="bg-surface-subtle text-ink-500">
-              <tr>
-                <th className="p-4">快照</th>
-                <th className="p-4">风险 / 截止</th>
-                <th className="p-4">提交人</th>
-                <th className="p-4">平台</th>
-                <th className="p-4">状态</th>
-                <th className="p-4">加签</th>
-                <th className="p-4">领取</th>
-                <th className="p-4">动作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <ReviewRow
-                  busy={claimingId === item.id}
-                  item={item}
-                  key={item.id}
-                  onClaim={claim}
-                />
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-5 space-y-4">
+          {items.map((item) => (
+            <ReviewCard
+              busy={claimingId === item.id}
+              item={item}
+              key={item.id}
+              onStart={startReview}
+            />
+          ))}
         </div>
       )}
       <nav aria-label="审核队列分页" className="mt-5 flex gap-3">
@@ -198,77 +188,71 @@ export function ReviewInbox() {
   );
 }
 
-function ReviewRow({
+function ReviewCard({
   busy,
   item,
-  onClaim,
+  onStart,
 }: {
   readonly busy: boolean;
   readonly item: ReviewInboxItem;
-  readonly onClaim: (item: ReviewInboxItem, risk: RiskLevel, dueAt: string) => Promise<void>;
+  readonly onStart: (item: ReviewInboxItem) => Promise<void>;
 }) {
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const risk = RiskLevelSchema.safeParse(data.get('risk_level'));
-    if (risk.success) void onClaim(item, risk.data, String(data.get('due_at') ?? ''));
-  }
+  const platforms = item.platform_codes.map(platformLabel).join('、');
   return (
-    <tr className="border-t border-line">
-      <td className="p-4">
-        <span className="font-mono">{shortId(item.id)}</span>
-        <p className="mt-1 text-xs text-ink-500">工作区 {shortId(item.workspace_id)}</p>
-      </td>
-      <td className="p-4">
-        <span className={riskClass(item.risk_level)}>{riskLabel(item.risk_level)}</span>
-        <p className="mt-1 text-xs text-ink-500">
-          {item.due_at ? formatDate(item.due_at) : '未设置截止时间'}
-        </p>
-      </td>
-      <td className="p-4 font-mono text-xs">{item.created_by}</td>
-      <td className="p-4">{item.platform_codes.map(platformLabel).join('、')}</td>
-      <td className="p-4">{statusLabel(item.status)}</td>
-      <td className="p-4">待处理 {item.pending_signoff_count}</td>
-      <td className="p-4">
-        {item.claimed_by ? (
-          <>
-            <span>已领取</span>
-            <p className="mt-1 font-mono text-xs text-ink-500">{shortId(item.claimed_by)}</p>
-          </>
-        ) : (
-          <form className="grid min-w-[220px] gap-2" onSubmit={submit}>
-            <select
-              aria-label={`风险 ${shortId(item.id)}`}
-              className={compactControl}
-              defaultValue="medium"
-              name="risk_level"
+    <article className="rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-6">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-lg font-semibold text-ink-950">{platforms}内容</h2>
+            <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+              {statusLabel(item.status)}
+            </span>
+          </div>
+          <p className="mt-2 text-sm text-ink-500">
+            {formatDate(item.created_at)} 提交 · {item.variant_count} 个发布平台
+          </p>
+          <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            <div>
+              <dt className="text-ink-500">处理优先级</dt>
+              <dd className="mt-1 font-medium text-ink-800">{riskLabel(item.risk_level)}</dd>
+            </div>
+            <div>
+              <dt className="text-ink-500">完成时间</dt>
+              <dd className="mt-1 font-medium text-ink-800">
+                {item.due_at ? formatDate(item.due_at) : '开始审核后 24 小时内'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-ink-500">共同确认</dt>
+              <dd className="mt-1 font-medium text-ink-800">
+                {item.pending_signoff_count
+                  ? `还有 ${item.pending_signoff_count} 项待确认`
+                  : '无需其他负责人确认'}
+              </dd>
+            </div>
+          </dl>
+        </div>
+        <div className="shrink-0 lg:text-right">
+          {item.claimed_by ? (
+            <Link className={primaryButton} href={`/rev-02?id=${item.id}`}>
+              查看审核内容
+            </Link>
+          ) : (
+            <button
+              className={primaryButton}
+              disabled={busy}
+              onClick={() => void onStart(item)}
+              type="button"
             >
-              {RISK_OPTIONS.map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <input
-              aria-label={`截止时间 ${shortId(item.id)}`}
-              className={compactControl}
-              defaultValue={defaultDueAt()}
-              min={minimumDueAt()}
-              name="due_at"
-              type="datetime-local"
-            />
-            <button className={primaryButton} disabled={busy} type="submit">
-              {busy ? '领取中' : '领取'}
+              {busy ? '正在打开' : '开始审核'}
             </button>
-          </form>
-        )}
-      </td>
-      <td className="p-4">
-        <Link className="font-medium text-brand-700" href={`/rev-02?id=${item.id}`}>
-          进入快照
-        </Link>
-      </td>
-    </tr>
+          )}
+          <p className="mt-2 max-w-xs text-xs leading-5 text-ink-500">
+            {item.claimed_by ? '任务已分配，可继续查看和处理。' : '开始后任务会自动分配给你。'}
+          </p>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -288,14 +272,14 @@ const STATUS_OPTIONS = [
   ['superseded', '已替代'],
 ] as const;
 const RISK_OPTIONS = [
-  ['low', '低'],
-  ['medium', '中'],
-  ['high', '高'],
-  ['critical', '严重'],
+  ['low', '常规'],
+  ['medium', '普通'],
+  ['high', '优先'],
+  ['critical', '紧急'],
 ] as const;
 const CLAIM_OPTIONS = [
-  ['mine', '我领取的'],
-  ['unclaimed', '未领取'],
+  ['mine', '我负责的'],
+  ['unclaimed', '待分配'],
 ] as const;
 
 function parseFilters(data: FormData): ReviewFilters {
@@ -349,22 +333,6 @@ function writeFilters(filters: ReviewFilters) {
   });
   window.history.replaceState(null, '', query.size ? `/rev-01?${query}` : '/rev-01');
 }
-function TextField({
-  defaultValue,
-  label,
-  name,
-}: {
-  readonly defaultValue?: string | undefined;
-  readonly label: string;
-  readonly name: string;
-}) {
-  return (
-    <label className="text-sm text-ink-700">
-      {label}
-      <input className={controlClass} defaultValue={defaultValue ?? ''} name={name} />
-    </label>
-  );
-}
 function SelectField({
   label,
   name,
@@ -405,9 +373,6 @@ function readCookie(name: string) {
   const entry = document.cookie.split('; ').find((value) => value.startsWith(`${name}=`));
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : '';
 }
-function shortId(id: string) {
-  return id.slice(0, 8);
-}
 function formatDate(value: string) {
   return new Date(value).toLocaleString('zh-CN');
 }
@@ -418,24 +383,13 @@ function statusLabel(code: string) {
   return STATUS_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
 }
 function riskLabel(code: string | null) {
-  return code ? (RISK_OPTIONS.find(([value]) => value === code)?.[1] ?? code) : '未分级';
+  return code ? (RISK_OPTIONS.find(([value]) => value === code)?.[1] ?? code) : '普通';
 }
-function riskClass(code: string | null) {
-  return `inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${code === 'critical' ? 'bg-red-100 text-red-800' : code === 'high' ? 'bg-amber-100 text-amber-900' : code ? 'bg-brand-50 text-brand-700' : 'bg-slate-100 text-ink-500'}`;
-}
-function minimumDueAt() {
-  return localDateTime(new Date(Date.now() + 60_000));
-}
-function defaultDueAt() {
-  return localDateTime(new Date(Date.now() + 24 * 60 * 60 * 1000));
-}
-function localDateTime(value: Date) {
-  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+function defaultReviewDueAt() {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 }
 const controlClass =
   'mt-2 h-11 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-950 outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-100';
-const compactControl = 'h-9 rounded-control border border-line bg-white px-2 text-xs text-ink-950';
 const primaryButton =
   'inline-flex h-11 items-center justify-center rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-50';
 const secondaryButton =

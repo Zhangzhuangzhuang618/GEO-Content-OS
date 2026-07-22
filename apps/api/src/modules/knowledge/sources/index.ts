@@ -13,6 +13,13 @@ export {
 } from './source.service.js';
 export { SOURCE_STORAGE, SOURCE_WEB_FETCH } from './source.tokens.js';
 export {
+  parseBatchUrlPreview,
+  previewBatchUrlFile,
+  type BatchUrlPreview,
+  type BatchUrlPreviewRow,
+  type BatchUrlPreviewStatus,
+} from './source-batch-url-preview.parser.js';
+export {
   parseSourceUpload,
   type ParsedFileSource,
   type ParsedSourceSubmission,

@@ -129,7 +129,12 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
     citation_map_item: {
       additionalProperties: false,
       properties: {
-        citation_ids: { items: UUID_SCHEMA, type: 'array', uniqueItems: true },
+        citation_ids: {
+          items: UUID_SCHEMA,
+          minItems: 1,
+          type: 'array',
+          uniqueItems: true,
+        },
         claim_key: { type: 'string' },
         claim_text: { type: 'string' },
       },

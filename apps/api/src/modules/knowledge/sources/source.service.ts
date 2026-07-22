@@ -6,6 +6,7 @@ import type { TransactionSql } from 'postgres';
 import { OutboxWriter } from '../../outbox/index.js';
 import { SourceDuplicateError, SourceNotFoundError, SourceStorageError } from './source.errors.js';
 import type { ParsedFileSource, ParsedSourceUpload } from './source-upload.parser.js';
+import { buildUrlSnapshotObjectKey } from './source-object-key.js';
 import { SOURCE_STORAGE } from './source.tokens.js';
 
 export interface SourceAuditContext {
@@ -78,7 +79,14 @@ export class SourceService {
       WHERE
         tenant_id = ${tenantId}
         AND workspace_id = ${input.workspaceId}
-        AND content_hash = ${input.contentHash}
+        AND (
+          content_hash = ${input.contentHash}
+          OR (
+            ${input.kind === 'url'}
+            AND source_type = 'url'
+            AND uri = ${input.kind === 'url' ? input.finalUrl : ''}
+          )
+        )
         AND deleted_at IS NULL
       LIMIT 1
     `;
@@ -86,7 +94,10 @@ export class SourceService {
 
     const sourceId = randomUUID();
     const ingestJobId = randomUUID();
-    const objectKey = input.kind === 'file' ? buildSourceObjectKey(tenantId, input) : null;
+    const objectKey =
+      input.kind === 'file'
+        ? buildSourceObjectKey(tenantId, input)
+        : buildUrlSnapshotObjectKey(tenantId, input.workspaceId, sourceId, input.contentHash);
     let objectUri: string;
     if (input.kind === 'url') {
       objectUri = input.finalUrl;
@@ -150,29 +161,27 @@ export class SourceService {
         FROM inserted_source CROSS JOIN inserted_job
       `;
     } catch (error) {
-      if (isDuplicateContentConstraint(error)) throw new SourceDuplicateError();
+      if (isDuplicateSourceConstraint(error)) throw new SourceDuplicateError();
       throw error;
     }
     const created = rows[0];
     if (!created) throw new Error('Source and ingest job creation did not return a row');
 
-    if (input.kind === 'file') {
-      try {
-        await this.storage.putObject({
-          body: input.body,
-          contentHash: input.contentHash,
-          contentType: input.mimeType,
-          key: objectKey as string,
-          metadata: {
-            content_hash: input.contentHash,
-            source_id: sourceId,
-            tenant_id: tenantId,
-            workspace_id: input.workspaceId,
-          },
-        });
-      } catch {
-        throw new SourceStorageError();
-      }
+    try {
+      await this.storage.putObject({
+        body: input.body,
+        contentHash: input.contentHash,
+        contentType: input.mimeType,
+        key: objectKey,
+        metadata: {
+          content_hash: input.contentHash,
+          source_id: sourceId,
+          tenant_id: tenantId,
+          workspace_id: input.workspaceId,
+        },
+      });
+    } catch {
+      throw new SourceStorageError();
     }
 
     await this.outboxWriter.enqueue(
@@ -182,7 +191,7 @@ export class SourceService {
         data: {
           content_hash: input.contentHash,
           ingest_job_id: ingestJobId,
-          ...(objectKey ? { object_key: objectKey } : {}),
+          object_key: objectKey,
           ...(input.kind === 'url'
             ? { redirect_chain: [...input.redirectChain], source_url: input.finalUrl }
             : {}),
@@ -347,7 +356,10 @@ function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function isDuplicateContentConstraint(error: unknown): boolean {
+function isDuplicateSourceConstraint(error: unknown): boolean {
   const candidate = error as { readonly code?: unknown; readonly constraint_name?: unknown };
-  return candidate.code === '23505' && candidate.constraint_name === 'uq_source_hash_active';
+  return (
+    candidate.code === '23505' &&
+    ['uq_source_hash_active', 'uq_source_url_active'].includes(String(candidate.constraint_name))
+  );
 }

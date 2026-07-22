@@ -11,7 +11,7 @@ export default function MetricsImportPage() {
         <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">数据分析</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">指标导入</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          映射并预览 CSV，按内容和指标维度幂等导入，保留可审计批次。
+          选择 CSV 列并预览数据，确认无误后导入，同时保留可撤销的操作记录。
         </p>
       </header>
       <MetricsImportManager />

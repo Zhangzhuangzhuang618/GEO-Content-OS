@@ -249,6 +249,7 @@ export const contentVariants = pgTable(
     tenantId: uuid('tenant_id').notNull(),
     packageId: uuid('package_id').notNull(),
     platformCode: varchar('platform_code', { length: 24 }).$type<PlatformCode>().notNull(),
+    platformAccountId: uuid('platform_account_id'),
     currentContentVersionId: uuid('current_content_version_id'),
     status: varchar({ length: 24 }).$type<ContentVariantStatus>().notNull().default('draft'),
     isRequired: boolean('is_required').notNull().default(true),
@@ -277,6 +278,9 @@ export const contentVariants = pgTable(
       table.platformCode,
       table.id,
     ),
+    index('content_variants_account_idx')
+      .on(table.tenantId, table.platformAccountId, table.packageId)
+      .where(sql`${table.platformAccountId} IS NOT NULL`),
     check(
       'content_variants_platform_check',
       sql`${table.platformCode} IN ('official_site','baijiahao','toutiao','zhihu','xiaohongshu','wechat_mp','douyin')`,

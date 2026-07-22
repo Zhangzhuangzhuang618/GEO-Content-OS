@@ -1,6 +1,7 @@
 import { MockModelAdapter, type JsonObject } from '@geo-content-os/adapter-model';
 import { DeepSeekModelAdapter } from '@geo-content-os/adapter-model-deepseek';
 import {
+  CONTENT_WRITER_OUTPUT_SCHEMA,
   GET_PLATFORM_RULES_TOOL,
   GET_STRATEGY_VERSION_TOOL,
 } from '@geo-content-os/contracts/skills';
@@ -41,13 +42,30 @@ describe('ContentWriterSkill', () => {
     const recordUsage = vi.fn();
     const adapter = new MockModelAdapter({
       modelKey: 'flash',
-      responses: [{ text: JSON.stringify(fixture.output) }],
+      responses: [{ text: JSON.stringify(fixture.output.data) }],
     });
     const generate = vi.spyOn(adapter, 'generate');
 
     const result = await skill(adapter).run({ context, input: fixture.input, recordUsage });
 
-    expect(result.output).toEqual(fixture.output);
+    expect(result.output).toMatchObject({
+      citations: fixture.output.citations,
+      data: fixture.output.data,
+      skill_name: 'content-writer',
+      skill_version: context.skillVersion,
+      status: 'success',
+      trace: {
+        input_hash: context.inputHash,
+        prompt_version_id: context.promptVersionId,
+        request_id: context.requestId,
+        run_id: context.runId,
+      },
+      usage: { model_key: context.modelKey, provider: 'mock' },
+    });
+    expect(new SchemaGuard().check(CONTENT_WRITER_OUTPUT_SCHEMA, result.output)).toMatchObject({
+      paths: [],
+      valid: true,
+    });
     expect(result).toMatchObject({ schemaRepairAttempts: 0, toolCallCount: 0 });
     expect(recordUsage).toHaveBeenCalledOnce();
     expect(generate.mock.calls[0]?.[0].tools?.map((tool) => tool.name)).toEqual([
@@ -55,6 +73,7 @@ describe('ContentWriterSkill', () => {
       'get_platform_rules',
     ]);
     expect(JSON.stringify(generate.mock.calls[0]?.[0].messages)).toContain('小红书 xiaohongshu');
+    expect(JSON.stringify(generate.mock.calls[0]?.[0].messages)).not.toContain(context.runId);
   });
 
   it('executes an authorized tool call through the server-owned registry', async () => {
@@ -71,7 +90,7 @@ describe('ContentWriterSkill', () => {
             },
           ],
         },
-        { text: JSON.stringify(fixture.output) },
+        { text: JSON.stringify(fixture.output.data) },
       ],
     });
 
@@ -103,7 +122,7 @@ describe('ContentWriterSkill', () => {
     };
     const adapter = new MockModelAdapter({
       modelKey: 'flash',
-      responses: [{ text: JSON.stringify(changed) }],
+      responses: [{ text: JSON.stringify(changed.data) }],
     });
 
     await expect(
@@ -133,12 +152,57 @@ describe('ContentWriterSkill', () => {
     };
     const adapter = new MockModelAdapter({
       modelKey: 'flash',
-      responses: [{ text: JSON.stringify(forged) }],
+      responses: [{ text: JSON.stringify(forged.data) }],
     });
 
     await expect(
       skill(adapter).run({ context, input: fixture.input, recordUsage: () => undefined }),
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('repairs an empty citation mapping when the brief has no supplied evidence', async () => {
+    const noEvidenceInput = { ...fixture.input, citations: [] };
+    const noEvidenceData = {
+      ...fixture.output.data,
+      master_content: { ...fixture.output.data.master_content, citation_map: [] },
+      variants: fixture.output.data.variants.map((variant) => ({
+        ...variant,
+        citation_map: [],
+      })),
+    };
+    const invalidFirstAttempt = {
+      ...noEvidenceData,
+      master_content: {
+        ...noEvidenceData.master_content,
+        citation_map: [
+          {
+            citation_ids: [],
+            claim_key: 'uncited-general-advice',
+            claim_text: '选择服务商前应核对合同条款。',
+          },
+        ],
+      },
+    };
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [
+        { text: JSON.stringify(invalidFirstAttempt) },
+        { text: JSON.stringify(noEvidenceData) },
+      ],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input: noEvidenceInput, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({
+      output: {
+        citations: [],
+        data: {
+          master_content: { citation_map: [] },
+          variants: [expect.objectContaining({ citation_map: [] })],
+        },
+      },
+      schemaRepairAttempts: 1,
+    });
   });
 
   it('runs through the real DeepSeek Adapter using JSON mode and authorized tools', async () => {
@@ -152,7 +216,7 @@ describe('ContentWriterSkill', () => {
             {
               finish_reason: 'stop',
               index: 0,
-              message: { content: JSON.stringify(fixture.output), role: 'assistant' },
+              message: { content: JSON.stringify(fixture.output.data), role: 'assistant' },
             },
           ],
           id: 'content-writer-provider-request',

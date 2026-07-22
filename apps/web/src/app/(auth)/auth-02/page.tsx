@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { TenantSelector } from '../../../features/auth-02/tenant-selector';
 
 export const metadata: Metadata = {
-  title: '选择租户',
+  title: '选择企业',
 };
 
 export default function TenantSelectionPage() {

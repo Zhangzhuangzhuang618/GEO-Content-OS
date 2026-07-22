@@ -22,4 +22,10 @@ describe('Rerank configuration', () => {
     expect(() => readRerankConfiguration({ RERANK_TIMEOUT_MS: '99' })).toThrow();
     expect(() => readRerankConfiguration({ RERANK_MODEL_KEY: 'bad model' })).toThrow();
   });
+
+  it('allows local reranking in production', () => {
+    expect(
+      readRerankConfiguration({ NODE_ENV: 'production', RERANK_DRIVER: 'local' }),
+    ).toMatchObject({ driver: 'local', modelKey: 'rerank-local-ngram-v1' });
+  });
 });

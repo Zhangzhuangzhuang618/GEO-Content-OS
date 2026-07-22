@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { skillLabel } from '../human-readable';
 import {
   createPrompt,
   createRule,
@@ -114,11 +115,11 @@ export function PlatformConfigManager() {
   }
 
   if (state === 'loading')
-    return <StatePanel busy text="正在读取 Prompt 与平台规则版本。" title="正在加载平台配置" />;
+    return <StatePanel busy text="正在读取 AI 生成指令与平台规则版本。" title="正在加载平台配置" />;
   if (state === 'permission')
     return (
       <StatePanel
-        text="该页面仅对 platform_operator 开放，不读取任何租户内容。"
+        text="该页面仅对平台运营管理员开放，不读取任何企业内容。"
         title="无权管理平台配置"
       />
     );
@@ -131,7 +132,7 @@ export function PlatformConfigManager() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex gap-2" role="tablist" aria-label="配置类型">
             <TabButton active={tab === 'prompts'} onClick={() => navigate('prompts')}>
-              Prompt 版本
+              AI 生成指令
             </TabButton>
             <TabButton active={tab === 'rules'} onClick={() => navigate('rules')}>
               平台规则
@@ -153,21 +154,21 @@ export function PlatformConfigManager() {
             value={filters.status}
           >
             <option value="">全部状态</option>
-            <option value="draft">Draft</option>
+            <option value="draft">草稿</option>
             <option value="published">已发布</option>
             <option value="retired">已退役</option>
           </select>
           {tab === 'prompts' ? (
             <select
-              aria-label="Skill 筛选"
+              aria-label="处理步骤筛选"
               className={controlClass}
               onChange={(event) => navigate(tab, { ...filters, skill: event.currentTarget.value })}
               value={filters.skill}
             >
-              <option value="">全部 Skills</option>
+              <option value="">全部处理步骤</option>
               {SKILLS.map((skill) => (
                 <option key={skill} value={skill}>
-                  {skill}
+                  {skillLabel(skill)}
                 </option>
               ))}
             </select>
@@ -197,7 +198,7 @@ export function PlatformConfigManager() {
             onCreated={(item) => {
               setPrompts((items) => [item, ...items]);
               setShowCreate(false);
-              setMessage('Prompt 草稿已创建。');
+              setMessage('AI 生成指令草稿已创建。');
             }}
           />
         ) : (
@@ -212,19 +213,19 @@ export function PlatformConfigManager() {
       ) : null}
 
       {tab === 'prompts' ? (
-        <VersionList empty="暂无 Prompt 版本。">
+        <VersionList empty="暂无 AI 生成指令版本。">
           {prompts.map((item) => (
             <VersionCard
               busy={busyId === item.id}
               compatibleSchema={item.schema_version}
               createdBy={item.created_by_name}
               key={item.id}
-              label={item.skill_name}
+              label={skillLabel(item.skill_name)}
               onPublish={() =>
                 void mutatePrompt(
                   item.id,
                   (csrf) => transitionPrompt(item, 'publish', csrf),
-                  'Prompt 已发布；内容保持不可覆盖。',
+                  'AI 生成指令已发布；已发布内容不会被覆盖。',
                 )
               }
               onRetire={() => {
@@ -233,14 +234,14 @@ export function PlatformConfigManager() {
                   void mutatePrompt(
                     item.id,
                     (csrf) => transitionPrompt(item, 'retire', csrf, reason),
-                    'Prompt 已退役。需要恢复旧逻辑时，请基于旧内容创建新版本。',
+                    'AI 生成指令已停用。需要恢复时，请基于旧内容创建新版本。',
                   );
               }}
               onTest={() =>
                 setMessage(
                   item.system_prompt.trim() && item.task_template.trim()
                     ? '本地契约测试通过；未调用模型或真实平台。'
-                    : '本地契约测试失败：Prompt 内容为空。',
+                    : '本地检查失败：AI 生成指令内容为空。',
                 )
               }
               publishedBy={item.published_by_name}
@@ -250,7 +251,7 @@ export function PlatformConfigManager() {
               version={item.version}
             >
               <details className="mt-4 text-sm text-ink-700">
-                <summary className="cursor-pointer font-medium">查看不可变 Prompt 内容</summary>
+                <summary className="cursor-pointer font-medium">查看 AI 生成指令内容</summary>
                 <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-control bg-surface-subtle p-3">
                   {item.system_prompt}
                   {'\n\n--- TASK TEMPLATE ---\n'}
@@ -331,7 +332,7 @@ function PromptCreateForm({ onCreated }: { onCreated(item: PromptVersion): void 
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setError('安全令牌尚未就绪。');
     if (!semanticVersion || !schemaVersion || !changeSummary || !systemPrompt || !taskTemplate)
-      return setError('请完整填写版本、兼容 Schema、变更说明和 Prompt 内容。');
+      return setError('请完整填写版本、兼容数据格式、变更说明和 AI 指令内容。');
     setBusy(true);
     setError(null);
     try {
@@ -356,9 +357,9 @@ function PromptCreateForm({ onCreated }: { onCreated(item: PromptVersion): void 
   }
   return (
     <form className={formClass} onSubmit={submit}>
-      <h2 className="text-lg font-semibold text-ink-950">创建 Prompt 草稿</h2>
+      <h2 className="text-lg font-semibold text-ink-950">创建 AI 生成指令草稿</h2>
       <div className="mt-4 grid gap-4 sm:grid-cols-3">
-        <Field label="Skill" name="prompt-skill">
+        <Field label="处理步骤" name="prompt-skill">
           <select
             className={controlClass}
             id="prompt-skill"
@@ -366,7 +367,9 @@ function PromptCreateForm({ onCreated }: { onCreated(item: PromptVersion): void 
             value={skillName}
           >
             {SKILLS.map((skill) => (
-              <option key={skill}>{skill}</option>
+              <option key={skill} value={skill}>
+                {skillLabel(skill)}
+              </option>
             ))}
           </select>
         </Field>
@@ -379,7 +382,7 @@ function PromptCreateForm({ onCreated }: { onCreated(item: PromptVersion): void 
             value={semanticVersion}
           />
         </Field>
-        <Field label="兼容 Schema" name="prompt-schema">
+        <Field label="兼容数据格式" name="prompt-schema">
           <input
             className={controlClass}
             id="prompt-schema"
@@ -398,7 +401,7 @@ function PromptCreateForm({ onCreated }: { onCreated(item: PromptVersion): void 
         />
       </Field>
       <div className="grid gap-4 md:grid-cols-2">
-        <Field label="System Prompt" name="system-prompt">
+        <Field label="系统指令" name="system-prompt">
           <textarea
             className={textAreaClass}
             id="system-prompt"
@@ -406,7 +409,7 @@ function PromptCreateForm({ onCreated }: { onCreated(item: PromptVersion): void 
             value={systemPrompt}
           />
         </Field>
-        <Field label="Task Template" name="task-template">
+        <Field label="任务模板" name="task-template">
           <textarea
             className={textAreaClass}
             id="task-template"
@@ -543,7 +546,7 @@ function VersionCard({
             {label} · v{semanticVersion}
           </h3>
           <p className="mt-1 text-sm text-ink-500">
-            兼容 Schema：{compatibleSchema} · 资源版本 {version}
+            数据格式：{compatibleSchema} · 配置版本 {version}
           </p>
         </div>
         <span className="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">

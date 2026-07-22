@@ -94,22 +94,20 @@ export function BriefList() {
   }
 
   if (state === 'permission')
-    return <StatePanel title="无权查看 Brief" text="当前租户或工作区未授权访问。" />;
+    return <StatePanel title="无权查看内容需求" text="当前企业或工作区未授权访问。" />;
   if (state === 'error')
-    return <StatePanel title="无法加载 Brief" text="请检查筛选条件或网络后重试。" />;
+    return <StatePanel title="无法加载内容需求" text="请检查筛选条件或网络后重试。" />;
 
   return (
     <section className="mt-8">
       <form
-        aria-label="Brief 筛选"
+        aria-label="内容需求筛选"
         className="rounded-2xl border border-line bg-white p-4 shadow-panel"
         key={filterFormKey(filters)}
         onSubmit={applyFilters}
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <TextField defaultValue={filters.search} label="搜索标题" name="search" />
-          <TextField defaultValue={filters.projectId} label="项目 UUID" name="project_id" />
-          <TextField defaultValue={filters.createdBy} label="负责人 UUID" name="created_by" />
           <SelectField
             label="平台"
             name="platform_code"
@@ -141,28 +139,26 @@ export function BriefList() {
       </form>
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-ink-500">每页最多 20 条；cursor 与筛选条件均写入 URL。</p>
+        <p className="text-sm text-ink-500">按标题、平台或创作目标查找内容需求。</p>
         {canManage ? (
           <Link className={primaryButton} href="/cont-02">
-            创建 Brief
+            创建内容需求
           </Link>
         ) : null}
       </div>
 
       {state === 'loading' ? (
-        <StatePanel title="正在加载 Brief" text="正在读取当前分页。" />
+        <StatePanel title="正在加载内容需求" text="正在读取内容列表。" />
       ) : items.length === 0 ? (
-        <StatePanel title="暂无 Brief" text="当前筛选和分页下没有 Brief。" />
+        <StatePanel title="暂无内容需求" text="当前筛选条件下没有内容需求。" />
       ) : (
         <div className="mt-5 overflow-x-auto rounded-2xl border border-line bg-white shadow-panel">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-surface-subtle text-ink-500">
               <tr>
                 <th className="p-4">标题</th>
-                <th className="p-4">项目</th>
                 <th className="p-4">平台</th>
                 <th className="p-4">目标</th>
-                <th className="p-4">负责人</th>
                 <th className="p-4">更新时间</th>
                 <th className="p-4">动作</th>
               </tr>
@@ -176,7 +172,7 @@ export function BriefList() {
         </div>
       )}
 
-      <nav aria-label="Brief 分页" className="mt-5 flex flex-wrap gap-3">
+      <nav aria-label="内容需求分页" className="mt-5 flex flex-wrap gap-3">
         {filters.cursor ? (
           <button className={secondaryButton} onClick={() => changePage()} type="button">
             返回第一页
@@ -200,10 +196,8 @@ function BriefRow({ brief, canManage }: { readonly brief: Brief; readonly canMan
           {brief.title}
         </Link>
       </td>
-      <td className="p-4 font-mono text-xs">{brief.project_id}</td>
       <td className="p-4">{brief.platform_codes.map(platformLabel).join('、')}</td>
       <td className="p-4">{objectiveLabel(brief.objective)}</td>
-      <td className="p-4 font-mono text-xs">{brief.created_by}</td>
       <td className="p-4">{new Date(brief.updated_at).toLocaleString('zh-CN')}</td>
       <td className="p-4">
         {canManage ? (

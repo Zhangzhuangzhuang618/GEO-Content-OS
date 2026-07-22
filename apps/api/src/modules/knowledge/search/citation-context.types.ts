@@ -16,6 +16,7 @@ export interface CitationSearchInput {
   readonly queryEmbedding: readonly number[];
   readonly requestId: string;
   readonly scope: HybridSearchScope;
+  readonly sourceDocumentIds?: readonly string[];
   readonly signal?: AbortSignal;
   readonly trustLevels?: readonly SearchableTrustLevel[];
 }

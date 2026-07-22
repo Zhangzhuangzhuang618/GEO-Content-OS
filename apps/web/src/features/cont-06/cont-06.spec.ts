@@ -20,14 +20,16 @@ test('shows status progress, model, settled cost, citations and lifecycle log', 
   await mockRunPage(page, { run: run('running'), variantStatus: 'generating' });
   await page.goto(`/cont-06?id=${RUN_ID}`);
 
-  await expect(page.getByRole('heading', { name: 'content-writer' })).toBeVisible();
-  await expect(page.getByText('content-writer · 运行中')).toBeVisible();
-  await expect(page.getByText('deepseek-v4-flash')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '撰写内容' })).toBeVisible();
+  await expect(page.getByText('DeepSeek · 快速生成')).toBeVisible();
+  await expect(page.getByText('运行中', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('content-writer')).toBeHidden();
+  await expect(page.getByText('deepseek-v4-flash')).toBeHidden();
   await expect(page.getByLabel('状态进度 50%')).toBeVisible();
   await expect(page.getByText('USD 1.25')).toBeVisible();
   await expect(page.getByText('产品事实声明')).toBeVisible();
-  await expect(page.getByText('由运行时间戳生成，不冒充模型提供方日志。')).toBeVisible();
-  await expect(page.getByText('运行未记录错误。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '处理时间' })).toBeVisible();
+  await expect(page.getByText('本次生成没有记录到问题。')).toBeVisible();
 });
 
 test('cancels with the run version and displays restored stable variant status', async ({
@@ -48,10 +50,10 @@ test('cancels with the run version and displays restored stable variant status',
 
   await page.goto(`/cont-06?id=${RUN_ID}`);
   await page.getByLabel('取消原因').fill('人工终止测试');
-  await page.getByRole('button', { name: '取消运行' }).click();
+  await page.getByRole('button', { name: '取消生成' }).click();
 
-  await expect(page.getByText('运行已取消。')).toBeVisible();
-  await expect(page.getByText('取消后变体已恢复：知乎 已生成')).toBeVisible();
+  await expect(page.getByText('内容生成已取消。')).toBeVisible();
+  await expect(page.getByText('取消后平台内容已恢复：知乎 已生成')).toBeVisible();
   expect(cancellation?.headers['if-match']).toBe('"2"');
   expect(cancellation?.body).toEqual({ reason: '人工终止测试' });
 });
@@ -67,10 +69,10 @@ test('retries one failed variant with its current version and frozen block locks
   });
 
   await page.goto(`/cont-06?id=${RUN_ID}`);
-  await page.getByLabel('重试模型策略').selectOption('quality');
-  await page.getByRole('button', { name: '重试知乎失败变体' }).click();
+  await page.getByLabel('重新生成偏好').selectOption('quality');
+  await page.getByRole('button', { name: '重新生成知乎内容' }).click();
 
-  await expect(page.getByText('失败变体的重试运行已创建。')).toBeVisible();
+  await expect(page.getByText('失败平台的内容已重新开始生成。')).toBeVisible();
   expect(regenerate?.headers['if-match']).toBe('"4"');
   expect(regenerate?.body).toEqual({ locked_block_keys: ['intro'], model_policy: 'quality' });
 });
@@ -82,9 +84,10 @@ test('disables cancellation for a terminal run and renders structured errors', a
   });
   await page.goto(`/cont-06?id=${RUN_ID}`);
 
-  await expect(page.getByRole('button', { name: '取消运行' })).toBeDisabled();
-  await expect(page.getByText('MODEL_TIMEOUT')).toBeVisible();
-  await expect(page.getByText('当前运行已结束，且没有可重试的生成失败变体。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '取消生成' })).toBeDisabled();
+  await expect(page.getByText('生成服务响应超时，请稍后重新生成。')).toBeVisible();
+  await expect(page.getByText('MODEL_TIMEOUT')).toBeHidden();
+  await expect(page.getByText('本次生成已结束，没有需要重新处理的平台。')).toBeVisible();
 });
 
 test('keeps permission and mobile keyboard states safe', async ({ page }) => {
@@ -92,7 +95,7 @@ test('keeps permission and mobile keyboard states safe', async ({ page }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(`/cont-06?id=${RUN_ID}`);
 
-  await expect(page.getByRole('heading', { name: '无权查看生成运行' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无权查看生成详情' })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '跳到主要内容' })).toBeFocused();
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');

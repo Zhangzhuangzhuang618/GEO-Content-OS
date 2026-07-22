@@ -54,6 +54,23 @@ export const SchedulableVariantResponseSchema = z
   })
   .strict();
 
+export const ApprovedVariantDetailResponseSchema = z
+  .object({
+    data: z
+      .object({
+        current_content: z
+          .object({
+            content_json: z.object({ title: z.string().min(1) }).passthrough(),
+          })
+          .passthrough()
+          .nullable(),
+        variant: ContentVariantSchema,
+      })
+      .passthrough(),
+    meta: ResponseMetaSchema,
+  })
+  .strict();
+
 export interface PublishingCalendarFilters {
   readonly accountId?: string;
   readonly from?: string;
@@ -65,3 +82,10 @@ export interface PublishingCalendarFilters {
 
 export type PublishJob = z.infer<typeof PublishJobSchema>;
 export type PublishJobStatus = z.infer<typeof PublishJobStatusSchema>;
+
+export interface ApprovedContent {
+  readonly packageId: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly variant: z.infer<typeof ContentVariantSchema>;
+}

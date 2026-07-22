@@ -40,17 +40,18 @@ test.beforeEach(async ({ context, page }) => {
   });
 });
 
-test('traces original source through chunk identity, hash and source position', async ({
+test('shows the original text and keeps traceability identifiers in technical details', async ({
   page,
 }) => {
   await page.goto(pageUrl);
-  await expect(page.getByText(`资料 ID：${sourceId}`)).toBeVisible();
-  const chunk = page.getByRole('listitem').filter({ hasText: 'Chunk #0' });
+  await expect(page.getByRole('heading', { name: '产品白皮书' })).toBeVisible();
+  await expect(page.getByText(`资料编号：${sourceId}`)).toBeHidden();
+  const chunk = page.getByRole('listitem').filter({ hasText: '第 1 段' });
   await expect(chunk.getByText('产品 X 将于 2026 年发布。')).toBeVisible();
-  await expect(chunk.getByText(sourceId)).toBeVisible();
   await expect(chunk.getByText('第 2 页，字符 120-137')).toBeVisible();
-  await expect(chunk.getByText('回溯校验通过：chunk 关联当前资料。')).toBeVisible();
-  await expect(chunk.getByText('b'.repeat(64))).toBeVisible();
+  await chunk.getByText('片段技术信息').click();
+  await expect(chunk.getByText(sourceId)).toBeVisible();
+  await expect(chunk.getByText(`文本校验值：${'b'.repeat(64)}`)).toBeVisible();
 });
 
 test('retries parsing with exact source hash and expires with current revision', async ({
@@ -73,7 +74,8 @@ test('retries parsing with exact source hash and expires with current revision',
   });
   await page.goto(pageUrl);
   await page.getByRole('button', { name: '重试解析' }).click();
-  await expect(page.getByText(`已创建重试任务：${newJobId}`)).toBeVisible();
+  await expect(page.getByText('已重新开始处理资料，稍后刷新页面可查看进度。')).toBeVisible();
+  await expect(page.getByText(newJobId)).toHaveCount(0);
   expect(retryBody).toMatchObject({ expected_content_hash: 'a'.repeat(64) });
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '标记失效' }).click();
@@ -105,9 +107,10 @@ test('shows metadata, parse logs, facts and citation count on mobile without vie
   });
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(pageUrl);
-  await expect(page.getByText('PDF / application/pdf')).toBeVisible();
+  await expect(page.getByText('PDF 文档')).toBeVisible();
   await expect(page.getByText('引用次数').locator('..').getByText('3')).toBeVisible();
   await expect(page.getByText('完成 · 100%')).toBeVisible();
+  await expect(page.getByText('处理完成 · 第 2 次处理')).toBeVisible();
   await expect(page.getByText('产品 X · 发布时间')).toBeVisible();
   await expect(page.getByRole('button', { name: '重试解析' })).toHaveCount(0);
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');

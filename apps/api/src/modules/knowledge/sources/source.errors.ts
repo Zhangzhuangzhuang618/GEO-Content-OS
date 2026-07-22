@@ -1,6 +1,6 @@
 export class SourceDuplicateError extends Error {
   public constructor() {
-    super('An active source with the same content already exists in this workspace');
+    super('An active source with the same content or URL already exists in this workspace');
     this.name = 'SourceDuplicateError';
   }
 }

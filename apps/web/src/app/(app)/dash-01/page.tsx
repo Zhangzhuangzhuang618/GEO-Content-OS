@@ -14,9 +14,9 @@ export default function DashboardPage() {
         <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">
           GEO Content OS
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">工作台</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">开始创作</h1>
         <p className="mt-2 text-sm text-ink-500">
-          汇总当前授权范围内的内容产能、待办、失败任务和成本。
+          从一个主题开始生成多平台内容，也可以继续处理最近任务。
         </p>
       </header>
       <Dashboard />

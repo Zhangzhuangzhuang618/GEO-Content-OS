@@ -2,7 +2,7 @@ import {
   ContentPackagePageSchema,
   CostBreakdownResponseSchema,
   ProjectPageSchema,
-  type DashboardData,
+  type DashboardContentPackage,
   type DashboardFilters,
   type DashboardProject,
 } from './dashboard.schema';
@@ -20,35 +20,34 @@ export async function listProjects(
   return parsed.data.data;
 }
 
-export async function loadDashboardData(
+export async function listContentPackages(
   filters: DashboardFilters,
-  canReadCost: boolean,
   signal?: AbortSignal,
-): Promise<DashboardData> {
+): Promise<DashboardContentPackage[]> {
   const contentQuery = new URLSearchParams({ limit: '100', workspace_id: filters.workspaceId });
   if (filters.projectId) contentQuery.set('project_id', filters.projectId);
+  const response = await request(`/api/v1/content-packages?${contentQuery}`, signal);
+  const parsed = ContentPackagePageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new DashboardRequestError(502);
+  return parsed.data.data;
+}
+
+export async function loadCostCents(
+  filters: DashboardFilters,
+  signal?: AbortSignal,
+): Promise<number> {
   const costQuery = new URLSearchParams({
     from: filters.from,
     to: filters.to,
     workspace_id: filters.workspaceId,
   });
   if (filters.projectId) costQuery.set('project_id', filters.projectId);
-
-  const [packagesResponse, costResponse] = await Promise.all([
-    request(`/api/v1/content-packages?${contentQuery}`, signal),
-    canReadCost ? request(`/api/v1/analytics/costs?${costQuery}`, signal) : Promise.resolve(null),
-  ]);
-  const packages = ContentPackagePageSchema.safeParse(await packagesResponse.json());
-  if (!packages.success) throw new DashboardRequestError(502);
-  let costCents: number | null = null;
-  if (costResponse) {
-    const costs = CostBreakdownResponseSchema.safeParse(await costResponse.json());
-    if (!costs.success) throw new DashboardRequestError(502);
-    costCents = costs.data.data.totals
-      .filter((total) => total.currency === 'CNY')
-      .reduce((sum, total) => sum + total.cost_cents, 0);
-  }
-  return { costCents, packages: packages.data.data };
+  const response = await request(`/api/v1/analytics/costs?${costQuery}`, signal);
+  const parsed = CostBreakdownResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new DashboardRequestError(502);
+  return parsed.data.data.totals
+    .filter((total) => total.currency === 'CNY')
+    .reduce((sum, total) => sum + total.cost_cents, 0);
 }
 
 export class DashboardRequestError extends Error {

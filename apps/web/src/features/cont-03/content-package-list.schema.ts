@@ -138,11 +138,13 @@ export interface PackageFilters {
   readonly cursor?: string;
   readonly platformCode?: PlatformCode;
   readonly projectId?: string;
+  readonly search?: string;
   readonly status?: ContentPackageStatus;
   readonly workspaceId?: string;
 }
 
 export interface PackageListItem {
+  readonly briefTitle: string;
   readonly costs: readonly { readonly costCents: number; readonly currency: string }[] | null;
   readonly package: ContentPackage;
   readonly variants: readonly ContentVariant[];

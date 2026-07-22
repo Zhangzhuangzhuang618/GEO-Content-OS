@@ -46,6 +46,58 @@ export const SourceCreateSchema = z
     }
   });
 
+export const BatchUrlPreviewRequestSchema = z
+  .object({
+    file: z.unknown(),
+    sheet_name: z.string().trim().min(1).max(120).optional(),
+    start_row: z.coerce.number().int().min(1).max(100_000).optional(),
+    title_column: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{1,2}$/u)
+      .optional(),
+    url_column: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{1,2}$/u)
+      .default('D'),
+  })
+  .strict();
+
+export const BatchUrlPreviewRowSchema = z
+  .object({
+    message: z.string().min(1).max(240).nullable(),
+    row_number: z.number().int().positive(),
+    status: z.enum(['ready', 'invalid', 'duplicate']),
+    title: z.string().min(1).max(240).nullable(),
+    url: z.string().min(1).max(2_048),
+  })
+  .strict();
+
+export const BatchUrlPreviewResponseSchema = z
+  .object({
+    data: z
+      .object({
+        duplicate_rows: z.number().int().nonnegative(),
+        file_name: z.string().min(1).max(255),
+        invalid_rows: z.number().int().nonnegative(),
+        ready_rows: z.number().int().nonnegative(),
+        rows: z.array(BatchUrlPreviewRowSchema).max(500),
+        sheet_name: z.string().min(1).max(120),
+        sheets: z.array(z.string().min(1).max(120)).min(1),
+        start_row: z.number().int().positive().max(100_000),
+        title_column: z
+          .string()
+          .regex(/^[A-Z]{1,2}$/u)
+          .nullable(),
+        total_rows: z.number().int().nonnegative().max(500),
+        url_column: z.string().regex(/^[A-Z]{1,2}$/u),
+      })
+      .strict(),
+    meta: RequestMetaSchema,
+  })
+  .strict();
+
 export const SourceScopeQuerySchema = z
   .object({
     project_id: UuidSchema,
@@ -230,6 +282,7 @@ export const SourceDetailResponseSchema = z
 export const NoContentResponseSchema = z.undefined();
 
 export type SourceListQuery = z.infer<typeof SourceListQuerySchema>;
+export type BatchUrlPreview = z.infer<typeof BatchUrlPreviewResponseSchema>['data'];
 export type SourceScopeQuery = z.infer<typeof SourceScopeQuerySchema>;
 export type FactQuery = z.infer<typeof FactQuerySchema>;
 export type ReindexRequest = z.infer<typeof ReindexRequestSchema>;

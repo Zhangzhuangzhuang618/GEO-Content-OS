@@ -34,6 +34,46 @@ test.beforeEach(async ({ context, page }) => {
       status: 200,
     });
   });
+  await page.route('**/api/v1/workspaces?*', (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [{ id: workspaceId, name: '策略工作区', status: 'active' }],
+        meta: { next_cursor: null, request_id: 'workspaces' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [{ id: projectId, name: 'GEO 项目', status: 'active' }],
+        meta: { request_id: 'projects' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.route('**/api/v1/keyword-sets?*', (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [
+          {
+            created_at: '2026-07-15T00:00:00.000Z',
+            id: keywordSetId,
+            name: '核心关键词',
+            project_id: projectId,
+            status: 'active',
+            tenant_id: tenantId,
+            updated_at: '2026-07-15T00:00:00.000Z',
+          },
+        ],
+        meta: { next_cursor: null, request_id: 'keyword-sets' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
 });
 
 test('marks topics without evidence as risk and never adopts them automatically', async ({
@@ -46,10 +86,8 @@ test('marks topics without evidence as risk and never adopts them automatically'
   });
   await page.goto('/str-03');
   const risky = page.getByRole('listitem').filter({ hasText: '没有证据的问题' });
-  await expect(
-    risky.getByText('缺少证据：该选题为高风险，补充证据前不能采纳为 Brief。'),
-  ).toBeVisible();
-  await expect(risky.getByRole('button', { name: '采纳为 Brief' })).toBeDisabled();
+  await expect(risky.getByText('缺少资料依据：补充资料前不能采纳为内容需求。')).toBeVisible();
+  await expect(risky.getByRole('button', { name: '采纳为内容需求' })).toBeDisabled();
   expect(adoptRequests).toBe(0);
 });
 
@@ -70,9 +108,9 @@ test('adopts an evidenced topic with its current version', async ({ page }) => {
   await page
     .getByRole('listitem')
     .filter({ has: page.getByRole('heading', { exact: true, name: '有证据的问题' }) })
-    .getByRole('button', { name: '采纳为 Brief' })
+    .getByRole('button', { name: '采纳为内容需求' })
     .click();
-  await expect(page.getByText('已采纳为 Brief：有证据的问题')).toBeVisible();
+  await expect(page.getByText('已采纳为内容需求：有证据的问题')).toBeVisible();
   expect(headers?.['if-match']).toBe('"3"');
 });
 
@@ -95,12 +133,12 @@ test('queues topic generation without adopting any candidate', async ({ page }) 
     await route.fulfill({ status: 500 });
   });
   await page.goto('/str-03');
-  await page.getByLabel('工作区 UUID').fill(workspaceId);
-  await page.getByLabel('项目 UUID').fill(projectId);
-  await page.getByLabel('关键词集 UUID（逗号或换行分隔）').fill(keywordSetId);
+  await page.getByLabel('工作区').selectOption(workspaceId);
+  await page.getByLabel('项目').selectOption(projectId);
+  await page.getByLabel('核心关键词').check();
   await page.getByLabel('种子问题（逗号或换行分隔）').fill('GEO 是什么');
   await page.getByRole('button', { name: '生成选题' }).click();
-  await expect(page.getByText(`选题生成任务已创建：${runId}`)).toBeVisible();
+  await expect(page.getByText('选题生成已开始，完成后会出现在下方列表中。')).toBeVisible();
   expect(generationBody).toEqual({
     keyword_set_ids: [keywordSetId],
     max_topics: 10,
@@ -137,7 +175,7 @@ test('writes filters to URL and hides write actions from viewers on mobile', asy
   await page.getByLabel('风险').selectOption('high');
   await expect(page).toHaveURL(/risk_level=high/u);
   await expect(page.getByRole('button', { name: '生成选题' })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '采纳为 Brief' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '采纳为内容需求' })).toHaveCount(0);
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
 

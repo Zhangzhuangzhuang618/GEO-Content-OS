@@ -20,6 +20,16 @@ test.beforeEach(async ({ context, page }) => {
   );
 });
 
+test('provides a clear return path to publishing tasks', async ({ page }) => {
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [], meta: { request_id: 'account-list' } }),
+  );
+
+  await page.goto('/pub-01');
+
+  await expect(page.getByRole('link', { name: '返回发布任务' })).toHaveAttribute('href', '/pub-02');
+});
+
 test('connects an API account without ever echoing its credential', async ({ page }) => {
   let items: Record<string, unknown>[] = [];
   let createBody: Record<string, unknown> | undefined;
@@ -46,6 +56,10 @@ test('connects an API account without ever echoing its credential', async ({ pag
 
   await expect(page.getByText('平台账号已连接；凭证已安全保存且不会回显。')).toBeVisible();
   await expect(page.getByText('官网生产账号')).toBeVisible();
+  await expect(page.getByRole('link', { name: '前往发布后台' })).toHaveAttribute(
+    'target',
+    '_blank',
+  );
   await expect(page.getByLabel('访问令牌')).toHaveCount(0);
   await expect(page.getByText(SECRET, { exact: false })).toHaveCount(0);
   expect(createBody).toMatchObject({
@@ -59,19 +73,28 @@ test('connects an API account without ever echoing its credential', async ({ pag
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
 
-test('refreshes, tests and disables with CSRF and optimistic versions', async ({ page }) => {
+test('edits credentials, tests, stops, restores and deletes with optimistic versions', async ({
+  page,
+}) => {
   let current = account({ version: 1 });
-  const writes: { body: unknown; headers: Record<string, string>; path: string }[] = [];
+  let removed = false;
+  const writes: {
+    body: unknown;
+    headers: Record<string, string>;
+    method: string;
+    path: string;
+  }[] = [];
   await page.route('**/api/v1/platform-accounts**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     if (request.method() === 'GET') {
-      await json(route, { data: [current], meta: { request_id: 'account-list' } });
+      await json(route, { data: removed ? [] : [current], meta: { request_id: 'account-list' } });
       return;
     }
     writes.push({
       body: request.postData() ? (request.postDataJSON() as unknown) : null,
       headers: request.headers(),
+      method: request.method(),
       path,
     });
     if (path.endsWith('/test')) {
@@ -89,10 +112,22 @@ test('refreshes, tests and disables with CSRF and optimistic versions', async ({
       });
       return;
     }
-    current = account({
-      status: path.endsWith('/disable') ? 'disabled' : 'active',
-      version: current.version + 1,
-    });
+    if (request.method() === 'PATCH') {
+      const body = request.postDataJSON() as { display_name: string; timezone: string };
+      current = {
+        ...account({ version: current.version + 1 }),
+        display_name: body.display_name,
+        timezone: body.timezone,
+      };
+    } else if (request.method() === 'DELETE') {
+      current = account({ status: 'disabled', version: current.version + 1 });
+      removed = true;
+    } else {
+      current = account({
+        status: path.endsWith('/disable') ? 'disabled' : 'active',
+        version: current.version + 1,
+      });
+    }
     const response = { data: current, meta: { request_id: 'account-write' } };
     PlatformAccountResponseSchema.parse(response);
     await json(route, response);
@@ -100,26 +135,70 @@ test('refreshes, tests and disables with CSRF and optimistic versions', async ({
 
   await page.goto('/pub-01');
   const refreshResponse = page.waitForResponse((response) => response.url().endsWith('/refresh'));
-  await page.getByRole('button', { name: '刷新授权' }).click();
+  await page.getByRole('button', { name: '刷新授权状态' }).click();
   expect((await refreshResponse).ok()).toBe(true);
   await expect(page.getByText('授权状态已刷新。')).toBeVisible();
   await page.getByRole('button', { name: '能力测试' }).click();
   await expect(page.getByText('能力测试已完成。')).toBeVisible();
+
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  const editForm = page.getByRole('form', { name: '编辑账号 官网生产账号' });
+  await editForm.getByLabel('账号名称').fill('官网新账号');
+  await editForm.getByLabel('时区').fill('Asia/Hong_Kong');
+  await editForm.getByLabel('新 API 地址').fill('https://publisher-new.example.test');
+  await editForm.getByLabel('新访问令牌').fill('rotated-secret');
+  await editForm.getByRole('button', { name: '保存修改' }).click();
+  await expect(
+    page.getByText('账号信息已保存。新凭证已替换旧凭证，且不会在页面回显。'),
+  ).toBeVisible();
+  await expect(page.getByText('官网新账号')).toBeVisible();
+
   page.once('dialog', (dialog) => dialog.accept('账号停用'));
-  await page.getByRole('button', { name: '禁用' }).click();
-  await expect(page.getByText('平台账号已禁用。')).toBeVisible();
-  await expect(page.getByText('账号已禁用', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '停用' }).click();
+  await expect(page.getByText('平台账号已停用，不会再用于新发布任务。')).toBeVisible();
+  await page.getByRole('button', { name: '恢复使用' }).click();
+  await expect(page.getByText('平台账号已恢复使用。')).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '删除' }).click();
+  await expect(page.getByText('平台账号已删除。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂无平台账号' })).toBeVisible();
 
   expect(writes.map(({ path }) => path)).toEqual([
     `/api/v1/platform-accounts/${ACCOUNT_ID}/refresh`,
     `/api/v1/platform-accounts/${ACCOUNT_ID}/test`,
+    `/api/v1/platform-accounts/${ACCOUNT_ID}`,
     `/api/v1/platform-accounts/${ACCOUNT_ID}/disable`,
+    `/api/v1/platform-accounts/${ACCOUNT_ID}/restore`,
+    `/api/v1/platform-accounts/${ACCOUNT_ID}`,
   ]);
-  expect(writes.map(({ headers }) => headers['if-match'])).toEqual(['"1"', '"2"', '"3"']);
+  expect(writes.map(({ method }) => method)).toEqual([
+    'POST',
+    'POST',
+    'PATCH',
+    'POST',
+    'POST',
+    'DELETE',
+  ]);
+  expect(writes.map(({ headers }) => headers['if-match'])).toEqual([
+    '"1"',
+    '"2"',
+    '"3"',
+    '"4"',
+    '"5"',
+    '"6"',
+  ]);
   expect(
     writes.every(({ headers }) => /^[A-Za-z0-9_-]{43}$/u.test(headers['x-csrf-token'] ?? '')),
   ).toBe(true);
-  expect(writes[2]?.body).toEqual({ reason: '账号停用' });
+  expect(writes[2]?.body).toMatchObject({
+    credential: {
+      base_url: 'https://publisher-new.example.test',
+      bearer_token: 'rotated-secret',
+    },
+    display_name: '官网新账号',
+  });
+  expect(writes[3]?.body).toEqual({ reason: '账号停用' });
   expect(JSON.stringify(writes)).not.toContain('credential_ciphertext');
 });
 
@@ -180,6 +259,7 @@ function account({
     id: ACCOUNT_ID,
     platform_code: 'official_site',
     provider_account_id: 'site-main',
+    publishing_url: 'https://cms.example.test/publish',
     publish_mode: 'api',
     scopes: ['publish'],
     status,

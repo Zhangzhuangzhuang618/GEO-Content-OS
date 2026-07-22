@@ -1,4 +1,4 @@
-export type EmbeddingDriver = 'disabled' | 'mock';
+export type EmbeddingDriver = 'disabled' | 'local' | 'mock';
 
 export interface EmbeddingConfiguration {
   readonly driver: EmbeddingDriver;
@@ -12,8 +12,8 @@ export function readEmbeddingConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
 ): EmbeddingConfiguration {
   const driver = environment['EMBEDDING_DRIVER']?.trim() || 'disabled';
-  if (driver !== 'disabled' && driver !== 'mock') {
-    throw new Error('EMBEDDING_DRIVER must be disabled or mock');
+  if (driver !== 'disabled' && driver !== 'local' && driver !== 'mock') {
+    throw new Error('EMBEDDING_DRIVER must be disabled, local, or mock');
   }
   if (driver === 'mock' && environment['NODE_ENV'] === 'production') {
     throw new Error('EMBEDDING_DRIVER=mock is forbidden in production');
@@ -27,7 +27,11 @@ export function readEmbeddingConfiguration(
       1,
       5_000_000,
     ),
-    modelKey: identifier(environment['EMBEDDING_MODEL_KEY'] || 'embedding-mock-v1', 'model key'),
+    modelKey: identifier(
+      environment['EMBEDDING_MODEL_KEY'] ||
+        (driver === 'local' ? 'embedding-local-ngram-v1' : 'embedding-mock-v1'),
+      'model key',
+    ),
     timeoutMs: integer(environment['EMBEDDING_TIMEOUT_MS'], 30_000, 100, 120_000),
   });
 }

@@ -12,15 +12,20 @@ import {
   listPlatformAccounts,
   PlatformAccountRequestError,
   refreshPlatformAccount,
+  removePlatformAccount,
+  restorePlatformAccount,
   testPlatformAccount,
+  updatePlatformAccount,
 } from './platform-account-api';
 import {
+  PlatformAccountEditSchema,
   PlatformAccountFormSchema,
   PlatformAccountStatusSchema,
   PlatformCodeSchema,
   type PlatformAccount,
   type PlatformAccountFilters,
 } from './platform-account.schema';
+import { resolvePublishingUrl } from './platform-publishing-url';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -30,7 +35,9 @@ export function PlatformAccountManager() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [showConnect, setShowConnect] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<PlatformAccount | null>(null);
   const [publishMode, setPublishMode] = useState<'api' | 'export' | 'manual'>('export');
+  const [editMode, setEditMode] = useState<'api' | 'export' | 'manual'>('export');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -81,6 +88,7 @@ export function PlatformAccountManager() {
       bearer_token: String(data.get('bearer_token') ?? ''),
       display_name: String(data.get('display_name') ?? ''),
       platform_code: data.get('platform_code'),
+      publishing_url: String(data.get('publishing_url') ?? ''),
       publish_mode: data.get('publish_mode'),
       timezone: String(data.get('timezone') ?? ''),
       workspace_id: String(data.get('workspace_id') ?? ''),
@@ -110,7 +118,59 @@ export function PlatformAccountManager() {
     }
   }
 
-  async function runAction(account: PlatformAccount, action: 'refresh' | 'test' | 'disable') {
+  async function saveEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingAccount) return;
+    const data = new FormData(event.currentTarget);
+    const parsed = PlatformAccountEditSchema.safeParse({
+      base_url: String(data.get('base_url') ?? ''),
+      bearer_token: String(data.get('bearer_token') ?? ''),
+      display_name: String(data.get('display_name') ?? ''),
+      publishing_url: String(data.get('publishing_url') ?? ''),
+      publish_mode: data.get('publish_mode'),
+      timezone: String(data.get('timezone') ?? ''),
+    });
+    if (!parsed.success) {
+      setFormError(parsed.error.issues[0]?.message ?? '请检查账号信息。');
+      return;
+    }
+    if (
+      editingAccount.publish_mode !== 'api' &&
+      parsed.data.publish_mode === 'api' &&
+      (!parsed.data.base_url.trim() || !parsed.data.bearer_token.trim())
+    ) {
+      setFormError('切换到 API 发布时必须填写 API 地址和访问令牌。');
+      return;
+    }
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setFormError('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusyId(editingAccount.id);
+    setFormError(null);
+    try {
+      await updatePlatformAccount(editingAccount, parsed.data, csrf);
+      setEditingAccount(null);
+      setMessage('账号信息已保存。新凭证已替换旧凭证，且不会在页面回显。');
+      await load(filters);
+    } catch {
+      setFormError('保存失败，请核对新凭证和平台连接信息后重试。');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function runLifecycleAction(
+    account: PlatformAccount,
+    action: 'refresh' | 'test' | 'disable' | 'restore' | 'remove',
+  ) {
+    if (action === 'remove') {
+      const confirmed = window.confirm(
+        `确认删除“${account.display_name}”？删除后不会再出现在账号列表中。`,
+      );
+      if (!confirmed) return;
+    }
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
       setMessage('安全令牌尚未就绪，请刷新页面后重试。');
@@ -118,7 +178,7 @@ export function PlatformAccountManager() {
     }
     let reason = '';
     if (action === 'disable') {
-      reason = window.prompt('请输入禁用原因。')?.trim() ?? '';
+      reason = window.prompt('请输入停用原因，例如“账号已注销”或“授权已失效”。')?.trim() ?? '';
       if (!reason) return;
     }
     setBusyId(account.id);
@@ -127,17 +187,23 @@ export function PlatformAccountManager() {
       if (action === 'refresh') await refreshPlatformAccount(account, csrf);
       if (action === 'test') await testPlatformAccount(account, csrf);
       if (action === 'disable') await disablePlatformAccount(account, reason, csrf);
+      if (action === 'restore') await restorePlatformAccount(account, csrf);
+      if (action === 'remove') await removePlatformAccount(account, csrf);
       setMessage(ACTION_MESSAGES[action]);
       await load(filters);
-    } catch {
-      setMessage('操作失败；账号版本、凭证或平台能力可能已变化，请刷新后重试。');
+    } catch (error) {
+      setMessage(
+        error instanceof PlatformAccountRequestError && error.status === 409
+          ? '该账号仍有待发布任务，请先取消相关任务，再停用或删除账号。'
+          : '操作失败；账号版本、凭证或平台能力可能已变化，请刷新后重试。',
+      );
     } finally {
       setBusyId(null);
     }
   }
 
   if (state === 'permission') {
-    return <StatePanel title="无权管理平台账号" text="仅发布人、租户管理员和所有者可访问。" />;
+    return <StatePanel title="无权管理平台账号" text="仅发布人、企业管理员和所有者可访问。" />;
   }
   if (state === 'error') {
     return <StatePanel title="无法加载平台账号" text="请检查网络或服务状态后重试。" />;
@@ -197,7 +263,11 @@ export function PlatformAccountManager() {
         </form>
         <button
           className={primaryButton}
-          onClick={() => setShowConnect((value) => !value)}
+          onClick={() => {
+            setEditingAccount(null);
+            setFormError(null);
+            setShowConnect((value) => !value);
+          }}
           type="button"
         >
           {showConnect ? '取消连接' : '连接账号'}
@@ -212,6 +282,21 @@ export function PlatformAccountManager() {
           onSubmit={connect}
           publishMode={publishMode}
           workspaces={workspaces}
+        />
+      ) : null}
+
+      {editingAccount ? (
+        <EditForm
+          account={editingAccount}
+          busy={busyId === editingAccount.id}
+          error={formError}
+          onCancel={() => {
+            setEditingAccount(null);
+            setFormError(null);
+          }}
+          onModeChange={setEditMode}
+          onSubmit={saveEdit}
+          publishMode={editMode}
         />
       ) : null}
 
@@ -242,7 +327,13 @@ export function PlatformAccountManager() {
                   account={account}
                   busy={busyId === account.id}
                   key={account.id}
-                  onAction={runAction}
+                  onAction={runLifecycleAction}
+                  onEdit={(selected) => {
+                    setShowConnect(false);
+                    setFormError(null);
+                    setEditingAccount(selected);
+                    setEditMode(selected.publish_mode);
+                  }}
                 />
               ))}
             </tbody>
@@ -250,6 +341,130 @@ export function PlatformAccountManager() {
         </div>
       )}
     </section>
+  );
+}
+
+function EditForm({
+  account,
+  busy,
+  error,
+  onCancel,
+  onModeChange,
+  onSubmit,
+  publishMode,
+}: {
+  readonly account: PlatformAccount;
+  readonly busy: boolean;
+  readonly error: string | null;
+  readonly onCancel: () => void;
+  readonly onModeChange: (mode: 'api' | 'export' | 'manual') => void;
+  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  readonly publishMode: 'api' | 'export' | 'manual';
+}) {
+  return (
+    <form
+      aria-label={`编辑账号 ${account.display_name}`}
+      className="mt-5 rounded-2xl border border-brand-200 bg-white p-5 shadow-panel sm:p-7"
+      key={account.id}
+      noValidate
+      onSubmit={(event) => void onSubmit(event)}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-ink-950">编辑账号</h2>
+          <p className="mt-2 text-sm text-ink-500">
+            {platformLabel(account.platform_code)} ·
+            平台和工作区不可更改。如密码或令牌已变更，请在下方输入新凭证。
+          </p>
+        </div>
+        <button className={secondaryButton} onClick={onCancel} type="button">
+          取消
+        </button>
+      </div>
+      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="text-sm text-ink-700">
+          账号名称
+          <input
+            className={controlClass}
+            defaultValue={account.display_name}
+            maxLength={120}
+            name="display_name"
+            required
+          />
+        </label>
+        <label className="text-sm text-ink-700">
+          交付模式
+          <select
+            className={controlClass}
+            name="publish_mode"
+            onChange={(event) =>
+              onModeChange(event.currentTarget.value as 'api' | 'export' | 'manual')
+            }
+            value={publishMode}
+          >
+            <option value="api">API 发布</option>
+            <option value="export">确定性导出</option>
+            <option value="manual">人工发布</option>
+          </select>
+        </label>
+        <label className="text-sm text-ink-700">
+          时区
+          <input
+            className={controlClass}
+            defaultValue={account.timezone}
+            name="timezone"
+            required
+          />
+        </label>
+        <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+          发布后台地址（可选）
+          <input
+            className={controlClass}
+            defaultValue={account.publishing_url ?? ''}
+            name="publishing_url"
+            placeholder="官网 CMS 地址，或用于覆盖平台默认发布页面"
+            type="url"
+          />
+        </label>
+        {publishMode === 'api' ? (
+          <>
+            <label className="text-sm text-ink-700">
+              新 API 地址
+              <input
+                autoComplete="url"
+                className={controlClass}
+                name="base_url"
+                placeholder="不修改凭证可留空"
+                type="url"
+              />
+            </label>
+            <label className="text-sm text-ink-700">
+              新访问令牌
+              <input
+                autoComplete="new-password"
+                className={controlClass}
+                name="bearer_token"
+                placeholder="不修改凭证可留空"
+                type="password"
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <input name="base_url" type="hidden" value="" />
+            <input name="bearer_token" type="hidden" value="" />
+          </>
+        )}
+      </div>
+      <div aria-live="polite" className="mt-4 min-h-6 text-sm text-red-700">
+        {error}
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button className={primaryButton} disabled={busy} type="submit">
+          {busy ? '正在保存…' : '保存修改'}
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -323,6 +538,15 @@ function ConnectForm({
           时区
           <input className={controlClass} defaultValue="Asia/Shanghai" name="timezone" required />
         </label>
+        <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+          发布后台地址（可选）
+          <input
+            className={controlClass}
+            name="publishing_url"
+            placeholder="官网请填写 CMS 发布页；其他平台不填则使用默认创作页面"
+            type="url"
+          />
+        </label>
         {publishMode === 'api' ? (
           <>
             <label className="text-sm text-ink-700">
@@ -370,15 +594,18 @@ function AccountRow({
   account,
   busy,
   onAction,
+  onEdit,
 }: {
   readonly account: PlatformAccount;
   readonly busy: boolean;
   readonly onAction: (
     account: PlatformAccount,
-    action: 'refresh' | 'test' | 'disable',
+    action: 'refresh' | 'test' | 'disable' | 'restore' | 'remove',
   ) => Promise<void>;
+  readonly onEdit: (account: PlatformAccount) => void;
 }) {
   const disabled = account.status === 'disabled';
+  const publishingUrl = resolvePublishingUrl(account);
   return (
     <tr className="border-t border-line">
       <td className="p-4">
@@ -396,6 +623,24 @@ function AccountRow({
       <td className="p-4">{account.timezone}</td>
       <td className="p-4">
         <div className="flex flex-wrap gap-2">
+          {publishingUrl && !disabled ? (
+            <a
+              className={primarySmallButton}
+              href={publishingUrl}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              前往发布后台
+            </a>
+          ) : null}
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => onEdit(account)}
+            type="button"
+          >
+            编辑
+          </button>
           {account.publish_mode === 'api' && !disabled ? (
             <button
               className={smallButton}
@@ -403,7 +648,7 @@ function AccountRow({
               onClick={() => void onAction(account, 'refresh')}
               type="button"
             >
-              刷新授权
+              刷新授权状态
             </button>
           ) : null}
           {!disabled ? (
@@ -423,11 +668,27 @@ function AccountRow({
               onClick={() => void onAction(account, 'disable')}
               type="button"
             >
-              禁用
+              停用
             </button>
-          ) : (
-            <span className="text-xs text-ink-500">账号已禁用</span>
-          )}
+          ) : null}
+          {disabled ? (
+            <button
+              className={smallButton}
+              disabled={busy}
+              onClick={() => void onAction(account, 'restore')}
+              type="button"
+            >
+              恢复使用
+            </button>
+          ) : null}
+          <button
+            className={dangerButton}
+            disabled={busy}
+            onClick={() => void onAction(account, 'remove')}
+            type="button"
+          >
+            删除
+          </button>
         </div>
       </td>
     </tr>
@@ -449,8 +710,10 @@ const STATUS_OPTIONS = [
   ['disabled', '已禁用'],
 ] as const;
 const ACTION_MESSAGES = {
-  disable: '平台账号已禁用。',
+  disable: '平台账号已停用，不会再用于新发布任务。',
+  remove: '平台账号已删除。',
   refresh: '授权状态已刷新。',
+  restore: '平台账号已恢复使用。',
   test: '能力测试已完成。',
 } as const;
 
@@ -580,3 +843,5 @@ const smallButton =
   'rounded-control border border-line bg-white px-3 py-2 text-xs font-semibold text-ink-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
 const dangerButton =
   'rounded-control border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
+const primarySmallButton =
+  'rounded-control bg-brand-600 px-3 py-2 text-xs font-semibold text-white focus:outline-2 focus:outline-offset-2';

@@ -34,6 +34,7 @@ import {
   type ParsedSourceUpload,
 } from './source-upload.parser.js';
 import { SOURCE_WEB_FETCH } from './source.tokens.js';
+import { parseBatchUrlPreview } from './source-batch-url-preview.parser.js';
 
 type SourceErrorCode =
   | 'ADAPTER_CAPABILITY_UNAVAILABLE'
@@ -52,6 +53,23 @@ export class SourceController {
     @Inject(SourceService) private readonly sourceService: SourceService,
     @Inject(SOURCE_WEB_FETCH) private readonly webFetch: WebFetchAdapter,
   ) {}
+
+  @Post('batch-url-preview')
+  @RequirePermissions('knowledge.sources.manage')
+  public async previewBatchUrls(
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    try {
+      const preview = await parseBatchUrlPreview(request);
+      await reply.status(HttpStatus.OK).send({
+        data: preview,
+        meta: { request_id: request.id },
+      });
+    } catch (error) {
+      await sendSourceError(reply, request.id, error);
+    }
+  }
 
   @Post()
   @RequirePermissions('knowledge.sources.manage')

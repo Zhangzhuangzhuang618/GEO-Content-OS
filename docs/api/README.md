@@ -1,6 +1,6 @@
 # GEO Content OS API
 
-`apps/api/openapi/openapi.json` 是公开业务 API 的 OpenAPI 3.1 产物，包含 ADR 修订后的 121 个业务端点。`/health/live` 与 `/health/ready` 是部署探针，不属于业务 SDK。
+`apps/api/openapi/openapi.json` 是公开业务 API 的 OpenAPI 3.1 产物，包含 ADR 修订后的 125 个业务端点。`/health/live` 与 `/health/ready` 是部署探针，不属于业务 SDK。
 
 生成：`pnpm generate:openapi`
 

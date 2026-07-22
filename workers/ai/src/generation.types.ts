@@ -31,6 +31,7 @@ export interface GenerationEventData {
   readonly inputHash: string;
   readonly masterRunId: string;
   readonly modelKey: string;
+  readonly modelPolicy: 'balanced' | 'fast' | 'quality';
   readonly packageId: string;
   readonly projectId: string;
   readonly promptVersionId: string;
@@ -50,17 +51,35 @@ export interface ValidatedGenerationEvent {
 
 export interface ContentWriterPort {
   generateMaster(input: {
+    readonly context: ContentWriterRunContext;
     readonly requestId: string;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent>;
   generateVariant(input: {
+    readonly context: ContentWriterRunContext;
     readonly masterContent: GeneratedContent;
     readonly platformCode: PlatformCode;
     readonly requestId: string;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent>;
+}
+
+export interface ContentWriterRunContext {
+  readonly batchKey: string;
+  readonly inputHash: string;
+  readonly modelKey: string;
+  readonly modelPolicy: 'balanced' | 'fast' | 'quality';
+  readonly packageId: string;
+  readonly projectId: string;
+  readonly promptVersionId: string;
+  readonly runId: string;
+  readonly skillVersion: string;
+  readonly skillName: 'content-writer';
+  readonly tenantId: string;
+  readonly variantId: string | null;
+  readonly workspaceId: string;
 }
 
 export interface GenerationClaim {

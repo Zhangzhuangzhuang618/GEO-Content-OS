@@ -2,7 +2,6 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 const TENANT_ID = '10000000-0000-4000-8000-000000000089';
 const WORKSPACE_ID = '20000000-0000-4000-8000-000000000089';
-const FORBIDDEN_WORKSPACE_ID = '21000000-0000-4000-8000-000000000089';
 const PROJECT_ID = '30000000-0000-4000-8000-000000000089';
 const REVIEWER_ID = '40000000-0000-4000-8000-000000000089';
 const SUBMITTER_ID = '41000000-0000-4000-8000-000000000089';
@@ -12,35 +11,29 @@ const PROFILE_ID = '70000000-0000-4000-8000-000000000089';
 const PROMPT_ID = '80000000-0000-4000-8000-000000000089';
 const NEXT_CURSOR = 'MjA';
 const HASH = 'a'.repeat(64);
+const BASE_URL = process.env.REV01_BASE_URL ?? 'http://127.0.0.1:34119';
 
 test.beforeEach(async ({ context, page }) => {
-  await context.addCookies([
-    { name: 'geo_csrf', url: 'http://127.0.0.1:34119', value: 'x'.repeat(43) },
-  ]);
+  await context.addCookies([{ name: 'geo_csrf', url: BASE_URL, value: 'x'.repeat(43) }]);
   await mockRole(page, 'reviewer');
 });
 
-test('renders only API-authorized workspace snapshots and required inbox fields', async ({
-  page,
-}) => {
+test('presents each review task in plain language with one clear next action', async ({ page }) => {
   await page.route('**/api/v1/review-snapshots?*', (route) =>
     json(route, [snapshot(WORKSPACE_ID)], { next_cursor: NEXT_CURSOR, request_id: 'inbox' }),
   );
   await page.goto('/rev-01');
 
-  await expect(page.getByText(shortId(SNAPSHOT_ID))).toBeVisible();
-  await expect(page.getByText(`工作区 ${shortId(WORKSPACE_ID)}`)).toBeVisible();
-  await expect(page.getByText(FORBIDDEN_WORKSPACE_ID)).toHaveCount(0);
-  await expect(page.getByText(SUBMITTER_ID)).toBeVisible();
-  await expect(page.getByText('知乎、微信公众号')).toBeVisible();
-  await expect(page.getByText('待处理 2')).toBeVisible();
-  await expect(page.getByRole('link', { name: '进入快照' })).toHaveAttribute(
-    'href',
-    `/rev-02?id=${SNAPSHOT_ID}`,
-  );
+  await expect(page.getByRole('heading', { name: '知乎、微信公众号内容' })).toBeVisible();
+  await expect(page.getByText('2 个发布平台')).toBeVisible();
+  await expect(page.getByText('还有 2 项待确认')).toBeVisible();
+  await expect(page.getByText('开始审核后 24 小时内')).toBeVisible();
+  await expect(page.getByRole('button', { name: '开始审核' })).toBeVisible();
+  await expect(page.getByText(SNAPSHOT_ID)).toHaveCount(0);
+  await expect(page.getByText(WORKSPACE_ID)).toHaveCount(0);
 });
 
-test('sends workspace filters and cursor so authorization remains server-enforced', async ({
+test('keeps optional filters secondary and sends understandable filter choices', async ({
   page,
 }) => {
   const urls: string[] = [];
@@ -52,27 +45,24 @@ test('sends workspace filters and cursor so authorization remains server-enforce
     });
   });
   await page.goto('/rev-01');
-  await page.getByLabel('工作区 UUID').fill(WORKSPACE_ID);
+  await page.getByText('筛选审核任务', { exact: true }).click();
   await page
     .getByRole('form', { name: '审核队列筛选' })
-    .getByRole('combobox', { name: '风险', exact: true })
+    .getByRole('combobox', { name: '处理优先级', exact: true })
     .selectOption('high');
-  await page.getByLabel('领取状态').selectOption('unclaimed');
-  await page.getByRole('button', { name: '应用筛选' }).click();
-  await expect(page).toHaveURL(/workspace_id=/u);
+  await page.getByLabel('任务归属').selectOption('unclaimed');
+  await page.getByRole('button', { name: '筛选', exact: true }).click();
   await expect(page).toHaveURL(/risk_level=high/u);
   await expect(page).toHaveURL(/claim_state=unclaimed/u);
-  await expect
-    .poll(() => urls.some((url) => url.includes(`workspace_id=${WORKSPACE_ID}`)))
-    .toBe(true);
+  await expect.poll(() => urls.some((url) => url.includes('risk_level=high'))).toBe(true);
   await page.getByRole('button', { name: '下一页' }).click();
   await expect(page).toHaveURL(new RegExp(`cursor=${NEXT_CURSOR}`, 'u'));
 });
 
-test('claims with triage, optimistic version and idempotency headers', async ({ page }) => {
+test('starts review with automatic triage and opens the review content', async ({ page }) => {
   let request: { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
   await page.route('**/api/v1/review-snapshots?*', (route) =>
-    json(route, [snapshot(WORKSPACE_ID)], { next_cursor: null, request_id: 'inbox' }),
+    json(route, [snapshot(WORKSPACE_ID, 'high')], { next_cursor: null, request_id: 'inbox' }),
   );
   await page.route(`**/api/v1/review-snapshots/${SNAPSHOT_ID}/claim`, async (route) => {
     request = { body: route.request().postDataJSON(), headers: route.request().headers() };
@@ -90,11 +80,14 @@ test('claims with triage, optimistic version and idempotency headers', async ({ 
     );
   });
   await page.goto('/rev-01');
-  await page.getByLabel(`风险 ${shortId(SNAPSHOT_ID)}`).selectOption('high');
-  await page.getByLabel(`截止时间 ${shortId(SNAPSHOT_ID)}`).fill('2027-07-20T10:00');
-  await page.getByRole('button', { name: '领取', exact: true }).click();
-  await expect(page.getByText('审核任务已领取。')).toBeVisible();
-  expect(request?.body).toEqual({ due_at: '2027-07-20T02:00:00.000Z', risk_level: 'high' });
+  const beforeClick = Date.now();
+  await page.getByRole('button', { name: '开始审核' }).click();
+  await expect(page).toHaveURL(new RegExp(`/rev-02\\?id=${SNAPSHOT_ID}`, 'u'));
+  const body = request?.body as { due_at: string; risk_level: string } | undefined;
+  expect(body?.risk_level).toBe('high');
+  expect(new Date(body?.due_at ?? 0).getTime()).toBeGreaterThanOrEqual(
+    beforeClick + 23 * 60 * 60 * 1000,
+  );
   expect(request?.headers['if-match']).toBe('"1"');
   expect(request?.headers['idempotency-key']).toMatch(/^review-claim-/u);
   expect(request?.headers['x-csrf-token']).toBe('x'.repeat(43));
@@ -117,7 +110,10 @@ test('blocks non-review roles and preserves mobile keyboard access', async ({ pa
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
 
-function snapshot(workspaceId: string) {
+function snapshot(
+  workspaceId: string,
+  riskLevel: 'low' | 'medium' | 'high' | 'critical' | null = null,
+) {
   return {
     brand_profile_id: PROFILE_ID,
     claimed_at: null,
@@ -134,7 +130,7 @@ function snapshot(workspaceId: string) {
     project_id: PROJECT_ID,
     prompt_version_id: PROMPT_ID,
     quality_rules_hash: HASH,
-    risk_level: null,
+    risk_level: riskLevel,
     snapshot_hash: HASH,
     status: 'in_review',
     tenant_id: TENANT_ID,
@@ -170,7 +166,4 @@ async function json(route: Route, data: unknown, meta: Record<string, unknown>, 
     contentType: 'application/json',
     status,
   });
-}
-function shortId(id: string) {
-  return id.slice(0, 8);
 }

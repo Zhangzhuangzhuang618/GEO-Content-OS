@@ -25,13 +25,9 @@ test('saves a complete document with the required variant version', async ({ pag
     } else await json(route, detail());
   });
   await page.goto(`/cont-05?id=${VARIANT_ID}`);
-  await page.getByLabel('标题').fill('更新后的 GEO 标题');
-  await page.getByLabel('平台字段 JSON').fill('{invalid');
-  await page.getByRole('button', { name: '保存新版本' }).click();
-  await expect(page.getByText('平台字段必须是有效的 JSON 对象。')).toBeVisible();
-  expect(request).toBeUndefined();
-  await page.getByLabel('平台字段 JSON').fill('{"content_type":"answer"}');
-  await page.getByRole('button', { name: '保存新版本' }).click();
+  await page.getByLabel('文章标题').fill('更新后的 GEO 标题');
+  await page.getByLabel('内容类型').fill('article');
+  await page.getByRole('button', { name: '保存修改' }).click();
   await expect(page.getByText('内容已保存。')).toBeVisible();
   expect(request?.headers['if-match']).toBe('"4"');
   expect(request?.headers['idempotency-key']).toMatch(/^content-variant-save-/u);
@@ -39,6 +35,7 @@ test('saves a complete document with the required variant version', async ({ pag
     content: {
       citation_map: [{ citation_ids: [], claim_key: 'claim-1', claim_text: '声明' }],
       platform_code: 'zhihu',
+      platform_meta: { content_type: 'article' },
       schema_version: 'content-writer-data@1',
       title: '更新后的 GEO 标题',
     },
@@ -54,10 +51,10 @@ test('surfaces 409 without silently overwriting local content', async ({ page })
     } else await json(route, detail());
   });
   await page.goto(`/cont-05?id=${VARIANT_ID}`);
-  await page.getByLabel('标题').fill('本地未保存标题');
-  await page.getByRole('button', { name: '保存新版本' }).click();
+  await page.getByLabel('文章标题').fill('本地未保存标题');
+  await page.getByRole('button', { name: '保存修改' }).click();
   await expect(page.getByText('版本冲突：服务端内容已变化，本地内容未覆盖')).toBeVisible();
-  await expect(page.getByLabel('标题')).toHaveValue('本地未保存标题');
+  await expect(page.getByLabel('文章标题')).toHaveValue('本地未保存标题');
   await expect(page.getByRole('button', { name: '重新加载服务端版本' })).toBeVisible();
   expect(ifMatch).toBe('"4"');
 });
@@ -86,11 +83,24 @@ test('locks a stored block and regenerates with frozen lock keys', async ({ page
   });
   await page.goto(`/cont-05?id=${VARIANT_ID}`);
   await page.getByRole('button', { name: '锁定段落' }).click();
+  await page.getByRole('button', { name: '确认保留' }).click();
   await expect(page.getByRole('button', { name: '解除段落锁' })).toBeVisible();
-  await page.getByRole('button', { name: '再生成当前变体' }).click();
+  await page.getByRole('button', { name: '重新生成此平台内容' }).click();
   expect(lockHeader).toBe('"4"');
   expect(regenerate?.headers['if-match']).toBe('"4"');
   expect(regenerate?.body).toEqual({ locked_block_keys: ['intro'], model_policy: 'balanced' });
+});
+
+test('presents a human-readable article editor before technical fields', async ({ page }) => {
+  await page.goto(`/cont-05?id=${VARIANT_ID}`);
+
+  await expect(page.getByRole('heading', { name: '编辑内容', level: 1 })).toBeVisible();
+  await expect(page.getByLabel('文章标题')).toBeVisible();
+  await expect(page.getByLabel('第 1 段内容')).toBeVisible();
+  await expect(page.getByLabel('内容类型')).toHaveValue('answer');
+  await expect(page.getByText('质量检查通过', { exact: true })).toBeVisible();
+  await expect(page.getByText(VARIANT_ID)).not.toBeVisible();
+  await expect(page.getByLabel('平台高级设置 JSON')).not.toBeVisible();
 });
 
 test('loads diff and rolls back with current variant version', async ({ page }) => {
@@ -108,7 +118,7 @@ test('loads diff and rolls back with current variant version', async ({ page }) 
     await json(route, version(OLD_ID, 1));
   });
   await page.goto(`/cont-05?id=${VARIANT_ID}`);
-  await page.getByRole('button', { name: '查看 diff' }).click();
+  await page.getByRole('button', { name: '比较版本' }).click();
   await expect(page.getByText('1 个字段、1 个内容块变化')).toBeVisible();
   await page.getByRole('button', { name: '回滚到此版本' }).click();
   await expect(page.getByText('已回滚到所选版本。')).toBeVisible();

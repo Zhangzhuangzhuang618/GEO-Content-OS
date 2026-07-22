@@ -180,7 +180,7 @@ export function BrandProfileList() {
                   <td className="p-4">
                     {item.published_at ? new Date(item.published_at).toLocaleString('zh-CN') : '—'}
                   </td>
-                  <td className="p-4 font-mono text-xs">{item.created_by}</td>
+                  <td className="p-4">团队成员</td>
                   <td className="p-4">
                     <div className="flex gap-2">
                       <Link className="text-brand-700" href={`/str-02?id=${item.id}`}>

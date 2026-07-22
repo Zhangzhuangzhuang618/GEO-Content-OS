@@ -1,11 +1,12 @@
 import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   CONTENT_PLATFORM_CODES,
+  CONTENT_WRITER_DATA_SCHEMA,
   CONTENT_WRITER_INPUT_SCHEMA,
-  CONTENT_WRITER_OUTPUT_SCHEMA,
   CONTENT_WRITER_SKILL_VERSION,
   type ContentPlatformCode,
   type ContentWriterContent,
+  type ContentWriterData,
   type ContentWriterOutput,
 } from '@geo-content-os/contracts/skills';
 import {
@@ -26,8 +27,22 @@ import {
 export interface ContentWriterSkillRunInput {
   readonly context: SkillContext;
   readonly input: Readonly<Record<string, unknown>>;
+  readonly maxOutputTokens?: number;
+  readonly prompt?: ContentWriterPublishedPrompt;
   readonly recordUsage: (usage: ModelUsage) => Promise<void> | void;
+  readonly revision?: ContentWriterRevision;
   readonly signal?: AbortSignal;
+  readonly temperature?: number;
+}
+
+export interface ContentWriterPublishedPrompt {
+  readonly systemPrompt: string;
+  readonly taskTemplate: string;
+}
+
+export interface ContentWriterRevision {
+  readonly candidate: ContentWriterData;
+  readonly issues: readonly string[];
 }
 
 interface WriterInput {
@@ -56,24 +71,30 @@ export class ContentWriterSkill {
     invocation: ContentWriterSkillRunInput,
   ): Promise<SkillRunResult<ContentWriterOutput>> {
     assertContext(invocation.context);
-    const result = await this.runner.run<Readonly<Record<string, unknown>>, ContentWriterOutput>({
+    const generated = await this.runner.run<Readonly<Record<string, unknown>>, ContentWriterData>({
       context: invocation.context,
       input: invocation.input,
       inputSchema: CONTENT_WRITER_INPUT_SCHEMA,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      messages: messages(invocation.input),
-      outputSchema: CONTENT_WRITER_OUTPUT_SCHEMA,
+      maxOutputTokens: invocation.maxOutputTokens ?? MAX_OUTPUT_TOKENS,
+      messages: messages(invocation.input, invocation.prompt, invocation.revision),
+      outputSchema: CONTENT_WRITER_DATA_SCHEMA,
       recordUsage: invocation.recordUsage,
       ...(invocation.signal ? { signal: invocation.signal } : {}),
-      temperature: 0.4,
+      temperature: invocation.temperature ?? 0.4,
       toolNames: CONTENT_WRITER_TOOL_NAMES_V1,
     });
-    assertOutput(invocation.context, invocation.input as unknown as WriterInput, result.output);
-    return result;
+    const input = invocation.input as unknown as WriterInput;
+    const output = serverOwnedOutput(invocation.context, input, generated.output, generated.usages);
+    assertOutput(invocation.context, input, output);
+    return Object.freeze({ ...generated, output });
   }
 }
 
-function messages(input: Readonly<Record<string, unknown>>): readonly ModelMessage[] {
+function messages(
+  input: Readonly<Record<string, unknown>>,
+  prompt?: ContentWriterPublishedPrompt,
+  revision?: ContentWriterRevision,
+): readonly ModelMessage[] {
   const patches = requestedPlatforms(input).map(
     (platformCode) => CONTENT_WRITER_PLATFORM_PROMPTS_V1[platformCode],
   );
@@ -82,22 +103,83 @@ function messages(input: Readonly<Record<string, unknown>>): readonly ModelMessa
       content: JSON.stringify({ example_input: example.input, purpose: example.purpose }),
       role: 'user',
     },
-    { content: JSON.stringify(example.output), role: 'assistant' },
+    { content: JSON.stringify(example.output.data), role: 'assistant' },
   ]);
   return Object.freeze([
-    { content: CONTENT_WRITER_SYSTEM_PROMPT_V1, role: 'system' },
-    { content: CONTENT_WRITER_TASK_PROMPT_V1, role: 'user' },
+    {
+      content: prompt
+        ? `${CONTENT_WRITER_SYSTEM_PROMPT_V1}\n\nPublished prompt policy:\n${prompt.systemPrompt}`
+        : CONTENT_WRITER_SYSTEM_PROMPT_V1,
+      role: 'system',
+    },
+    {
+      content: prompt
+        ? `${CONTENT_WRITER_TASK_PROMPT_V1}\n\nPublished task policy:\n${prompt.taskTemplate}`
+        : CONTENT_WRITER_TASK_PROMPT_V1,
+      role: 'user',
+    },
     { content: JSON.stringify({ bound_platform_patches: patches }), role: 'user' },
     ...examples,
+    ...(revision
+      ? [
+          {
+            content: JSON.stringify({
+              candidate_to_rewrite: revision.candidate,
+              instruction:
+                'Rewrite the complete candidate. Correct every listed quality issue while preserving grounded facts, requested platforms, locked blocks, and the output schema. Do not merely append filler.',
+              quality_issues: revision.issues,
+            }),
+            role: 'user' as const,
+          },
+        ]
+      : []),
     {
       content: JSON.stringify({
         content_writer_input: input,
         instruction:
-          'Generate from this input. Do not copy identifiers, trace fields, usage, facts, or platform selection from examples.',
+          'Return only the content data object with master_content and variants. The server adds identity, status, citations, usage, and trace. Do not emit those envelope fields. Do not copy facts or platform selection from examples.',
       }),
       role: 'user',
     },
   ]);
+}
+
+function serverOwnedOutput(
+  context: SkillContext,
+  input: WriterInput,
+  data: ContentWriterData,
+  usages: readonly ModelUsage[],
+): ContentWriterOutput {
+  return Object.freeze({
+    blockers: Object.freeze([]),
+    citations: Object.freeze(
+      input.citations.map((citation) =>
+        Object.freeze({
+          chunk_id: citation.chunk_id,
+          quote_text: citation.quote_text,
+          source_id: citation.source_id,
+        }),
+      ),
+    ),
+    data,
+    skill_name: 'content-writer' as const,
+    skill_version: context.skillVersion,
+    status: 'success' as const,
+    trace: Object.freeze({
+      input_hash: context.inputHash,
+      prompt_version_id: context.promptVersionId,
+      request_id: context.requestId,
+      run_id: context.runId,
+    }),
+    usage: Object.freeze({
+      cost_cents: 0,
+      input_tokens: usages.reduce((total, usage) => total + usage.inputTokens, 0),
+      model_key: context.modelKey,
+      output_tokens: usages.reduce((total, usage) => total + usage.outputTokens, 0),
+      provider: usages[0]?.providerCode ?? 'unknown',
+    }),
+    warnings: Object.freeze([]),
+  });
 }
 
 function requestedPlatforms(input: Readonly<Record<string, unknown>>): ContentPlatformCode[] {

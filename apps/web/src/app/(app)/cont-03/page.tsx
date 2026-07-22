@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 import { ContentPackageList } from '../../../features/cont-03/content-package-list';
 
-export const metadata: Metadata = { title: '内容包列表' };
+export const metadata: Metadata = { title: '我的内容' };
 
 export default function ContentPackageListPage() {
   return (
@@ -11,10 +11,10 @@ export default function ContentPackageListPage() {
       id="main-content"
     >
       <header>
-        <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">内容生产</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">内容包列表</h1>
-        <p className="mt-2 text-sm leading-6 text-ink-500">
-          查看质量、平台生产进度、负责人、已结算成本和更新时间，并进入内容包详情。
+        <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">内容中心</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">我的内容</h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-500">
+          按主题查看每份内容的生成进度、质量和下一步操作。平台适配稿都收在对应主题中。
         </p>
       </header>
       <ContentPackageList />

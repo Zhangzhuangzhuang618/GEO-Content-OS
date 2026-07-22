@@ -18,6 +18,7 @@ const DATA_KEYS = new Set([
   'input_hash',
   'master_run_id',
   'model_key',
+  'model_policy',
   'package_id',
   'project_id',
   'prompt_version_id',
@@ -44,6 +45,7 @@ export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent 
   }
   const data = event.data;
   const packageId = string(data.package_id);
+  const modelPolicy = data.model_policy === undefined ? 'balanced' : string(data.model_policy);
   const variantRuns = parseVariantRuns(data.variant_runs);
   const writerInput = data.writer_input;
   if (
@@ -56,6 +58,7 @@ export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent 
     !UUID.test(string(data.workspace_id)) ||
     !HASH.test(string(data.input_hash)) ||
     !MODEL_KEY.test(string(data.model_key)) ||
+    !['fast', 'balanced', 'quality'].includes(modelPolicy) ||
     !REQUEST_ID.test(string(data.request_id)) ||
     !SEMVER.test(string(data.skill_version)) ||
     !isJsonObject(writerInput) ||
@@ -70,6 +73,7 @@ export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent 
     inputHash: string(data.input_hash),
     masterRunId: string(data.master_run_id),
     modelKey: string(data.model_key),
+    modelPolicy: modelPolicy as GenerationEventData['modelPolicy'],
     packageId,
     projectId: string(data.project_id),
     promptVersionId: string(data.prompt_version_id),

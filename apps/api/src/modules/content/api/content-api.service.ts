@@ -9,6 +9,11 @@ import type {
   RegenerateVariantRequest,
   ReopenVariantsRequest,
 } from '@geo-content-os/contracts';
+import {
+  createEmbeddingAdapter,
+  readEmbeddingConfiguration,
+} from '@geo-content-os/adapter-embedding';
+import { createRerankAdapter, readRerankConfiguration } from '@geo-content-os/adapter-rerank';
 import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransactionSql } from 'postgres';
@@ -17,6 +22,7 @@ import type { JsonValue } from '../../../common/idempotency/index.js';
 import type { ContentDocument as DatabaseContentDocument } from '../../../database/schema/index.js';
 import { GenerationRequestService } from '../../ai/orchestrator/index.js';
 import { IdentityAuthDatabase } from '../../identity/auth/auth.database.js';
+import { CitationSearchService, HybridSearchRepository } from '../../knowledge/search/index.js';
 import { OutboxWriter } from '../../outbox/index.js';
 import { ContentBlockLockRepository } from '../block-locks/index.js';
 import { ContentPackageRepository } from '../packages/index.js';
@@ -174,9 +180,7 @@ export class ContentApiService {
     return {
       items: page.map(packageView),
       nextCursor:
-        hasMore && tail
-          ? encodeCursor({ id: tail.id, updatedAt: tail.updatedAt.toISOString() })
-          : null,
+        hasMore && tail ? encodeCursor({ id: tail.id, updatedAt: isoDate(tail.updatedAt) }) : null,
     };
   }
 
@@ -211,6 +215,7 @@ export class ContentApiService {
       {
         expectedPackageVersion: expectedVersion,
         modelKey: runtime.modelKey,
+        modelPolicy: input.model_policy,
         packageId,
         promptVersionId: runtime.promptVersionId,
         skillVersion: runtime.skillVersion,
@@ -682,6 +687,7 @@ export class ContentApiService {
       input.locked_block_keys,
       [variant.platformCode],
     );
+    const targetAccountId = generationTargetAccountId(writerInput, variant.platformCode);
     const inputHash = sha256(
       canonicalJson({ locks, runtime, variant_id: variantId, writer_input: writerInput }),
     );
@@ -712,7 +718,15 @@ export class ContentApiService {
       workspaceId: scope.workspaceId,
     });
     const updated = await transaction<{ id: string }[]>`
-      UPDATE content_variants SET status = 'generating', version = version + 1
+      UPDATE content_variants
+      SET
+        status = 'generating',
+        platform_account_id = CASE
+          WHEN ${targetAccountId !== null}
+          THEN ${targetAccountId}::uuid
+          ELSE platform_account_id
+        END,
+        version = version + 1
       WHERE id = ${variantId}::uuid AND tenant_id = ${tenantId}::uuid AND version = ${expectedVersion}
       RETURNING id
     `;
@@ -730,6 +744,7 @@ export class ContentApiService {
           input_hash: inputHash,
           master_run_id: master.id,
           model_key: runtime.modelKey,
+          model_policy: input.model_policy,
           package_id: variant.packageId,
           project_id: scope.projectId,
           prompt_version_id: runtime.promptVersionId,
@@ -956,11 +971,8 @@ async function buildWriterInput(
   const brand = brandRows[0];
   if (!brief || !brand)
     throw contentStateInvalid('Published brand strategy and Brief are required');
-  const citations = await client<{ chunkId: string; quoteText: string; sourceId: string }[]>`
-    SELECT
-      chunk.id AS "chunkId",
-      chunk.text AS "quoteText",
-      source.id AS "sourceId"
+  const sourceRows = await client<{ sourceId: string }[]>`
+    SELECT DISTINCT source.id AS "sourceId"
     FROM content_packages AS package
     JOIN brief_sources AS link
       ON link.brief_id = package.brief_id
@@ -968,39 +980,35 @@ async function buildWriterInput(
     JOIN source_documents AS source
       ON source.id = link.source_document_id
       AND source.tenant_id = link.tenant_id
-    JOIN source_chunks AS chunk
-      ON chunk.source_document_id = source.id
-      AND chunk.tenant_id = source.tenant_id
     WHERE package.id = ${packageId}::uuid
       AND package.tenant_id = ${scope.tenantId}::uuid
       AND package.workspace_id = ${scope.workspaceId}::uuid
       AND package.project_id = ${scope.projectId}::uuid
-      AND source.status = 'active'
       AND source.deleted_at IS NULL
-      AND source.trust_level IN ('normal', 'verified')
-      AND (source.effective_from IS NULL OR source.effective_from <= current_date)
-      AND (source.effective_to IS NULL OR source.effective_to >= current_date)
-      AND chunk.status = 'active'
-    ORDER BY link.required DESC, source.id, chunk.chunk_no, chunk.id
-    LIMIT 100
+    ORDER BY source.id
   `;
+  const citations = await retrieveWriterCitations(client, scope, packageId, brief, sourceRows);
   const rules = readPlatformRules(platformCodes);
+  const targetAccounts =
+    process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] === 'true'
+      ? await loadGenerationTargetAccounts(client, scope, platformCodes)
+      : {};
   const locked = await loadLockedBlocks(client, scope.tenantId, null, lockedBlockKeys, packageId);
   return {
     brief: {
       audience: brief.audience,
       brief_id: brief.briefId,
-      constraints: brief.constraints,
+      constraints: {
+        ...brief.constraints,
+        ...(Object.keys(targetAccounts).length > 0
+          ? { target_accounts_by_code: targetAccounts }
+          : {}),
+      },
       objective: brief.objective,
       platform_codes: platformCodes,
       title: brief.title,
     },
-    citations: citations.map((citation) => ({
-      chunk_id: citation.chunkId,
-      citation_id: citation.chunkId,
-      quote_text: citation.quoteText,
-      source_id: citation.sourceId,
-    })),
+    citations,
     generation_mode: brief.generationMode,
     locked_blocks: locked,
     platform_rules_by_code: rules,
@@ -1008,9 +1016,187 @@ async function buildWriterInput(
   };
 }
 
+async function retrieveWriterCitations(
+  client: SqlClient,
+  scope: ContentScope,
+  packageId: string,
+  brief: {
+    readonly audience: string;
+    readonly objective: string;
+    readonly title: string;
+  },
+  sources: readonly { readonly sourceId: string }[],
+): Promise<readonly Record<string, JsonValue>[]> {
+  if (sources.length === 0) return [];
+  const keywordRows = await client<{ term: string }[]>`
+    SELECT keyword.term
+    FROM content_packages AS package
+    JOIN brief_keywords AS link
+      ON link.brief_id = package.brief_id
+      AND link.tenant_id = package.tenant_id
+    JOIN keywords AS keyword
+      ON keyword.id = link.keyword_id
+      AND keyword.tenant_id = link.tenant_id
+    WHERE package.id = ${packageId}::uuid
+      AND package.tenant_id = ${scope.tenantId}::uuid
+      AND keyword.status = 'active'
+    ORDER BY link.is_primary DESC, keyword.priority DESC, keyword.id
+    LIMIT 20
+  `;
+  const query = [
+    brief.title,
+    brief.objective,
+    brief.audience,
+    ...keywordRows.map((row) => row.term),
+  ]
+    .join(' ')
+    .normalize('NFC')
+    .replace(/\s+/gu, ' ')
+    .trim()
+    .slice(0, 500);
+  const embeddingConfig = readEmbeddingConfiguration({
+    ...process.env,
+    EMBEDDING_DRIVER: process.env['EMBEDDING_DRIVER'] ?? 'local',
+    EMBEDDING_MODEL_KEY: process.env['EMBEDDING_MODEL_KEY'] ?? 'embedding-local-ngram-v1',
+  });
+  const embedding = createEmbeddingAdapter(embeddingConfig);
+  const inputId = `query-${packageId}`;
+  const embedded = await embedding.embedBatch({
+    inputs: [{ id: inputId, text: query, textHash: sha256(query) }],
+    requestId: `citation-embedding-${packageId}`,
+  });
+  const vector = embedded.embeddings[0];
+  if (!vector) throw contentStateInvalid('Knowledge query embedding could not be generated');
+  const rerankConfig = readRerankConfiguration({
+    ...process.env,
+    RERANK_DRIVER: process.env['RERANK_DRIVER'] ?? 'local',
+    RERANK_MODEL_KEY: process.env['RERANK_MODEL_KEY'] ?? 'rerank-local-ngram-v1',
+  });
+  const context = await new CitationSearchService(
+    new HybridSearchRepository(client),
+    createRerankAdapter(rerankConfig),
+  ).search({
+    embeddingModelKey: embedding.modelKey,
+    query,
+    queryEmbedding: vector.vector,
+    requestId: `citation-search-${packageId}`,
+    scope: {
+      projectId: scope.projectId,
+      tenantId: scope.tenantId,
+      userId: scope.userId,
+      workspaceId: scope.workspaceId,
+    },
+    sourceDocumentIds: sources.map((source) => source.sourceId),
+  });
+  return context.hits.map((hit) => ({
+    chunk_id: hit.chunkId,
+    citation_id: hit.chunkId,
+    quote_text: hit.text,
+    source_id: hit.sourceDocumentId,
+  }));
+}
+
+async function loadGenerationTargetAccounts(
+  client: SqlClient,
+  scope: ContentScope,
+  platformCodes: readonly PlatformCode[],
+): Promise<Record<string, JsonValue>> {
+  const rows = await client<
+    {
+      capabilities: Record<string, JsonValue>;
+      displayName: string;
+      id: string;
+      platformCode: PlatformCode;
+      providerAccountId: string | null;
+      timezone: string;
+    }[]
+  >`
+    SELECT
+      account.id,
+      account.platform_code AS "platformCode",
+      account.display_name AS "displayName",
+      account.provider_account_id AS "providerAccountId",
+      account.timezone,
+      account.capabilities_json AS capabilities
+    FROM platform_accounts AS account
+    WHERE
+      account.tenant_id = ${scope.tenantId}::uuid
+      AND account.workspace_id = ${scope.workspaceId}::uuid
+      AND account.platform_code = ANY(${platformCodes}::varchar[])
+      AND account.status = 'active'
+      AND account.deleted_at IS NULL
+    ORDER BY account.platform_code, account.id
+  `;
+  const targets: Record<string, JsonValue> = {};
+  for (const platformCode of platformCodes) {
+    const candidates = rows.filter((row) => row.platformCode === platformCode);
+    if (candidates.length !== 1) {
+      throw contentStateInvalid(
+        `Platform ${platformCode} requires exactly one active account before generation`,
+      );
+    }
+    const account = candidates[0]!;
+    targets[platformCode] = {
+      account_id: account.id,
+      capabilities: account.capabilities,
+      display_name: account.displayName,
+      provider_account_id: account.providerAccountId,
+      timezone: account.timezone,
+    };
+  }
+  return targets;
+}
+
+function generationTargetAccountId(
+  writerInput: Readonly<Record<string, JsonValue>>,
+  platformCode: PlatformCode,
+): string | null {
+  if (process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] !== 'true') return null;
+  const brief = jsonRecord(writerInput['brief']);
+  const constraints = jsonRecord(brief?.['constraints']);
+  const targets = jsonRecord(constraints?.['target_accounts_by_code']);
+  const target = jsonRecord(targets?.[platformCode]);
+  const accountId = target?.['account_id'];
+  if (typeof accountId !== 'string') {
+    throw contentStateInvalid(`Platform ${platformCode} target account is invalid`);
+  }
+  return accountId;
+}
+
+function jsonRecord(value: JsonValue | undefined): Readonly<Record<string, JsonValue>> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, JsonValue>>)
+    : null;
+}
+
 function readPlatformRules(platformCodes: readonly PlatformCode[]): Record<string, JsonValue> {
   const raw = process.env['CONTENT_PLATFORM_RULES_JSON'];
-  if (!raw) throw contentStateInvalid('CONTENT_PLATFORM_RULES_JSON is not configured');
+  if (!raw) {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw contentStateInvalid('CONTENT_PLATFORM_RULES_JSON is not configured');
+    }
+    return Object.fromEntries(
+      platformCodes.map((code, index) => [
+        code,
+        {
+          rules: {
+            platform_code: code,
+            require_citations: code !== 'official_site',
+            ...(code === 'official_site'
+              ? {
+                  accepted_first_party_source: 'published_brand_profile',
+                  first_party_claims_require_public_citations: false,
+                  require_citations_for_external_claims: true,
+                }
+              : {}),
+            schema_version: 'platform-rules@1',
+          },
+          rules_hash: createHash('sha256').update(`local:${code}`).digest('hex'),
+          version_id: `26000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        },
+      ]),
+    );
+  }
   try {
     const parsed = JSON.parse(raw) as Record<string, JsonValue>;
     const selected: Record<string, JsonValue> = {};
@@ -1539,7 +1725,11 @@ async function insertAudit(
 }
 
 function packageView(value: ContentPackageView): JsonValue {
-  return snake(value);
+  return snake({
+    ...value,
+    createdAt: isoDate(value.createdAt),
+    updatedAt: isoDate(value.updatedAt),
+  });
 }
 
 function variantView(value: ContentVariantView): JsonValue {
@@ -1584,9 +1774,28 @@ function snake(value: unknown): JsonValue {
   const output: Record<string, JsonValue> = {};
   for (const [key, item] of Object.entries(value)) {
     if (key === 'deletedAt' || item === undefined) continue;
-    output[key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`)] = snake(item);
+    output[key.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`)] =
+      serializeKnownDate(key, item) ?? snake(item);
   }
   return output;
+}
+
+const DATE_FIELDS = new Set([
+  'createdAt',
+  'dueAt',
+  'expiresAt',
+  'finishedAt',
+  'publishedAt',
+  'scheduledAt',
+  'startedAt',
+  'updatedAt',
+]);
+
+function serializeKnownDate(key: string, value: unknown): string | null {
+  if (!DATE_FIELDS.has(key) || value === null || value === undefined) return null;
+  if (!(value instanceof Date) && typeof value !== 'string') return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function isoDate(value: Date | string): string {

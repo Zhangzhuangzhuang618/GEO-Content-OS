@@ -48,7 +48,7 @@ export function assertDeepSeekAdapterConfiguration(
     !configuration.apiKey.trim() ||
     !identifier(configuration.modelKey, 80) ||
     !identifier(configuration.providerModelId, 160) ||
-    !withinInteger(configuration.timeoutMs, 100, 120_000) ||
+    !withinInteger(configuration.timeoutMs, 100, 300_000) ||
     !withinInteger(configuration.maxRetries, 0, 2) ||
     !withinInteger(configuration.retryBaseDelayMs, 0, 10_000) ||
     !withinInteger(configuration.maxOutputTokens, 1, 65_536)

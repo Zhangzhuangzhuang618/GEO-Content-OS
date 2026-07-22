@@ -10,6 +10,7 @@ describe('hybrid search request validation', () => {
       validateHybridSearchRequest('  企业   GEO  ', VECTOR, {
         effectiveOn: '2026-07-14',
         modelKey: 'embedding-v1',
+        sourceDocumentIds: ['53000000-0000-4000-8000-000000000001'],
         topK: 3,
         trustLevels: ['verified'],
       }),
@@ -18,6 +19,7 @@ describe('hybrid search request validation', () => {
       effectiveOn: '2026-07-14',
       modelKey: 'embedding-v1',
       query: '企业 GEO',
+      sourceDocumentIds: ['53000000-0000-4000-8000-000000000001'],
       topK: 3,
       trustLevels: ['verified'],
     });
@@ -41,6 +43,11 @@ describe('hybrid search request validation', () => {
         validateHybridSearchRequest('ok', VECTOR, {
           ...valid,
           trustLevels: ['normal', 'normal'],
+        }),
+      () =>
+        validateHybridSearchRequest('ok', VECTOR, {
+          ...valid,
+          sourceDocumentIds: ['not-a-uuid'],
         }),
     ];
     invalidCalls.forEach((call) => expect(call).toThrow(TypeError));

@@ -26,6 +26,7 @@ interface ControllerBinding {
 
 const bindings: readonly ControllerBinding[] = [
   bind('source.create', SourceController, SourceController.prototype.upload),
+  bind('source.batch-url.preview', SourceController, SourceController.prototype.previewBatchUrls),
   bind('source.list', KnowledgeSourceController, KnowledgeSourceController.prototype.list),
   bind('source.get', KnowledgeSourceController, KnowledgeSourceController.prototype.find),
   bind('source.reindex', KnowledgeSourceController, KnowledgeSourceController.prototype.reindex),
@@ -37,8 +38,8 @@ const bindings: readonly ControllerBinding[] = [
 
 describe('knowledge controller contract bindings', () => {
   it('binds every frozen knowledge contract exactly once', () => {
-    expect(bindings.map((binding) => binding.key)).toHaveLength(8);
-    expect(new Set(bindings.map((binding) => binding.key).values()).size).toBe(8);
+    expect(bindings.map((binding) => binding.key)).toHaveLength(9);
+    expect(new Set(bindings.map((binding) => binding.key).values()).size).toBe(9);
   });
 
   it.each(bindings)('$key matches its method, route, and permissions', (binding) => {

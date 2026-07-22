@@ -17,11 +17,13 @@ export interface PublishingApiScope {
   readonly userId: string;
 }
 
+type DatabaseDate = Date | string;
+
 interface JobRow {
   readonly accountId: string;
   readonly attemptCount: number;
   readonly contentVersionId: string;
-  readonly createdAt: Date;
+  readonly createdAt: DatabaseDate;
   readonly createdBy: string;
   readonly externalPostId: string | null;
   readonly externalUrl: string | null;
@@ -29,10 +31,10 @@ interface JobRow {
   readonly idempotencyKey: string;
   readonly lastError: Readonly<Record<string, unknown>> | null;
   readonly payloadHash: string;
-  readonly scheduledAt: Date;
+  readonly scheduledAt: DatabaseDate;
   readonly status: PublishJobView['status'];
   readonly tenantId: string;
-  readonly updatedAt: Date;
+  readonly updatedAt: DatabaseDate;
   readonly variantId: string;
   readonly version: number;
 }
@@ -40,14 +42,14 @@ interface JobRow {
 interface AttemptRow {
   readonly adapterCode: string;
   readonly attemptNo: number;
-  readonly createdAt: Date;
+  readonly createdAt: DatabaseDate;
   readonly errorCode: string | null;
-  readonly finishedAt: Date | null;
+  readonly finishedAt: DatabaseDate | null;
   readonly id: string;
   readonly publishJobId: string;
   readonly requestHash: string;
   readonly response: Readonly<Record<string, unknown>> | null;
-  readonly startedAt: Date;
+  readonly startedAt: DatabaseDate;
   readonly status: PublishAttemptView['status'];
   readonly tenantId: string;
 }
@@ -55,9 +57,9 @@ interface AttemptRow {
 interface ArtifactRow {
   readonly contentHash: string;
   readonly contentVersionId: string;
-  readonly createdAt: Date;
+  readonly createdAt: DatabaseDate;
   readonly createdBy: string;
-  readonly expiresAt: Date;
+  readonly expiresAt: DatabaseDate;
   readonly id: string;
   readonly manifest: Readonly<Record<string, unknown>>;
   readonly objectUri: string;
@@ -120,7 +122,7 @@ export class PublishingApiService {
       items: Object.freeze(page.map(mapJob)),
       nextCursor:
         rows.length > query.limit && last
-          ? encodeCursor({ id: last.id, scheduledAt: last.scheduledAt.toISOString() })
+          ? encodeCursor({ id: last.id, scheduledAt: isoDate(last.scheduledAt) })
           : null,
     };
   }
@@ -149,7 +151,7 @@ export class PublishingApiService {
   public async signedExport(scope: PublishingApiScope, jobId: string): Promise<SignedDownloadView> {
     await this.requireJob(scope, jobId);
     const artifact = await this.latestArtifact(scope, jobId);
-    if (!artifact || artifact.expiresAt <= new Date()) {
+    if (!artifact || asDate(artifact.expiresAt) <= new Date()) {
       throw new PublishingApiError(
         'PUBLISHING_ARTIFACT_UNAVAILABLE',
         'Publish export artifact is unavailable',
@@ -157,7 +159,7 @@ export class PublishingApiService {
     }
     const seconds = Math.max(
       1,
-      Math.min(900, Math.floor((artifact.expiresAt.getTime() - Date.now()) / 1_000)),
+      Math.min(900, Math.floor((asDate(artifact.expiresAt).getTime() - Date.now()) / 1_000)),
     );
     try {
       return {
@@ -232,7 +234,7 @@ function mapJob(row: JobRow): PublishJobView {
     account_id: row.accountId,
     attempt_count: row.attemptCount,
     content_version_id: row.contentVersionId,
-    created_at: row.createdAt.toISOString(),
+    created_at: isoDate(row.createdAt),
     created_by: row.createdBy,
     external_post_id: row.externalPostId,
     external_url: row.externalUrl,
@@ -240,10 +242,10 @@ function mapJob(row: JobRow): PublishJobView {
     idempotency_key: row.idempotencyKey,
     last_error: row.lastError,
     payload_hash: row.payloadHash,
-    scheduled_at: row.scheduledAt.toISOString(),
+    scheduled_at: isoDate(row.scheduledAt),
     status: row.status,
     tenant_id: row.tenantId,
-    updated_at: row.updatedAt.toISOString(),
+    updated_at: isoDate(row.updatedAt),
     variant_id: row.variantId,
     version: row.version,
   };
@@ -253,14 +255,14 @@ function mapAttempt(row: AttemptRow): PublishAttemptView {
   return {
     adapter_code: row.adapterCode,
     attempt_no: row.attemptNo,
-    created_at: row.createdAt.toISOString(),
+    created_at: isoDate(row.createdAt),
     error_code: row.errorCode,
-    finished_at: row.finishedAt?.toISOString() ?? null,
+    finished_at: row.finishedAt ? isoDate(row.finishedAt) : null,
     id: row.id,
     publish_job_id: row.publishJobId,
     request_hash: row.requestHash,
     response: row.response,
-    started_at: row.startedAt.toISOString(),
+    started_at: isoDate(row.startedAt),
     status: row.status,
     tenant_id: row.tenantId,
   };
@@ -270,15 +272,23 @@ function mapArtifact(row: ArtifactRow): ExportArtifactView {
   return {
     content_hash: row.contentHash,
     content_version_id: row.contentVersionId,
-    created_at: row.createdAt.toISOString(),
+    created_at: isoDate(row.createdAt),
     created_by: row.createdBy,
-    expires_at: row.expiresAt.toISOString(),
+    expires_at: isoDate(row.expiresAt),
     id: row.id,
     manifest: row.manifest,
     publish_job_id: row.publishJobId,
     tenant_id: row.tenantId,
     variant_id: row.variantId,
   };
+}
+
+function asDate(value: DatabaseDate): Date {
+  return value instanceof Date ? value : new Date(value);
+}
+
+function isoDate(value: DatabaseDate): string {
+  return asDate(value).toISOString();
 }
 
 function encodeCursor(value: { readonly id: string; readonly scheduledAt: string }): string {

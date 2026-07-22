@@ -9,10 +9,10 @@ export default function ReviewSnapshotPage() {
       id="main-content"
     >
       <header>
-        <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">冻结审核</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">审核快照</h1>
+        <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">内容审核</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">审核详情</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          基于冻结版本、规则、Prompt、模型与引用逐变体决策；服务端在动作前复核全部 hash。
+          按平台核对内容、质量和事实依据，确认无误后通过，发现问题则退回修改。
         </p>
       </header>
       <ReviewSnapshot />

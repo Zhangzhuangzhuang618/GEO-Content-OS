@@ -111,7 +111,7 @@ test('shows post result and obtains a short-lived signed export URL', async ({ p
   });
 
   await page.goto(`/pub-03?id=${JOB_ID}`);
-  await expect(page.getByText('external-post-93')).toBeVisible();
+  await expect(page.getByText('external-post-93')).toBeHidden();
   await expect(
     page.getByRole('link', { name: 'https://platform.example.test/posts/93' }),
   ).toHaveAttribute('rel', 'noopener noreferrer');

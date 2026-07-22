@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { TechnicalDetails } from '../human-readable';
 import {
   expireSource,
   getSourceDetail,
@@ -76,14 +77,29 @@ export function SourceDetail() {
     }
   }, []);
 
+  useEffect(() => {
+    if (state.status !== 'ready' || state.detail.source.status !== 'processing') return;
+    const scope = readScope();
+    if (!scope) return;
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const detail = await getSourceDetail(scope, controller.signal);
+        if (!controller.signal.aborted) setState({ detail, role: state.role, status: 'ready' });
+      } catch {
+        // Keep the last readable state; the next interval can recover from a transient failure.
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 2_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [state]);
+
   if (state.status === 'loading') return <DetailSkeleton />;
   if (state.status === 'missing-scope')
-    return (
-      <StatePanel
-        title="缺少资料范围"
-        text="请从资料列表进入，或在 URL 中提供 id、workspace_id 和 project_id。"
-      />
-    );
+    return <StatePanel title="缺少资料范围" text="请返回资料列表并从对应资料进入详情。" />;
   if (state.status === 'permission')
     return <StatePanel title="无权查看资料" text="当前工作区权限不允许访问该资料。" />;
   if (state.status === 'error')
@@ -106,13 +122,13 @@ export function SourceDetail() {
     setMessage(null);
     try {
       if (operation === 'retry') {
-        const jobId = await retrySource(detail.source, csrf);
+        await retrySource(detail.source, csrf);
         setState({
           detail: { ...detail, source: { ...detail.source, status: 'processing' } },
           role: readyRole,
           status: 'ready',
         });
-        setMessage(`已创建重试任务：${jobId}`);
+        setMessage('已重新开始处理资料，稍后刷新页面可查看进度。');
       } else {
         await expireSource(detail.source, csrf);
         setState({
@@ -141,9 +157,6 @@ export function SourceDetail() {
               </span>
             </div>
             <h2 className="mt-3 text-2xl font-semibold text-ink-950">{detail.source.title}</h2>
-            <p className="mt-2 font-mono text-xs break-all text-ink-500">
-              资料 ID：{detail.source.id}
-            </p>
           </div>
           {canManage && detail.source.status !== 'expired' ? (
             <div className="flex flex-wrap gap-2">
@@ -167,23 +180,26 @@ export function SourceDetail() {
           ) : null}
         </div>
         <dl className="mt-6 grid gap-4 border-t border-line pt-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Detail
-            label="类型 / MIME"
-            value={`${detail.source.source_type.toUpperCase()} / ${detail.source.mime_type}`}
-          />
+          <Detail label="资料类型" value={sourceTypeLabel(detail.source.source_type)} />
           <Detail label="语言" value={detail.source.language} />
           <Detail label="有效期" value={effectiveRange(detail.source)} />
           <Detail label="引用次数" value={String(detail.citation_count)} />
-          <Detail label="工作区" value={detail.source.workspace_id} mono />
-          <Detail label="项目" value={detail.source.project_id ?? '工作区共享'} mono />
-          <Detail label="内容哈希" value={detail.source.content_hash} mono />
           <Detail label="更新时间" value={formatDateTime(detail.source.updated_at)} />
         </dl>
+        <div className="mt-5">
+          <TechnicalDetails summary="资料技术信息">
+            <p>资料编号：{detail.source.id}</p>
+            <p>工作区：{detail.source.workspace_id}</p>
+            <p>项目：{detail.source.project_id ?? '工作区共享'}</p>
+            <p>文件格式：{detail.source.mime_type}</p>
+            <p>内容校验值：{detail.source.content_hash}</p>
+          </TechnicalDetails>
+        </div>
       </section>
 
-      <Section title="解析日志" count={detail.ingest_jobs.length}>
+      <Section title="处理进度" count={detail.ingest_jobs.length}>
         {detail.ingest_jobs.length === 0 ? (
-          <EmptyText>暂无解析任务。</EmptyText>
+          <EmptyText>暂无处理记录。</EmptyText>
         ) : (
           <ol className="divide-y divide-line">
             {detail.ingest_jobs.map((job) => (
@@ -193,11 +209,11 @@ export function SourceDetail() {
         )}
       </Section>
 
-      <Section title="原文分块" count={detail.chunks.length}>
+      <Section title="原文片段" count={detail.chunks.length}>
         {detail.chunks.length === 0 ? (
-          <EmptyText>尚未生成可回溯分块。</EmptyText>
+          <EmptyText>尚未提取可用的原文片段。</EmptyText>
         ) : (
-          <ol className="space-y-4" aria-label="资料分块">
+          <ol className="space-y-4" aria-label="资料原文片段">
             {detail.chunks.map((chunk) => (
               <ChunkCard chunk={chunk} key={chunk.id} sourceId={detail.source.id} />
             ))}
@@ -236,16 +252,21 @@ function JobRow({ job }: { job: IngestJob }) {
           {stageLabel(job.stage)} · {job.progress}%
         </p>
         <span className="text-xs text-ink-500">
-          {job.status} / 第 {job.attempt_count + 1} 次
+          {jobStatusLabel(job.status)} · 第 {job.attempt_count + 1} 次处理
         </span>
       </div>
       <p className="mt-2 text-xs text-ink-500">
         {formatDateTime(job.started_at)} — {formatDateTime(job.finished_at)}
       </p>
       {job.error ? (
-        <p className="mt-2 text-sm text-red-700">
-          {job.error.code}：{job.error.message}
-        </p>
+        <>
+          <p className="mt-2 text-sm text-red-700">处理失败，请重试或检查原始资料。</p>
+          <TechnicalDetails summary="失败技术信息">
+            <p>
+              {job.error.code}：{job.error.message}
+            </p>
+          </TechnicalDetails>
+        </>
       ) : null}
     </li>
   );
@@ -256,21 +277,22 @@ function ChunkCard({ chunk, sourceId }: { chunk: Chunk; sourceId: string }) {
   return (
     <li className="rounded-xl border border-line bg-surface-subtle p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-semibold text-ink-950">Chunk #{chunk.chunk_no}</h3>
-        <span className="text-xs text-ink-500">
-          {chunk.token_count} tokens · {chunk.status}
-        </span>
+        <h3 className="font-semibold text-ink-950">第 {chunk.chunk_no + 1} 段</h3>
+        <span className="text-xs text-ink-500">{chunkLocation(chunk)}</span>
       </div>
       <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-ink-700">{chunk.text}</p>
-      <dl className="mt-4 grid gap-3 border-t border-line pt-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
-        <Detail label="来源资料" value={chunk.source_document_id} mono />
-        <Detail label="原文位置" value={chunkLocation(chunk)} />
-        <Detail label="Chunk ID" value={chunk.id} mono />
-        <Detail label="文本哈希" value={chunk.text_hash} mono />
-      </dl>
-      <p className={`mt-3 text-xs font-semibold ${sameSource ? 'text-brand-700' : 'text-red-700'}`}>
-        {sameSource ? '回溯校验通过：chunk 关联当前资料。' : '回溯校验失败：chunk 来源不匹配。'}
-      </p>
+      {!sameSource ? (
+        <p className="mt-3 text-xs font-semibold text-red-700">该片段的来源校验异常。</p>
+      ) : null}
+      <div className="mt-4">
+        <TechnicalDetails summary="片段技术信息">
+          <p>片段编号：{chunk.id}</p>
+          <p>来源资料：{chunk.source_document_id}</p>
+          <p>文本校验值：{chunk.text_hash}</p>
+          <p>文本长度：{chunk.token_count} tokens</p>
+          <p>处理状态：{chunk.status}</p>
+        </TechnicalDetails>
+      </div>
     </li>
   );
 }
@@ -283,7 +305,7 @@ function FactRow({ fact }: { fact: Fact }) {
           {fact.subject} · {fact.predicate}
         </p>
         <span className="rounded-full bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700">
-          {fact.status}
+          {factStatusLabel(fact.status)}
         </span>
       </div>
       <p className="mt-2 text-sm text-ink-700">
@@ -390,12 +412,39 @@ function stageLabel(stage: IngestJob['stage']): string {
     queued: '排队',
     upload: '上传',
     scan: '扫描',
-    parse: '解析',
-    chunk: '分块',
-    embed: '向量化',
-    index: '索引',
+    parse: '读取内容',
+    chunk: '整理段落',
+    embed: '理解内容',
+    index: '建立检索',
     done: '完成',
   }[stage];
+}
+
+function jobStatusLabel(value: IngestJob['status']): string {
+  return (
+    {
+      queued: '等待处理',
+      running: '处理中',
+      succeeded: '处理完成',
+      failed: '处理失败',
+      cancelled: '已取消',
+    }[value] ?? value
+  );
+}
+
+function factStatusLabel(value: Fact['status']): string {
+  return {
+    candidate: '待确认',
+    verified: '已确认',
+    conflicted: '有争议',
+    retired: '已停用',
+  }[value];
+}
+
+function sourceTypeLabel(value: Source['source_type']): string {
+  return { pdf: 'PDF 文档', docx: 'Word 文档', txt: '文本文件', url: '网页链接', image: '图片' }[
+    value
+  ];
 }
 
 function trustLabel(value: Source['trust_level']): string {

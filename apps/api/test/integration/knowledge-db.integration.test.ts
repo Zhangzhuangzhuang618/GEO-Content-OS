@@ -87,6 +87,7 @@ describe('knowledge database', () => {
       WHERE schemaname = 'public'
         AND indexname IN (
           'uq_source_hash_active',
+          'uq_source_url_active',
           'source_chunks_search_vector_idx',
           'embeddings_vector_hnsw_idx',
           'facts_subject_predicate_status_idx'
@@ -95,6 +96,7 @@ describe('knowledge database', () => {
     expect(new Set(indexes.map((item) => item.name))).toEqual(
       new Set([
         'uq_source_hash_active',
+        'uq_source_url_active',
         'source_chunks_search_vector_idx',
         'embeddings_vector_hnsw_idx',
         'facts_subject_predicate_status_idx',
@@ -144,6 +146,26 @@ describe('knowledge database', () => {
         )
       `,
     ).rejects.toThrow(/uq_source_hash_active/u);
+    await database`
+      INSERT INTO source_documents (
+        tenant_id, workspace_id, project_id, title, source_type, mime_type,
+        uri, content_hash, status, created_by
+      ) VALUES (
+        ${TENANT_A}, ${WORKSPACE_A}, ${PROJECT_A}, 'URL source', 'url', 'text/html',
+        'https://example.com/same-url', ${'6'.repeat(64)}, 'active', ${USER_A}
+      )
+    `;
+    await expect(
+      database`
+        INSERT INTO source_documents (
+          tenant_id, workspace_id, project_id, title, source_type, mime_type,
+          uri, content_hash, status, created_by
+        ) VALUES (
+          ${TENANT_A}, ${WORKSPACE_A}, ${PROJECT_A}, 'Duplicate URL', 'url', 'text/html',
+          'https://example.com/same-url', ${'7'.repeat(64)}, 'failed', ${USER_A}
+        )
+      `,
+    ).rejects.toThrow(/uq_source_url_active/u);
     await expect(
       database`
         INSERT INTO source_documents (

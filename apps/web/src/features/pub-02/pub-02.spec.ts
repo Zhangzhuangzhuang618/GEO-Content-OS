@@ -6,6 +6,7 @@ const ACCOUNT_ID = '30000000-0000-4000-8000-000000000092';
 const VARIANT_ID = '40000000-0000-4000-8000-000000000092';
 const CONTENT_VERSION_ID = '50000000-0000-4000-8000-000000000092';
 const USER_ID = '60000000-0000-4000-8000-000000000092';
+const PACKAGE_ID = '80000000-0000-4000-8000-000000000092';
 const JOB_IDS = [
   '70000000-0000-4000-8000-000000000092',
   '71000000-0000-4000-8000-000000000092',
@@ -26,6 +27,89 @@ test.beforeEach(async ({ context, page }) => {
   await page.route('**/api/v1/platform-accounts**', (route) =>
     json(route, { data: [account()], meta: { request_id: 'calendar-accounts' } }),
   );
+  await page.route('**/api/v1/content-packages?*', (route) =>
+    json(route, { data: [], meta: { next_cursor: null, request_id: 'approved-content' } }),
+  );
+});
+
+test('provides platform account entry points from publishing', async ({ page }) => {
+  await page.route('**/api/v1/publish-jobs**', (route) =>
+    json(route, { data: [], meta: { next_cursor: null, request_id: 'calendar-list' } }),
+  );
+
+  await page.goto('/pub-02');
+
+  await expect(page.getByRole('link', { name: '管理平台账号' })).toHaveCount(2);
+  await expect(page.getByRole('link', { name: '管理平台账号' }).first()).toHaveAttribute(
+    'href',
+    '/pub-01',
+  );
+  const scheduleForm = page.getByRole('form', { name: '创建发布排期' });
+  await scheduleForm.getByLabel('平台账号').selectOption(ACCOUNT_ID);
+  await expect(scheduleForm.getByRole('link', { name: '在新标签页打开发布后台' })).toHaveAttribute(
+    'target',
+    '_blank',
+  );
+});
+
+test('guides the user to configure an account when none is available', async ({ page }) => {
+  await page.unroute('**/api/v1/platform-accounts**');
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [], meta: { request_id: 'calendar-no-accounts' } }),
+  );
+  await page.route('**/api/v1/publish-jobs**', (route) =>
+    json(route, { data: [], meta: { next_cursor: null, request_id: 'calendar-list' } }),
+  );
+
+  await page.goto('/pub-02');
+
+  const accountNotice = page.getByText('当前没有可用的平台账号。').locator('..');
+  await expect(accountNotice.getByRole('link', { name: '配置平台账号' })).toHaveAttribute(
+    'href',
+    '/pub-01',
+  );
+  await expect(page.getByRole('button', { name: '排期' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '立即发布' })).toBeDisabled();
+});
+
+test('shows approved articles in publishing and lets the user select one', async ({ page }) => {
+  await page.unroute('**/api/v1/content-packages?*');
+  await page.route('**/api/v1/content-packages?*', (route) =>
+    json(route, {
+      data: [contentPackage()],
+      meta: { next_cursor: null, request_id: 'approved-content' },
+    }),
+  );
+  await page.route(`**/api/v1/content-packages/${PACKAGE_ID}`, (route) =>
+    json(route, {
+      data: {
+        generation_runs: [],
+        master_content: null,
+        package: contentPackage(),
+        variants: [variant('approved')],
+      },
+      meta: { request_id: 'approved-package' },
+    }),
+  );
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, (route) =>
+    json(route, {
+      data: {
+        current_content: { content_json: { title: '广州搬家公司怎么选' } },
+        variant: variant('approved'),
+      },
+      meta: { request_id: 'approved-variant' },
+    }),
+  );
+  await page.route('**/api/v1/publish-jobs**', (route) =>
+    json(route, { data: [], meta: { next_cursor: null, request_id: 'calendar-list' } }),
+  );
+
+  await page.goto('/pub-02');
+  await expect(page.getByRole('heading', { name: '待发布内容' })).toBeVisible();
+  await expect(page.getByText('广州搬家公司怎么选')).toBeVisible();
+  await page.getByRole('button', { name: '安排发布' }).click();
+  await expect(page.getByText('已选择：')).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`variant_id=${VARIANT_ID}`, 'u'));
 });
 
 test('blocks non-approved variants and creates an immediate job only after approval', async ({
@@ -57,12 +141,12 @@ test('blocks non-approved variants and creates an immediate job only after appro
   });
 
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto('/pub-02');
+  await page.goto(`/pub-02?variant_id=${VARIANT_ID}`);
   const form = page.getByRole('form', { name: '创建发布排期' });
-  await form.getByLabel('变体 UUID').fill(VARIANT_ID);
+  await expect(form.getByText('已选择：')).toBeVisible();
   await form.getByLabel('平台账号').selectOption(ACCOUNT_ID);
   await form.getByRole('button', { name: '立即发布' }).click();
-  await expect(page.getByText('只有 approved 变体可排期或立即发布。')).toBeVisible();
+  await expect(page.getByText('这份内容尚未审核通过，暂时不能发布。')).toBeVisible();
   expect(creates).toHaveLength(0);
 
   variantStatus = 'approved';
@@ -123,14 +207,14 @@ test('reschedules, publishes now and cancels scheduled jobs through frozen APIs'
   await page.getByRole('button', { name: '改期' }).click();
   await expect(page.getByText('发布任务已改期。')).toBeVisible();
 
-  const currentRow = page.getByRole('row').filter({ hasText: shortId(VARIANT_ID) });
+  const currentRow = page.getByRole('row').filter({ hasText: '已审核内容' });
   await currentRow.getByRole('button', { name: '立即发布' }).click();
   await expect(page.getByText('任务已调整为立即发布。')).toBeVisible();
 
   page.once('dialog', (dialog) => dialog.accept('运营取消'));
   await page
     .getByRole('row')
-    .filter({ hasText: shortId(VARIANT_ID) })
+    .filter({ hasText: '已审核内容' })
     .getByRole('button', { name: '取消' })
     .click();
   await expect(page.getByText('发布任务已取消。')).toBeVisible();
@@ -227,13 +311,29 @@ function variant(status: string) {
     current_content_version_id: CONTENT_VERSION_ID,
     id: VARIANT_ID,
     is_required: true,
-    package_id: '80000000-0000-4000-8000-000000000092',
+    package_id: PACKAGE_ID,
     platform_code: 'official_site',
     quality_score: 92,
     status,
     tenant_id: TENANT_ID,
     updated_at: '2026-07-16T00:00:00.000Z',
     version: 4,
+  };
+}
+
+function contentPackage() {
+  return {
+    brief_id: '81000000-0000-4000-8000-000000000092',
+    created_at: '2026-07-16T00:00:00.000Z',
+    created_by: USER_ID,
+    id: PACKAGE_ID,
+    master_content_version_id: null,
+    project_id: '82000000-0000-4000-8000-000000000092',
+    status: 'approved',
+    tenant_id: TENANT_ID,
+    updated_at: '2026-07-18T08:50:48.000Z',
+    version: 3,
+    workspace_id: WORKSPACE_ID,
   };
 }
 
@@ -245,6 +345,7 @@ function account() {
     id: ACCOUNT_ID,
     platform_code: 'official_site',
     provider_account_id: 'site-main',
+    publishing_url: 'https://cms.example.test/publish',
     publish_mode: 'api',
     scopes: ['publish'],
     status: 'active',
@@ -288,10 +389,6 @@ async function mockRole(page: Page, role: string) {
       meta: { request_id: 'calendar-role' },
     }),
   );
-}
-
-function shortId(value: string) {
-  return `${value.slice(0, 8)}…${value.slice(-4)}`;
 }
 
 async function json(route: Route, body: unknown, status = 200) {

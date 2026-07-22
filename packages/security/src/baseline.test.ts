@@ -58,6 +58,18 @@ describe('security baseline', () => {
     expect(api['X-Content-Type-Options']).toBe('nosniff');
   });
 
+  it('keeps production CSP strict without upgrading local HTTP assets to HTTPS', () => {
+    const web = createWebSecurityHeaders({
+      nonce: generateSecureToken(),
+      production: true,
+      secureTransport: false,
+    });
+
+    expect(web['Content-Security-Policy']).not.toContain('upgrade-insecure-requests');
+    expect(web['Content-Security-Policy']).not.toContain("'unsafe-eval'");
+    expect(web['Strict-Transport-Security']).toBeUndefined();
+  });
+
   it('redacts nested credentials, signed URLs, bearer values, errors, and cycles', () => {
     const cyclic: Record<string, unknown> = { safe: 'visible' };
     cyclic['self'] = cyclic;

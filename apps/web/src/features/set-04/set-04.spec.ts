@@ -20,11 +20,11 @@ test('shows immutable audit fields on mobile without mutation actions', async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/set-04');
   await expect(page.getByRole('heading', { exact: true, name: '审计日志' })).toBeVisible();
-  await expect(page.getByText('审计事件只追加且不可编辑或删除')).toBeVisible();
+  await expect(page.getByText('重要操作记录不可编辑或删除')).toBeVisible();
   const card = page.locator('article');
-  await expect(card.getByRole('heading', { name: 'workspace.updated' })).toBeVisible();
-  await expect(card.getByText('Tenant Owner · workspace')).toBeVisible();
-  await expect(card.getByText('req-audit-100')).toBeVisible();
+  await expect(card.getByRole('heading', { name: '更新工作区' })).toBeVisible();
+  await expect(card.getByText('Tenant Owner · 工作区')).toBeVisible();
+  await expect(card.getByText('req-audit-100')).toBeHidden();
   await expect(page.getByRole('button', { name: /编辑|删除|修改/u })).toHaveCount(0);
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
@@ -46,10 +46,11 @@ test('stores filters in the URL and sends deterministic audit query parameters',
     });
   });
   await page.goto('/set-04');
-  await page.getByLabel('Actor ID').fill(ACTOR);
-  await page.getByLabel('Action').fill('workspace.updated');
-  await page.getByLabel('资源类型').fill('workspace');
-  await page.getByLabel('Request ID').fill('req-audit-100');
+  await page.getByLabel('操作类型').fill('workspace.updated');
+  await page.getByLabel('对象类型').fill('workspace');
+  await page.getByText('按技术编号精确查找').click();
+  await page.getByLabel('操作人编号').fill(ACTOR);
+  await page.getByLabel('请求编号').fill('req-audit-100');
   await page.getByLabel('开始日期').fill('2026-07-01');
   await page.getByRole('button', { name: '应用筛选' }).click();
   await expect(page).toHaveURL(/actor_id=.*action=workspace.updated.*resource_type=workspace/u);
@@ -73,7 +74,7 @@ test('shows permission and empty states', async ({ page }) => {
   await page.unroute('**/api/v1/audit-events?*');
   await page.route('**/api/v1/audit-events?*', (route) => route.fulfill({ status: 403 }));
   await page.goto('/set-04');
-  await expect(page.getByRole('heading', { name: '无权查看审计日志' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无权查看操作记录' })).toBeVisible();
 
   await page.unroute('**/api/v1/audit-events?*');
   await page.route('**/api/v1/audit-events?*', (route) =>
@@ -87,7 +88,7 @@ test('shows permission and empty states', async ({ page }) => {
     }),
   );
   await page.reload();
-  await expect(page.getByRole('heading', { name: '暂无审计事件' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂无操作记录' })).toBeVisible();
 });
 
 function auditEvent() {

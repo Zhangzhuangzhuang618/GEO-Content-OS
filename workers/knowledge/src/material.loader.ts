@@ -31,7 +31,11 @@ export class AdapterMaterialLoader implements MaterialLoaderPort {
   ): Promise<LoadedMaterial> {
     requireNotAborted(signal);
     if (source.sourceType === 'url') {
-      if (!data.sourceUrl || data.objectKey) throw invalidLocation();
+      if (!data.sourceUrl) throw invalidLocation();
+      if (data.objectKey) {
+        const stored = await this.loadObject(source, data.objectKey, signal);
+        return Object.freeze({ ...stored, url: data.sourceUrl });
+      }
       const result = await this.webFetch.fetch(data.sourceUrl);
       requireNotAborted(signal);
       validateBody(result.body, this.maxBytes, result.contentHash);
@@ -54,7 +58,15 @@ export class AdapterMaterialLoader implements MaterialLoaderPort {
       });
     }
     if (!data.objectKey || data.sourceUrl) throw invalidLocation();
-    const metadata = await this.storage.headObject(data.objectKey);
+    return this.loadObject(source, data.objectKey, signal);
+  }
+
+  private async loadObject(
+    source: IngestSource,
+    objectKey: string,
+    signal?: AbortSignal,
+  ): Promise<LoadedMaterial> {
+    const metadata = await this.storage.headObject(objectKey);
     if (!metadata || metadata.contentLength < 1 || metadata.contentLength > this.maxBytes) {
       throw new IngestWorkerError('SOURCE_OBJECT_INVALID', 'Source object metadata is invalid', {
         retryable: metadata === undefined,
@@ -69,7 +81,7 @@ export class AdapterMaterialLoader implements MaterialLoaderPort {
         },
       );
     }
-    const body = await this.storage.getObject(data.objectKey);
+    const body = await this.storage.getObject(objectKey);
     requireNotAborted(signal);
     validateBody(body, this.maxBytes, source.contentHash);
     return Object.freeze({

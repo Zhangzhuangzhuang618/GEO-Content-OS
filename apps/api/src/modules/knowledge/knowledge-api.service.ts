@@ -9,6 +9,8 @@ import type {
   SourceScopeQuery,
   SourceView,
 } from '@geo-content-os/contracts';
+import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import type { WebFetchAdapter } from '@geo-content-os/adapter-web-fetch';
 import { Inject, Injectable } from '@nestjs/common';
 import { Buffer } from 'node:buffer';
 import { randomUUID } from 'node:crypto';
@@ -30,6 +32,8 @@ import {
   KnowledgeApiValidationError,
   KnowledgeApiVersionConflictError,
 } from './knowledge-api.errors.js';
+import { buildUrlSnapshotObjectKey } from './sources/source-object-key.js';
+import { SOURCE_STORAGE, SOURCE_WEB_FETCH } from './sources/source.tokens.js';
 
 export interface KnowledgeAuditContext {
   readonly ip?: string;
@@ -53,11 +57,21 @@ interface IngestJobRow extends RepositoryIngestJobView {
   readonly sourceWorkspaceId?: string;
 }
 
+interface UrlSnapshot {
+  readonly contentHash: string;
+  readonly contentType: string;
+  readonly objectKey: string;
+  readonly redirectChain: readonly string[];
+  readonly sourceUrl: string;
+}
+
 @Injectable()
 export class KnowledgeApiService {
   public constructor(
     @Inject(IdentityAuthDatabase) private readonly database: IdentityAuthDatabase,
     @Inject(OutboxWriter) private readonly outboxWriter: OutboxWriter,
+    @Inject(SOURCE_STORAGE) private readonly storage: ObjectStorageAdapter,
+    @Inject(SOURCE_WEB_FETCH) private readonly webFetch: WebFetchAdapter,
   ) {}
 
   public async listSources(
@@ -88,10 +102,36 @@ export class KnowledgeApiService {
     const knowledgeScope = scope(tenantId, userId, query);
     const source = await repository.findSourceDocument(knowledgeScope, sourceId);
     if (!source) throw new KnowledgeApiNotFoundError();
-    const [jobs, chunks, factRows] = await Promise.all([
+    const [jobs, chunks, factRows, citationRows] = await Promise.all([
       repository.listIngestJobs(knowledgeScope, sourceId),
       repository.listSourceChunks(knowledgeScope, sourceId),
       repository.listFacts(knowledgeScope),
+      this.database.client<{ count: number }[]>`
+        SELECT count(DISTINCT citation.id)::int AS count
+        FROM ai_citations AS citation
+        JOIN source_chunks AS chunk
+          ON chunk.id = citation.chunk_id
+          AND chunk.tenant_id = citation.tenant_id
+        JOIN content_versions AS content_version
+          ON content_version.id = citation.content_version_id
+          AND content_version.tenant_id = citation.tenant_id
+        JOIN content_variants AS variant
+          ON variant.id = content_version.variant_id
+          AND variant.tenant_id = content_version.tenant_id
+        JOIN content_packages AS package
+          ON package.id = variant.package_id
+          AND package.tenant_id = variant.tenant_id
+        WHERE chunk.source_document_id = ${sourceId}::uuid
+          AND citation.tenant_id = ${tenantId}::uuid
+          AND package.workspace_id = ${query.workspace_id}::uuid
+          AND package.project_id = ${query.project_id}::uuid
+          AND has_project_scope_access(
+            package.tenant_id,
+            package.workspace_id,
+            package.project_id,
+            ${userId}::uuid
+          )
+      `,
     ]);
     const factsWithEvidence = await Promise.all(
       factRows.map(async (fact) => ({
@@ -104,11 +144,7 @@ export class KnowledgeApiService {
     );
     return {
       chunks: chunks.map(toChunkView),
-      citation_count: related.reduce(
-        (count, item) =>
-          count + item.evidence.filter((evidence) => evidence.sourceDocumentId === sourceId).length,
-        0,
-      ),
+      citation_count: citationRows[0]?.count ?? 0,
       facts: related.map(({ evidence, fact }) => toFactView(fact, evidence)),
       ingest_jobs: jobs.map(toIngestJobView),
       source: toSourceView(source),
@@ -193,6 +229,17 @@ export class KnowledgeApiService {
     input: ReindexRequest,
     audit: KnowledgeAuditContext,
   ): Promise<IngestJobView> {
+    const initialSource = await this.database.client.begin((transaction) =>
+      lockManagedSource(transaction, tenantId, userId, sourceId),
+    );
+    if (initialSource.contentHash !== input.expected_content_hash) {
+      throw new KnowledgeApiVersionConflictError();
+    }
+    if (initialSource.status === 'expired')
+      throw new KnowledgeApiStateError('Expired sources cannot be reindexed');
+    const urlSnapshot =
+      initialSource.sourceType === 'url' ? await this.prepareUrlSnapshot(initialSource) : undefined;
+
     return this.database.client.begin(async (transaction) => {
       const source = await lockManagedSource(transaction, tenantId, userId, sourceId);
       if (source.contentHash !== input.expected_content_hash) {
@@ -221,6 +268,43 @@ export class KnowledgeApiService {
         LIMIT 1
       `;
       if (active[0]) return toIngestJobView(active[0]);
+      let contentHash = source.contentHash;
+      let mimeType = source.mimeType;
+      if (urlSnapshot && urlSnapshot.contentHash !== source.contentHash) {
+        if (source.status !== 'failed') {
+          throw new KnowledgeApiStateError('A changed active URL must be registered as new source');
+        }
+        const [usage, duplicate] = await Promise.all([
+          transaction<{ count: number }[]>`
+            SELECT count(*)::integer AS count
+            FROM source_chunks
+            WHERE tenant_id = ${tenantId}::uuid AND source_document_id = ${sourceId}::uuid
+          `,
+          transaction<{ id: string }[]>`
+            SELECT id
+            FROM source_documents
+            WHERE tenant_id = ${tenantId}::uuid
+              AND workspace_id = ${source.workspaceId}::uuid
+              AND content_hash = ${urlSnapshot.contentHash}
+              AND id <> ${sourceId}::uuid
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+        ]);
+        if ((usage[0]?.count ?? 0) > 0 || duplicate[0]) {
+          throw new KnowledgeApiStateError('URL snapshot cannot safely replace this source');
+        }
+        await transaction`
+          UPDATE source_documents
+          SET
+            content_hash = ${urlSnapshot.contentHash},
+            mime_type = ${urlSnapshot.contentType},
+            updated_at = now()
+          WHERE id = ${sourceId}::uuid AND tenant_id = ${tenantId}::uuid
+        `;
+        contentHash = urlSnapshot.contentHash;
+        mimeType = urlSnapshot.contentType;
+      }
       const jobId = randomUUID();
       const jobs = await transaction<IngestJobRow[]>`
         WITH updated_source AS (
@@ -252,10 +336,16 @@ export class KnowledgeApiService {
           aggregateId: sourceId,
           aggregateType: 'source_document',
           data: {
-            content_hash: source.contentHash,
+            content_hash: contentHash,
             ingest_job_id: jobId,
             ...(source.sourceType === 'url'
-              ? { redirect_chain: [], source_url: source.uri }
+              ? {
+                  object_key:
+                    urlSnapshot?.objectKey ??
+                    buildUrlSnapshotObjectKey(tenantId, source.workspaceId, sourceId, contentHash),
+                  redirect_chain: [...(urlSnapshot?.redirectChain ?? [])],
+                  source_url: urlSnapshot?.sourceUrl ?? source.uri,
+                }
               : { object_key: objectKeyFromUri(source.uri) }),
             source_document_id: sourceId,
             workspace_id: source.workspaceId,
@@ -272,11 +362,64 @@ export class KnowledgeApiService {
         'knowledge.source.reindex_requested',
         sourceId,
         null,
-        { content_hash: source.contentHash, ingest_job_id: jobId, reason: input.reason },
+        {
+          content_hash: contentHash,
+          ingest_job_id: jobId,
+          mime_type: mimeType,
+          reason: input.reason,
+        },
         audit,
       );
       return toIngestJobView(job);
     });
+  }
+
+  private async prepareUrlSnapshot(source: SourceDocumentView): Promise<UrlSnapshot> {
+    const existingKey = buildUrlSnapshotObjectKey(
+      source.tenantId,
+      source.workspaceId,
+      source.id,
+      source.contentHash,
+    );
+    const metadata = await this.storage.headObject(existingKey);
+    if (metadata && metadata.contentLength > 0) {
+      return {
+        contentHash: source.contentHash,
+        contentType: source.mimeType,
+        objectKey: existingKey,
+        redirectChain: [],
+        sourceUrl: source.uri,
+      };
+    }
+    const fetched = await this.webFetch.fetch(source.uri);
+    if (source.status !== 'failed' && fetched.contentHash !== source.contentHash) {
+      throw new KnowledgeApiStateError('The URL changed after its last successful indexing');
+    }
+    const objectKey = buildUrlSnapshotObjectKey(
+      source.tenantId,
+      source.workspaceId,
+      source.id,
+      fetched.contentHash,
+    );
+    await this.storage.putObject({
+      body: fetched.body,
+      contentHash: fetched.contentHash,
+      contentType: fetched.contentType,
+      key: objectKey,
+      metadata: {
+        content_hash: fetched.contentHash,
+        source_id: source.id,
+        tenant_id: source.tenantId,
+        workspace_id: source.workspaceId,
+      },
+    });
+    return {
+      contentHash: fetched.contentHash,
+      contentType: fetched.contentType,
+      objectKey,
+      redirectChain: fetched.redirectChain,
+      sourceUrl: source.uri,
+    };
   }
 
   public async deleteSource(

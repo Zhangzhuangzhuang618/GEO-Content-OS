@@ -38,6 +38,9 @@ const PLATFORMS = [
 const VARIANT_IDS = PLATFORMS.map(
   (_, index) => `7a000000-0000-4000-8000-000000000${String(53 + index).padStart(3, '0')}`,
 );
+const ACCOUNT_IDS = PLATFORMS.map(
+  (_, index) => `9a000000-0000-4000-8000-000000000${String(53 + index).padStart(3, '0')}`,
+);
 const SCOPE: ContentScope = {
   projectId: PROJECT_ID,
   tenantId: TENANT_ID,
@@ -115,6 +118,35 @@ describe('Master and multi-platform generation orchestration', () => {
     const calls = writer.calls;
     await expect(worker.run(request.event)).resolves.toMatchObject({ disposition: 'completed' });
     expect(writer.calls).toBe(calls);
+  });
+
+  it('binds every generated variant to its single active platform account', async () => {
+    const database = requireClient(client);
+    await seedPlatformAccounts(database);
+    const previous = process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'];
+    process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] = 'true';
+    try {
+      await schedule(database, 'generation-account-targets');
+    } finally {
+      if (previous === undefined) delete process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'];
+      else process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] = previous;
+    }
+
+    expect(
+      await database<{ accountId: string; platformCode: string }[]>`
+        SELECT
+          platform_account_id AS "accountId",
+          platform_code AS "platformCode"
+        FROM content_variants
+        WHERE package_id = ${PACKAGE_ID}::uuid
+        ORDER BY platform_code
+      `,
+    ).toEqual(
+      PLATFORMS.map((platformCode, index) => ({
+        accountId: ACCOUNT_IDS[index]!,
+        platformCode,
+      })).sort((left, right) => left.platformCode.localeCompare(right.platformCode)),
+    );
   });
 
   it('commits six successful variants when one platform generation fails', async () => {
@@ -220,7 +252,9 @@ class FakeWriter implements ContentWriterPort {
     this.calls += 1;
     this.activeVariants += 1;
     this.maximumActiveVariants = Math.max(this.maximumActiveVariants, this.activeVariants);
-    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    // Keep the fake provider call open long enough for independently claimed
+    // variant jobs to overlap even when the full integration suite is under load.
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
     this.activeVariants -= 1;
     if (this.failures.has(input.platformCode)) throw new Error('Provider rejected variant');
     const text = this.lockMutations.has(input.platformCode)
@@ -239,6 +273,7 @@ async function schedule(database: Sql, requestId: string) {
       {
         expectedPackageVersion: 1,
         modelKey: 'deepseek-flash',
+        modelPolicy: 'balanced',
         packageId: PACKAGE_ID,
         promptVersionId: PROMPT_VERSION_ID,
         skillVersion: '1.0.0',
@@ -354,6 +389,21 @@ async function seed(database: Sql): Promise<void> {
     await database`
       INSERT INTO content_variants (id, tenant_id, package_id, platform_code)
       VALUES (${variantId}, ${TENANT_ID}, ${PACKAGE_ID}, ${platform})
+    `;
+  }
+}
+
+async function seedPlatformAccounts(database: Sql): Promise<void> {
+  for (const [index, platform] of PLATFORMS.entries()) {
+    const accountId = ACCOUNT_IDS[index]!;
+    await database`
+      INSERT INTO platform_accounts (
+        id, tenant_id, workspace_id, platform_code, provider_account_id,
+        display_name, publish_mode, status, timezone
+      ) VALUES (
+        ${accountId}, ${TENANT_ID}, ${WORKSPACE_ID}, ${platform},
+        ${`provider-${platform}`}, ${`Account ${platform}`}, 'manual', 'active', 'UTC'
+      )
     `;
   }
 }

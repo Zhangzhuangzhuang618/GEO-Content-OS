@@ -10,14 +10,17 @@ import {
   ReasonRequestSchema,
   RefreshAccountRequestSchema,
   RetryPublishRequestSchema,
+  UpdatePlatformAccountRequestSchema,
 } from '@geo-content-os/contracts';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpStatus,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -107,6 +110,33 @@ export class PlatformAccountController {
     }
   }
 
+  @Patch(':id')
+  @RequirePermissions('publishing.manage')
+  public async update(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = UpdatePlatformAccountRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    try {
+      const data = await this.accounts.update(
+        requireScope(request),
+        parsedParams.data.id,
+        parsedBody.data,
+        parseIfMatch(request.headers['if-match']),
+        audit(request),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
   @Post(':id/refresh')
   @RequirePermissions('publishing.manage')
   public async refresh(
@@ -182,6 +212,50 @@ export class PlatformAccountController {
         requireScope(request),
         parsedParams.data.id,
         parsedBody.data.reason,
+        parseIfMatch(request.headers['if-match']),
+        audit(request),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/restore')
+  @RequirePermissions('publishing.manage')
+  public async restore(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.accounts.restore(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+        audit(request),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Delete(':id')
+  @RequirePermissions('publishing.manage')
+  public async remove(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.accounts.remove(
+        requireScope(request),
+        parsed.data.id,
         parseIfMatch(request.headers['if-match']),
         audit(request),
       );

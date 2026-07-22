@@ -65,7 +65,17 @@ export class SkillRunner {
     const definitions = this.tools.definitions(input.context.skillName, input.toolNames ?? []);
     const allowedToolNames = new Set(definitions.map((definition) => definition.name));
     const usages: ModelUsage[] = [];
-    const messages: ModelMessage[] = [...input.messages];
+    const capabilities = this.adapter.capabilities();
+    if (!capabilities.jsonSchema && !capabilities.jsonMode) {
+      throw new SkillRuntimeError(
+        'SKILL_MODEL_CAPABILITY_UNAVAILABLE',
+        'Skill execution requires JSON Schema or JSON mode',
+      );
+    }
+    const messages: ModelMessage[] = [
+      ...input.messages,
+      ...(capabilities.jsonSchema ? [] : [jsonModeSchemaMessage(input.outputSchema)]),
+    ];
     let toolCallCount = 0;
     const toolResults: SkillToolResult[] = [];
 
@@ -158,7 +168,8 @@ export class SkillRunner {
       first.message,
       {
         content: JSON.stringify({
-          instruction: 'Return corrected JSON only.',
+          instruction:
+            'Return corrected JSON only. Fix every invalid path without inventing facts, identifiers, citations, or missing values. Remove unsupported optional entries when that is the only schema-valid correction.',
           invalid_paths: firstCheck.paths,
         }),
         role: 'user',
@@ -232,4 +243,15 @@ function assertUniqueToolCallIds(ids: readonly string[]): void {
       'Skill model returned invalid tool call IDs',
     );
   }
+}
+
+function jsonModeSchemaMessage(outputSchema: JsonObject): ModelMessage {
+  return {
+    content: JSON.stringify({
+      instruction:
+        'Return exactly one JSON object that validates against output_schema. Include every required field, omit undeclared fields, and return no Markdown or commentary.',
+      output_schema: outputSchema,
+    }),
+    role: 'user',
+  };
 }

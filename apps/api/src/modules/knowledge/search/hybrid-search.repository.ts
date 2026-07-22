@@ -1,4 +1,5 @@
 import { EMBEDDING_DIMENSION } from '@geo-content-os/adapter-embedding';
+import type { TransactionSql } from 'postgres';
 
 import type { DatabaseClient } from '../../../database/index.js';
 import type {
@@ -15,7 +16,7 @@ const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/u;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export class HybridSearchRepository implements HybridSearchPort {
-  public constructor(private readonly client: DatabaseClient) {}
+  public constructor(private readonly client: DatabaseClient | TransactionSql) {}
 
   public async search(
     scope: HybridSearchScope,
@@ -54,6 +55,10 @@ export class HybridSearchRepository implements HybridSearchPort {
           AND source.deleted_at IS NULL
           AND workspace.deleted_at IS NULL
           AND source.status = 'active'
+          AND (
+            cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+            OR source.id = ANY(${this.client.array([...request.sourceDocumentIds])}::uuid[])
+          )
           AND chunk.status = 'active'
           AND source.trust_level = ANY(${this.client.array([...request.trustLevels])}::varchar[])
           AND (source.effective_from IS NULL OR source.effective_from <= ${request.effectiveOn}::date)
@@ -105,6 +110,10 @@ export class HybridSearchRepository implements HybridSearchPort {
           AND source.deleted_at IS NULL
           AND workspace.deleted_at IS NULL
           AND source.status = 'active'
+          AND (
+            cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+            OR source.id = ANY(${this.client.array([...request.sourceDocumentIds])}::uuid[])
+          )
           AND chunk.status = 'active'
           AND source.trust_level = ANY(${this.client.array([...request.trustLevels])}::varchar[])
           AND (source.effective_from IS NULL OR source.effective_from <= ${request.effectiveOn}::date)
@@ -171,6 +180,10 @@ export class HybridSearchRepository implements HybridSearchPort {
         AND (source.project_id IS NULL OR source.project_id = ${scope.projectId}::uuid)
         AND source.deleted_at IS NULL
         AND source.status = 'active'
+        AND (
+          cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+          OR source.id = ANY(${this.client.array([...request.sourceDocumentIds])}::uuid[])
+        )
         AND chunk.status = 'active'
         AND source.trust_level = ANY(${this.client.array([...request.trustLevels])}::varchar[])
         AND (source.effective_from IS NULL OR source.effective_from <= ${request.effectiveOn}::date)
@@ -220,6 +233,7 @@ export function validateHybridSearchRequest(
   const effectiveOn = options.effectiveOn ?? new Date().toISOString().slice(0, 10);
   if (!isIsoDate(effectiveOn)) throw new TypeError('Hybrid search effective date is invalid');
   const trustLevels = [...(options.trustLevels ?? ['verified', 'normal'])];
+  const sourceDocumentIds = [...(options.sourceDocumentIds ?? [])];
   if (
     trustLevels.length === 0 ||
     trustLevels.length > SEARCHABLE_TRUST_LEVELS.size ||
@@ -228,11 +242,19 @@ export function validateHybridSearchRequest(
   ) {
     throw new TypeError('Hybrid search trust levels are invalid');
   }
+  if (
+    sourceDocumentIds.length > 100 ||
+    sourceDocumentIds.some((id) => !UUID.test(id)) ||
+    new Set(sourceDocumentIds).size !== sourceDocumentIds.length
+  ) {
+    throw new TypeError('Hybrid search source document scope is invalid');
+  }
   return Object.freeze({
     candidateLimit,
     effectiveOn,
     modelKey: options.modelKey,
     query,
+    sourceDocumentIds: Object.freeze(sourceDocumentIds),
     topK,
     trustLevels: Object.freeze(trustLevels),
     vectorLiteral: `[${vector.join(',')}]`,

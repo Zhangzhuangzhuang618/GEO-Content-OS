@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantChoice, TenantRole } from '../auth-02/tenant.schema';
+import { modelLabel, skillLabel, TechnicalDetails } from '../human-readable';
 import { listWorkspaces } from '../set-02/workspace-settings-api';
 import type { Workspace } from '../set-02/workspace-settings.schema';
 import {
@@ -231,7 +232,7 @@ export function CostCenter() {
   if (state === 'loading' && !report)
     return <Panel title="正在加载成本中心" text="正在读取权限、工作区和已结算 ledger。" />;
   if (state === 'permission')
-    return <Panel title="无权访问成本中心" text="仅分析师、租户管理员和所有者可访问。" />;
+    return <Panel title="无权访问成本中心" text="仅分析师、企业管理员和所有者可访问。" />;
   if (state === 'error')
     return <Panel title="无法加载成本中心" text="请检查筛选条件、网络、权限或服务状态。" />;
   if (state === 'empty') return <Panel title="暂无可用工作区" text="请先创建或启用工作区。" />;
@@ -264,7 +265,7 @@ export function CostCenter() {
           reconciling={reconciling}
         />
       </div>
-      <CostTable items={breakdown} report={report} tenant={tenant} />
+      <CostTable items={breakdown} report={report} tenant={tenant} workspaces={workspaces} />
       {reconciliation ? <ReconciliationTable value={reconciliation} /> : null}
     </section>
   );
@@ -291,7 +292,7 @@ function FilterPanel({
       onSubmit={onSubmit}
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Input disabled label="租户" name="tenant" value={tenant?.name ?? ''} />
+        <Input disabled label="企业" name="tenant" value={tenant?.name ?? ''} />
         <Select label="工作区" name="workspace_id" value={filters.workspaceId}>
           {workspaces.map((item) => (
             <option key={item.id} value={item.id}>
@@ -299,20 +300,6 @@ function FilterPanel({
             </option>
           ))}
         </Select>
-        <Input
-          label="项目 UUID"
-          name="project_id"
-          pattern={UUID.source}
-          value={filters.projectId ?? ''}
-        />
-        <Input
-          label="内容包 UUID"
-          name="package_id"
-          pattern={UUID.source}
-          value={filters.packageId ?? ''}
-        />
-        <Input label="模型" name="model_key" value={filters.modelKey ?? ''} />
-        <Input label="Skill" name="skill_name" value={filters.skillName ?? ''} />
         <Input
           label="币种"
           maxLength={3}
@@ -323,6 +310,25 @@ function FilterPanel({
         <Input label="开始日期" name="from" required type="date" value={filters.from} />
         <Input label="结束日期（不含）" name="to" required type="date" value={filters.to} />
       </div>
+      <details className="mt-4 text-sm text-ink-600">
+        <summary className="cursor-pointer font-medium">高级筛选</summary>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Input
+            label="项目编号"
+            name="project_id"
+            pattern={UUID.source}
+            value={filters.projectId ?? ''}
+          />
+          <Input
+            label="内容任务编号"
+            name="package_id"
+            pattern={UUID.source}
+            value={filters.packageId ?? ''}
+          />
+          <Input label="生成模型代码" name="model_key" value={filters.modelKey ?? ''} />
+          <Input label="处理步骤代码" name="skill_name" value={filters.skillName ?? ''} />
+        </div>
+      </details>
       <div className="mt-4 flex flex-wrap gap-3">
         <button className={primary} type="submit">
           应用筛选
@@ -412,9 +418,7 @@ function StatementPanel({
     <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
       <h2 className="text-xl font-semibold">供应商账单对账</h2>
       <p className="mt-2 text-sm text-ink-500">
-        CSV
-        列：provider、currency、billed_cost_cents。对账沿用日期、工作区、项目、内容包与币种范围；模型和
-        Skill 仅筛选当前明细。账单不会持久化。
+        上传供应商提供的 CSV 账单，与当前日期和工作区范围内的已结算成本核对。上传文件不会长期保存。
       </p>
       <Input
         accept=".csv,text/csv"
@@ -444,13 +448,15 @@ function CostTable({
   items,
   report,
   tenant,
+  workspaces,
 }: {
   readonly items: readonly CostBreakdownItem[];
   readonly report: CostReport | null;
   readonly tenant: TenantChoice | null;
+  readonly workspaces: readonly Workspace[];
 }) {
   if (!report || items.length === 0)
-    return <Panel title="暂无成本明细" text="当前筛选范围没有已结算、未冲正的 ledger 数据。" />;
+    return <Panel title="暂无成本明细" text="当前筛选范围没有已结算且有效的成本记录。" />;
   const visibleTotals = aggregateTotals(items);
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
@@ -458,7 +464,7 @@ function CostTable({
         <div>
           <h2 className="text-xl font-semibold">成本明细</h2>
           <p className="mt-2 text-sm text-ink-500">
-            事实源：usage_ledger · 仅已结算 · 已排除冲正记录
+            仅展示已结算的有效成本，退款或冲正记录已扣除。
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -470,20 +476,19 @@ function CostTable({
         </div>
       </div>
       <div className="mt-5 overflow-x-auto">
-        <table className="min-w-[1500px] text-left text-sm">
+        <table className="min-w-[980px] text-left text-sm">
           <thead className="bg-surface-subtle text-ink-500">
             <tr>
               {[
-                '租户',
+                '企业',
                 '工作区',
-                '项目',
-                '内容包',
-                '模型',
-                'Skill',
+                '处理步骤',
+                '生成方式',
                 '供应商',
                 '类别',
                 '金额',
                 '条目',
+                '更多',
               ].map((label) => (
                 <th className="p-3" key={label}>
                   {label}
@@ -498,15 +503,24 @@ function CostTable({
                 key={`${item.workspace_id}-${item.project_id}-${item.package_id}-${item.model_key}-${item.skill_name}-${item.currency}-${index}`}
               >
                 <td className="p-3">{tenant?.name ?? '—'}</td>
-                <td className="p-3 font-mono text-xs">{item.workspace_id ?? '—'}</td>
-                <td className="p-3 font-mono text-xs">{item.project_id ?? '—'}</td>
-                <td className="p-3 font-mono text-xs">{item.package_id ?? '—'}</td>
-                <td className="p-3">{item.model_key ?? '—'}</td>
-                <td className="p-3">{item.skill_name ?? '—'}</td>
+                <td className="p-3">
+                  {workspaces.find(({ id }) => id === item.workspace_id)?.name ?? '全部工作区'}
+                </td>
+                <td className="p-3">{skillLabel(item.skill_name)}</td>
+                <td className="p-3">{modelLabel(item.model_key)}</td>
                 <td className="p-3">{item.provider ?? '未归属'}</td>
-                <td className="p-3">{item.cost_category}</td>
+                <td className="p-3">{costCategoryLabel(item.cost_category)}</td>
                 <td className="p-3 font-semibold">{money(item.cost_cents, item.currency)}</td>
                 <td className="p-3">{item.entry_count}</td>
+                <td className="p-3">
+                  <TechnicalDetails>
+                    <p>工作区：{item.workspace_id ?? '—'}</p>
+                    <p>项目：{item.project_id ?? '—'}</p>
+                    <p>内容任务：{item.package_id ?? '—'}</p>
+                    <p>平台内容：{item.variant_id ?? '—'}</p>
+                    <p>生成任务：{item.generation_run_id ?? '—'}</p>
+                  </TechnicalDetails>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -770,6 +784,17 @@ function statusLabel(value: Reconciliation['items'][number]['status']) {
     missing_ledger: 'Ledger 缺失',
     missing_statement: '账单缺失',
   }[value];
+}
+
+function costCategoryLabel(value: string): string {
+  return (
+    {
+      generation: '内容生成',
+      embedding: '资料理解',
+      quality_check: '质量检查',
+      publishing: '内容发布',
+    }[value] ?? value.replaceAll('_', ' ')
+  );
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;

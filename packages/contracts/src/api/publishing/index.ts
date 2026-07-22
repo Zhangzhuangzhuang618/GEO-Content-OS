@@ -22,6 +22,7 @@ import {
   PlatformAccountQuerySchema,
   PlatformAccountResponseSchema,
   RefreshAccountRequestSchema,
+  UpdatePlatformAccountRequestSchema,
 } from './schemas.js';
 import { ReasonRequestSchema } from '../common.js';
 
@@ -33,7 +34,7 @@ export interface PublishingApiContract {
   readonly bodySchema: z.ZodType | null;
   readonly idempotency: '-' | 'key+body_hash' | 'key+version' | 'resource+version';
   readonly key: string;
-  readonly method: 'GET' | 'POST';
+  readonly method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
   readonly paramsSchema: z.ZodType | null;
   readonly path: string;
   readonly permission: Extract<PermissionCode, 'publishing.manage'>;
@@ -72,6 +73,18 @@ const contracts = [
     PlatformAccountPageSchema,
   ),
   contract(
+    'account.update',
+    'PATCH',
+    '/platform-accounts/{id}',
+    'resource+version',
+    UpdatePlatformAccountRequestSchema,
+    null,
+    PlatformAccountParamsSchema,
+    'UpdatePlatformAccountRequest',
+    'PlatformAccountView',
+    PlatformAccountResponseSchema,
+  ),
+  contract(
     'account.refresh',
     'POST',
     '/platform-accounts/{id}/refresh',
@@ -104,6 +117,30 @@ const contracts = [
     null,
     PlatformAccountParamsSchema,
     'ReasonRequest',
+    'PlatformAccountView',
+    PlatformAccountResponseSchema,
+  ),
+  contract(
+    'account.restore',
+    'POST',
+    '/platform-accounts/{id}/restore',
+    'resource+version',
+    null,
+    null,
+    PlatformAccountParamsSchema,
+    '-',
+    'PlatformAccountView',
+    PlatformAccountResponseSchema,
+  ),
+  contract(
+    'account.remove',
+    'DELETE',
+    '/platform-accounts/{id}',
+    'resource+version',
+    null,
+    null,
+    PlatformAccountParamsSchema,
+    '-',
     'PlatformAccountView',
     PlatformAccountResponseSchema,
   ),

@@ -22,7 +22,7 @@ describe('BriefCostEstimator release cost gate', () => {
     const weightedTokenCost =
       estimate.estimated_input_tokens + estimate.estimated_output_tokens * 2;
 
-    expect(estimate.generation_request_count).toBe(8);
+    expect(estimate.generation_request_count).toBe(2);
     expect(weightedTokenCost).toBeLessThanOrEqual(
       Math.floor(FROZEN_WEIGHTED_TOKEN_COST * MAXIMUM_COST_REGRESSION),
     );

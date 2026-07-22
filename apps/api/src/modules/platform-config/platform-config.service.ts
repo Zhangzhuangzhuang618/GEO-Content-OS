@@ -337,6 +337,13 @@ export class PlatformConfigService {
       assertTransition(before, version, 'publish');
       await transaction`
         UPDATE platform_rule_versions
+        SET status = 'retired', lock_version = lock_version + 1
+        WHERE platform_code = ${before.platformCode}
+          AND status = 'published'
+          AND id <> ${id}::uuid
+      `;
+      await transaction`
+        UPDATE platform_rule_versions
         SET status = 'published', published_at = now(), published_by = ${actorId}::uuid,
             lock_version = lock_version + 1
         WHERE id = ${id}::uuid

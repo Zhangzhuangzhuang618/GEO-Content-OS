@@ -85,6 +85,7 @@ export class ContentGenerationWorker {
       claim.leaseVersion,
       () =>
         this.writer.generateMaster({
+          context: writerContext(event, event.data.masterRunId, null),
           requestId: `generation-${event.eventId}-master`,
           ...(signal ? { signal } : {}),
           writerInput: event.data.writerInput,
@@ -105,6 +106,7 @@ export class ContentGenerationWorker {
     try {
       const content = await this.withHeartbeat(event, run.runId, claimed.value.leaseVersion, () =>
         this.writer.generateVariant({
+          context: writerContext(event, run.runId, run.variantId),
           masterContent,
           platformCode: run.platformCode,
           requestId: `generation-${event.eventId}-${run.platformCode}`,
@@ -145,6 +147,24 @@ export class ContentGenerationWorker {
       clearInterval(timer);
     }
   }
+}
+
+function writerContext(event: ValidatedGenerationEvent, runId: string, variantId: string | null) {
+  return Object.freeze({
+    batchKey: event.eventId,
+    inputHash: event.data.inputHash,
+    modelKey: event.data.modelKey,
+    modelPolicy: event.data.modelPolicy,
+    packageId: event.data.packageId,
+    projectId: event.data.projectId,
+    promptVersionId: event.data.promptVersionId,
+    runId,
+    skillVersion: event.data.skillVersion,
+    skillName: 'content-writer',
+    tenantId: event.tenantId,
+    variantId,
+    workspaceId: event.data.workspaceId,
+  });
 }
 
 async function concurrentMap<TInput, TOutput>(

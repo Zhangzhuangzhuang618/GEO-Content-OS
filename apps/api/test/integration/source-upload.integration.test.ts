@@ -275,7 +275,7 @@ describe('source upload', () => {
     );
     expect(detailedEvidence.body.data).toMatchObject({
       chunks: [{ id: chunkId, metadata: { char_start: 0, char_end: quote.length } }],
-      citation_count: 1,
+      citation_count: 0,
       facts: [{ id: factId }],
     });
     const denied = await authenticatedRequest(application, viewer)
@@ -480,7 +480,7 @@ describe('source upload', () => {
     ).toEqual([{ audits: 0, events: 0, jobs: 0, sources: 0 }]);
   });
 
-  it('registers a safely fetched URL using its final URL and content hash without an object key', async () => {
+  it('registers a safely fetched URL and preserves the fetched bytes as its ingest snapshot', async () => {
     const database = requireClient(client);
     const tokens = await createSession(database, MANAGER_ID);
     const body = Buffer.from('<html><body>canonical evidence</body></html>', 'utf8');
@@ -508,6 +508,8 @@ describe('source upload', () => {
         status: 'processing',
       });
       expect(fetch).toHaveBeenCalledWith('https://example.com/original#fragment');
+      const sourceId = String(response.body.data.source.id);
+      const objectKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sourceId}/${sha256(body)}.url`;
       const rows = await database<
         { event: Record<string, unknown>; sourceType: string; uri: string }[]
       >`
@@ -522,6 +524,7 @@ describe('source upload', () => {
         {
           event: expect.objectContaining({
             content_hash: sha256(body),
+            object_key: objectKey,
             redirect_chain: ['https://www.example.com/canonical'],
             source_url: 'https://www.example.com/canonical',
           }),
@@ -529,10 +532,179 @@ describe('source upload', () => {
           uri: 'https://www.example.com/canonical',
         },
       ]);
-      expect(rows[0]?.event).not.toHaveProperty('object_key');
+      expect(await requireStorage(application).headObject(objectKey)).toMatchObject({
+        contentLength: body.byteLength,
+        contentType: 'text/html',
+        metadata: { content_hash: sha256(body), source_id: sourceId },
+      });
     } finally {
       fetch.mockRestore();
     }
+  });
+
+  it('refreshes a failed legacy URL snapshot before creating its reindex job', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const firstBody = Buffer.from('<html><body>dynamic token one</body></html>', 'utf8');
+    const refreshedBody = Buffer.from('<html><body>dynamic token two</body></html>', 'utf8');
+    const webFetch = requireApplication(application).get<WebFetchAdapter>(SOURCE_WEB_FETCH);
+    const fetch = vi
+      .spyOn(webFetch, 'fetch')
+      .mockResolvedValueOnce({
+        body: firstBody,
+        contentHash: sha256(firstBody),
+        contentType: 'text/html',
+        finalUrl: 'https://www.example.com/dynamic',
+        redirectChain: ['https://www.example.com/dynamic'],
+        statusCode: 200,
+      })
+      .mockResolvedValueOnce({
+        body: refreshedBody,
+        contentHash: sha256(refreshedBody),
+        contentType: 'text/html',
+        finalUrl: 'https://www.example.com/dynamic',
+        redirectChain: ['https://www.example.com/dynamic'],
+        statusCode: 200,
+      });
+    try {
+      const created = await sendUrl(
+        application,
+        tokens,
+        'source-url-refresh-001',
+        'https://example.com/dynamic',
+      );
+      expect(created.status, JSON.stringify(created.body)).toBe(201);
+      const sourceId = String(created.body.data.source.id);
+      const oldKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sourceId}/${sha256(firstBody)}.url`;
+      await requireStorage(application).deleteObject(oldKey);
+      await database`
+        UPDATE ingest_jobs
+        SET
+          status = 'failed', attempt_count = 1, stage = 'upload', progress = 5,
+          error_json = '{"code":"SOURCE_CONTENT_CHANGED","message":"legacy","schema_version":"job-error@1"}'::jsonb,
+          started_at = now() - interval '1 second', finished_at = now(), updated_at = now()
+        WHERE source_document_id = ${sourceId}::uuid
+      `;
+      await database`
+        UPDATE source_documents SET status = 'failed', updated_at = now()
+        WHERE id = ${sourceId}::uuid
+      `;
+
+      const reindex = await authenticatedRequest(application, tokens)
+        .post(`${API_PATH}/${sourceId}/reindex`)
+        .send({
+          expected_content_hash: sha256(firstBody),
+          reason: 'repair legacy URL snapshot',
+        });
+      expect(reindex.status, JSON.stringify(reindex.body)).toBe(202);
+      const refreshedHash = sha256(refreshedBody);
+      const refreshedKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sourceId}/${refreshedHash}.url`;
+      expect(
+        await database<
+          { contentHash: string; event: Record<string, unknown>; sourceStatus: string }[]
+        >`
+          SELECT
+            source.content_hash AS "contentHash",
+            source.status AS "sourceStatus",
+            event.payload_json->'data' AS event
+          FROM source_documents AS source
+          JOIN outbox_events AS event ON event.aggregate_id = source.id
+          WHERE source.id = ${sourceId}::uuid
+          ORDER BY event.created_at DESC
+          LIMIT 1
+        `,
+      ).toEqual([
+        {
+          contentHash: refreshedHash,
+          event: expect.objectContaining({
+            content_hash: refreshedHash,
+            object_key: refreshedKey,
+            source_url: 'https://www.example.com/dynamic',
+          }),
+          sourceStatus: 'processing',
+        },
+      ]);
+      expect(await requireStorage(application).headObject(refreshedKey)).toMatchObject({
+        contentLength: refreshedBody.byteLength,
+      });
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('rejects a repeated final URL even when the fetched response content changes', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const firstBody = Buffer.from('<html><body>first response</body></html>', 'utf8');
+    const secondBody = Buffer.from('<html><body>changed response</body></html>', 'utf8');
+    const webFetch = requireApplication(application).get<WebFetchAdapter>(SOURCE_WEB_FETCH);
+    const fetch = vi
+      .spyOn(webFetch, 'fetch')
+      .mockResolvedValueOnce({
+        body: firstBody,
+        contentHash: sha256(firstBody),
+        contentType: 'text/html',
+        finalUrl: 'https://www.example.com/one-source',
+        redirectChain: ['https://www.example.com/one-source'],
+        statusCode: 200,
+      })
+      .mockResolvedValueOnce({
+        body: secondBody,
+        contentHash: sha256(secondBody),
+        contentType: 'text/html',
+        finalUrl: 'https://www.example.com/one-source',
+        redirectChain: ['https://www.example.com/one-source'],
+        statusCode: 200,
+      });
+    try {
+      const first = await sendUrl(
+        application,
+        tokens,
+        'source-url-unique-001',
+        'https://example.com/source',
+      );
+      expect(first.status, JSON.stringify(first.body)).toBe(201);
+      expectApiError(
+        await sendUrl(application, tokens, 'source-url-unique-002', 'https://example.com/source'),
+        409,
+        'STATE_TRANSITION_INVALID',
+      );
+      expect(
+        await database<{ count: number }[]>`
+          SELECT count(*)::integer AS count FROM source_documents
+        `,
+      ).toEqual([{ count: 1 }]);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
+  it('previews a CSV URL batch without writing source records', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const response = await authenticatedRequest(application, tokens)
+      .post(`${API_PATH}/batch-url-preview`)
+      .field('url_column', 'D')
+      .field('start_row', '2')
+      .attach('file', Buffer.from('a,b,c,url\n,,,https://e.co\n', 'utf8'), {
+        contentType: 'text/csv',
+        filename: 'urls.csv',
+      });
+    expect(response.status, JSON.stringify(response.body)).toBe(200);
+    expect(response.body).toMatchObject({
+      data: {
+        duplicate_rows: 0,
+        invalid_rows: 0,
+        ready_rows: 1,
+        rows: [{ row_number: 2, status: 'ready', url: 'https://e.co/' }],
+        sheet_name: 'CSV',
+        total_rows: 1,
+      },
+      meta: { request_id: expect.any(String) },
+    });
+    expect(
+      await database<{ count: number }[]>`SELECT count(*)::integer AS count FROM source_documents`,
+    ).toEqual([{ count: 0 }]);
   });
 
   it('maps SSRF blocks and ambiguous file-plus-url submissions to validation errors without side effects', async () => {

@@ -57,6 +57,10 @@ export const KeywordSetPageSchema = z
   })
   .strict();
 
+export const KeywordSetResponseSchema = z
+  .object({ data: KeywordSetSchema, meta: RequestMetaSchema })
+  .strict();
+
 export const KeywordSetDetailResponseSchema = z
   .object({
     data: KeywordSetSchema.extend({ keywords: z.array(KeywordSchema) }).strict(),

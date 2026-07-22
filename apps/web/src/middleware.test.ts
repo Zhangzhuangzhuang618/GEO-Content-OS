@@ -1,4 +1,4 @@
-import { CSRF_COOKIE_NAME } from '@geo-content-os/security';
+import { CSRF_COOKIE_NAME, SESSION_COOKIE_NAME } from '@geo-content-os/security';
 import { NextRequest } from 'next/server';
 import { describe, expect, it } from 'vitest';
 
@@ -28,7 +28,23 @@ describe('web security baseline middleware', () => {
     });
     const response = middleware(request);
 
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/auth-01');
+    expect(response.headers.get('content-security-policy')).not.toContain(
+      'upgrade-insecure-requests',
+    );
+    expect(response.headers.get('strict-transport-security')).toBeNull();
     expect(response.cookies.get(CSRF_COOKIE_NAME)).toBeUndefined();
     expect(response.headers.get('set-cookie')).toBeNull();
+  });
+
+  it('sends a returning authenticated browser through automatic tenant entry', () => {
+    const request = new NextRequest('http://localhost:3000/', {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=${'s'.repeat(43)}` },
+    });
+    const response = middleware(request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('http://localhost:3000/auth-02?auto=1');
   });
 });

@@ -40,7 +40,7 @@ function walk(
       headings.splice(level - 1);
       headings[level - 1] = text;
       headings.splice(level);
-      units.push({ headings: [...headings], text, url });
+      units.push({ headings: compactHeadings(headings), text, url });
       return;
     }
     if (tag === 'table') {
@@ -49,7 +49,7 @@ function walk(
     }
     if (UNIT_TAGS.has(tag)) {
       const text = normalizeText(textContent(node));
-      if (text) units.push({ headings: [...headings], text, url });
+      if (text) units.push({ headings: compactHeadings(headings), text, url });
       return;
     }
   }
@@ -70,8 +70,14 @@ function extractTableRows(
       )
       .map((cell) => normalizeText(textContent(cell)))
       .filter(Boolean);
-    if (cells.length > 0) units.push({ headings: [...headings], text: cells.join(' | '), url });
+    if (cells.length > 0) {
+      units.push({ headings: compactHeadings(headings), text: cells.join(' | '), url });
+    }
   }
+}
+
+function compactHeadings(headings: readonly string[]): string[] {
+  return headings.filter((heading) => typeof heading === 'string' && heading.length > 0);
 }
 
 function textContent(node: HtmlTree.Node): string {

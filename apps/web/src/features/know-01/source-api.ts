@@ -42,9 +42,8 @@ export async function listSources(
   if (!parsed.success) throw new SourceRequestError(502);
   const items = await Promise.all(
     parsed.data.data.map(async (source) => {
-      if (!source.project_id) return { ...source, parsed_at: null };
       const detailQuery = new URLSearchParams({
-        project_id: source.project_id,
+        project_id: filters.projectId!,
         workspace_id: source.workspace_id,
       });
       const detailResponse = await fetch(

@@ -11,6 +11,7 @@ export { PostgresGenerationStore } from './generation.store.js';
 export type {
   ContentBlockType,
   ContentWriterPort,
+  ContentWriterRunContext,
   GeneratedContent,
   GeneratedContentBlock,
   GenerationClaim,
@@ -28,3 +29,8 @@ export type {
   VariantGenerationRun,
 } from './generation.types.js';
 export { ContentGenerationWorker } from './generation.worker.js';
+export { validateQualityEvent } from './quality.event.js';
+export type { ValidatedQualityEvent } from './quality.event.js';
+export { QualityCheckWorker } from './quality.worker.js';
+export { RuntimeQualityChecker } from './runtime-quality-checker.js';
+export type { UsageContext } from './usage-recorder.js';

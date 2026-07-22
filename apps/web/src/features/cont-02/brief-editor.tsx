@@ -6,6 +6,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Brief, BriefObjective, PlatformCode } from '../cont-01/brief-list.schema';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { listSources } from '../know-01/source-api';
+import type { SourceListItem } from '../know-01/source.schema';
+import { listProjects } from '../know-02/source-upload-api';
+import type { ProjectChoice } from '../know-02/source-upload.schema';
+import { listActiveWorkspaces } from '../str-02/brand-profile-api';
+import { getKeywordSet, listKeywordSets } from '../str-04/keyword-set-api';
+import type { Keyword, KeywordSet } from '../str-04/keyword-set.schema';
 import {
   BriefEditorRequestError,
   createContentPackage,
@@ -41,6 +48,14 @@ export function BriefEditor() {
   const [message, setMessage] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<CostEstimate | null>(null);
   const [packageId, setPackageId] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<readonly { id: string; name: string }[]>([]);
+  const [projects, setProjects] = useState<readonly ProjectChoice[]>([]);
+  const [keywordSets, setKeywordSets] = useState<readonly KeywordSet[]>([]);
+  const [keywords, setKeywords] = useState<readonly Keyword[]>([]);
+  const [sources, setSources] = useState<readonly SourceListItem[]>([]);
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [primaryKeywordId, setPrimaryKeywordId] = useState('');
 
   useEffect(() => {
     const query = new URLSearchParams(window.location.search);
@@ -49,18 +64,25 @@ export function BriefEditor() {
     const controller = new AbortController();
     void (async () => {
       try {
-        const tenants = await listAvailableTenants(controller.signal);
+        const [tenants, workspaceItems] = await Promise.all([
+          listAvailableTenants(controller.signal),
+          listActiveWorkspaces(controller.signal),
+        ]);
         const role = tenants.find((tenant) => tenant.is_active)?.role_code;
         if (!role || !EDITOR_ROLES.has(role)) {
           setState('permission');
           return;
         }
         setCanCreatePackage(PACKAGE_ROLES.has(role));
+        setWorkspaces(workspaceItems);
         const sourceId = id ?? copyFrom;
         if (sourceId) {
           const source = await getBrief(sourceId, controller.signal);
           setBrief(copyFrom ? { ...source, title: `${source.title} 副本` } : source);
           setCopying(Boolean(copyFrom));
+          setWorkspaceId(source.workspace_id);
+          setProjectId(source.project_id);
+          setPrimaryKeywordId(source.primary_keyword_id);
         }
         setState('ready');
       } catch (error) {
@@ -70,6 +92,50 @@ export function BriefEditor() {
     })();
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!workspaceId) {
+      setProjects([]);
+      return;
+    }
+    const controller = new AbortController();
+    void listProjects(workspaceId, controller.signal)
+      .then(setProjects)
+      .catch(() => {
+        if (!controller.signal.aborted) setMessage('无法加载项目，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId || !projectId) {
+      setKeywordSets([]);
+      setKeywords([]);
+      setSources([]);
+      return;
+    }
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const [sets, sourcePage] = await Promise.all([
+          listKeywordSets({ projectId, status: 'active' }, controller.signal),
+          listSources({ projectId, status: 'active', workspaceId }, controller.signal),
+        ]);
+        const details = await Promise.all(
+          sets.map((item) => getKeywordSet(item.id, controller.signal)),
+        );
+        if (controller.signal.aborted) return;
+        setKeywordSets(sets);
+        setKeywords(
+          details.flatMap((item) => item.keywords).filter((item) => item.status === 'active'),
+        );
+        setSources(sourcePage.items.filter((item) => item.status === 'active'));
+      } catch {
+        if (!controller.signal.aborted) setMessage('无法加载关键词或资料，请稍后重试。');
+      }
+    })();
+    return () => controller.abort();
+  }, [projectId, workspaceId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,7 +155,7 @@ export function BriefEditor() {
       const saved = await saveBrief(parsed.data, csrf, brief && !copying ? brief : undefined);
       setBrief(saved);
       setCopying(false);
-      setMessage('Brief 已保存。');
+      setMessage('内容需求已保存。');
       window.history.replaceState(null, '', `/cont-02?id=${saved.id}`);
     } catch (error) {
       setMessage(
@@ -125,26 +191,26 @@ export function BriefEditor() {
     setMessage(null);
     try {
       setPackageId(await createContentPackage(brief, csrf));
-      setMessage('内容包已创建。');
+      setMessage('内容任务已创建。');
     } catch {
-      setMessage('内容包创建失败，请确认 Brief 已保存且当前角色有生产权限。');
+      setMessage('内容任务创建失败，请确认内容需求已保存且你有创建权限。');
     } finally {
       setBusy(false);
     }
   }
 
   if (state === 'loading')
-    return <StatePanel title="正在加载 Brief" text="正在读取权限和表单数据。" />;
+    return <StatePanel title="正在加载内容需求" text="正在读取权限和表单数据。" />;
   if (state === 'permission')
-    return <StatePanel title="无权编辑 Brief" text="需要策略编辑、内容编辑或租户管理员权限。" />;
+    return <StatePanel title="无权编辑内容需求" text="需要策略编辑、内容编辑或管理员权限。" />;
   if (state === 'error')
-    return <StatePanel title="无法加载 Brief" text="资源不存在或网络请求失败。" />;
+    return <StatePanel title="无法加载内容需求" text="内容不存在或网络请求失败。" />;
 
   return (
     <section className="mt-8">
       {copying ? (
         <p className="mb-4 rounded-control bg-brand-50 p-3 text-sm text-brand-700">
-          正在创建副本；保存后会生成新的 Brief ID。
+          正在创建内容需求副本，保存后将作为一条新需求。
         </p>
       ) : null}
       <form
@@ -156,35 +222,48 @@ export function BriefEditor() {
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField defaultValue={brief?.title} label="标题" name="title" required />
           <SelectField defaultValue={brief?.objective} label="目标" name="objective" />
-          <TextField
-            defaultValue={brief?.workspace_id}
-            label="工作区 UUID"
-            name="workspace_id"
-            readOnly={Boolean(brief && !copying)}
-            required
-          />
-          <TextField
-            defaultValue={brief?.project_id}
-            label="项目 UUID"
-            name="project_id"
-            readOnly={Boolean(brief && !copying)}
-            required
-          />
-          <TextField
-            defaultValue={brief?.keyword_ids.join(',')}
-            label="关键词 UUID（逗号或换行分隔）"
-            name="keyword_ids"
-          />
-          <TextField
-            defaultValue={brief?.primary_keyword_id}
-            label="主关键词 UUID"
-            name="primary_keyword_id"
-          />
-          <TextField
-            defaultValue={brief?.source_ids.join(',')}
-            label="证据来源 UUID（逗号或换行分隔）"
-            name="source_ids"
-          />
+          <label className="text-sm text-ink-700">
+            工作区
+            <select
+              className={controlClass}
+              name="workspace_id"
+              onChange={(event) => {
+                setWorkspaceId(event.target.value);
+                setProjectId('');
+                setPrimaryKeywordId('');
+              }}
+              required
+              value={workspaceId}
+            >
+              <option value="">请选择工作区</option>
+              {workspaces.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-ink-700">
+            项目
+            <select
+              className={controlClass}
+              disabled={!workspaceId}
+              name="project_id"
+              onChange={(event) => {
+                setProjectId(event.target.value);
+                setPrimaryKeywordId('');
+              }}
+              required
+              value={projectId}
+            >
+              <option value="">请选择项目</option>
+              {projects.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <TextField
             defaultValue={toLocalDateTime(brief?.due_at)}
             label="截止时间"
@@ -192,6 +271,62 @@ export function BriefEditor() {
             type="datetime-local"
           />
         </div>
+        <fieldset className="mt-5">
+          <legend className="text-sm font-medium text-ink-700">关键词（至少一个）</legend>
+          <p className="mt-1 text-xs text-ink-500">
+            {keywordSets.length
+              ? `来自 ${keywordSets.map((item) => item.name).join('、')}`
+              : '请先为项目创建关键词集。'}
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {keywords.map((keyword) => (
+              <label className="flex items-center gap-2 text-sm" key={keyword.id}>
+                <input
+                  defaultChecked={brief?.keyword_ids.includes(keyword.id)}
+                  name="keyword_ids"
+                  type="checkbox"
+                  value={keyword.id}
+                />
+                {keyword.term}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        <label className="mt-5 block text-sm text-ink-700">
+          主关键词
+          <select
+            className={controlClass}
+            name="primary_keyword_id"
+            onChange={(event) => setPrimaryKeywordId(event.target.value)}
+            required
+            value={primaryKeywordId}
+          >
+            <option value="">请选择主关键词</option>
+            {keywords.map((keyword) => (
+              <option key={keyword.id} value={keyword.id}>
+                {keyword.term}
+              </option>
+            ))}
+          </select>
+        </label>
+        <fieldset className="mt-5">
+          <legend className="text-sm font-medium text-ink-700">
+            参考资料（事实型内容至少选择一个）
+          </legend>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {sources.map((source) => (
+              <label className="flex items-center gap-2 text-sm" key={source.id}>
+                <input
+                  defaultChecked={brief?.source_ids.includes(source.id)}
+                  name="source_ids"
+                  type="checkbox"
+                  value={source.id}
+                />
+                {source.title}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <TextArea defaultValue={brief?.audience} label="受众" name="audience" required />
         <fieldset className="mt-5">
           <legend className="text-sm font-medium text-ink-700">目标平台（至少一个）</legend>
@@ -217,7 +352,7 @@ export function BriefEditor() {
         <TextArea defaultValue={brief?.constraints.cta ?? ''} label="CTA" name="cta" />
         <div className="mt-6 flex flex-wrap gap-3">
           <button className={primaryButton} disabled={busy} type="submit">
-            保存 Brief
+            保存内容需求
           </button>
           <button className={secondaryButton} onClick={estimateCost} type="button">
             预估成本
@@ -228,7 +363,7 @@ export function BriefEditor() {
             onClick={() => void createPackage()}
             type="button"
           >
-            创建内容包
+            创建内容任务
           </button>
         </div>
       </form>
@@ -239,12 +374,12 @@ export function BriefEditor() {
         >
           <h2 className="font-semibold">成本工作量预估</h2>
           <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
-            <Metric label="输入 token" value={estimate.inputTokens} />
-            <Metric label="输出 token" value={estimate.outputTokens} />
-            <Metric label="生成请求" value={estimate.requests} />
+            <Metric label="预计读取量" value={estimate.inputTokens} />
+            <Metric label="预计生成量" value={estimate.outputTokens} />
+            <Metric label="AI 处理次数" value={estimate.requests} />
           </dl>
           <p className="mt-3 text-xs text-ink-500">
-            实际金额由保存时生效的模型路由和版本化费率卡计算，本页不伪造货币金额。
+            这是工作量估算，实际费用以生成完成后的结算结果为准。
           </p>
         </aside>
       ) : null}
@@ -252,7 +387,7 @@ export function BriefEditor() {
         {message ? <p role="status">{message}</p> : null}
         {packageId ? (
           <Link className="ml-3 text-brand-700" href={`/cont-04?id=${packageId}`}>
-            查看内容包
+            查看内容任务
           </Link>
         ) : null}
       </div>
@@ -273,12 +408,12 @@ function parseForm(
       schema_version: 'brief-constraints@1',
     },
     due_at: dueAt ? new Date(dueAt).toISOString() : null,
-    keyword_ids: splitIds(data.get('keyword_ids')),
+    keyword_ids: data.getAll('keyword_ids').map(String),
     objective: data.get('objective'),
     platform_codes: data.getAll('platform_codes'),
     primary_keyword_id: data.get('primary_keyword_id'),
     project_id: data.get('project_id'),
-    source_ids: splitIds(data.get('source_ids')),
+    source_ids: data.getAll('source_ids').map(String),
     title: data.get('title'),
     workspace_id: data.get('workspace_id'),
   });
@@ -292,7 +427,7 @@ function parseForm(
   }
   const messages = parsed.error.issues.map((issue) => issue.message);
   if (messages.some((message) => message.includes('事实型')))
-    return { success: false, message: '事实型 Brief 至少需要一个证据来源。' };
+    return { success: false, message: '事实型内容至少需要选择一份参考资料。' };
   if (messages.some((message) => message.includes('主关键词')))
     return { success: false, message: '主关键词必须包含在关键词列表中。' };
   return { success: false, message: '请填写有效字段，并至少选择一个平台和一个关键词。' };
@@ -325,12 +460,6 @@ interface CostEstimate {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly requests: number;
-}
-function splitIds(value: FormDataEntryValue | null) {
-  return String(value ?? '')
-    .split(/[\s,]+/u)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 function nullableText(value: FormDataEntryValue | null) {
   const text = String(value ?? '').trim();

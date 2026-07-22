@@ -10,6 +10,7 @@ const EVENT = {
     input_hash: 'a'.repeat(64),
     master_run_id: '80000000-0000-4000-8000-000000000053',
     model_key: 'deepseek-flash',
+    model_policy: 'balanced',
     package_id: '60000000-0000-4000-8000-000000000053',
     project_id: '40000000-0000-4000-8000-000000000053',
     prompt_version_id: '90000000-0000-4000-8000-000000000053',

@@ -91,6 +91,22 @@ export async function submitPackageReview(
   if (!parsed.success) throw new ContentPackageDetailRequestError(502);
 }
 
+export async function requestPackageQualityChecks(
+  variantIds: readonly string[],
+  csrf: string,
+) {
+  await Promise.all(
+    variantIds.map(async (variantId) => {
+      const response = await write(`/api/v1/content-variants/${variantId}/quality-check`, csrf, {
+        body: { mode: 'full' },
+        operation: 'content-variant-quality-check',
+      });
+      const parsed = GenerationRunResponseSchema.safeParse(await response.json());
+      if (!parsed.success) throw new ContentPackageDetailRequestError(502);
+    }),
+  );
+}
+
 async function request(path: string, signal?: AbortSignal) {
   const response = await fetch(`${API_ORIGIN}${path}`, {
     credentials: 'include',

@@ -42,14 +42,14 @@ describe('QualityCheckerSkill', () => {
   it('uses the frozen tool whitelist with the Mock Adapter', async () => {
     const adapter = new MockModelAdapter({
       modelKey: 'flash',
-      responses: [rulesCall(), { text: JSON.stringify(fixture.output) }],
+      responses: [rulesCall(), { text: JSON.stringify(fixture.output.data) }],
     });
     const result = await skill(adapter).run({
       context,
       input: fixture.input,
       recordUsage: () => undefined,
     });
-    expect(result).toMatchObject({ output: fixture.output, toolCallCount: 1 });
+    expect(result).toMatchObject({ output: { data: fixture.output.data }, toolCallCount: 1 });
     expect(result.toolResults.map((item) => item.name)).toEqual(['get_platform_rules']);
   });
 
@@ -57,7 +57,7 @@ describe('QualityCheckerSkill', () => {
     const negative = QUALITY_CHECKER_CONTRACT_V1.fewShots[1]!;
     const adapter = new MockModelAdapter({
       modelKey: 'flash',
-      responses: [{ text: JSON.stringify(fixture.output) }],
+      responses: [{ text: JSON.stringify(fixture.output.data) }],
     });
     await expect(
       skill(adapter).run({ context, input: negative.input, recordUsage: () => undefined }),
@@ -68,7 +68,7 @@ describe('QualityCheckerSkill', () => {
     const boundary = QUALITY_CHECKER_CONTRACT_V1.fewShots[2]!;
     const adapter = new MockModelAdapter({
       modelKey: 'flash',
-      responses: [{ text: JSON.stringify(boundary.output) }],
+      responses: [{ text: JSON.stringify(boundary.output.data) }],
     });
     await expect(
       skill(adapter).run({ context, input: boundary.input, recordUsage: () => undefined }),
@@ -86,7 +86,7 @@ describe('QualityCheckerSkill', () => {
             {
               finish_reason: 'stop',
               index: 0,
-              message: { content: JSON.stringify(fixture.output), role: 'assistant' },
+              message: { content: JSON.stringify(fixture.output.data), role: 'assistant' },
             },
           ],
           id: 'quality-provider-request',
@@ -106,10 +106,24 @@ describe('QualityCheckerSkill', () => {
       timeoutMs: 2_000,
     });
     await expect(
-      skill(adapter).run({ context, input: fixture.input, recordUsage: () => undefined }),
+      skill(adapter).run({
+        context,
+        input: fixture.input,
+        prompt: {
+          systemPrompt: '官网第一方经营事实以已发布品牌档案为准。',
+          taskTemplate: '不得因为缺少公开链接要求企业重复确认。',
+        },
+        recordUsage: () => undefined,
+      }),
     ).resolves.toMatchObject({ output: { skill_name: 'quality-checker' } });
     expect(requestBody).toMatchObject({ response_format: { type: 'json_object' }, temperature: 0 });
     expect(requestBody?.['tools']).toHaveLength(4);
+    expect(JSON.stringify(requestBody?.['messages'])).toContain(
+      'enterprise-approved first-party source',
+    );
+    expect(JSON.stringify(requestBody?.['messages'])).toContain(
+      '不得因为缺少公开链接要求企业重复确认',
+    );
   });
 });
 

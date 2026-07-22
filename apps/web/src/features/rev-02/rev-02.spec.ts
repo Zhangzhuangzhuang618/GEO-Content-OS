@@ -5,22 +5,23 @@ const T = '10000000-0000-4000-8000-000000000090',
   SV = '61000000-0000-4000-8000-000000000090',
   CV = '62000000-0000-4000-8000-000000000090',
   H = 'a'.repeat(64);
+const BASE_URL = process.env.REV02_BASE_URL ?? 'http://127.0.0.1:34121';
 test.beforeEach(async ({ context, page }) => {
-  await context.addCookies([
-    { name: 'geo_csrf', url: 'http://127.0.0.1:34121', value: 'x'.repeat(43) },
-  ]);
+  await context.addCookies([{ name: 'geo_csrf', url: BASE_URL, value: 'x'.repeat(43) }]);
   await role(page, 'reviewer');
   await page.route(`**/api/v1/review-snapshots/${S}`, (route) => json(route, detail()));
 });
 
-test('shows every frozen input, content version and citation', async ({ page }) => {
+test('shows readable review content and keeps frozen identifiers in technical details', async ({
+  page,
+}) => {
   await page.goto(`/rev-02?id=${S}`);
-  await expect(page.getByText('模型 deepseek-pro')).toBeVisible();
-  await expect(page.getByText(CV, { exact: true })).toBeVisible();
-  await expect(page.getByText('品牌策略')).toBeVisible();
-  await expect(page.getByText('Prompt', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '内容审核' })).toBeVisible();
   await expect(page.getByText('冻结证据摘录。')).toBeVisible();
-  await expect(page.getByText(`snapshot hash: ${H}`)).toBeVisible();
+  await expect(page.getByText(CV, { exact: true })).toBeHidden();
+  await expect(page.getByText(H, { exact: true })).toBeHidden();
+  await page.getByText('审核记录技术信息').click();
+  await expect(page.getByText('生成方式：DeepSeek · 质量优先')).toBeVisible();
 });
 
 test('approves one variant with version and idempotency', async ({ page }) => {
@@ -30,8 +31,19 @@ test('approves one variant with version and idempotency', async ({ page }) => {
     await json(route, detail('approved'));
   });
   await page.goto(`/rev-02?id=${S}`);
-  await page.getByRole('button', { name: '逐变体通过' }).click();
-  await expect(page.getByText('变体已通过。')).toBeVisible();
+  await page.getByRole('button', { name: '通过此平台内容' }).click();
+  await expect(page.getByText('该平台内容已通过。')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('此平台内容已通过');
+  await expect(page.getByText('审核结果已经保存，这份内容可以进入发布准备。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '通过此平台内容' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: '返回待审核内容' })).toHaveAttribute(
+    'href',
+    '/rev-01',
+  );
+  await expect(page.getByRole('link', { name: '安排发布' })).toHaveAttribute(
+    'href',
+    `/pub-02?variant_id=${V}`,
+  );
   expect(request?.body).toEqual({ comment: null, variant_ids: [V] });
   expect(request?.headers['if-match']).toBe('"1"');
   expect(request?.headers['idempotency-key']).toMatch(/^review-approve-/u);
@@ -43,9 +55,9 @@ test('never reports success when the server detects hash drift', async ({ page }
   );
   await page.goto(`/rev-02?id=${S}`);
   await page.getByLabel('意见').fill('证据与内容不一致');
-  await page.getByRole('button', { name: '退回（意见必填）' }).click();
-  await expect(page.getByText('动作已被服务端拒绝：冻结 hash 或版本不匹配')).toBeVisible();
-  await expect(page.getByText('变体已退回。')).toHaveCount(0);
+  await page.getByRole('button', { name: '退回修改（请填写原因）' }).click();
+  await expect(page.getByText('内容已发生变化，请刷新页面并重新确认后再提交。')).toBeVisible();
+  await expect(page.getByText('该平台内容已退回修改。')).toHaveCount(0);
 });
 
 test('creates signoff and keeps non-review roles out on mobile', async ({ page }) => {
@@ -55,15 +67,15 @@ test('creates signoff and keeps non-review roles out on mobile', async ({ page }
     await json(route, requirement(), 201);
   });
   await page.goto(`/rev-02?id=${S}`);
-  await page.getByLabel('加签角色').selectOption('tenant_admin');
-  await page.getByRole('button', { name: '请求加签' }).click();
-  await expect(page.getByText('加签要求已创建。')).toBeVisible();
+  await page.getByLabel('需要谁共同确认').selectOption('tenant_admin');
+  await page.getByRole('button', { name: '邀请他人共同确认' }).click();
+  await expect(page.getByText('已邀请另一位负责人共同确认。')).toBeVisible();
   expect(body).toEqual({ comment: null, required_role: 'tenant_admin', variant_id: V });
   await page.unroute('**/api/v1/auth/tenants');
   await role(page, 'viewer');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByRole('heading', { name: '无权查看审核快照' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无权查看审核内容' })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '跳到主要内容' })).toBeFocused();
 });

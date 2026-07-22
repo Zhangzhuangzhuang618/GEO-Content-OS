@@ -91,7 +91,7 @@ export function BrandProfileEditor() {
     return (
       <StatePanel
         title="无权编辑品牌策略"
-        text="该页面仅对策略编辑、租户管理员和租户所有者开放。"
+        text="该页面仅对策略编辑、企业管理员和企业所有者开放。"
       />
     );
   if (loadState.status === 'error')

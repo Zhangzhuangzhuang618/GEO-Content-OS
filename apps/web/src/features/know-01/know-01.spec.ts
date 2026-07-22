@@ -3,6 +3,26 @@ const ACTIVE_ID = '10000000-0000-4000-8000-000000000078';
 const EXPIRED_ID = '10000000-0000-4000-8000-000000000178';
 
 test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/workspaces?*', async (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [{ id: workspaceId, name: '知识工作空间', status: 'active' }],
+        meta: { next_cursor: null, request_id: 'workspaces' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.route('**/api/v1/projects?*', async (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [{ id: projectId, name: '知识项目', status: 'active' }],
+        meta: { next_cursor: null, request_id: 'projects' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
   await page.route('**/api/v1/auth/tenants', async (route) =>
     route.fulfill({
       body: JSON.stringify({
@@ -26,7 +46,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({
       body: JSON.stringify({
         data: [
-          source(ACTIVE_ID, 'active', '产品白皮书'),
+          source(ACTIVE_ID, 'active', '工作空间共享白皮书', null),
           source(EXPIRED_ID, 'expired', '旧版价格表'),
         ],
         meta: { next_cursor: null, request_id: 'sources' },
@@ -51,6 +71,7 @@ test.beforeEach(async ({ page }) => {
             route.request().url().includes(EXPIRED_ID) ? EXPIRED_ID : ACTIVE_ID,
             'active',
             'detail',
+            route.request().url().includes(EXPIRED_ID) ? projectId : null,
           ),
         },
         meta: { request_id: 'detail' },
@@ -66,13 +87,10 @@ test('marks expired sources and prevents them from re-entering indexing', async 
   const expiredRow = page.getByRole('listitem').filter({ hasText: '旧版价格表' });
   await expect(expiredRow.getByText('已失效资料不会进入新的检索。')).toBeVisible();
   await expect(expiredRow.getByRole('button', { name: '重建索引' })).toHaveCount(0);
-  await expect(
-    page
-      .getByRole('listitem')
-      .filter({ hasText: '产品白皮书' })
-      .getByRole('button', { name: '重建索引' }),
-  ).toBeVisible();
-  await expect(page.getByRole('link', { name: '产品白皮书' })).toHaveAttribute(
+  const sharedRow = page.getByRole('listitem').filter({ hasText: '工作空间共享白皮书' });
+  await expect(sharedRow.getByRole('button', { name: '重建索引' })).toBeVisible();
+  await expect(sharedRow.getByText(/完成于/u)).toBeVisible();
+  await expect(page.getByRole('link', { name: '工作空间共享白皮书' })).toHaveAttribute(
     'href',
     `/know-03?id=${ACTIVE_ID}&workspace_id=${workspaceId}&project_id=${projectId}`,
   );
@@ -94,7 +112,7 @@ test('submits exact source hash for reindex and revision for expiry', async ({ p
     await route.fallback();
   });
   await page.goto(scopeUrl);
-  const row = page.getByRole('listitem').filter({ hasText: '产品白皮书' });
+  const row = page.getByRole('listitem').filter({ hasText: '工作空间共享白皮书' });
   await row.getByRole('button', { name: '重建索引' }).click();
   expect(reindexBody).toMatchObject({ expected_content_hash: 'a'.repeat(64) });
   page.once('dialog', (dialog) => dialog.accept());
@@ -134,7 +152,12 @@ test('writes filters to the URL and hides write actions from viewers on mobile',
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
 
-function source(id: string, status: 'active' | 'expired', title: string) {
+function source(
+  id: string,
+  status: 'active' | 'expired',
+  title: string,
+  sourceProjectId: string | null = projectId,
+) {
   return {
     content_hash: 'a'.repeat(64),
     created_at: '2026-07-15T00:00:00.000Z',
@@ -144,7 +167,7 @@ function source(id: string, status: 'active' | 'expired', title: string) {
     id,
     language: 'zh-CN',
     mime_type: 'application/pdf',
-    project_id: projectId,
+    project_id: sourceProjectId,
     source_type: 'pdf',
     status,
     tenant_id: '20000000-0000-4000-8000-000000000078',

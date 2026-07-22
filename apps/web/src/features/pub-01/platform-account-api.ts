@@ -4,6 +4,7 @@ import {
   PlatformAccountResponseSchema,
   type PlatformAccount,
   type PlatformAccountFilters,
+  type PlatformAccountEdit,
   type PlatformAccountForm,
 } from './platform-account.schema';
 
@@ -42,6 +43,7 @@ export async function createPlatformAccount(
         : {}),
       display_name: form.display_name.trim(),
       platform_code: form.platform_code,
+      ...(form.publishing_url.trim() ? { publishing_url: form.publishing_url.trim() } : {}),
       publish_mode: form.publish_mode,
       timezone: form.timezone.trim(),
       workspace_id: form.workspace_id,
@@ -59,6 +61,30 @@ export async function refreshPlatformAccount(account: PlatformAccount, csrf: str
     credentials: 'include',
     headers: writeHeaders(csrf, account.version),
     method: 'POST',
+  });
+  return parseAccount(response);
+}
+
+export async function updatePlatformAccount(
+  account: PlatformAccount,
+  form: PlatformAccountEdit,
+  csrf: string,
+) {
+  const baseUrl = form.base_url.trim();
+  const token = form.bearer_token.trim();
+  const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}`, {
+    body: JSON.stringify({
+      ...(baseUrl && token
+        ? { credential: { base_url: baseUrl, bearer_token: form.bearer_token } }
+        : {}),
+      display_name: form.display_name.trim(),
+      publishing_url: form.publishing_url.trim() || null,
+      publish_mode: form.publish_mode,
+      timezone: form.timezone.trim(),
+    }),
+    credentials: 'include',
+    headers: writeHeaders(csrf, account.version),
+    method: 'PATCH',
   });
   return parseAccount(response);
 }
@@ -85,6 +111,24 @@ export async function disablePlatformAccount(
     credentials: 'include',
     headers: writeHeaders(csrf, account.version),
     method: 'POST',
+  });
+  return parseAccount(response);
+}
+
+export async function restorePlatformAccount(account: PlatformAccount, csrf: string) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}/restore`, {
+    credentials: 'include',
+    headers: writeHeaders(csrf, account.version),
+    method: 'POST',
+  });
+  return parseAccount(response);
+}
+
+export async function removePlatformAccount(account: PlatformAccount, csrf: string) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}`, {
+    credentials: 'include',
+    headers: writeHeaders(csrf, account.version),
+    method: 'DELETE',
   });
   return parseAccount(response);
 }

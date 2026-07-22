@@ -1,8 +1,14 @@
 import type { ContentVariant } from '../cont-03/content-package-list.schema';
 import {
+  ContentPackageDetailResponseSchema,
+  ContentPackagePageSchema,
+} from '../cont-03/content-package-list.schema';
+import {
+  ApprovedVariantDetailResponseSchema,
   PublishJobPageSchema,
   PublishJobResponseSchema,
   SchedulableVariantResponseSchema,
+  type ApprovedContent,
   type PublishJob,
   type PublishingCalendarFilters,
 } from './publishing-calendar.schema';
@@ -29,6 +35,47 @@ export async function listPublishJobs(
   const parsed = PublishJobPageSchema.safeParse(await response.json());
   if (!parsed.success) throw new PublishingCalendarRequestError(502);
   return parsed.data.data;
+}
+
+export async function listApprovedContent(
+  filters: Pick<PublishingCalendarFilters, 'platformCode' | 'workspaceId'>,
+  signal?: AbortSignal,
+): Promise<readonly ApprovedContent[]> {
+  const query = new URLSearchParams({ limit: '100', status: 'approved' });
+  if (filters.platformCode) query.set('platform_code', filters.platformCode);
+  if (filters.workspaceId) query.set('workspace_id', filters.workspaceId);
+
+  const pageResponse = await request(`/api/v1/content-packages?${query}`, signal);
+  const page = ContentPackagePageSchema.safeParse(await pageResponse.json());
+  if (!page.success) throw new PublishingCalendarRequestError(502);
+
+  const packageDetails = await Promise.all(
+    page.data.data.map(async (contentPackage) => {
+      const response = await request(`/api/v1/content-packages/${contentPackage.id}`, signal);
+      const parsed = ContentPackageDetailResponseSchema.safeParse(await response.json());
+      if (!parsed.success) throw new PublishingCalendarRequestError(502);
+      return parsed.data.data;
+    }),
+  );
+  const approved = packageDetails.flatMap((detail) =>
+    detail.variants
+      .filter((variant) => variant.status === 'approved')
+      .map((variant) => ({ package: detail.package, variant })),
+  );
+
+  return Promise.all(
+    approved.map(async ({ package: contentPackage, variant }) => {
+      const response = await request(`/api/v1/content-variants/${variant.id}`, signal);
+      const parsed = ApprovedVariantDetailResponseSchema.safeParse(await response.json());
+      if (!parsed.success) throw new PublishingCalendarRequestError(502);
+      return {
+        packageId: contentPackage.id,
+        title: parsed.data.data.current_content?.content_json.title ?? '未命名内容',
+        updatedAt: variant.updated_at,
+        variant,
+      };
+    }),
+  );
 }
 
 export async function getSchedulableVariant(
@@ -99,4 +146,14 @@ async function parseJob(response: Response): Promise<PublishJob> {
   const parsed = PublishJobResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PublishingCalendarRequestError(502);
   return parsed.data.data;
+}
+
+async function request(path: string, signal?: AbortSignal): Promise<Response> {
+  const response = await fetch(`${API_ORIGIN}${path}`, {
+    credentials: 'include',
+    method: 'GET',
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new PublishingCalendarRequestError(response.status);
+  return response;
 }

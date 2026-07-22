@@ -37,7 +37,7 @@ for (const decision of ['block', 'revise'] as const) {
 
     await expect(page.getByRole('button', { name: '提交审核' })).toBeDisabled();
     await expect(
-      page.getByText(`当前 decision 为 ${decision}，质量门禁禁止提交审核。`),
+      page.getByText(decision === 'block' ? '发现必须修改的问题' : '建议先处理下方问题'),
     ).toBeVisible();
   });
 }
@@ -57,11 +57,34 @@ test('starts a full recheck and submits only a passing current report', async ({
   await page.goto(`/qual-01?id=${VARIANT_ID}`);
 
   await page.getByRole('button', { name: '重新检查' }).click();
-  await expect(page.getByText('完整质量检查运行已创建。')).toBeVisible();
+  await expect(page.getByText('质量检查已开始，完成后页面会自动刷新。')).toBeVisible();
   await page.getByRole('button', { name: '提交审核' }).click();
-  await expect(page.getByText('质量通过变体已提交审核。')).toBeVisible();
+  await expect(page.getByText('内容已提交审核。')).toBeVisible();
   expect(recheck).toEqual({ mode: 'full' });
   expect(submitted).toEqual({ variant_ids: [VARIANT_ID] });
+});
+
+test('offers the first quality check instead of a dead-end empty report', async ({ page }) => {
+  const base = detail('block');
+  const withoutReport = {
+    ...base,
+    quality_report: null,
+    variant: { ...base.variant, status: 'generated' },
+  };
+  let body: unknown;
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, (route) =>
+    json(route, withoutReport),
+  );
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}/quality-check`, async (route) => {
+    body = route.request().postDataJSON();
+    await json(route, { id: '61000000-0000-4000-8000-000000000089' }, 202);
+  });
+  await page.goto(`/qual-01?id=${VARIANT_ID}`);
+
+  await expect(page.getByRole('heading', { name: '这份内容还没有质量报告' })).toBeVisible();
+  await page.getByRole('button', { name: '开始质量检查' }).click();
+  await expect(page.getByRole('heading', { name: '正在检查内容质量' })).toBeVisible();
+  expect(body).toEqual({ mode: 'full' });
 });
 
 test('locates the issue and copies a truthful human adjudication request', async ({ page }) => {
@@ -72,8 +95,8 @@ test('locates the issue and copies a truthful human adjudication request', async
     'href',
     `/cont-05?id=${VARIANT_ID}&focus_block=intro#block-intro`,
   );
-  await page.getByRole('button', { name: '请求人工裁决' }).click();
-  await expect(page.getByText('裁决请求摘要已复制；当前冻结 API 未提供提交端点')).toBeVisible();
+  await page.getByRole('button', { name: '复制事实复核摘要' }).click();
+  await expect(page.getByText('事实复核摘要已复制，可发送给负责确认的同事。')).toBeVisible();
   const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
   expect(copied).toMatchObject({
     claims: [{ claim_key: 'claim-1', claim_text: '产品事实声明' }],

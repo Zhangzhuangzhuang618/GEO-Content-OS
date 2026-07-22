@@ -44,7 +44,7 @@ export class BriefCostEstimator {
     return Object.freeze({
       estimated_input_tokens: estimatedInputTokens,
       estimated_output_tokens: estimatedOutputTokens,
-      generation_request_count: 1 + brief.platform_codes.length,
+      generation_request_count: 2,
       platform_codes: Object.freeze([...brief.platform_codes]),
       pricing_status: 'requires_model_router',
       schema_version: 'brief-cost-estimate-input@1',

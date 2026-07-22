@@ -7,6 +7,12 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/workspaces?*', (r) =>
     json(r, { data: [workspace()], meta: { next_cursor: null, request_id: 'w' } }),
   );
+  await page.route('**/api/v1/projects?*', (r) =>
+    json(r, {
+      data: [{ id: USER, name: '分析项目', status: 'active', workspace_id: WORKSPACE }],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
   await page.route('**/api/v1/analytics/overview?*', (r) =>
     json(r, {
       data: {

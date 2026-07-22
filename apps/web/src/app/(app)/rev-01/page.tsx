@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 
 import { ReviewInbox } from '../../../features/rev-01/review-inbox';
 
-export const metadata: Metadata = { title: '审核队列' };
+export const metadata: Metadata = { title: '待审核内容' };
 
 export default function ReviewInboxPage() {
   return (
@@ -11,12 +11,10 @@ export default function ReviewInboxPage() {
       id="main-content"
     >
       <header>
-        <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">
-          审核工作台
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">审核队列</h1>
+        <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">内容审核</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">待审核内容</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          仅展示当前账号获授权工作区内的冻结快照；领取时设置风险与截止时间。
+          选择一条内容开始审核，确认无误后通过；需要修改时直接退回并说明原因。
         </p>
       </header>
       <ReviewInbox />

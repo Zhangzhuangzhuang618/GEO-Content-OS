@@ -127,6 +127,26 @@ describe('Rerank Adapter', () => {
       }),
     ).rejects.toMatchObject({ code: 'RERANK_UNAVAILABLE' });
   });
+
+  it('creates a functional local adapter', async () => {
+    const adapter = createRerankAdapter({
+      ...configuration,
+      driver: 'local',
+      modelKey: 'rerank-local-ngram-v1',
+    });
+    const result = await adapter.rerank({
+      documents: [
+        document('doc-moving', '广州搬家公司提供车辆与搬运服务'),
+        document('doc-unrelated', '企业办公软件使用说明'),
+      ],
+      query: '广州搬家公司',
+      requestId: 'req-rerank-local-0001',
+      topK: 2,
+    });
+
+    expect(result.items[0]?.id).toBe('doc-moving');
+    expect(result.usage.providerCode).toBe('local');
+  });
 });
 
 function document(id: string, text: string): RerankDocument {

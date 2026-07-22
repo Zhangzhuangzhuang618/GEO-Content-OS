@@ -1,9 +1,11 @@
 import {
+  BatchUrlPreviewResponseSchema,
   ProjectPageSchema,
   UploadResponseSchema,
   type ProjectChoice,
   type UploadForm,
   type UploadResult,
+  type BatchUrlPreview,
 } from './source-upload.schema';
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 export async function listProjects(
@@ -16,7 +18,7 @@ export async function listProjects(
     method: 'GET',
     ...(signal ? { signal } : {}),
   });
-  if (!response.ok) throw new UploadRequestError(response.status);
+  if (!response.ok) throw createUploadRequestError(response);
   const parsed = ProjectPageSchema.safeParse(await response.json());
   if (!parsed.success) throw new UploadRequestError(502);
   return parsed.data.data;
@@ -41,14 +43,57 @@ export async function uploadSource(
     headers: { 'idempotency-key': `source-upload-${crypto.randomUUID()}`, 'x-csrf-token': csrf },
     method: 'POST',
   });
-  if (!response.ok) throw new UploadRequestError(response.status);
+  if (!response.ok) throw createUploadRequestError(response);
   const parsed = UploadResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new UploadRequestError(502);
   return parsed.data.data;
 }
+export async function previewBatchUrls(
+  input: {
+    file: File;
+    sheetName: string;
+    startRow: string;
+    titleColumn: string;
+    urlColumn: string;
+  },
+  csrf: string,
+): Promise<BatchUrlPreview> {
+  const body = new FormData();
+  body.set('file', input.file);
+  if (input.sheetName.trim()) body.set('sheet_name', input.sheetName.trim());
+  if (input.startRow.trim()) body.set('start_row', input.startRow.trim());
+  if (input.titleColumn.trim()) body.set('title_column', input.titleColumn.trim());
+  if (input.urlColumn.trim()) body.set('url_column', input.urlColumn.trim());
+  const response = await fetch(`${API_ORIGIN}/api/v1/sources/batch-url-preview`, {
+    body,
+    credentials: 'include',
+    headers: { 'x-csrf-token': csrf },
+    method: 'POST',
+  });
+  if (!response.ok) throw createUploadRequestError(response);
+  const parsed = BatchUrlPreviewResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new UploadRequestError(502);
+  return parsed.data.data;
+}
 export class UploadRequestError extends Error {
-  public constructor(public readonly status: number) {
+  public constructor(
+    public readonly status: number,
+    public readonly retryAfterSeconds: number | null = null,
+  ) {
     super('Source upload failed');
     this.name = 'UploadRequestError';
   }
+}
+
+function createUploadRequestError(response: Response): UploadRequestError {
+  return new UploadRequestError(response.status, readRetryAfterSeconds(response));
+}
+
+function readRetryAfterSeconds(response: Response): number | null {
+  const value = response.headers.get('retry-after')?.trim();
+  if (!value) return null;
+  if (/^\d+$/u.test(value)) return Number(value);
+  const retryAt = Date.parse(value);
+  if (!Number.isFinite(retryAt)) return null;
+  return Math.max(0, Math.ceil((retryAt - Date.now()) / 1_000));
 }

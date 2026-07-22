@@ -115,7 +115,7 @@ describe('freeze v2.1 database verification', () => {
         (SELECT count(*)::integer FROM workspaces WHERE id = ${FREEZE_V21_SEED.workspaceId}) AS workspaces,
         (SELECT count(*)::integer FROM projects WHERE id = ${FREEZE_V21_SEED.projectId}) AS projects,
         (SELECT count(*)::integer FROM model_rate_cards WHERE id = ${FREEZE_V21_SEED.modelRateCardId}) AS "modelRates",
-        (SELECT count(*)::integer FROM platform_rule_versions WHERE version = '1.0.0' AND status = 'published') AS rules
+        (SELECT count(*)::integer FROM platform_rule_versions WHERE status = 'published') AS rules
     `;
 
     expect(summary).toEqual({

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { TENANT_ROLE_CODES } from '../../roles.js';
 import { roleHasPermission } from '../../permissions/index.js';
 import {
+  BatchUrlPreviewResponseSchema,
   FactPageSchema,
   IngestJobResponseSchema,
   KNOWLEDGE_API_CONTRACTS,
@@ -15,8 +16,8 @@ const id = (suffix: string) => `00000000-0000-4000-8000-${suffix.padStart(12, '0
 const timestamp = '2026-07-14T03:00:00.000Z';
 const requestId = '01J00000000000000000000000';
 
-describe('frozen knowledge API contract', () => {
-  it('contains exactly the eight frozen source, ingest-job, and fact endpoints', () => {
+describe('knowledge API contract', () => {
+  it('contains the frozen endpoints plus the ADR-governed batch URL preview extension', () => {
     expect(
       KNOWLEDGE_API_CONTRACTS.map((contract) => ({
         idempotency: contract.idempotency,
@@ -36,6 +37,15 @@ describe('frozen knowledge API contract', () => {
         'SourceView + IngestJob',
         'key+content_hash',
         201,
+      ),
+      endpoint(
+        'POST',
+        '/sources/batch-url-preview',
+        ['knowledge.sources.manage'],
+        'BatchUrlPreviewRequest',
+        'BatchUrlPreview',
+        '-',
+        200,
       ),
       endpoint('GET', '/sources', ['knowledge.read'], 'SourceListQuery', 'SourcePage', '-', 200),
       endpoint(
@@ -85,7 +95,7 @@ describe('frozen knowledge API contract', () => {
         200,
       ),
     ]);
-    expect(new Set(KNOWLEDGE_API_CONTRACTS.map((contract) => contract.key)).size).toBe(8);
+    expect(new Set(KNOWLEDGE_API_CONTRACTS.map((contract) => contract.key)).size).toBe(9);
     expect(KNOWLEDGE_API_CONTRACTS.every((contract) => Object.isFrozen(contract))).toBe(true);
   });
 
@@ -117,6 +127,31 @@ describe('frozen knowledge API contract', () => {
     ).toBe(true);
     expect(IngestJobResponseSchema.safeParse(response(job)).success).toBe(true);
     expect(FactPageSchema.safeParse(page([fact])).success).toBe(true);
+    expect(
+      BatchUrlPreviewResponseSchema.safeParse(
+        response({
+          duplicate_rows: 0,
+          file_name: 'urls.xlsx',
+          invalid_rows: 0,
+          ready_rows: 1,
+          rows: [
+            {
+              message: null,
+              row_number: 2,
+              status: 'ready',
+              title: '产品页',
+              url: 'https://example.com/product',
+            },
+          ],
+          sheet_name: '详细URL列表',
+          sheets: ['详细URL列表'],
+          start_row: 2,
+          title_column: 'B',
+          total_rows: 1,
+          url_column: 'D',
+        }),
+      ).success,
+    ).toBe(true);
     expect(SourcePageSchema.safeParse({ ...page([source]), unexpected: true }).success).toBe(false);
   });
 
@@ -137,16 +172,16 @@ describe('frozen knowledge API contract', () => {
       }).success,
     ).toBe(false);
     expect(
-      KNOWLEDGE_API_CONTRACTS[1]?.querySchema?.safeParse({
+      KNOWLEDGE_API_CONTRACTS[2]?.querySchema?.safeParse({
         project_id: id('3'),
         workspace_id: id('2'),
       }).success,
     ).toBe(true);
     expect(
-      KNOWLEDGE_API_CONTRACTS[1]?.querySchema?.safeParse({ workspace_id: id('2') }).success,
+      KNOWLEDGE_API_CONTRACTS[2]?.querySchema?.safeParse({ workspace_id: id('2') }).success,
     ).toBe(false);
     expect(
-      KNOWLEDGE_API_CONTRACTS[7]?.bodySchema?.safeParse({
+      KNOWLEDGE_API_CONTRACTS[8]?.bodySchema?.safeParse({
         decision: 'verified',
         expected_updated_at: timestamp,
         reason: '证据一致',

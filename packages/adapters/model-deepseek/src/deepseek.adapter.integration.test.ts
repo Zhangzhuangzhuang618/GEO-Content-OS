@@ -89,6 +89,19 @@ describe('DeepSeekModelAdapter integration', () => {
     });
   });
 
+  it('returns malformed JSON text so SkillRunner can perform its schema repair pass', async () => {
+    const baseUrl = await serve((_incoming, outgoing) => {
+      json(outgoing, completion({ content: '{"answer":"missing brace"' }));
+    });
+    const adapter = new DeepSeekModelAdapter(configuration(baseUrl));
+
+    await expect(
+      adapter.generate({ ...request, responseFormat: { type: 'json_object' } }),
+    ).resolves.toMatchObject({
+      message: { content: '{"answer":"missing brace"' },
+    });
+  });
+
   it('retries a rate-limited request within the configured bound', async () => {
     let attempts = 0;
     const baseUrl = await serve((_incoming, outgoing) => {

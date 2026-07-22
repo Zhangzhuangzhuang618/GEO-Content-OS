@@ -14,6 +14,7 @@ export interface HybridSearchOptions {
   readonly candidateLimit?: number;
   readonly effectiveOn?: string;
   readonly modelKey: string;
+  readonly sourceDocumentIds?: readonly string[];
   readonly topK?: number;
   readonly trustLevels?: readonly SearchableTrustLevel[];
 }
@@ -50,6 +51,7 @@ export interface ValidatedHybridSearchRequest {
   readonly effectiveOn: string;
   readonly modelKey: string;
   readonly query: string;
+  readonly sourceDocumentIds: readonly string[];
   readonly topK: number;
   readonly trustLevels: readonly SearchableTrustLevel[];
   readonly vectorLiteral: string;

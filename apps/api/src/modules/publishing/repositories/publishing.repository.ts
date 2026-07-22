@@ -16,6 +16,7 @@ export interface PlatformAccountView {
   readonly id: string;
   readonly platformCode: PlatformCode;
   readonly providerAccountId: string | null;
+  readonly publishingUrl: string | null;
   readonly publishMode: 'api' | 'export' | 'manual';
   readonly scopes: readonly string[];
   readonly status: 'active' | 'reauth' | 'disabled';
@@ -104,6 +105,7 @@ export class PublishingRepository {
         account.workspace_id AS "workspaceId",
         account.platform_code AS "platformCode",
         account.provider_account_id AS "providerAccountId",
+        account.publishing_url AS "publishingUrl",
         account.display_name AS "displayName",
         account.scopes,
         account.token_expires_at AS "tokenExpiresAt",
@@ -139,6 +141,7 @@ export class PublishingRepository {
         account.workspace_id AS "workspaceId",
         account.platform_code AS "platformCode",
         account.provider_account_id AS "providerAccountId",
+        account.publishing_url AS "publishingUrl",
         account.display_name AS "displayName",
         account.scopes,
         account.token_expires_at AS "tokenExpiresAt",

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const TENANT_A_ID = '10000000-0000-4000-8000-000000000001';
 const TENANT_B_ID = '10000000-0000-4000-8000-000000000002';
@@ -89,8 +89,70 @@ test('renders empty and unauthenticated states without selectable tenants', asyn
     });
   });
   await page.reload();
-  await expect(page.getByRole('heading', { name: '登录状态已失效' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '返回登录' })).toHaveAttribute('href', '/auth-01');
+  await expect(page).toHaveURL(/\/auth-01\?reason=session_expired&return_to=%2Fdash-01$/u);
+});
+
+test('automatically enters the only available tenant and preserves the destination', async ({
+  page,
+}) => {
+  let switchCalls = 0;
+  await page.route('**/api/v1/auth/tenants', (route) =>
+    json(route, [
+      {
+        id: TENANT_B_ID,
+        is_active: false,
+        last_used_at: '2026-07-15T08:00:00.000Z',
+        name: '品牌增长团队',
+        role_code: 'reviewer',
+        slug: 'brand-growth',
+      },
+    ]),
+  );
+  await page.route('**/api/v1/auth/switch-tenant', async (route) => {
+    switchCalls += 1;
+    await route.fulfill({
+      body: JSON.stringify({
+        data: { active_tenant_id: TENANT_B_ID },
+        meta: { request_id: 'automatic-switch' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+  await page.route('**/cont-03?status=draft', (route) =>
+    route.fulfill({ body: '<main>目标页面</main>', contentType: 'text/html', status: 200 }),
+  );
+
+  await page.goto('/auth-02?auto=1&return_to=%2Fcont-03%3Fstatus%3Ddraft');
+
+  await expect(page).toHaveURL(/\/cont-03\?status=draft$/u);
+  expect(switchCalls).toBe(1);
+});
+
+test('logs out before switching to another account', async ({ page }) => {
+  let logoutCalled = false;
+  await page.route('**/api/v1/auth/tenants', (route) =>
+    json(route, [
+      {
+        id: TENANT_A_ID,
+        is_active: true,
+        last_used_at: null,
+        name: '华东内容中心',
+        role_code: 'tenant_admin',
+        slug: 'east-content',
+      },
+    ]),
+  );
+  await page.route('**/api/v1/auth/logout', async (route) => {
+    logoutCalled = true;
+    await route.fulfill({ status: 204 });
+  });
+
+  await page.goto('/auth-02?return_to=%2Fcont-03');
+  await page.getByRole('button', { name: '使用其他账号' }).click();
+
+  await expect.poll(() => logoutCalled).toBe(true);
+  await expect(page).toHaveURL(/\/auth-01\?reason=switch_account&return_to=%2Fcont-03$/u);
 });
 
 test('recovers from load errors and supports mobile keyboard selection', async ({ page }) => {
@@ -130,3 +192,11 @@ test('recovers from load errors and supports mobile keyboard selection', async (
   await expect(selectButton).toBeFocused();
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
+
+async function json(route: Parameters<Parameters<Page['route']>[1]>[0], data: unknown) {
+  await route.fulfill({
+    body: JSON.stringify({ data, meta: { request_id: 'auth-02' } }),
+    contentType: 'application/json',
+    status: 200,
+  });
+}

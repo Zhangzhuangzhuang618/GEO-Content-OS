@@ -70,6 +70,27 @@ describe('content-writer contract v1.0.0', () => {
     }
   });
 
+  it('requires every emitted citation mapping to reference supplied evidence', () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const invalid = {
+      ...fixture.output.data,
+      master_content: {
+        ...fixture.output.data.master_content,
+        citation_map: [
+          {
+            ...fixture.output.data.master_content.citation_map[0]!,
+            citation_ids: [],
+          },
+        ],
+      },
+    };
+
+    expect(guard.check(CONTENT_WRITER_DATA_SCHEMA, invalid)).toMatchObject({
+      paths: ['/master_content/citation_map/0/citation_ids'],
+      valid: false,
+    });
+  });
+
   it('preserves locked text and citations byte-for-byte in the boundary fixture', () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots.find(
       (candidate) => candidate.id === 'locked-block-boundary',

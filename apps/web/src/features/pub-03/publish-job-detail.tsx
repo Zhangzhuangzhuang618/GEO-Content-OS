@@ -1,9 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useState } from 'react';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { TechnicalDetails } from '../human-readable';
 import type { PublishJob } from '../pub-02/publishing-calendar.schema';
 import {
   cancelUnexecutedPublishJob,
@@ -23,7 +25,7 @@ const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publ
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 export function PublishJobDetailView() {
-  const [jobId, setJobId] = useState(readJobId);
+  const [jobId] = useState(readJobId);
   const [detail, setDetail] = useState<PublishJobDetail | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error' | 'permission'>(
     'loading',
@@ -63,17 +65,6 @@ export function PublishJobDetailView() {
     void load(jobId, controller.signal);
     return () => controller.abort();
   }, [jobId, load]);
-
-  function openJob(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const nextId = String(new FormData(event.currentTarget).get('job_id') ?? '').trim();
-    if (!UUID_PATTERN.test(nextId)) {
-      setMessage('请输入有效的发布任务 UUID。');
-      return;
-    }
-    window.history.replaceState(null, '', `/pub-03?id=${encodeURIComponent(nextId)}`);
-    setJobId(nextId);
-  }
 
   async function runAction(action: 'retry' | 'cancel') {
     if (!detail) return;
@@ -120,25 +111,6 @@ export function PublishJobDetailView() {
 
   return (
     <section className="mt-8">
-      <form
-        aria-label="打开发布任务"
-        className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 shadow-panel sm:flex-row sm:items-end"
-        onSubmit={openJob}
-      >
-        <label className="flex-1 text-sm text-ink-700">
-          发布任务 UUID
-          <input
-            className={controlClass}
-            defaultValue={jobId ?? ''}
-            name="job_id"
-            placeholder="xxxxxxxx-xxxx-..."
-          />
-        </label>
-        <button className={primaryButton} type="submit">
-          打开任务
-        </button>
-      </form>
-
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
         {message}
         {download ? (
@@ -160,13 +132,21 @@ export function PublishJobDetailView() {
       </div>
 
       {state === 'loading' ? (
-        <StatePanel title="正在加载发布任务" text="正在读取冻结 Payload、尝试和导出制品。" />
+        <StatePanel title="正在加载发布详情" text="正在读取发布进度和结果。" />
       ) : state === 'permission' ? (
-        <StatePanel title="无权查看发布任务" text="仅发布人、租户管理员和所有者可访问。" />
+        <StatePanel title="无权查看发布任务" text="仅发布人、企业管理员和所有者可访问。" />
       ) : state === 'error' ? (
         <StatePanel title="无法加载发布任务" text="任务不存在、超出授权范围或服务暂不可用。" />
       ) : state === 'empty' || !detail ? (
-        <StatePanel title="请选择发布任务" text="输入发布任务 UUID 后查看详情。" />
+        <StatePanel
+          title="没有选中发布任务"
+          text="请从发布日历中点击“查看详情”进入。"
+          action={
+            <Link className={primaryButton} href="/pub-02">
+              返回发布日历
+            </Link>
+          }
+        />
       ) : (
         <DetailContent
           busy={busy}
@@ -197,7 +177,7 @@ function DetailContent({
       <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm text-ink-500">任务 {job.id}</p>
+            <p className="text-sm text-ink-500">发布详情</p>
             <h2 className="mt-2 text-2xl font-semibold text-ink-950">{statusLabel(job.status)}</h2>
             <p className="mt-2 text-sm text-ink-500">排期：{formatDate(job.scheduled_at)}</p>
           </div>
@@ -226,12 +206,7 @@ function DetailContent({
         </div>
 
         <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Payload 内容版本" value={job.content_version_id} mono />
-          <Field label="Payload Hash" value={job.payload_hash} mono />
-          <Field label="变体" value={job.variant_id} mono />
-          <Field label="账号" value={job.account_id} mono />
           <Field label="尝试次数" value={String(job.attempt_count)} />
-          <Field label="外部 post_id" value={job.external_post_id ?? '尚未生成'} mono />
           <div className="rounded-xl bg-surface-subtle p-4">
             <dt className="text-xs font-semibold tracking-wide text-ink-500 uppercase">外部 URL</dt>
             <dd className="mt-2 break-all text-sm text-ink-950">
@@ -251,9 +226,23 @@ function DetailContent({
               )}
             </dd>
           </div>
-          <Field label="最后错误" value={formatError(job.last_error)} />
-          <Field label="任务版本" value={String(job.version)} />
+          <Field
+            label="最近结果"
+            value={job.last_error ? '发布失败，请查看下方记录' : '暂无错误'}
+          />
         </dl>
+        <div className="mt-5">
+          <TechnicalDetails summary="发布技术信息">
+            <p>发布任务：{job.id}</p>
+            <p>内容版本：{job.content_version_id}</p>
+            <p>内容校验值：{job.payload_hash}</p>
+            <p>平台内容：{job.variant_id}</p>
+            <p>发布账号：{job.account_id}</p>
+            <p>平台内容编号：{job.external_post_id ?? '尚未生成'}</p>
+            <p>任务版本：{job.version}</p>
+            {job.last_error ? <pre>{formatError(job.last_error)}</pre> : null}
+          </TechnicalDetails>
+        </div>
       </section>
 
       <AttemptHistory attempts={detail.attempts} />
@@ -269,9 +258,9 @@ function DetailContent({
 function AttemptHistory({ attempts }: { readonly attempts: readonly PublishAttempt[] }) {
   return (
     <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
-      <h2 className="text-xl font-semibold text-ink-950">发布尝试（append-only）</h2>
+      <h2 className="text-xl font-semibold text-ink-950">发布记录</h2>
       <p className="mt-2 text-sm text-ink-500">
-        历史尝试按 attempt_no 展示，前端只读且不覆盖旧记录。
+        每次发布尝试都会保留，便于查看失败原因和处理时间。
       </p>
       {attempts.length === 0 ? (
         <p className="mt-5 rounded-xl bg-surface-subtle p-4 text-sm text-ink-500">
@@ -283,11 +272,10 @@ function AttemptHistory({ attempts }: { readonly attempts: readonly PublishAttem
             <thead className="bg-surface-subtle text-ink-500">
               <tr>
                 <th className="p-3">尝试</th>
-                <th className="p-3">Adapter</th>
                 <th className="p-3">状态</th>
                 <th className="p-3">错误</th>
-                <th className="p-3">请求 Hash</th>
                 <th className="p-3">开始 / 完成</th>
+                <th className="p-3">更多</th>
               </tr>
             </thead>
             <tbody>
@@ -298,14 +286,19 @@ function AttemptHistory({ attempts }: { readonly attempts: readonly PublishAttem
                   key={attempt.id}
                 >
                   <td className="p-3 font-semibold">#{attempt.attempt_no}</td>
-                  <td className="p-3">{attempt.adapter_code}</td>
                   <td className="p-3">{attemptStatusLabel(attempt.status)}</td>
-                  <td className="p-3">{attempt.error_code ?? '无'}</td>
-                  <td className="p-3 font-mono text-xs">{attempt.request_hash}</td>
+                  <td className="p-3">{attempt.error_code ? '发布未成功' : '无'}</td>
                   <td className="p-3 text-xs">
                     {formatDate(attempt.started_at)}
                     <br />
                     {attempt.finished_at ? formatDate(attempt.finished_at) : '进行中'}
+                  </td>
+                  <td className="p-3">
+                    <TechnicalDetails summary="技术信息">
+                      <p>发布适配器：{attempt.adapter_code}</p>
+                      <p>请求校验值：{attempt.request_hash}</p>
+                      <p>错误代码：{attempt.error_code ?? '无'}</p>
+                    </TechnicalDetails>
                   </td>
                 </tr>
               ))}
@@ -328,17 +321,19 @@ function ExportPanel({
 }) {
   return (
     <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
-      <h2 className="text-xl font-semibold text-ink-950">确定性导出包</h2>
+      <h2 className="text-xl font-semibold text-ink-950">导出文件</h2>
       {!artifact ? (
-        <p className="mt-4 text-sm text-ink-500">当前任务没有可用导出制品。</p>
+        <p className="mt-4 text-sm text-ink-500">当前任务没有可下载的文件。</p>
       ) : (
         <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <dl className="grid flex-1 gap-4 sm:grid-cols-2">
-            <Field label="制品 ID" value={artifact.id} mono />
-            <Field label="内容 Hash" value={artifact.content_hash} mono />
-            <Field label="内容版本" value={artifact.content_version_id} mono />
-            <Field label="元数据有效期" value={formatDate(artifact.expires_at)} />
-          </dl>
+          <div className="flex-1">
+            <p className="text-sm text-ink-600">文件可下载至 {formatDate(artifact.expires_at)}</p>
+            <TechnicalDetails summary="导出技术信息">
+              <p>导出文件：{artifact.id}</p>
+              <p>内容校验值：{artifact.content_hash}</p>
+              <p>内容版本：{artifact.content_version_id}</p>
+            </TechnicalDetails>
+          </div>
           <button
             className={primaryButton}
             disabled={downloading}
@@ -372,11 +367,20 @@ function Field({
   );
 }
 
-function StatePanel({ text, title }: { readonly text: string; readonly title: string }) {
+function StatePanel({
+  action,
+  text,
+  title,
+}: {
+  readonly action?: React.ReactNode;
+  readonly text: string;
+  readonly title: string;
+}) {
   return (
     <section className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-panel">
       <h2 className="text-xl font-semibold text-ink-950">{title}</h2>
       <p className="mt-3 text-sm text-ink-500">{text}</p>
+      {action ? <div className="mt-5">{action}</div> : null}
     </section>
   );
 }
@@ -438,9 +442,7 @@ const STATUS_LABELS: Readonly<Record<PublishJob['status'], string>> = {
   scheduled: '已排期',
 };
 
-const controlClass =
-  'mt-2 block h-11 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-950 focus:border-brand-500 focus:outline-2 focus:outline-offset-2 disabled:bg-surface-subtle';
 const primaryButton =
-  'h-11 rounded-control bg-brand-600 px-5 text-sm font-semibold text-white focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
+  'inline-flex h-11 items-center justify-center rounded-control bg-brand-600 px-5 text-sm font-semibold text-white focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
 const dangerButton =
   'h-11 rounded-control border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';

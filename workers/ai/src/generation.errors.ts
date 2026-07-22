@@ -1,3 +1,5 @@
+import { SkillRuntimeError } from '@geo-content-os/skills/runtime';
+
 import type { GenerationFailure } from './generation.types.js';
 
 export class GenerationWorkerError extends Error {
@@ -16,6 +18,9 @@ export class GenerationWorkerError extends Error {
 
 export function asGenerationFailure(error: unknown): GenerationFailure {
   if (error instanceof GenerationWorkerError) {
+    return { code: error.code, message: error.message.slice(0, 500) };
+  }
+  if (error instanceof SkillRuntimeError) {
     return { code: error.code, message: error.message.slice(0, 500) };
   }
   return { code: 'GENERATION_FAILED', message: 'Content generation failed' };

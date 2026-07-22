@@ -22,4 +22,10 @@ describe('Embedding configuration', () => {
     expect(() => readEmbeddingConfiguration({ EMBEDDING_TIMEOUT_MS: '99' })).toThrow();
     expect(() => readEmbeddingConfiguration({ EMBEDDING_MODEL_KEY: 'bad model' })).toThrow();
   });
+
+  it('allows the functional local embedding driver in production', () => {
+    expect(
+      readEmbeddingConfiguration({ NODE_ENV: 'production', EMBEDDING_DRIVER: 'local' }),
+    ).toMatchObject({ driver: 'local', modelKey: 'embedding-local-ngram-v1' });
+  });
 });

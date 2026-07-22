@@ -30,9 +30,10 @@ test('maps, previews and repeatedly imports the same dimensions idempotently', a
   await expect(page.getByText('校验通过，可提交导入。')).toBeVisible();
   await expect(page.getByText('zhihu').first()).toBeVisible();
   await page.getByRole('button', { name: '导入' }).click();
-  await expect(page.getByText('重复文件将返回同一批次')).toBeVisible();
+  await expect(page.getByText('重复上传同一文件不会产生重复数据')).toBeVisible();
   await page.getByRole('button', { name: '导入' }).click();
-  await expect(page.getByText(BATCH)).toBeVisible();
+  await expect(page.getByText('等待处理')).toBeVisible();
+  await expect(page.getByText(BATCH)).toBeHidden();
   expect(keys).toHaveLength(2);
   expect(keys.every((k) => /^metrics-import-[0-9a-f-]{36}$/u.test(k))).toBe(true);
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
@@ -51,9 +52,9 @@ test('shows batch errors and rolls back a succeeded batch idempotently', async (
   });
   await page.goto(`/anl-02?workspace_id=${WORKSPACE}&batch_id=${BATCH}`);
   page.once('dialog', (d) => d.accept('错误来源批次'));
-  await page.getByRole('button', { name: '回滚批次' }).click();
-  await expect(page.getByText('批次已回滚')).toBeVisible();
-  await expect(page.getByText('rolled_back')).toBeVisible();
+  await page.getByRole('button', { name: '撤销本次导入' }).click();
+  await expect(page.getByText('本次导入已撤销')).toBeVisible();
+  await expect(page.getByText('已撤销', { exact: true })).toBeVisible();
   expect(write.body).toEqual({ reason: '错误来源批次' });
   expect(write.key).toMatch(new RegExp(`^metrics-rollback-${BATCH}-[0-9a-f-]{36}$`, 'u'));
 });

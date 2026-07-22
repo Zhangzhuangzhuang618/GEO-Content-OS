@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
+import { expiredSessionLoginPath, returnPathFromSearch } from '../auth-navigation';
+import { logoutCurrentSession } from '../app-shell/account-api';
 import { listAvailableTenants, switchTenant, TenantRequestError } from './tenant-api';
 import type { TenantChoice, TenantRole } from './tenant.schema';
 
@@ -11,8 +13,8 @@ const ROLE_LABELS: Readonly<Record<TenantRole, string>> = {
   publisher: '发布人',
   reviewer: '审核人',
   strategy_editor: '策略编辑',
-  tenant_admin: '租户管理员',
-  tenant_owner: '租户所有者',
+  tenant_admin: '企业管理员',
+  tenant_owner: '企业所有者',
   viewer: '只读成员',
 };
 
@@ -25,14 +27,23 @@ export function TenantSelector() {
   const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' });
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [switchError, setSwitchError] = useState<string | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoadState({ status: 'loading' });
     try {
       const tenants = await listAvailableTenants(signal);
+      if (isAutomaticEntry()) {
+        const target = automaticTenant(tenants);
+        if (target && (await enterTenant(target))) return;
+      }
       setLoadState({ status: 'loaded', tenants });
     } catch (error) {
       if (signal?.aborted) return;
+      if (error instanceof TenantRequestError && error.status === 401) {
+        redirectToLogin();
+        return;
+      }
       setLoadState({
         authenticated: !(error instanceof TenantRequestError && error.status === 401),
         status: 'error',
@@ -48,24 +59,51 @@ export function TenantSelector() {
 
   async function selectTenant(tenant: TenantChoice) {
     if (switchingId) return;
+    await enterTenant(tenant);
+  }
+
+  async function enterTenant(tenant: TenantChoice): Promise<boolean> {
     if (tenant.is_active) {
-      window.location.assign('/dash-01');
-      return;
+      window.location.assign(returnPathFromSearch(window.location.search));
+      return true;
     }
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
       setSwitchError('安全令牌尚未就绪，请刷新页面后重试。');
-      return;
+      return false;
     }
 
     setSwitchError(null);
     setSwitchingId(tenant.id);
     try {
       await switchTenant(tenant.id, csrf);
-      window.location.assign('/dash-01');
-    } catch {
+      window.location.assign(returnPathFromSearch(window.location.search));
+      return true;
+    } catch (error) {
+      if (error instanceof TenantRequestError && error.status === 401) {
+        redirectToLogin();
+        return true;
+      }
       setSwitchError('无法切换到该企业。成员权限可能已变更，请刷新后重试。');
       setSwitchingId(null);
+      return false;
+    }
+  }
+
+  async function switchAccount() {
+    if (leaving || switchingId) return;
+    setLeaving(true);
+    const csrf = readCookie('geo_csrf');
+    try {
+      if (csrf) await logoutCurrentSession(csrf);
+      const query = new URLSearchParams({
+        reason: 'switch_account',
+        return_to: returnPathFromSearch(window.location.search),
+      });
+      window.location.assign(`/auth-01?${query}`);
+    } catch {
+      setSwitchError('暂时无法切换账号，请检查网络后重试。');
+      setLeaving(false);
     }
   }
 
@@ -91,7 +129,7 @@ export function TenantSelector() {
         ) : (
           <a
             className="mt-6 inline-flex rounded-control bg-brand-600 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700"
-            href="/auth-01"
+            href={expiredSessionLoginPath(returnPathFromSearch(window.location.search))}
           >
             返回登录
           </a>
@@ -107,6 +145,9 @@ export function TenantSelector() {
         <p className="mt-3 text-sm leading-6 text-ink-500">
           你的成员资格可能尚未启用。请联系企业管理员完成邀请或恢复权限。
         </p>
+        <button className="mt-6 text-sm font-semibold text-brand-700" onClick={() => void switchAccount()} type="button">
+          使用其他账号
+        </button>
       </section>
     );
   }
@@ -120,7 +161,12 @@ export function TenantSelector() {
           </h2>
           <p className="mt-1 text-sm text-ink-500">仅显示当前有效的成员资格。</p>
         </div>
-        <span className="text-sm text-ink-500">共 {loadState.tenants.length} 个</span>
+        <div className="text-right">
+          <span className="block text-sm text-ink-500">共 {loadState.tenants.length} 个</span>
+          <button className="mt-1 text-sm font-semibold text-brand-700" disabled={leaving} onClick={() => void switchAccount()} type="button">
+            {leaving ? '正在退出…' : '使用其他账号'}
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -168,6 +214,23 @@ export function TenantSelector() {
       </div>
     </section>
   );
+}
+
+function isAutomaticEntry(): boolean {
+  return new URLSearchParams(window.location.search).get('auto') === '1';
+}
+
+function automaticTenant(tenants: readonly TenantChoice[]): TenantChoice | undefined {
+  const active = tenants.find((tenant) => tenant.is_active);
+  if (active) return active;
+  if (tenants.length === 1) return tenants[0];
+  return [...tenants]
+    .filter((tenant) => tenant.last_used_at !== null)
+    .sort((left, right) => right.last_used_at!.localeCompare(left.last_used_at!))[0];
+}
+
+function redirectToLogin(): void {
+  window.location.replace(expiredSessionLoginPath(returnPathFromSearch(window.location.search)));
 }
 
 function TenantListSkeleton() {

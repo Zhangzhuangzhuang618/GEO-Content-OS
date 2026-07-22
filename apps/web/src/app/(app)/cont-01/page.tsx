@@ -12,9 +12,9 @@ export default function BriefListPage() {
     >
       <header>
         <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">内容生产</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">Brief 列表</h1>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">内容需求</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          按项目、平台、目标和负责人查找生产 Brief，并从已有 Brief 创建副本。
+          按平台和目标查找内容需求，也可以从已有需求创建副本。
         </p>
       </header>
       <BriefList />

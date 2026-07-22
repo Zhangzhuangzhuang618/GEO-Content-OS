@@ -11,7 +11,8 @@ export default function SourceUploadPage() {
         <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">知识库</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">上传资料</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          提交文件或 URL 后创建安全校验与解析任务。
+          可提交单个文件、单个 URL，或从 XLSX/CSV 表格批量导入
+          URL；每份资料都会独立校验并创建解析任务。
         </p>
       </header>
       <SourceUploadForm />

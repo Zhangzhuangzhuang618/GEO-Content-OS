@@ -349,10 +349,9 @@ export class DeepSeekModelAdapter implements ModelAdapter {
     startedAt: number,
   ): ModelResult {
     if (!content && toolCalls.length === 0) invalidResponse('DeepSeek response is empty');
-    if (input.responseFormat?.type === 'json_object' && content) {
-      const parsed = parseJson(content);
-      if (!isJsonObject(parsed)) invalidResponse('DeepSeek JSON response is not an object');
-    }
+    // JSON syntax and schema validation belong to SkillRunner. Returning the provider text here
+    // allows its single repair pass to correct malformed JSON instead of failing prematurely in
+    // the transport adapter.
     const registered = new Set((input.tools ?? []).map((item) => item.name));
     if (toolCalls.some((call) => !registered.has(call.name))) {
       invalidResponse('DeepSeek response called an unregistered tool');

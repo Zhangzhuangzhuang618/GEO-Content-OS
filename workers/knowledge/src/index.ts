@@ -1,6 +1,7 @@
 export * from './embedding.cache.js';
 export * from './embedding.store.js';
 export * from './embedding.worker.js';
+export * from './config.js';
 export * from './ingest.errors.js';
 export * from './ingest.event.js';
 export * from './ingest.store.js';
@@ -10,3 +11,4 @@ export * from './malware.scanner.js';
 export * from './material.ingest-parser.js';
 export * from './material.loader.js';
 export * from './queue.consumer.js';
+export * from './runtime-material.chunker.js';

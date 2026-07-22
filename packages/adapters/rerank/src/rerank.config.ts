@@ -1,4 +1,4 @@
-export type RerankDriver = 'disabled' | 'mock';
+export type RerankDriver = 'disabled' | 'local' | 'mock';
 
 export interface RerankConfiguration {
   readonly driver: RerankDriver;
@@ -12,8 +12,8 @@ export function readRerankConfiguration(
   environment: NodeJS.ProcessEnv = process.env,
 ): RerankConfiguration {
   const driver = environment['RERANK_DRIVER']?.trim() || 'disabled';
-  if (driver !== 'disabled' && driver !== 'mock') {
-    throw new Error('RERANK_DRIVER must be disabled or mock');
+  if (driver !== 'disabled' && driver !== 'local' && driver !== 'mock') {
+    throw new Error('RERANK_DRIVER must be disabled, local, or mock');
   }
   if (driver === 'mock' && environment['NODE_ENV'] === 'production') {
     throw new Error('RERANK_DRIVER=mock is forbidden in production');
@@ -22,7 +22,10 @@ export function readRerankConfiguration(
     driver,
     maxDocuments: integer(environment['RERANK_MAX_DOCUMENTS'], 20, 1, 100),
     maxInputCharacters: integer(environment['RERANK_MAX_INPUT_CHARACTERS'], 200_000, 1, 1_000_000),
-    modelKey: identifier(environment['RERANK_MODEL_KEY'] || 'rerank-mock-v1'),
+    modelKey: identifier(
+      environment['RERANK_MODEL_KEY'] ||
+        (driver === 'local' ? 'rerank-local-ngram-v1' : 'rerank-mock-v1'),
+    ),
     timeoutMs: integer(environment['RERANK_TIMEOUT_MS'], 10_000, 100, 120_000),
   });
 }

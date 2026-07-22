@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { TechnicalDetails } from '../human-readable';
 import { AuditLogRequestError, listAuditEvents } from './audit-log-api';
 import type { AuditEvent, AuditFilters } from './audit-log.schema';
 
@@ -114,16 +115,16 @@ export function AuditLog() {
   }
 
   if (state === 'loading' && items.length === 0)
-    return <StatePanel title="正在加载审计日志" text="正在读取当前租户的不可变审计事件。" />;
+    return <StatePanel title="正在加载操作记录" text="正在读取当前企业的重要操作记录。" />;
   if (state === 'permission')
-    return <StatePanel title="无权查看审计日志" text="仅当前租户的 tenant_owner 可查看和导出。" />;
+    return <StatePanel title="无权查看操作记录" text="仅企业所有者可查看和导出。" />;
   if (state === 'error')
     return <StatePanel title="无法加载审计日志" text="请检查筛选条件、网络、会话或服务状态。" />;
 
   return (
     <section className="mt-8 space-y-5">
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-        审计事件只追加且不可编辑或删除。高风险业务写入与必需审计同事务提交；审计写入失败时业务写入必须失败。
+        重要操作记录不可编辑或删除，用于追踪谁在什么时间进行了哪些变更。
       </div>
       <FilterPanel
         filters={filters}
@@ -135,7 +136,7 @@ export function AuditLog() {
         {message}
       </div>
       {items.length === 0 ? (
-        <StatePanel title="暂无审计事件" text="当前租户和筛选范围内没有匹配记录。" />
+        <StatePanel title="暂无操作记录" text="当前企业和筛选范围内没有匹配记录。" />
       ) : (
         <AuditResults items={items} />
       )}
@@ -172,13 +173,20 @@ function FilterPanel({
       onSubmit={onSubmit}
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Input defaultValue={filters.actorId} label="Actor ID" name="actor_id" />
-        <Input defaultValue={filters.action} label="Action" name="action" />
-        <Input defaultValue={filters.resourceType} label="资源类型" name="resource_type" />
-        <Input defaultValue={filters.resourceId} label="资源 ID" name="resource_id" />
-        <Input defaultValue={filters.requestId} label="Request ID" name="request_id" />
+        <Input defaultValue={filters.action} label="操作类型" name="action" />
+        <Input defaultValue={filters.resourceType} label="对象类型" name="resource_type" />
         <Input defaultValue={filters.from} label="开始日期" name="from" type="date" />
         <Input defaultValue={filters.to} label="结束日期" name="to" type="date" />
+      </div>
+      <div className="mt-4">
+        <details className="text-sm text-ink-600">
+          <summary className="cursor-pointer font-medium">按技术编号精确查找</summary>
+          <div className="mt-3 grid gap-4 sm:grid-cols-3">
+            <Input defaultValue={filters.actorId} label="操作人编号" name="actor_id" />
+            <Input defaultValue={filters.resourceId} label="对象编号" name="resource_id" />
+            <Input defaultValue={filters.requestId} label="请求编号" name="request_id" />
+          </div>
+        </details>
       </div>
       <div className="mt-5 flex flex-wrap gap-3">
         <button className={primaryButton} type="submit">
@@ -207,10 +215,10 @@ function AuditResults({ items }: { readonly items: readonly AuditEvent[] }) {
         <table className="min-w-full text-left text-sm">
           <thead className="bg-surface-subtle text-xs tracking-wide text-ink-500 uppercase">
             <tr>
-              <Header>时间 / Actor</Header>
-              <Header>Action / Resource</Header>
-              <Header>Before / After</Header>
-              <Header>Request / IP</Header>
+              <Header>时间 / 操作人</Header>
+              <Header>操作 / 对象</Header>
+              <Header>变更内容</Header>
+              <Header>更多</Header>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -219,19 +227,21 @@ function AuditResults({ items }: { readonly items: readonly AuditEvent[] }) {
                 <Cell>
                   <p>{formatTime(item.created_at)}</p>
                   <p className="mt-1 font-medium text-ink-950">{item.actor_name ?? '系统'}</p>
-                  <Code>{item.actor_id ?? 'system'}</Code>
                 </Cell>
                 <Cell>
-                  <p className="font-medium text-ink-950">{item.action}</p>
-                  <p className="mt-1">{item.resource_type}</p>
-                  <Code>{item.resource_id ?? '—'}</Code>
+                  <p className="font-medium text-ink-950">{actionLabel(item.action)}</p>
+                  <p className="mt-1">{resourceLabel(item.resource_type)}</p>
                 </Cell>
                 <Cell>
                   <JsonDiff after={item.after} before={item.before} />
                 </Cell>
                 <Cell>
-                  <Code>{item.request_id}</Code>
-                  <p className="mt-2">{item.ip ?? '—'}</p>
+                  <TechnicalDetails>
+                    <p>操作人：{item.actor_id ?? 'system'}</p>
+                    <p>对象：{item.resource_id ?? '—'}</p>
+                    <p>请求：{item.request_id}</p>
+                    <p>IP：{item.ip ?? '—'}</p>
+                  </TechnicalDetails>
                 </Cell>
               </tr>
             ))}
@@ -246,16 +256,17 @@ function AuditCard({ item }: { readonly item: AuditEvent }) {
   return (
     <article className="rounded-2xl border border-line bg-white p-4 shadow-panel">
       <p className="text-xs text-ink-500">{formatTime(item.created_at)}</p>
-      <h2 className="mt-2 font-semibold text-ink-950">{item.action}</h2>
+      <h2 className="mt-2 font-semibold text-ink-950">{actionLabel(item.action)}</h2>
       <p className="mt-1 text-sm text-ink-700">
-        {item.actor_name ?? '系统'} · {item.resource_type}
+        {item.actor_name ?? '系统'} · {resourceLabel(item.resource_type)}
       </p>
-      <Code>{item.resource_id ?? '—'}</Code>
       <JsonDiff after={item.after} before={item.before} />
-      <div className="mt-3 text-sm text-ink-600">
-        <Code>{item.request_id}</Code>
-        <span className="mt-1 block">IP：{item.ip ?? '—'}</span>
-      </div>
+      <TechnicalDetails>
+        <p>操作人：{item.actor_id ?? 'system'}</p>
+        <p>对象：{item.resource_id ?? '—'}</p>
+        <p>请求：{item.request_id}</p>
+        <p>IP：{item.ip ?? '—'}</p>
+      </TechnicalDetails>
     </article>
   );
 }
@@ -268,20 +279,23 @@ function JsonDiff({
   readonly before: AuditEvent['before'];
 }) {
   return (
-    <div className="mt-2 space-y-2">
-      <details>
-        <summary className="cursor-pointer font-medium">Before</summary>
-        <pre className="mt-1 max-h-40 max-w-md overflow-auto whitespace-pre-wrap rounded-control bg-surface-subtle p-2 text-xs">
-          {jsonText(before)}
-        </pre>
-      </details>
-      <details>
-        <summary className="cursor-pointer font-medium">After</summary>
-        <pre className="mt-1 max-h-40 max-w-md overflow-auto whitespace-pre-wrap rounded-control bg-surface-subtle p-2 text-xs">
-          {jsonText(after)}
-        </pre>
-      </details>
-    </div>
+    <details className="mt-2">
+      <summary className="cursor-pointer font-medium text-brand-700">查看变更详情</summary>
+      <div className="mt-2 space-y-2">
+        <details>
+          <summary className="cursor-pointer font-medium">变更前</summary>
+          <pre className="mt-1 max-h-40 max-w-md overflow-auto whitespace-pre-wrap rounded-control bg-surface-subtle p-2 text-xs">
+            {jsonText(before)}
+          </pre>
+        </details>
+        <details>
+          <summary className="cursor-pointer font-medium">变更后</summary>
+          <pre className="mt-1 max-h-40 max-w-md overflow-auto whitespace-pre-wrap rounded-control bg-surface-subtle p-2 text-xs">
+            {jsonText(after)}
+          </pre>
+        </details>
+      </div>
+    </details>
   );
 }
 
@@ -303,10 +317,6 @@ function Header({ children }: { readonly children: ReactNode }) {
 
 function Cell({ children }: { readonly children: ReactNode }) {
   return <td className="max-w-md px-4 py-4 text-ink-700">{children}</td>;
-}
-
-function Code({ children }: { readonly children: ReactNode }) {
-  return <code className="mt-1 block break-all text-xs text-ink-500">{children}</code>;
 }
 
 function StatePanel({ text, title }: { readonly text: string; readonly title: string }) {
@@ -372,6 +382,44 @@ function formatTime(value: string): string {
     dateStyle: 'medium',
     timeStyle: 'medium',
   }).format(new Date(value));
+}
+
+function actionLabel(value: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    create: '创建',
+    update: '修改',
+    delete: '删除',
+    publish: '发布',
+    approve: '通过审核',
+    reject: '退回修改',
+    login: '登录',
+  };
+  if (labels[value]) return labels[value];
+  const [resource, action] = value.split('.');
+  const verbs: Readonly<Record<string, string>> = {
+    created: '创建',
+    updated: '更新',
+    deleted: '删除',
+    published: '发布',
+    approved: '通过审核',
+    rejected: '退回修改',
+  };
+  if (resource && action && verbs[action]) return `${verbs[action]}${resourceLabel(resource)}`;
+  return value.replaceAll('_', ' ');
+}
+
+function resourceLabel(value: string): string {
+  return (
+    {
+      content_package: '内容任务',
+      content_variant: '平台内容',
+      workspace: '工作区',
+      project: '项目',
+      source_document: '资料',
+      publish_job: '发布任务',
+      user: '用户',
+    }[value] ?? value.replaceAll('_', ' ')
+  );
 }
 
 function downloadCsv(name: string, headers: readonly string[], rows: readonly unknown[][]) {

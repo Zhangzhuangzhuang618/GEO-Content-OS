@@ -23,6 +23,7 @@ const TENANT_ID = '21000000-0000-4000-8000-000000000123';
 const WORKSPACE_ID = '31000000-0000-4000-8000-000000000123';
 const OTHER_WORKSPACE_ID = '32000000-0000-4000-8000-000000000123';
 const SECRET = 'platform-secret-123';
+const ROTATED_SECRET = 'platform-secret-rotated-456';
 
 const SCOPE: PlatformAccountScope = { tenantId: TENANT_ID, userId: USER_ID };
 const OTHER_SCOPE: PlatformAccountScope = { tenantId: TENANT_ID, userId: OTHER_USER_ID };
@@ -57,7 +58,7 @@ describe('platform accounts', () => {
     await container?.stop();
   });
 
-  it('connects, refreshes, tests and disables an account without exposing credentials', async () => {
+  it('supports the complete account lifecycle without exposing credentials', async () => {
     const database = requireClient(client);
     const service = createService(database, requireKms(kms));
     const connected = await service.create(
@@ -66,6 +67,7 @@ describe('platform accounts', () => {
         credential: { access_token: SECRET },
         display_name: 'Official Site',
         platform_code: 'official_site',
+        publishing_url: 'https://cms.example.test/publish',
         publish_mode: 'api',
         timezone: 'Asia/Shanghai',
         workspace_id: WORKSPACE_ID,
@@ -76,6 +78,7 @@ describe('platform accounts', () => {
     expect(connected).toMatchObject({
       capabilities: { publish: true },
       platform_code: 'official_site',
+      publishing_url: 'https://cms.example.test/publish',
       status: 'active',
       version: 1,
       workspace_id: WORKSPACE_ID,
@@ -105,23 +108,67 @@ describe('platform accounts', () => {
     expect(tested.account).toMatchObject({ version: 3, capabilities: { publish: true } });
     expect(tested.checkedAt).toBeInstanceOf(Date);
 
+    const updated = await service.update(
+      SCOPE,
+      connected.id,
+      {
+        credential: { access_token: ROTATED_SECRET },
+        display_name: 'Official Site Main',
+        publishing_url: 'https://cms.example.test/articles/new',
+        publish_mode: 'api',
+        timezone: 'Asia/Hong_Kong',
+      },
+      3,
+      { requestId: 'req-account-update' },
+    );
+    expect(updated).toMatchObject({
+      display_name: 'Official Site Main',
+      publishing_url: 'https://cms.example.test/articles/new',
+      timezone: 'Asia/Hong_Kong',
+      version: 4,
+    });
+
     await expect(
-      service.disable(SCOPE, connected.id, 'stale request', 2, {
+      service.disable(SCOPE, connected.id, 'stale request', 3, {
         requestId: 'req-account-stale',
       }),
     ).rejects.toMatchObject({
       code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT',
     });
 
-    const disabled = await service.disable(SCOPE, connected.id, 'rotated account', 3, {
+    const disabled = await service.disable(SCOPE, connected.id, 'rotated account', 4, {
       requestId: 'req-account-disable',
     });
-    expect(disabled).toMatchObject({ status: 'disabled', version: 4 });
+    expect(disabled).toMatchObject({ status: 'disabled', version: 5 });
     await expect(
-      service.test(SCOPE, connected.id, 4, { requestId: 'req-account-disabled-test' }),
+      service.test(SCOPE, connected.id, 5, { requestId: 'req-account-disabled-test' }),
     ).rejects.toMatchObject({
       code: 'PLATFORM_ACCOUNT_STATE_INVALID',
     });
+
+    const editedWhileDisabled = await service.update(
+      SCOPE,
+      connected.id,
+      {
+        display_name: 'Official Site Standby',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+      },
+      5,
+      { requestId: 'req-account-disabled-update' },
+    );
+    expect(editedWhileDisabled).toMatchObject({ status: 'disabled', version: 6 });
+
+    const restored = await service.restore(SCOPE, connected.id, 6, {
+      requestId: 'req-account-restore',
+    });
+    expect(restored).toMatchObject({ status: 'active', version: 7 });
+
+    const removed = await service.remove(SCOPE, connected.id, 7, {
+      requestId: 'req-account-remove',
+    });
+    expect(removed).toMatchObject({ status: 'disabled', version: 8 });
+    await expect(service.list(SCOPE)).resolves.toEqual([]);
 
     const audits = await database<
       { action: string; after_json: Record<string, unknown>; before_json: unknown }[]
@@ -130,9 +177,14 @@ describe('platform accounts', () => {
       'platform_account.connected',
       'platform_account.refreshed',
       'platform_account.capability_tested',
+      'platform_account.updated',
       'platform_account.disabled',
+      'platform_account.updated',
+      'platform_account.restored',
+      'platform_account.removed',
     ]);
     expect(JSON.stringify(audits)).not.toContain(SECRET);
+    expect(JSON.stringify(audits)).not.toContain(ROTATED_SECRET);
     expect(audits[0]?.before_json).toBeNull();
   });
 

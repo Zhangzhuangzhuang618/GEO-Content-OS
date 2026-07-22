@@ -6,11 +6,13 @@ import { z } from 'zod';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { skillLabel } from '../human-readable';
 import {
   ContentPackageDetailRequestError,
   generatePackage,
   getContentPackageDetail,
   mutatePackage,
+  requestPackageQualityChecks,
   submitPackageReview,
 } from './content-package-detail-api';
 import type {
@@ -29,7 +31,9 @@ export function ContentPackageDetail() {
   const [detail, setDetail] = useState<PackageDetail | null>(null);
   const [role, setRole] = useState<TenantRole | null>(null);
   const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
-  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
+  const [state, setState] = useState<
+    'loading' | 'ready' | 'invalid' | 'permission' | 'unavailable'
+  >('loading');
   const [busy, setBusy] = useState<PackageAction | null>(null);
   const [modelPolicy, setModelPolicy] = useState<ModelPolicy>('balanced');
   const [reason, setReason] = useState('');
@@ -38,7 +42,7 @@ export function ContentPackageDetail() {
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('id');
     if (!id || !z.string().uuid().safeParse(id).success) {
-      setState('error');
+      setState('invalid');
       return;
     }
     const controller = new AbortController();
@@ -58,11 +62,28 @@ export function ContentPackageDetail() {
         setState('ready');
       } catch (error) {
         if (controller.signal.aborted) return;
-        setState(isAccessError(error) ? 'permission' : 'error');
+        setState(isAccessError(error) ? 'permission' : 'unavailable');
       }
     })();
     return () => controller.abort();
   }, []);
+
+  const hasActiveRun = detail?.generationRuns.some((run) => ACTIVE_RUNS.has(run.status)) ?? false;
+  useEffect(() => {
+    if (!detail || !hasActiveRun) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      void getContentPackageDetail(detail.package.id)
+        .then((refreshed) => {
+          if (!cancelled) applyDetail(refreshed, setDetail, setSelectedReviewIds);
+        })
+        .catch(() => undefined);
+    }, 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [detail?.package.id, hasActiveRun]);
 
   async function runAction(action: PackageAction) {
     if (!detail || !role) return;
@@ -79,6 +100,8 @@ export function ContentPackageDetail() {
     setMessage(null);
     try {
       if (action === 'generate') await generatePackage(detail, modelPolicy, csrf);
+      else if (action === 'quality-check')
+        await requestPackageQualityChecks(qualityCheckVariantIds(detail), csrf);
       else if (action === 'submit-review')
         await submitPackageReview(detail, selectedReviewIds, csrf);
       else await mutatePackage(detail, action, reason.trim(), csrf);
@@ -87,22 +110,25 @@ export function ContentPackageDetail() {
       setReason('');
       setMessage(ACTION_SUCCESS[action]);
     } catch (error) {
-      setMessage(
-        error instanceof ContentPackageDetailRequestError && error.status === 409
-          ? '状态或版本已变化，请刷新后重试。'
-          : '操作失败，服务端状态守卫或依赖条件未通过。',
-      );
+      setMessage(actionErrorMessage(action, error));
     } finally {
       setBusy(null);
     }
   }
 
   if (state === 'loading')
-    return <StatePanel title="正在加载内容包" text="正在读取聚合、变体和版本详情。" />;
+    return <StatePanel title="正在加载内容任务" text="正在整理各平台内容和制作进度。" />;
   if (state === 'permission')
-    return <StatePanel title="无权查看内容包" text="资源不存在或当前工作区未授权。" />;
-  if (state === 'error' || !detail || !role)
-    return <StatePanel title="无法加载内容包" text="请确认 URL 中包含有效且可访问的内容包 ID。" />;
+    return <StatePanel title="无权查看这项内容" text="内容不存在，或当前工作空间未授权。" />;
+  if (state === 'invalid')
+    return <StatePanel title="无法打开这项内容" text="请从内容列表重新进入。" />;
+  if (state === 'unavailable' || !detail || !role)
+    return (
+      <StatePanel
+        title="内容暂时无法加载"
+        text="服务暂时没有返回完整信息，请返回内容列表后重试。"
+      />
+    );
 
   const producer = PRODUCER_ROLES.has(role);
   const administrator = ADMIN_ROLES.has(role);
@@ -112,19 +138,19 @@ export function ContentPackageDetail() {
   );
   const canSubmitSelection =
     selectedReviewIds.length > 0 && selectedReviewIds.every((id) => reviewable.has(id));
+  const qualityIds = qualityCheckVariantIds(detail);
+  const hasExistingContent = detail.variants.some((item) => item.currentContent !== null);
+  const title = contentTaskTitle(detail);
 
   return (
     <section className="mt-8 space-y-6">
       <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="font-mono text-xs text-ink-500">{detail.package.id}</p>
-            <h2 className="mt-2 text-xl font-semibold text-ink-950">
-              内容包 · {shortId(detail.package.id)}
-            </h2>
+            <h2 className="text-xl font-semibold text-ink-950">{title}</h2>
             <p className="mt-2 text-sm text-ink-500">
-              包状态“{packageStatusLabel(detail.package.status)}
-              ”仅作摘要，所有动作按下方变体状态判断。
+              当前阶段：{packageStatusLabel(detail.package.status)}
+              。下方可以查看每个平台的具体进度。
             </p>
           </div>
           <Link className={secondaryButton} href="/cont-03">
@@ -138,8 +164,8 @@ export function ContentPackageDetail() {
       <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold text-ink-950">平台变体</h2>
-            <p className="mt-1 text-sm text-ink-500">引用、版本、审核和发布均以当前变体为单位。</p>
+            <h2 className="text-lg font-semibold text-ink-950">各平台内容</h2>
+            <p className="mt-1 text-sm text-ink-500">每个平台的内容都可以单独编辑、检查和发布。</p>
           </div>
           <span className="text-sm text-ink-500">{detail.variants.length} 个平台</span>
         </div>
@@ -149,7 +175,7 @@ export function ContentPackageDetail() {
               <tr>
                 <th className="p-3">提交</th>
                 <th className="p-3">平台</th>
-                <th className="p-3">变体状态</th>
+                <th className="p-3">制作进度</th>
                 <th className="p-3">质量</th>
                 <th className="p-3">引用</th>
                 <th className="p-3">版本</th>
@@ -199,8 +225,16 @@ export function ContentPackageDetail() {
                           编辑
                         </Link>
                         <Link className="text-brand-700" href={`/qual-01?id=${item.variant.id}`}>
-                          质量
+                          {item.qualityReport ? '查看检查' : '检查质量'}
                         </Link>
+                        {item.variant.status === 'approved' ? (
+                          <Link
+                            className="text-brand-700"
+                            href={`/pub-02?variant_id=${item.variant.id}`}
+                          >
+                            安排发布
+                          </Link>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -211,17 +245,17 @@ export function ContentPackageDetail() {
         </div>
       </section>
 
-      <GenerationRuns runs={detail.generationRuns} />
+      <GenerationRuns runs={detail.generationRuns} variants={detail.variants} />
 
       {producer || administrator ? (
         <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
-          <h2 className="text-lg font-semibold text-ink-950">内容包动作</h2>
+          <h2 className="text-lg font-semibold text-ink-950">下一步操作</h2>
           <p className="mt-1 text-sm text-ink-500">
-            页面只提前阻止当前可见状态下的无效动作；服务端仍会重新校验版本、运行、质量和冻结依赖。
+            按顺序完成内容生成、质量检查和提交审核。系统会自动刷新处理结果。
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <label className="text-sm text-ink-700">
-              生成模型策略
+              生成偏好
               <select
                 className={controlClass}
                 onChange={(event) => setModelPolicy(event.target.value as ModelPolicy)}
@@ -233,7 +267,7 @@ export function ContentPackageDetail() {
               </select>
             </label>
             <label className="text-sm text-ink-700">
-              废弃或归档原因
+              放弃或归档原因
               <input
                 className={controlClass}
                 maxLength={1000}
@@ -250,14 +284,21 @@ export function ContentPackageDetail() {
                   busy={busy}
                   disabled={!guards.generate}
                   onRun={runAction}
-                  text="生成内容"
+                  text={hasExistingContent ? '重新生成全部内容' : '生成内容'}
+                />
+                <ActionButton
+                  action="quality-check"
+                  busy={busy}
+                  disabled={hasActiveRun || qualityIds.length === 0}
+                  onRun={runAction}
+                  text="检查内容质量"
                 />
                 <ActionButton
                   action="abandon"
                   busy={busy}
                   disabled={!guards.abandon}
                   onRun={runAction}
-                  text="废弃内容包"
+                  text="放弃本次创作"
                 />
                 <ActionButton
                   action="submit-review"
@@ -274,16 +315,13 @@ export function ContentPackageDetail() {
                 busy={busy}
                 disabled={!guards.archive}
                 onRun={runAction}
-                text="归档内容包"
+                text="归档任务"
               />
             ) : null}
           </div>
-          <ul className="mt-4 list-disc space-y-1 pl-5 text-xs text-ink-500">
-            <li>生成：全部必需变体可进入 generating，且没有 queued/running 运行。</li>
-            <li>废弃：仅 draft 或 all_failed，且每个变体摘要与包状态一致。</li>
-            <li>提交审核：仅勾选 current content 对应 pass 报告的 quality_passed 变体。</li>
-            <li>归档：仅租户管理员/所有者，内容包非 archived/cancelled 且无活跃运行。</li>
-          </ul>
+          <p className="mt-4 text-xs leading-5 text-ink-500">
+            质量检查通过的平台会自动勾选；确认后即可提交审核。重新生成会产生新版本，并使旧检查结果失效。
+          </p>
           {message ? (
             <p aria-live="polite" className="mt-4 text-sm text-ink-700">
               {message}
@@ -293,6 +331,21 @@ export function ContentPackageDetail() {
       ) : null}
     </section>
   );
+}
+
+function actionErrorMessage(action: PackageAction, error: unknown): string {
+  if (!(error instanceof ContentPackageDetailRequestError)) {
+    return '操作失败，请稍后重试。';
+  }
+  if (error.status === 409) return '状态或版本已变化，请刷新后重试。';
+  if (action === 'generate' && error.status === 422) {
+    return '生成条件未满足。请确认当前工作区已有已发布品牌策略，并检查模型与平台规则配置。';
+  }
+  if (action === 'quality-check' && error.status === 422) {
+    return '质量检查尚未配置完整，请确认质量模型和检查规则已启用。';
+  }
+  if (error.status >= 500) return '服务暂时不可用，请稍后重试。';
+  return '操作失败，当前状态或依赖条件不允许执行。';
 }
 
 export function actionGuards(detail: PackageDetail) {
@@ -331,61 +384,78 @@ function canSubmitVariant(item: VariantDetail) {
 function MasterContent({ content }: { readonly content: PackageDetail['masterContent'] }) {
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
-      <h2 className="text-lg font-semibold text-ink-950">母稿</h2>
+      <h2 className="text-lg font-semibold text-ink-950">通用初稿</h2>
       {content ? (
         <div className="mt-3">
           <p className="font-medium text-ink-950">{content.content_json.title}</p>
           <p className="mt-2 text-sm leading-6 text-ink-600">{content.content_json.summary}</p>
           <p className="mt-3 text-xs text-ink-500">
-            v{content.version_no} · {content.content_json.blocks.length} 个内容块 · hash{' '}
-            {content.content_hash.slice(0, 12)}
+            共 {content.content_json.blocks.length} 段正文
           </p>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-ink-500">尚未生成母稿。</p>
+        <p className="mt-2 text-sm text-ink-500">通用初稿正在准备，平台内容完成后会在这里汇总。</p>
       )}
     </section>
   );
 }
 
-function GenerationRuns({ runs }: { readonly runs: PackageDetail['generationRuns'] }) {
+function GenerationRuns({
+  runs,
+  variants,
+}: {
+  readonly runs: PackageDetail['generationRuns'];
+  readonly variants: PackageDetail['variants'];
+}) {
   return (
     <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
-      <h2 className="text-lg font-semibold text-ink-950">生成运行</h2>
+      <h2 className="text-lg font-semibold text-ink-950">处理记录</h2>
       {runs.length ? (
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="bg-surface-subtle text-ink-500">
               <tr>
-                <th className="p-3">运行</th>
-                <th className="p-3">Skill</th>
-                <th className="p-3">模型</th>
+                <th className="p-3">处理内容</th>
                 <th className="p-3">状态</th>
                 <th className="p-3">更新时间</th>
+                <th className="p-3">操作</th>
               </tr>
             </thead>
             <tbody>
-              {runs.map((run) => (
-                <tr className="border-t border-line" key={run.id}>
-                  <td className="p-3">
-                    <Link className="text-brand-700" href={`/cont-06?id=${run.id}`}>
-                      {shortId(run.id)}
-                    </Link>
-                  </td>
-                  <td className="p-3">{run.skill_name}</td>
-                  <td className="p-3">{run.model_key}</td>
-                  <td className="p-3">{runStatusLabel(run.status)}</td>
-                  <td className="p-3">{new Date(run.updated_at).toLocaleString('zh-CN')}</td>
-                </tr>
-              ))}
+              {runs.map((run) => {
+                const variant = variants.find((item) => item.variant.id === run.variant_id);
+                return (
+                  <tr className="border-t border-line" key={run.id}>
+                    <td className="p-3">
+                      {variant
+                        ? variantRunLabel(run.skill_name, variant.variant.platform_code)
+                        : skillLabel(run.skill_name)}
+                    </td>
+                    <td className="p-3">{runStatusLabel(run.status)}</td>
+                    <td className="p-3">{new Date(run.updated_at).toLocaleString('zh-CN')}</td>
+                    <td className="p-3">
+                      <Link className="text-brand-700" href={`/cont-06?id=${run.id}`}>
+                        查看详情
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-ink-500">暂无生成运行。</p>
+        <p className="mt-2 text-sm text-ink-500">还没有处理记录。</p>
       )}
     </section>
   );
+}
+
+function variantRunLabel(skillName: string, platformCode: string): string {
+  const platform = platformLabel(platformCode);
+  if (skillName === 'quality-checker') return `检查${platform}内容质量`;
+  if (skillName === 'content-writer') return `生成${platform}内容`;
+  return `${skillLabel(skillName)}（${platform}）`;
 }
 
 function CitationSummary({ item }: { readonly item: VariantDetail }) {
@@ -397,7 +467,7 @@ function CitationSummary({ item }: { readonly item: VariantDetail }) {
         {item.citations.map((citation) => (
           <li key={citation.id}>
             <p>{citation.claim_text}</p>
-            <p className="mt-1 font-mono text-ink-500">chunk {shortId(citation.chunk_id)}</p>
+            <p className="mt-1 text-ink-500">依据：{citation.quote_text}</p>
           </li>
         ))}
       </ul>
@@ -415,7 +485,7 @@ function VersionSummary({ item }: { readonly item: VariantDetail }) {
       <ul className="mt-2 space-y-1 text-xs text-ink-500">
         {item.versions.map((version) => (
           <li key={version.id}>
-            v{version.version_no} · {version.content_hash.slice(0, 12)}
+            第 {version.version_no} 版 · {new Date(version.created_at).toLocaleString('zh-CN')}
           </li>
         ))}
       </ul>
@@ -439,7 +509,9 @@ function ActionButton({
   return (
     <button
       className={
-        action === 'generate' || action === 'submit-review' ? primaryButton : secondaryButton
+        action === 'generate' || action === 'quality-check' || action === 'submit-review'
+          ? primaryButton
+          : secondaryButton
       }
       disabled={busy !== null || disabled}
       onClick={() => void onRun(action)}
@@ -458,6 +530,20 @@ function applyDetail(
   setDetail(detail);
   setSelected(detail.variants.filter(canSubmitVariant).map((item) => item.variant.id));
 }
+function qualityCheckVariantIds(detail: PackageDetail) {
+  return detail.variants
+    .filter(
+      (item) =>
+        item.currentContent !== null &&
+        ['generated', 'quality_failed', 'quality_passed'].includes(item.variant.status) &&
+        !(
+          item.variant.status === 'quality_passed' &&
+          item.qualityReport?.decision === 'pass' &&
+          item.qualityReport.content_version_id === item.currentContent.id
+        ),
+    )
+    .map((item) => item.variant.id);
+}
 function isAccessError(error: unknown) {
   if (error instanceof ContentPackageDetailRequestError)
     return [401, 403, 404].includes(error.status);
@@ -469,8 +555,12 @@ function readCookie(name: string) {
   const entry = document.cookie.split('; ').find((value) => value.startsWith(`${name}=`));
   return entry ? decodeURIComponent(entry.slice(name.length + 1)) : '';
 }
-function shortId(id: string) {
-  return id.slice(0, 8);
+function contentTaskTitle(detail: PackageDetail) {
+  return (
+    detail.masterContent?.content_json.title ||
+    detail.variants.find((item) => item.currentContent)?.currentContent?.content_json.title ||
+    '新内容创作'
+  );
 }
 function platformLabel(code: string) {
   return PLATFORM_LABELS[code] ?? code;
@@ -517,10 +607,11 @@ function StatePanel({ title, text }: { readonly title: string; readonly text: st
 }
 
 const ACTION_SUCCESS: Record<PackageAction, string> = {
-  abandon: '内容包已废弃。',
-  archive: '内容包已归档。',
-  generate: '生成运行已创建。',
-  'submit-review': '所选变体已提交审核。',
+  abandon: '本次创作已放弃。',
+  archive: '内容任务已归档。',
+  generate: '内容生成已开始。',
+  'quality-check': '质量检查已开始，完成后页面会自动刷新。',
+  'submit-review': '所选平台内容已提交审核。',
 };
 const PLATFORM_LABELS: Record<string, string> = {
   baijiahao: '百家号',

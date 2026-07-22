@@ -34,6 +34,7 @@ export class CitationSearchService {
       candidateLimit: this.policy.modalityCandidateLimit,
       ...(input.effectiveOn ? { effectiveOn: input.effectiveOn } : {}),
       modelKey: input.embeddingModelKey,
+      ...(input.sourceDocumentIds ? { sourceDocumentIds: input.sourceDocumentIds } : {}),
       topK: this.policy.fusedCandidateLimit,
       ...(input.trustLevels ? { trustLevels: input.trustLevels } : {}),
     });

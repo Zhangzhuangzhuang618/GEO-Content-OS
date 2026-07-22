@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { TechnicalDetails } from '../human-readable';
 import { listActiveWorkspaces } from '../str-02/brand-profile-api';
+import { BatchUrlImport } from './batch-url-import';
 import { listProjects, uploadSource, UploadRequestError } from './source-upload-api';
 import {
   UploadFormSchema,
@@ -22,13 +24,9 @@ const ALLOWED_TYPES = new Map([
   ['pdf', 'application/pdf'],
   ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
   ['txt', 'text/plain'],
-  ['png', 'image/png'],
-  ['jpg', 'image/jpeg'],
-  ['jpeg', 'image/jpeg'],
-  ['webp', 'image/webp'],
 ]);
 export function SourceUploadForm() {
-  const [mode, setMode] = useState<'file' | 'url'>('file');
+  const [mode, setMode] = useState<'batch-url' | 'file' | 'url'>('file');
   const [file, setFile] = useState<File | null>(null);
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>([]);
@@ -38,6 +36,7 @@ export function SourceUploadForm() {
   const {
     formState: { errors, isSubmitting },
     handleSubmit,
+    getValues,
     register,
     reset,
     setError,
@@ -89,7 +88,7 @@ export function SourceUploadForm() {
       });
     return () => controller.abort();
   }, [workspaceId]);
-  function changeMode(next: 'file' | 'url') {
+  function changeMode(next: 'batch-url' | 'file' | 'url') {
     setMode(next);
     setFile(null);
     setResult(null);
@@ -97,6 +96,7 @@ export function SourceUploadForm() {
     window.history.replaceState(null, '', `/know-02?mode=${next}`);
   }
   const submit = handleSubmit(async (values) => {
+    if (mode === 'batch-url') return;
     setMessage(null);
     setResult(null);
     const parsed = UploadFormSchema.safeParse(values);
@@ -142,7 +142,7 @@ export function SourceUploadForm() {
   });
   if (state === 'loading') return <Panel title="正在加载上传表单" text="请稍候。" />;
   if (state === 'permission')
-    return <Panel title="无权上传资料" text="该页面仅对策略编辑、内容编辑和租户管理员开放。" />;
+    return <Panel title="无权上传资料" text="该页面仅对策略编辑、内容编辑和企业管理员开放。" />;
   if (state === 'error') return <Panel title="无法加载上传表单" text="请刷新页面后重试。" />;
   if (workspaces.length === 0)
     return <Panel title="暂无可用工作区" text="请先创建 active 工作区。" />;
@@ -150,10 +150,10 @@ export function SourceUploadForm() {
     <form
       className="mt-8 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-8"
       noValidate
-      onSubmit={submit}
+      onSubmit={mode === 'batch-url' ? (event) => event.preventDefault() : submit}
     >
       <div
-        className="grid grid-cols-2 rounded-control bg-surface-subtle p-1"
+        className="grid grid-cols-3 rounded-control bg-surface-subtle p-1"
         role="group"
         aria-label="资料来源"
       >
@@ -171,11 +171,20 @@ export function SourceUploadForm() {
         >
           登记 URL
         </button>
+        <button
+          className={mode === 'batch-url' ? activeTab : tab}
+          onClick={() => changeMode('batch-url')}
+          type="button"
+        >
+          批量导入 URL
+        </button>
       </div>
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
-        <Field error={errors.title?.message} label="标题" name="source-title">
-          <input className={controlClass} id="source-title" {...register('title')} />
-        </Field>
+        {mode !== 'batch-url' ? (
+          <Field error={errors.title?.message} label="标题" name="source-title">
+            <input className={controlClass} id="source-title" {...register('title')} />
+          </Field>
+        ) : null}
         <Field error={errors.language?.message} label="语言" name="source-language">
           <input
             className={controlClass}
@@ -227,37 +236,45 @@ export function SourceUploadForm() {
             {...register('effective_to')}
           />
         </Field>
-        <div className="sm:col-span-2">
-          {mode === 'file' ? (
-            <Field label="文件" name="source-file">
-              <input
-                accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp"
-                className={`${controlClass} py-2`}
-                id="source-file"
-                onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
-                type="file"
-              />
-              <p className="mt-2 text-xs text-ink-500">
-                PDF、DOCX、TXT、PNG、JPEG、WebP；默认最大 25
-                MiB。服务端会复核内容签名并执行安全扫描。
-              </p>
-            </Field>
-          ) : (
-            <Field error={errors.url?.message} label="URL" name="source-url">
-              <input
-                className={controlClass}
-                id="source-url"
-                placeholder="https://example.com/document"
-                type="url"
-                {...register('url')}
-              />
-              <p className="mt-2 text-xs text-ink-500">
-                服务端会检查 DNS、私网地址、重定向、响应大小和超时。
-              </p>
-            </Field>
-          )}
-        </div>
+        {mode !== 'batch-url' ? (
+          <div className="sm:col-span-2">
+            {mode === 'file' ? (
+              <Field label="文件" name="source-file">
+                <input
+                  accept=".pdf,.docx,.txt"
+                  className={`${controlClass} py-2`}
+                  id="source-file"
+                  onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
+                  type="file"
+                />
+                <p className="mt-2 text-xs text-ink-500">
+                  支持 PDF、DOCX、TXT，默认最大 25 MiB。服务端会复核内容签名并执行安全扫描。
+                </p>
+              </Field>
+            ) : (
+              <Field error={errors.url?.message} label="URL" name="source-url">
+                <input
+                  className={controlClass}
+                  id="source-url"
+                  placeholder="https://example.com/document"
+                  type="url"
+                  {...register('url')}
+                />
+                <p className="mt-2 text-xs text-ink-500">
+                  服务端会检查 DNS、私网地址、重定向、响应大小和超时。
+                </p>
+              </Field>
+            )}
+          </div>
+        ) : null}
       </div>
+      {mode === 'batch-url' ? (
+        <BatchUrlImport
+          getCsrf={() => readCookie('geo_csrf')}
+          getForm={getValues}
+          onMessage={setMessage}
+        />
+      ) : null}
       <div aria-live="polite" className="mt-6 min-h-12">
         {message ? (
           <p className="rounded-control bg-brand-50 px-3 py-2 text-sm text-brand-700" role="status">
@@ -265,28 +282,44 @@ export function SourceUploadForm() {
           </p>
         ) : null}
       </div>
-      {result ? (
+      {result && mode !== 'batch-url' ? (
         <div className="mt-3 rounded-control border border-brand-100 bg-brand-50 p-4 text-sm text-brand-700">
-          <p>资料：{result.source.title}</p>
-          <p className="mt-1">
-            解析任务：{result.ingest_job.id}（{result.ingest_job.status}）
-          </p>
+          <p className="font-semibold">资料“{result.source.title}”已提交</p>
+          <p className="mt-1">当前进度：{ingestStatusLabel(result.ingest_job.status)}</p>
           <a
             className="mt-3 inline-flex font-semibold underline"
-            href={`/know-03?id=${result.source.id}`}
+            href={`/know-03?id=${result.source.id}&workspace_id=${result.source.workspace_id}&project_id=${result.source.project_id ?? projects[0]?.id ?? ''}`}
           >
             查看资料详情
           </a>
+          <div className="mt-3 text-ink-500">
+            <TechnicalDetails summary="处理技术信息">
+              <p>资料编号：{result.source.id}</p>
+              <p>处理记录：{result.ingest_job.id}</p>
+            </TechnicalDetails>
+          </div>
         </div>
       ) : null}
-      <button
-        className="mt-5 h-11 w-full rounded-control bg-brand-600 px-5 text-sm font-semibold text-white disabled:opacity-60"
-        disabled={isSubmitting}
-        type="submit"
-      >
-        {isSubmitting ? '正在提交…' : '上传并创建解析任务'}
-      </button>
+      {mode !== 'batch-url' ? (
+        <button
+          className="mt-5 h-11 w-full rounded-control bg-brand-600 px-5 text-sm font-semibold text-white disabled:opacity-60"
+          disabled={isSubmitting}
+          type="submit"
+        >
+          {isSubmitting ? '正在提交…' : '上传并创建解析任务'}
+        </button>
+      ) : null}
     </form>
+  );
+}
+function ingestStatusLabel(status: string) {
+  return (
+    {
+      failed: '处理失败，可进入详情重试',
+      queued: '等待处理',
+      running: '正在整理资料',
+      succeeded: '处理完成',
+    }[status] ?? '处理中'
   );
 }
 function validateFile(file: File | null) {
@@ -329,7 +362,8 @@ function Panel({ text, title }: { text: string; title: string }) {
 }
 function readMode() {
   if (typeof window === 'undefined') return 'file';
-  return new URLSearchParams(window.location.search).get('mode') === 'url' ? 'url' : 'file';
+  const mode = new URLSearchParams(window.location.search).get('mode');
+  return mode === 'url' || mode === 'batch-url' ? mode : 'file';
 }
 function readCookie(name: string) {
   const prefix = `${encodeURIComponent(name)}=`;

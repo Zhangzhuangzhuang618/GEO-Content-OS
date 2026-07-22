@@ -83,6 +83,26 @@ describe('adapter material loader', () => {
       }),
     ).rejects.toMatchObject({ code: 'SOURCE_CONTENT_CHANGED', retryable: false });
   });
+
+  it('loads the immutable registration snapshot for a URL without fetching it again', async () => {
+    const storage = new InMemoryStorageAdapter();
+    await storage.putObject({
+      body: BODY,
+      contentHash: HASH,
+      contentType: 'text/plain',
+      key: DATA.objectKey!,
+    });
+    const loaded = await new AdapterMaterialLoader(storage, neverFetch()).load(
+      { ...SOURCE, sourceType: 'url' },
+      { ...DATA, sourceUrl: 'https://example.com/source' },
+    );
+    expect(loaded).toMatchObject({
+      contentHash: HASH,
+      mimeType: 'text/plain',
+      url: 'https://example.com/source',
+    });
+    expect(loaded.body).toEqual(BODY);
+  });
 });
 
 function neverFetch() {

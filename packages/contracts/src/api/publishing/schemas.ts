@@ -10,12 +10,19 @@ import {
 const CredentialSchema = z
   .record(z.string(), z.unknown())
   .refine((value) => Object.keys(value).length > 0, 'credential must not be empty');
+const PublishingUrlSchema = z
+  .url()
+  .max(2048)
+  .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
+    message: 'publishing_url must use HTTP or HTTPS',
+  });
 export const PlatformAccountParamsSchema = z.object({ id: UuidSchema }).strict();
 export const CreatePlatformAccountRequestSchema = z
   .object({
     credential: CredentialSchema.optional(),
     display_name: z.string().trim().min(1).max(120),
     platform_code: z.enum(PLATFORM_CODES),
+    publishing_url: PublishingUrlSchema.optional(),
     publish_mode: z.enum(['api', 'export', 'manual']),
     timezone: z.string().trim().min(1).max(64),
     workspace_id: UuidSchema,
@@ -27,6 +34,15 @@ export const CreatePlatformAccountRequestSchema = z
   });
 export const RefreshAccountRequestSchema = z
   .object({ credential: CredentialSchema.optional() })
+  .strict();
+export const UpdatePlatformAccountRequestSchema = z
+  .object({
+    credential: CredentialSchema.optional(),
+    display_name: z.string().trim().min(1).max(120),
+    publishing_url: PublishingUrlSchema.nullable().optional(),
+    publish_mode: z.enum(['api', 'export', 'manual']),
+    timezone: z.string().trim().min(1).max(64),
+  })
   .strict();
 export const DisablePlatformAccountRequestSchema = z
   .object({ reason: z.string().trim().min(1).max(1000) })
@@ -46,6 +62,7 @@ export const PlatformAccountViewSchema = z
     id: UuidSchema,
     platform_code: z.enum(PLATFORM_CODES),
     provider_account_id: z.string().nullable(),
+    publishing_url: PublishingUrlSchema.nullable(),
     publish_mode: z.enum(['api', 'export', 'manual']),
     scopes: z.array(z.string()),
     status: z.enum(['active', 'reauth', 'disabled']),
@@ -77,4 +94,5 @@ export const PlatformAccountPageSchema = z
   .strict();
 export type CreatePlatformAccountRequest = z.infer<typeof CreatePlatformAccountRequestSchema>;
 export type RefreshAccountRequest = z.infer<typeof RefreshAccountRequestSchema>;
+export type UpdatePlatformAccountRequest = z.infer<typeof UpdatePlatformAccountRequestSchema>;
 export type PlatformAccountView = z.infer<typeof PlatformAccountViewSchema>;

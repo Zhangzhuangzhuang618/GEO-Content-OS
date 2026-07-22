@@ -2,12 +2,33 @@ import {
   KeywordListResponseSchema,
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
+  KeywordSetResponseSchema,
   type KeywordInput,
   type KeywordSet,
   type KeywordSetDetail,
 } from './keyword-set.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
+
+export async function createKeywordSet(
+  input: { readonly name: string; readonly projectId: string },
+  csrf: string,
+): Promise<KeywordSet> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/keyword-sets`, {
+    body: JSON.stringify({ name: input.name, project_id: input.projectId }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `keyword-set-create-${crypto.randomUUID()}`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw new KeywordSetRequestError(response.status);
+  const parsed = KeywordSetResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new KeywordSetRequestError(502);
+  return parsed.data.data;
+}
 
 export async function listKeywordSets(
   filters: { readonly projectId?: string; readonly status?: 'active' | 'archived' },

@@ -19,11 +19,11 @@ import type {
 
 interface NormalizedFilter {
   readonly currency: string | null;
-  readonly from: Date;
+  readonly from: string;
   readonly generationRunId: string | null;
   readonly packageId: string | null;
   readonly projectId: string | null;
-  readonly to: Date;
+  readonly to: string;
   readonly variantId: string | null;
   readonly workspaceId: string | null;
 }
@@ -158,10 +158,10 @@ export class CostQueryService {
       return queryProviderCosts(transaction, normalizedScope, normalized);
     })) as ProviderCostRow[];
     return Object.freeze({
-      from: normalized.from.toISOString(),
+      from: normalized.from,
       items: reconcile(ledgerRows, statements),
       settledOnly: true,
-      to: normalized.to.toISOString(),
+      to: normalized.to,
     });
   }
 }
@@ -284,11 +284,11 @@ function normalizeFilter(filter: CostFilter): NormalizedFilter {
   }
   return Object.freeze({
     currency: filter.currency === undefined ? null : normalizeCurrency(filter.currency),
-    from,
+    from: from.toISOString(),
     generationRunId: optionalUuid(filter.generationRunId),
     packageId: optionalUuid(filter.packageId),
     projectId: optionalUuid(filter.projectId),
-    to,
+    to: to.toISOString(),
     variantId: optionalUuid(filter.variantId),
     workspaceId: optionalUuid(filter.workspaceId),
   });

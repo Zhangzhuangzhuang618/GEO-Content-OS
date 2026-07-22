@@ -5,6 +5,7 @@ import {
 import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { createDatabaseConnection } from '../../src/database/connection.js';
 import { migrateDatabase } from '../../src/database/migrate.js';
 import {
   CostQueryService,
@@ -27,12 +28,14 @@ const JULY = { from: '2026-07-01T00:00:00.000Z', to: '2026-08-01T00:00:00.000Z' 
 
 describe('cost queries', () => {
   let client: Sql | undefined;
+  let serviceClient: Sql | undefined;
   let container: StartedPostgreSqlContainer | undefined;
 
   beforeAll(async () => {
     container = await startPostgresTestContainer();
     await migrateDatabase(container.getConnectionUri());
     client = postgres(container.getConnectionUri(), { max: 4 });
+    serviceClient = createDatabaseConnection(container.getConnectionUri()).client;
   }, 120_000);
 
   beforeEach(async () => {
@@ -51,6 +54,7 @@ describe('cost queries', () => {
 
   afterAll(async () => {
     await client?.end();
+    await serviceClient?.end();
     await container?.stop();
   });
 
@@ -94,7 +98,7 @@ describe('cost queries', () => {
       settledAt: '2026-06-20T00:00:01Z',
     });
 
-    const report = await new CostQueryService(database).report(SCOPE, JULY);
+    const report = await new CostQueryService(requireClient(serviceClient)).report(SCOPE, JULY);
     expect(report.settledOnly).toBe(true);
     expect(report.totals).toEqual([
       { costCents: 170, currency: 'CNY', entryCount: 2 },
@@ -138,7 +142,10 @@ describe('cost queries', () => {
     });
 
     await expect(
-      new CostQueryService(database).budget(SCOPE, { month: '2026-07', workspaceId: WORKSPACE }),
+      new CostQueryService(requireClient(serviceClient)).budget(SCOPE, {
+        month: '2026-07',
+        workspaceId: WORKSPACE,
+      }),
     ).resolves.toEqual({
       consumedCents: 170,
       currency: 'CNY',
@@ -153,7 +160,10 @@ describe('cost queries', () => {
 
     await database`UPDATE workspaces SET settings_json = '{}'::jsonb WHERE id = ${WORKSPACE}`;
     await expect(
-      new CostQueryService(database).budget(SCOPE, { month: '2026-07', workspaceId: WORKSPACE }),
+      new CostQueryService(requireClient(serviceClient)).budget(SCOPE, {
+        month: '2026-07',
+        workspaceId: WORKSPACE,
+      }),
     ).resolves.toMatchObject({ hardLimit: false, limitCents: null, remainingCents: null });
   });
 
@@ -181,11 +191,15 @@ describe('cost queries', () => {
       requestId: 'reconcile-unattributed',
     });
 
-    const result = await new CostQueryService(database).reconcileProviders(SCOPE, JULY, [
-      { billedCostCents: 150, currency: 'CNY', provider: 'deepseek' },
-      { billedCostCents: 25, currency: 'CNY', provider: 'object-storage' },
-      { billedCostCents: 8, currency: 'CNY', provider: 'unused-provider' },
-    ]);
+    const result = await new CostQueryService(requireClient(serviceClient)).reconcileProviders(
+      SCOPE,
+      JULY,
+      [
+        { billedCostCents: 150, currency: 'CNY', provider: 'deepseek' },
+        { billedCostCents: 25, currency: 'CNY', provider: 'object-storage' },
+        { billedCostCents: 8, currency: 'CNY', provider: 'unused-provider' },
+      ],
+    );
     expect(result.items).toEqual([
       {
         billedCostCents: null,
@@ -223,7 +237,7 @@ describe('cost queries', () => {
   });
 
   it('enforces cost roles and validates date, UUID, currency, and statement uniqueness', async () => {
-    const service = new CostQueryService(requireClient(client));
+    const service = new CostQueryService(requireClient(serviceClient));
     await expect(service.report({ tenantId: TENANT, userId: VIEWER }, JULY)).rejects.toBeInstanceOf(
       CostQueryStateError,
     );

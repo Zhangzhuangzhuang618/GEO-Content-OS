@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { PermissionCode, PolicyCode } from '../../permissions/index.js';
 import { ReasonRequestSchema } from '../common.js';
 import {
+  BatchUrlPreviewRequestSchema,
+  BatchUrlPreviewResponseSchema,
   FactIdSchema,
   FactPageSchema,
   FactQuerySchema,
@@ -70,6 +72,22 @@ const contracts = [
     querySchema: null,
     paramsSchema: null,
     responseSchema: SourceUploadResponseSchema,
+  },
+  {
+    key: 'source.batch-url.preview',
+    method: 'POST',
+    path: '/sources/batch-url-preview',
+    policy: 'strategy_or_content_editor_or_admin',
+    permissions: ['knowledge.sources.manage'],
+    requestName: 'BatchUrlPreviewRequest',
+    requestContentType: 'multipart/form-data',
+    responseName: 'BatchUrlPreview',
+    idempotency: '-',
+    successStatus: 200,
+    bodySchema: BatchUrlPreviewRequestSchema,
+    querySchema: null,
+    paramsSchema: null,
+    responseSchema: BatchUrlPreviewResponseSchema,
   },
   {
     key: 'source.list',

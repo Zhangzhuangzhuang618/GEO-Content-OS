@@ -12,6 +12,7 @@ export interface JsonObject {
 export interface RequestGenerationInput {
   readonly expectedPackageVersion: number;
   readonly modelKey: string;
+  readonly modelPolicy: 'balanced' | 'fast' | 'quality';
   readonly packageId: string;
   readonly promptVersionId: string;
   readonly skillVersion: string;

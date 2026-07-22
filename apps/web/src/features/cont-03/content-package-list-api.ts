@@ -7,6 +7,8 @@ import {
   type PackageFilters,
   type PackageListItem,
 } from './content-package-list.schema';
+import { BriefEditorRequestError, getBrief } from '../cont-02/brief-editor-api';
+import { SessionResponseSchema } from '../plat-01/platform-tenant.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 
@@ -33,17 +35,24 @@ export async function listContentPackages(
   const [details, costs] = await Promise.all([
     Promise.all(
       page.data.data.map(async (item) => {
-        const response = await request(`/api/v1/content-packages/${item.id}`, signal);
+        const [response, briefTitle] = await Promise.all([
+          request(`/api/v1/content-packages/${item.id}`, signal),
+          loadBriefTitle(item.brief_id, signal),
+        ]);
         const parsed = ContentPackageDetailResponseSchema.safeParse(await response.json());
         if (!parsed.success) throw new ContentPackageListRequestError(502);
-        return parsed.data.data;
+        return {
+          detail: parsed.data.data,
+          title: briefTitle ?? fallbackTitle(item.updated_at),
+        };
       }),
     ),
     canReadCosts ? loadSettledCosts(signal) : Promise.resolve(null),
   ]);
 
   return {
-    items: details.map((detail) => ({
+    items: details.map(({ detail, title }) => ({
+      briefTitle: title,
       costs:
         costs === null
           ? null
@@ -55,6 +64,28 @@ export async function listContentPackages(
     })),
     nextCursor: page.data.meta.next_cursor,
   };
+}
+
+async function loadBriefTitle(id: string, signal?: AbortSignal): Promise<string | null> {
+  try {
+    return (await getBrief(id, signal)).title;
+  } catch (error) {
+    if (error instanceof BriefEditorRequestError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+function fallbackTitle(updatedAt: string) {
+  const date = new Date(updatedAt);
+  if (Number.isNaN(date.getTime())) return '历史内容';
+  return `历史内容 · ${date.toLocaleDateString('zh-CN')}`;
+}
+
+export async function loadCurrentUserId(signal?: AbortSignal): Promise<string> {
+  const response = await request('/api/v1/auth/session', signal);
+  const parsed = SessionResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new ContentPackageListRequestError(502);
+  return parsed.data.data.user.id;
 }
 
 export async function copyContentPackage(item: ContentPackage, csrf: string) {

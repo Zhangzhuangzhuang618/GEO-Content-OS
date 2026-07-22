@@ -43,10 +43,11 @@ test('shows attributed settled costs and exports the filtered ledger view on mob
   );
   await expect(page.getByRole('heading', { name: '成本明细' })).toBeVisible();
   await expect(page.getByText('成本企业').last()).toBeVisible();
-  await expect(page.getByText(PROJECT)).toBeVisible();
-  await expect(page.getByText(PACKAGE)).toBeVisible();
-  await expect(page.getByText('deepseek-flash')).toBeVisible();
-  await expect(page.getByText('content-writer')).toBeVisible();
+  await expect(page.getByText(PROJECT)).toBeHidden();
+  await expect(page.getByText(PACKAGE)).toBeHidden();
+  await expect(page.getByText('DeepSeek · 快速生成')).toBeVisible();
+  await expect(page.getByText('撰写内容')).toBeVisible();
+  await expect(page.getByText('content-writer')).toHaveCount(0);
   await expect(page.getByText('1.70 CNY', { exact: true })).toBeVisible();
   await expect(page.getByText('1.50 CNY', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('已超限')).toBeVisible();

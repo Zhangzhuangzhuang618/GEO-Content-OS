@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
@@ -10,17 +11,20 @@ import {
   type PlatformAccount,
   type PlatformCode,
 } from '../pub-01/platform-account.schema';
+import { resolvePublishingUrl } from '../pub-01/platform-publishing-url';
 import { listWorkspaces } from '../set-02/workspace-settings-api';
 import type { Workspace } from '../set-02/workspace-settings.schema';
 import {
   cancelPublishJob,
   createPublishJob,
   getSchedulableVariant,
+  listApprovedContent,
   listPublishJobs,
   PublishingCalendarRequestError,
 } from './publishing-calendar-api';
 import {
   PublishJobStatusSchema,
+  type ApprovedContent,
   type PublishJob,
   type PublishingCalendarFilters,
 } from './publishing-calendar.schema';
@@ -30,6 +34,7 @@ const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publ
 export function PublishingCalendar() {
   const [filters, setFilters] = useState<PublishingCalendarFilters>(readFilters);
   const [jobs, setJobs] = useState<readonly PublishJob[]>([]);
+  const [approvedContent, setApprovedContent] = useState<readonly ApprovedContent[]>([]);
   const [accounts, setAccounts] = useState<readonly PlatformAccount[]>([]);
   const [workspaces, setWorkspaces] = useState<readonly Workspace[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
@@ -37,6 +42,8 @@ export function PublishingCalendar() {
   const [scheduling, setScheduling] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState(readSelectedVariantId);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
   const load = useCallback(async (next: PublishingCalendarFilters, signal?: AbortSignal) => {
     setState('loading');
@@ -47,13 +54,15 @@ export function PublishingCalendar() {
         setState('permission');
         return;
       }
-      const [jobItems, accountItems, workspaceItems] = await Promise.all([
+      const [jobItems, approvedItems, accountItems, workspaceItems] = await Promise.all([
         listPublishJobs(next, signal),
+        listApprovedContent(next, signal),
         listPlatformAccounts({}, signal),
         listWorkspaces(signal),
       ]);
       if (signal?.aborted) return;
       setJobs(jobItems);
+      setApprovedContent(approvedItems);
       setAccounts(accountItems);
       setWorkspaces(workspaceItems.filter(({ status }) => status === 'active'));
       setState('ready');
@@ -73,7 +82,15 @@ export function PublishingCalendar() {
     event.preventDefault();
     const next = parseFilters(new FormData(event.currentTarget));
     setFilters(next);
-    writeFilters(next);
+    writeFilters(next, selectedVariantId);
+  }
+
+  function selectContent(variantId: string) {
+    setSelectedVariantId(variantId);
+    setSelectedAccountId(null);
+    setFormError(null);
+    writeFilters(filters, variantId);
+    document.querySelector('[aria-label="创建发布排期"]')?.scrollIntoView({ behavior: 'smooth' });
   }
 
   async function schedule(event: FormEvent<HTMLFormElement>) {
@@ -87,7 +104,7 @@ export function PublishingCalendar() {
     const scheduledAt =
       intent === 'now' ? new Date().toISOString() : toIso(data.get('scheduled_at'));
     if (!variantId || !accountId || !scheduledAt) {
-      setFormError('请填写有效的变体 UUID、平台账号和排期时间。');
+      setFormError('请选择要发布的内容、平台账号和排期时间。');
       return;
     }
     const csrf = readCookie('geo_csrf');
@@ -102,7 +119,7 @@ export function PublishingCalendar() {
       const variant = await getSchedulableVariant(variantId);
       const account = accounts.find(({ id }) => id === accountId);
       if (variant.status !== 'approved') {
-        setFormError('只有 approved 变体可排期或立即发布。');
+        setFormError('这份内容尚未审核通过，暂时不能发布。');
         return;
       }
       if (
@@ -110,15 +127,18 @@ export function PublishingCalendar() {
         account.status !== 'active' ||
         account.platform_code !== variant.platform_code
       ) {
-        setFormError('请选择与变体平台一致且授权有效的平台账号。');
+        setFormError('请选择与内容平台一致且授权有效的账号。');
         return;
       }
       await createPublishJob(accountId, variantId, scheduledAt, csrf);
       form.reset();
+      setSelectedVariantId(null);
+      setSelectedAccountId(null);
+      writeFilters(filters, null);
       setMessage(intent === 'now' ? '立即发布任务已创建。' : '发布排期已创建。');
       await load(filters);
     } catch {
-      setFormError('创建发布任务失败，请确认变体、账号和当前权限仍然有效。');
+      setFormError('创建发布任务失败，请确认内容已审核通过、账号授权有效且你有发布权限。');
     } finally {
       setScheduling(false);
     }
@@ -157,7 +177,7 @@ export function PublishingCalendar() {
         try {
           await createPublishJob(job.account_id, job.variant_id, scheduledAt, csrf);
         } catch {
-          setMessage('原任务已取消，但新任务创建失败；请从 approved 变体重新排期。');
+          setMessage('原任务已取消，但新任务创建失败；请从审核通过的内容重新安排。');
           await load(filters);
           return;
         }
@@ -178,13 +198,21 @@ export function PublishingCalendar() {
   }
 
   if (state === 'permission') {
-    return <StatePanel title="无权查看发布日历" text="仅发布人、租户管理员和所有者可访问。" />;
+    return <StatePanel title="无权查看发布日历" text="仅发布人、企业管理员和所有者可访问。" />;
   }
   if (state === 'error') {
     return <StatePanel title="无法加载发布日历" text="请检查筛选条件、网络或服务状态。" />;
   }
 
   const activeAccounts = accounts.filter(({ status }) => status === 'active');
+  const selectedContent = approvedContent.find(({ variant }) => variant.id === selectedVariantId);
+  const matchingAccounts = selectedContent
+    ? activeAccounts.filter(
+        ({ platform_code }) => platform_code === selectedContent.variant.platform_code,
+      )
+    : activeAccounts;
+  const selectedAccount = matchingAccounts.find(({ id }) => id === selectedAccountId);
+  const selectedPublishingUrl = selectedAccount ? resolvePublishingUrl(selectedAccount) : null;
   return (
     <section className="mt-8">
       <form
@@ -247,7 +275,7 @@ export function PublishingCalendar() {
             className={secondaryButton}
             onClick={() => {
               setFilters({});
-              writeFilters({});
+              writeFilters({}, selectedVariantId);
             }}
             type="button"
           >
@@ -255,6 +283,59 @@ export function PublishingCalendar() {
           </button>
         </div>
       </form>
+
+      <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-ink-950">待发布内容</h2>
+            <p className="mt-2 text-sm text-ink-500">
+              已审核通过、尚未创建发布任务的内容会自动出现在这里。
+            </p>
+          </div>
+          <span className="text-sm text-ink-500">共 {approvedContent.length} 篇</span>
+        </div>
+        {approvedContent.length === 0 ? (
+          <div className="mt-5 rounded-xl bg-surface-subtle p-5 text-sm text-ink-600">
+            当前没有待发布内容。内容审核通过后会自动进入这里，不会自动发布。
+          </div>
+        ) : (
+          <div className="mt-5 overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="bg-surface-subtle text-ink-500">
+                <tr>
+                  <th className="p-4">文章</th>
+                  <th className="p-4">平台</th>
+                  <th className="p-4">通过时间</th>
+                  <th className="p-4">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {approvedContent.map((item) => (
+                  <tr className="border-t border-line" key={item.variant.id}>
+                    <td className="p-4 font-medium text-ink-950">{item.title}</td>
+                    <td className="p-4">{platformLabel(item.variant.platform_code)}</td>
+                    <td className="p-4">{formatDate(item.updatedAt)}</td>
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className={primarySmallButton}
+                          onClick={() => selectContent(item.variant.id)}
+                          type="button"
+                        >
+                          {selectedVariantId === item.variant.id ? '已选择' : '安排发布'}
+                        </button>
+                        <Link className={smallButton} href={`/cont-05?id=${item.variant.id}`}>
+                          查看内容
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <form
         aria-label="创建发布排期"
@@ -264,25 +345,67 @@ export function PublishingCalendar() {
       >
         <h2 className="text-xl font-semibold text-ink-950">创建发布任务</h2>
         <p className="mt-2 text-sm text-ink-500">
-          页面先验证变体状态，服务端会再次确认变体为 approved 且账号平台一致。
+          从审核通过的内容进入此页，选择发布账号和时间即可。
         </p>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          <label className={labelClass}>
-            变体 UUID
-            <input className={controlClass} name="variant_id" placeholder="xxxxxxxx-xxxx-..." />
-          </label>
+        {selectedVariantId ? (
+          <div className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-800">
+            已选择：
+            <strong className="ml-1">
+              {selectedContent
+                ? `${selectedContent.title}（${platformLabel(selectedContent.variant.platform_code)}）`
+                : '一份审核通过的内容'}
+            </strong>
+          </div>
+        ) : (
+          <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            还没有选择内容。请先到内容详情中选择已审核通过的平台内容，再点击“安排发布”。
+            <Link className="ml-2 font-semibold text-brand-700" href="/cont-03">
+              前往内容列表
+            </Link>
+          </div>
+        )}
+        {matchingAccounts.length === 0 ? (
+          <div className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            {selectedContent
+              ? `还没有可用于${platformLabel(selectedContent.variant.platform_code)}的账号。`
+              : '当前没有可用的平台账号。'}
+            <Link className="ml-2 font-semibold text-brand-700" href="/pub-01">
+              配置平台账号
+            </Link>
+          </div>
+        ) : null}
+        <input name="variant_id" type="hidden" value={selectedVariantId ?? ''} />
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
           <label className={labelClass}>
             平台账号
-            <select className={controlClass} defaultValue="" name="account_id">
+            <select
+              className={controlClass}
+              name="account_id"
+              onChange={(event) => setSelectedAccountId(event.currentTarget.value || null)}
+              value={selectedAccountId ?? ''}
+            >
               <option disabled value="">
                 请选择账号
               </option>
-              {activeAccounts.map((account) => (
+              {matchingAccounts.map((account) => (
                 <option key={account.id} value={account.id}>
                   {platformLabel(account.platform_code)} · {account.display_name}
                 </option>
               ))}
             </select>
+            <Link className="mt-2 inline-flex text-sm font-semibold text-brand-700" href="/pub-01">
+              管理平台账号
+            </Link>
+            {selectedPublishingUrl ? (
+              <a
+                className="ml-4 mt-2 inline-flex text-sm font-semibold text-brand-700"
+                href={selectedPublishingUrl}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                在新标签页打开发布后台
+              </a>
+            ) : null}
           </label>
           <label className={labelClass}>
             排期时间
@@ -295,7 +418,7 @@ export function PublishingCalendar() {
         <div className="mt-3 flex flex-wrap gap-3">
           <button
             className={primaryButton}
-            disabled={scheduling}
+            disabled={scheduling || !selectedVariantId || matchingAccounts.length === 0}
             name="intent"
             type="submit"
             value="schedule"
@@ -304,7 +427,7 @@ export function PublishingCalendar() {
           </button>
           <button
             className={secondaryButton}
-            disabled={scheduling}
+            disabled={scheduling || !selectedVariantId || matchingAccounts.length === 0}
             name="intent"
             type="submit"
             value="now"
@@ -318,10 +441,15 @@ export function PublishingCalendar() {
         {message}
       </div>
 
+      <div className="mt-3">
+        <h2 className="text-xl font-semibold text-ink-950">发布任务</h2>
+        <p className="mt-2 text-sm text-ink-500">查看已排期、发布中、已完成或失败的任务。</p>
+      </div>
+
       {state === 'loading' ? (
         <StatePanel title="正在加载发布日历" text="正在读取当前权限范围内的任务和账号。" />
       ) : jobs.length === 0 ? (
-        <StatePanel title="暂无发布任务" text="当前筛选下没有排期，可从 approved 变体创建。" />
+        <StatePanel title="暂无发布任务" text="当前筛选下没有排期，可从审核通过的内容安排发布。" />
       ) : (
         <div className="mt-5 overflow-x-auto rounded-2xl border border-line bg-white shadow-panel">
           <table className="w-full min-w-[1040px] text-left text-sm">
@@ -330,7 +458,7 @@ export function PublishingCalendar() {
                 <th className="p-4">日期</th>
                 <th className="p-4">平台</th>
                 <th className="p-4">账号</th>
-                <th className="p-4">变体</th>
+                <th className="p-4">发布内容</th>
                 <th className="p-4">状态</th>
                 <th className="p-4">动作</th>
               </tr>
@@ -366,19 +494,31 @@ function JobRow({
 }) {
   const scheduled = job.status === 'scheduled';
   const cancellable = scheduled || job.status === 'publishing';
+  const publishingUrl = account ? resolvePublishingUrl(account) : null;
   return (
     <tr className="border-t border-line">
       <td className="p-4">{formatDate(job.scheduled_at)}</td>
       <td className="p-4">{account ? platformLabel(account.platform_code) : '账号不可用'}</td>
-      <td className="p-4">{account?.display_name ?? shortId(job.account_id)}</td>
-      <td className="p-4 font-mono text-xs" title={job.variant_id}>
-        {shortId(job.variant_id)}
-      </td>
+      <td className="p-4">{account?.display_name ?? '账号不可用'}</td>
+      <td className="p-4">已审核内容</td>
       <td className="p-4">
         <StatusBadge status={job.status} />
       </td>
       <td className="p-4">
         <div className="flex flex-wrap gap-2">
+          {publishingUrl ? (
+            <a
+              className={smallButton}
+              href={publishingUrl}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              发布后台
+            </a>
+          ) : null}
+          <Link className={smallButton} href={`/pub-03?id=${job.id}`}>
+            查看详情
+          </Link>
           {scheduled ? (
             <button
               className={smallButton}
@@ -514,8 +654,15 @@ function readFilters(): PublishingCalendarFilters {
   return parseFilters(data);
 }
 
-function writeFilters(filters: PublishingCalendarFilters) {
+function readSelectedVariantId(): string | null {
+  if (typeof window === 'undefined') return null;
+  const value = new URLSearchParams(window.location.search).get('variant_id');
+  return value && /^[0-9a-f-]{36}$/iu.test(value) ? value : null;
+}
+
+function writeFilters(filters: PublishingCalendarFilters, selectedVariantId: string | null) {
   const query = new URLSearchParams();
+  if (selectedVariantId) query.set('variant_id', selectedVariantId);
   if (filters.accountId) query.set('account_id', filters.accountId);
   if (filters.from) query.set('from', filters.from);
   if (filters.platformCode) query.set('platform_code', filters.platformCode);
@@ -547,10 +694,6 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(
     new Date(value),
   );
-}
-
-function shortId(value: string) {
-  return `${value.slice(0, 8)}…${value.slice(-4)}`;
 }
 
 function isAccessError(error: unknown) {
@@ -600,5 +743,7 @@ const secondaryButton =
   'h-11 rounded-control border border-line bg-white px-4 text-sm font-semibold text-ink-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
 const smallButton =
   'rounded-control border border-line bg-white px-3 py-2 text-xs font-semibold text-ink-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
+const primarySmallButton =
+  'rounded-control bg-brand-600 px-3 py-2 text-xs font-semibold text-white focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
 const dangerButton =
   'rounded-control border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';

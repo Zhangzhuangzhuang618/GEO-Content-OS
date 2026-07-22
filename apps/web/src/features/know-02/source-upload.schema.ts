@@ -39,8 +39,10 @@ export const UploadResponseSchema = z
         source: z
           .object({
             id: z.string().uuid(),
+            project_id: z.string().uuid().nullable(),
             title: z.string().min(1),
             status: z.enum(['processing', 'active', 'expired', 'failed']),
+            workspace_id: z.string().uuid(),
           })
           .passthrough(),
         ingest_job: z
@@ -54,6 +56,38 @@ export const UploadResponseSchema = z
     meta: z.object({ request_id: z.string().min(1) }).passthrough(),
   })
   .strict();
+export const BatchUrlPreviewResponseSchema = z
+  .object({
+    data: z
+      .object({
+        duplicate_rows: z.number().int().nonnegative(),
+        file_name: z.string().min(1),
+        invalid_rows: z.number().int().nonnegative(),
+        ready_rows: z.number().int().nonnegative(),
+        rows: z.array(
+          z
+            .object({
+              message: z.string().nullable(),
+              row_number: z.number().int().positive(),
+              status: z.enum(['ready', 'invalid', 'duplicate']),
+              title: z.string().nullable(),
+              url: z.string().min(1),
+            })
+            .strict(),
+        ),
+        sheet_name: z.string().min(1),
+        sheets: z.array(z.string().min(1)).min(1),
+        start_row: z.number().int().positive(),
+        title_column: z.string().nullable(),
+        total_rows: z.number().int().nonnegative(),
+        url_column: z.string().min(1),
+      })
+      .strict(),
+    meta: z.object({ request_id: z.string().min(1) }).passthrough(),
+  })
+  .strict();
 export type UploadForm = z.infer<typeof UploadFormSchema>;
 export type ProjectChoice = z.infer<typeof ProjectPageSchema>['data'][number];
 export type UploadResult = z.infer<typeof UploadResponseSchema>['data'];
+export type BatchUrlPreview = z.infer<typeof BatchUrlPreviewResponseSchema>['data'];
+export type BatchUrlPreviewRow = BatchUrlPreview['rows'][number];

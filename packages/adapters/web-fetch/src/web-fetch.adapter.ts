@@ -241,6 +241,7 @@ async function requestOnce(
     const transport = target.protocol === 'https:' ? https : http;
     const options: RequestOptions = {
       agent: false,
+      family: pinnedAddress.family,
       headers: {
         accept: 'text/html,application/xhtml+xml,text/plain;q=0.9',
         'accept-encoding': 'identity',

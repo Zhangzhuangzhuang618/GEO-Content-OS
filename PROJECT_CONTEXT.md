@@ -93,7 +93,7 @@ Package 状态仅是 `PackageStatusProjector` 的摘要。优先级：archived/c
 
 ## 5. 数据模型
 
-冻结表数：57。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址后，当前可执行表数仍为 57，迁移序号为 0035。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -171,7 +171,7 @@ usage_ledger 归属 tenant/workspace/project/package/variant/generation_run，�
 
 核心 Skills：`material-parser`, `content-writer`, `fact-checker`, `topic-planner`, `geo-optimizer`, `quality-checker`。每个 Skill 使用 Draft 2020-12 JSON Schema、版本化 Prompt/Few-shot、Tool 白名单和统一 SkillResult Envelope。
 
-RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_rank_cd)+pgvector -> fuse -> rerank -> diversify -> cite。MVP 不称 BM25。强制 tenant/workspace/project/trust/effective/status 过滤。
+RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_rank_cd)+pgvector -> fuse -> rerank -> diversify -> cite。URL 按 ADR-0018 保存登记时抓取快照，解析与重建索引优先读取该快照。MVP 不称 BM25。强制 tenant/workspace/project/trust/effective/status 过滤。
 
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
@@ -179,7 +179,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，当前可执行端点数为 121。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，当前可执行端点数为 125。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -331,14 +331,28 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 
 HTTP 幂等保存 scope+key+request_hash；相同 hash 返回原结果，不同 hash 返回 IDEMPOTENCY_CONFLICT。发布任务冻结 content_version_id/payload_hash；外部未知态不盲重试。
 
+ADR-0010 后，`ai-worker` 是真实 BullMQ 消费进程，不再使用通用 health 占位。内容生成通过 Content Writer Skill 一次返回母稿和全部平台变体；平台变体运行记录继续作为状态与追溯记录。Compose 默认要求每个目标平台恰好一个 active 平台账号，并将账号 ID 固化到 `content_variants.platform_account_id`。模型 Key 只从环境变量注入，平台账号凭证继续加密存储且不得进入 Prompt。
+
+ADR-0011 后，Content Writer 使用发布级 Prompt 1.1.1（ID `25000000-0000-4000-8000-000000000003`），并按事件中的 `model_policy` 选择模型：fast/balanced 使用 DeepSeek V4 Flash，quality 使用 V4 Pro。AI Worker 必须加载 `prompt_versions` 中被运行记录引用的已发布提示词；balanced/quality 首稿未达到平台篇幅、结构、重复度和事实边界门禁时最多完整重写一次，仍不达标则以 `CONTENT_QUALITY_INSUFFICIENT` 失败，不得把短占位稿持久化为可发布内容。旧事件缺少 `model_policy` 时按 balanced 处理。企业内部确认事实只能作为明确的第一方口径，不得伪装成公开独立证据，也不得仅凭自有车辆、正式员工或社保属性推断培训、服务质量、法律结果或竞争优势。
+
+ADR-0012 后，Content Writer 使用 Prompt 1.1.2（ID `25000000-0000-4000-8000-000000000004`）。输出 `citation_map` 只允许记录由输入 citations 直接支持的事实，每个映射必须至少包含一个输入已提供的 citation_id；无引用资料时所有 `citation_map` 必须为空。空引用映射在 JSON Schema 阶段进入现有一次自动修复，不得在模型已完成生成后直接把整个内容包判为失败，也不得通过编造引用完成修复。
+
+ADR-0013 后，`content.variant.quality_check_requested.v1` 由 AI Worker 实际消费，并通过已发布 Quality Checker Prompt 1.0.0（ID `25000000-0000-4000-8000-000000000005`）生成不可变质量报告。模型只返回质量数据；租户范围、内容版本与 hash、运行、trace、usage、状态转换和审计均由服务端持有。CONT-04 与 QUAL-01 均可发起首次质量检查并自动刷新，只有当前内容版本检查通过的变体可提交审核。全局应用头部必须提供当前账号与企业信息，以及切换企业、切换账号和退出登录入口；换号前必须撤销当前会话。
+
+ADR-0014 后，已发布 `brand_profile` 是企业授权确认的第一方来源。官网稿中与该档案一致的经营事实（例如自有资源、服务范围和正式用工信息）无需再提供互联网公开链接，也不得仅因 `citation_map` 为空要求重复“官方确认”；系统仍保留品牌档案版本、内容版本和审核记录作为内部溯源。资质、认证、荣誉、监管口径、第三方统计、竞品比较、客户结果以及超出品牌档案的陈述继续要求相应证据。第一方事实不得伪装成独立第三方证据。质量检查运行必须加载数据库中被 `generation_runs.prompt_version_id` 引用的已发布 Prompt 1.1.0（ID `25000000-0000-4000-8000-000000000006`），不得仅记录 Prompt ID 而执行静态旧提示词。
+
+ADR-0015 后，`knowledge-worker` 是真实 BullMQ 消费进程，负责安全扫描、网页抓取或文件读取、解析、分块和向量化。内容生成必须按 `brief_sources` 限定资料范围，经过混合检索与重排后把命中片段传入 Content Writer，并把模型实际采用的引用写入 `ai_citations`。Compose 默认使用本地 1536 维 n-gram Embedding 与 Rerank；当前无生产 OCR Provider，因此界面只开放 PDF、DOCX、TXT。自动事实抽取、Fact Checker、GEO Optimizer、Publisher、Analytics CSV/Export 和 Lifecycle 的运行时缺口以 `docs/runbooks/RUNTIME_CAPABILITY_AUDIT_2026-07-19.md` 为准，不得宣称为已完成链路。
+
+同一平台任何时刻最多只能有一个 `published` 规则版本。发布新规则必须在同一事务中将旧版本切换为 `retired`，数据库使用部分唯一索引兜底；审核快照只冻结该平台当前唯一生效的规则版本。
+
 ## 9. 页面与验收
 
 冻结页面数：32。每页必须实现 loading/empty/error/permission/mobile/keyboard，筛选写入 URL。
 
 | ID | 页面 | 权限 | 页面验收 |
 |---|---|---|---|
-| AUTH-01 | 登录 | public | 错误态不泄露邮箱是否存在 |
-| AUTH-02 | 租户选择 | authenticated | 禁用 membership 不可选择 |
+| AUTH-01 | 登录 | public | 错误态不泄露邮箱是否存在；明确提示会话过期、退出和换号结果 |
+| AUTH-02 | 租户选择 | authenticated | 禁用 membership 不可选择；可切换企业或换用其他账号 |
 | DASH-01 | 工作台 | tenant_member | 筛选进入 URL；无权限卡片不展示 |
 | STR-01 | 品牌策略列表 | tenant_member | 写操作仅 strategy_editor_or_admin |
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
@@ -351,10 +365,10 @@ HTTP 幂等保存 scope+key+request_hash；相同 hash 返回原结果，不同 
 | CONT-01 | Brief 列表 | tenant_member | 分页和筛选可复现 |
 | CONT-02 | Brief 编辑 | strategy_or_content_editor_or_admin | 至少一平台、一关键词；事实型内容至少一来源 |
 | CONT-03 | 内容包列表 | tenant_member | 包状态仅作摘要 |
-| CONT-04 | 内容包详情 | tenant_member | 动作以变体状态守卫 |
+| CONT-04 | 内容包详情 | tenant_member | 动作以变体状态守卫；生成、质量检查、审核顺序和进度对用户可见 |
 | CONT-05 | 内容编辑器 | content_editor_or_admin | version 必填；冲突返回 409 |
 | CONT-06 | 生成运行 | content_editor_or_admin | 取消恢复前一稳定状态 |
-| QUAL-01 | 质量报告 | tenant_member | block/revise 不可提交审核 |
+| QUAL-01 | 质量报告 | tenant_member | 无报告时可发起首次检查；block/revise 不可提交审核 |
 | REV-01 | 审核列表 | reviewer_or_admin | 只展示授权工作区 |
 | REV-02 | 审核快照 | reviewer_or_admin | 任何内容 hash 不匹配即拒绝动作 |
 | PUB-01 | 平台账号 | publisher_or_admin | 凭证永不回显 |
@@ -393,7 +407,7 @@ pnpm install --frozen-lockfile
 cp .env.example .env
 docker compose up -d
 pnpm db:migrate
-pnpm db:seed
+pnpm db:seed:freeze-v21 # 仅本地演示环境可选
 pnpm dev
 pnpm verify
 ```

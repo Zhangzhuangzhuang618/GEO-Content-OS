@@ -23,7 +23,7 @@ export default function LoginPage() {
           让每一份内容都可追溯、可审核、可交付
         </h1>
         <p className="mt-6 max-w-lg text-lg leading-8 text-ink-500">
-          在一个多租户工作空间内连接策略、知识、内容生产、质量审核与七平台交付。
+          在企业工作空间内连接策略、资料、内容生产、质量审核与七平台交付。
         </p>
         <dl className="mt-10 grid grid-cols-3 gap-4" aria-label="系统能力">
           <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4">
@@ -31,7 +31,7 @@ export default function LoginPage() {
             <dd className="mt-2 text-2xl font-semibold text-brand-700">7</dd>
           </div>
           <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4">
-            <dt className="text-sm text-ink-500">核心 Skills</dt>
+            <dt className="text-sm text-ink-500">智能创作能力</dt>
             <dd className="mt-2 text-2xl font-semibold text-brand-700">6</dd>
           </div>
           <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4">

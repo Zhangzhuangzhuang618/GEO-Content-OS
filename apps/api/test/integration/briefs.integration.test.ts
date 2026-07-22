@@ -187,7 +187,7 @@ describe('Brief API', () => {
       briefId,
     );
     expect(estimate).toMatchObject({
-      generation_request_count: 3,
+      generation_request_count: 2,
       platform_codes: ['official_site', 'zhihu'],
       pricing_status: 'requires_model_router',
       schema_version: 'brief-cost-estimate-input@1',

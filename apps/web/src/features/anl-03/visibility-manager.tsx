@@ -208,7 +208,7 @@ export function VisibilityManager() {
   if (state === 'loading')
     return <Panel title="正在加载可见性观察" text="正在读取权限和工作区。" />;
   if (state === 'permission')
-    return <Panel title="无权访问可见性观察" text="仅分析师、租户管理员和所有者可访问。" />;
+    return <Panel title="无权访问可见性观察" text="仅分析师、企业管理员和所有者可访问。" />;
   if (state === 'error')
     return <Panel title="无法加载可见性观察" text="请检查网络、权限或服务状态。" />;
   if (state === 'empty') return <Panel title="暂无可用工作区" text="请先创建或启用工作区。" />;
@@ -361,7 +361,7 @@ function ImportPanel({
               {rows.slice(0, 5).map((row, index) => (
                 <tr key={index}>
                   <td className="border-t p-2">{row.query_text}</td>
-                  <td className="border-t p-2">{row.platform_code}</td>
+                  <td className="border-t p-2">{platformLabel(row.platform_code)}</td>
                   <td className="border-t p-2">{row.rank_position ?? '—'}</td>
                   <td className="border-t p-2">{row.is_cited ? '是' : '否'}</td>
                   <td className="border-t p-2">{row.observed_at}</td>
@@ -389,14 +389,14 @@ function LatestObservation({ value }: { readonly value: Observation }) {
       <h2 className="text-xl font-semibold">最近录入</h2>
       <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="查询" value={value.query_text} />
-        <Field label="平台" value={value.platform_code} />
+        <Field label="平台" value={platformLabel(value.platform_code)} />
         <Field
           label="排名"
           value={value.rank_position === null ? '—' : String(value.rank_position)}
         />
         <Field label="引用" value={value.is_cited ? '是' : '否'} />
         <Field label="时间" value={value.observed_at} />
-        <Field label="截图资产" value={value.evidence_asset_id ?? '—'} />
+        <Field label="证据截图" value={value.evidence_asset_id ? '已保存' : '未上传'} />
       </dl>
     </section>
   );
@@ -433,7 +433,7 @@ function TrendTable({
               <tr key={`${point.day}-${point.platform_code}-${point.query_hash}`}>
                 <td className="border-t p-2">{point.day}</td>
                 <td className="border-t p-2">{point.query_text}</td>
-                <td className="border-t p-2">{point.platform_code}</td>
+                <td className="border-t p-2">{platformLabel(point.platform_code)}</td>
                 <td className="border-t p-2">{point.observation_count}</td>
                 <td className="border-t p-2">{percent(point.citation_rate)}</td>
                 <td className="border-t p-2">{point.best_rank ?? '—'}</td>
@@ -458,6 +458,10 @@ function Input({
       <input className={control} defaultValue={value} {...props} />
     </label>
   );
+}
+
+function platformLabel(code: string) {
+  return PLATFORMS.find(([value]) => value === code)?.[1] ?? '其他平台';
 }
 function Select({
   children,

@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { listProjects } from '../know-02/source-upload-api';
+import type { ProjectChoice } from '../know-02/source-upload.schema';
+import { listActiveWorkspaces } from '../str-02/brand-profile-api';
 import {
   expireSource,
   listSources,
@@ -23,6 +26,8 @@ export function SourceList() {
   const initial = readFilters();
   const [filters, setFilters] = useState<SourceFilters>(initial);
   const [items, setItems] = useState<SourceListItem[]>([]);
+  const [projects, setProjects] = useState<ProjectChoice[]>([]);
+  const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [role, setRole] = useState<TenantRole | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
@@ -59,6 +64,30 @@ export function SourceList() {
 
   useEffect(() => {
     const controller = new AbortController();
+    void listActiveWorkspaces(controller.signal)
+      .then(setWorkspaces)
+      .catch(() => {
+        if (!controller.signal.aborted) setState('error');
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!filters.workspaceId) {
+      setProjects([]);
+      return;
+    }
+    const controller = new AbortController();
+    void listProjects(filters.workspaceId, controller.signal)
+      .then(setProjects)
+      .catch(() => {
+        if (!controller.signal.aborted) setMessage('无法加载项目列表，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, [filters.workspaceId]);
+
+  useEffect(() => {
+    const controller = new AbortController();
     void load(filters, false, controller.signal);
     return () => controller.abort();
   }, [filters, load]);
@@ -66,6 +95,7 @@ export function SourceList() {
   function updateFilter(name: keyof SourceFilters, value: string) {
     const next: SourceFilters = { ...filters };
     delete next.cursor;
+    if (name === 'workspaceId') delete next.projectId;
     if (value) Object.assign(next, { [name]: value });
     else delete next[name];
     setFilters(next);
@@ -92,9 +122,7 @@ export function SourceList() {
       if (operation === 'reindex') {
         await reindexSource(source, csrf);
         setItems((current) =>
-          current.map((item) =>
-            item.id === source.id ? { ...item, status: 'processing', parsed_at: null } : item,
-          ),
+          current.map((item) => (item.id === source.id ? { ...item, status: 'processing' } : item)),
         );
         setMessage('已创建重建索引任务。');
       } else {
@@ -121,22 +149,35 @@ export function SourceList() {
       <div className="rounded-2xl border border-line bg-white p-4 shadow-panel">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-sm text-ink-700">
-            工作区 UUID
-            <input
+            工作空间
+            <select
               className={controlClass}
-              defaultValue={filters.workspaceId}
-              onBlur={(event) => updateFilter('workspaceId', event.currentTarget.value.trim())}
-              placeholder="必填"
-            />
+              onChange={(event) => updateFilter('workspaceId', event.currentTarget.value)}
+              value={filters.workspaceId ?? ''}
+            >
+              <option value="">请选择工作空间</option>
+              {workspaces.map((workspace) => (
+                <option key={workspace.id} value={workspace.id}>
+                  {workspace.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm text-ink-700">
-            项目 UUID
-            <input
+            项目
+            <select
               className={controlClass}
-              defaultValue={filters.projectId}
-              onBlur={(event) => updateFilter('projectId', event.currentTarget.value.trim())}
-              placeholder="必填"
-            />
+              disabled={!filters.workspaceId}
+              onChange={(event) => updateFilter('projectId', event.currentTarget.value)}
+              value={filters.projectId ?? ''}
+            >
+              <option value="">请选择项目</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="text-sm text-ink-700">
             搜索
@@ -196,7 +237,7 @@ export function SourceList() {
       {state === 'loading' && items.length === 0 ? (
         <ListSkeleton />
       ) : !filters.workspaceId || !filters.projectId ? (
-        <StatePanel title="请选择资料范围" text="填写工作区和项目 UUID 后加载资料。" />
+        <StatePanel title="请选择资料范围" text="先选择工作空间和项目，再查看相关资料。" />
       ) : items.length === 0 ? (
         <StatePanel title="暂无资料" text="当前筛选条件下没有可见资料。" />
       ) : (
@@ -208,6 +249,7 @@ export function SourceList() {
                 canManage={canManage}
                 key={source.id}
                 onMutate={mutate}
+                projectContextId={filters.projectId!}
                 source={source}
               />
             ))}
@@ -239,11 +281,13 @@ function SourceRow({
   busy,
   canManage,
   onMutate,
+  projectContextId,
   source,
 }: {
   busy: boolean;
   canManage: boolean;
   onMutate: (source: SourceListItem, operation: 'reindex' | 'expire') => Promise<void>;
+  projectContextId: string;
   source: SourceListItem;
 }) {
   const expired = source.status === 'expired';
@@ -252,16 +296,12 @@ function SourceRow({
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {source.project_id ? (
-              <a
-                className="font-semibold text-ink-950 hover:text-brand-700"
-                href={`/know-03?id=${source.id}&workspace_id=${source.workspace_id}&project_id=${source.project_id}`}
-              >
-                {source.title}
-              </a>
-            ) : (
-              <span className="font-semibold text-ink-950">{source.title}</span>
-            )}
+            <a
+              className="font-semibold text-ink-950 hover:text-brand-700"
+              href={`/know-03?id=${source.id}&workspace_id=${source.workspace_id}&project_id=${projectContextId}`}
+            >
+              {source.title}
+            </a>
             <StatusBadge status={source.status} />
             <span className="text-xs text-ink-500">{source.source_type.toUpperCase()}</span>
           </div>
@@ -275,8 +315,8 @@ function SourceRow({
               <dd className="inline">{source.effective_to ?? '长期'}</dd>
             </div>
             <div>
-              <dt className="inline">最近解析：</dt>
-              <dd className="inline">{formatDateTime(source.parsed_at)}</dd>
+              <dt className="inline">处理结果：</dt>
+              <dd className="inline">{ingestSummary(source)}</dd>
             </div>
           </dl>
           {expired ? (
@@ -379,7 +419,18 @@ function formatDateTime(value: string | null) {
     ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(
         new Date(value),
       )
-    : '尚未完成';
+    : '暂无记录';
+}
+function ingestSummary(source: SourceListItem) {
+  if (source.status === 'processing') {
+    return source.parsed_at
+      ? `正在重新处理，上次完成于 ${formatDateTime(source.parsed_at)}`
+      : '正在处理';
+  }
+  if (source.status === 'failed') {
+    return source.parsed_at ? `失败于 ${formatDateTime(source.parsed_at)}` : '处理失败';
+  }
+  return source.parsed_at ? `完成于 ${formatDateTime(source.parsed_at)}` : '暂无处理记录';
 }
 function readFilters(): SourceFilters {
   if (typeof window === 'undefined') return {};

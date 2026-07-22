@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { modelLabel, skillLabel, TechnicalDetails } from '../human-readable';
 import {
   decideReview,
   getReviewSnapshot,
@@ -71,7 +72,7 @@ export function ReviewSnapshot() {
         version: detail.snapshot.version,
       });
       setDetail(loaded);
-      setMessage(action === 'approve' ? '变体已通过。' : '变体已退回。');
+      setMessage(action === 'approve' ? '该平台内容已通过。' : '该平台内容已退回修改。');
     } catch (error) {
       setMessage(conflictMessage(error));
     } finally {
@@ -98,7 +99,7 @@ export function ReviewSnapshot() {
       });
       const loaded = await getReviewSnapshot(detail.snapshot.id);
       setDetail(loaded);
-      setMessage('加签要求已创建。');
+      setMessage('已邀请另一位负责人共同确认。');
     } catch (error) {
       setMessage(conflictMessage(error));
     } finally {
@@ -107,68 +108,59 @@ export function ReviewSnapshot() {
   }
 
   if (state === 'loading')
-    return <StatePanel title="正在加载审核快照" text="正在读取冻结内容、规则、Prompt 和引用。" />;
+    return <StatePanel title="正在加载审核内容" text="正在读取待审核内容和事实依据。" />;
   if (state === 'permission')
-    return <StatePanel title="无权查看审核快照" text="仅租户管理员、所有者和审核员可访问。" />;
+    return <StatePanel title="无权查看审核内容" text="仅管理员、所有者和审核员可访问。" />;
   if (state === 'error' || !detail)
-    return <StatePanel title="无法加载审核快照" text="请确认 URL 中包含有效且可访问的快照 ID。" />;
+    return (
+      <StatePanel
+        title="无法加载审核内容"
+        text="这条审核任务可能已失效、被删除或不在你的权限范围内。"
+      />
+    );
   return (
     <section className="mt-8 space-y-6">
       <section className="rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <Status value={detail.snapshot.status} />
-            <h2 className="mt-3 font-mono text-sm text-ink-700">快照 {detail.snapshot.id}</h2>
+            <h2 className="mt-3 text-xl font-semibold text-ink-950">内容审核</h2>
             <p className="mt-2 text-sm text-ink-500">
-              版本 {detail.snapshot.version} · 模型 {detail.snapshot.model_key}
+              提交于 {new Date(detail.snapshot.created_at).toLocaleString('zh-CN')} ·{' '}
+              {detail.snapshot.variants.length} 个平台
             </p>
           </div>
           <Link className={secondaryButton} href="/rev-01">
             返回审核队列
           </Link>
         </div>
-        <Hash label="snapshot hash" value={detail.snapshot.snapshot_hash} />
+        <TechnicalDetails summary="审核记录技术信息">
+          <p>审核记录：{detail.snapshot.id}</p>
+          <p>记录版本：{detail.snapshot.version}</p>
+          <p>生成方式：{modelLabel(detail.snapshot.model_key)}</p>
+          <p>内容校验值：{detail.snapshot.snapshot_hash}</p>
+        </TechnicalDetails>
         {message ? (
           <p aria-live="polite" className="mt-4 rounded-xl bg-brand-50 p-3 text-sm text-brand-800">
             {message}
           </p>
         ) : null}
       </section>
-      <Panel title="冻结上下文">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Frozen
-            label="品牌策略"
-            lines={[
-              `ID ${detail.brand_profile.id}`,
-              `版本 ${detail.brand_profile.version}`,
-              `Schema ${detail.brand_profile.schema_version}`,
-            ]}
-            json={detail.brand_profile.profile_json}
-          />
-          <Frozen
-            label="Prompt"
-            lines={[
-              `${detail.prompt_version.skill_name} ${detail.prompt_version.version}`,
-              `ID ${detail.prompt_version.id}`,
-              `Schema ${detail.prompt_version.schema_version}`,
-            ]}
-            hash={detail.prompt_version.content_hash}
-          />
-          <Frozen
-            label="规则集合"
-            lines={[
-              `平台规则 ${detail.snapshot.platform_rules_hash}`,
-              `质量规则 ${detail.snapshot.quality_rules_hash}`,
-            ]}
-          />
-          <Frozen
-            label="提交信息"
-            lines={[
-              `提交人 ${detail.snapshot.created_by}`,
-              new Date(detail.snapshot.created_at).toLocaleString('zh-CN'),
-            ]}
-          />
-        </div>
+      <Panel title="审核说明">
+        <p className="text-sm leading-6 text-ink-600">
+          请按平台逐项确认内容是否准确、合规并符合发布要求。系统已锁定本次提交版本，审核期间的后续编辑不会混入当前内容。
+        </p>
+        <TechnicalDetails summary="生成规则与版本信息">
+          <p>
+            品牌策略：第 {detail.brand_profile.version} 版（{detail.brand_profile.id}）
+          </p>
+          <p>
+            内容处理：{skillLabel(detail.prompt_version.skill_name)} {detail.prompt_version.version}
+          </p>
+          <p>处理规则：{detail.prompt_version.id}</p>
+          <p>平台规则校验值：{detail.snapshot.platform_rules_hash}</p>
+          <p>质量规则校验值：{detail.snapshot.quality_rules_hash}</p>
+        </TechnicalDetails>
       </Panel>
       {detail.snapshot.variants.map((variant) => {
         const frozen = detail.variants.find((v) => v.snapshot_variant_id === variant.id);
@@ -183,7 +175,7 @@ export function ReviewSnapshot() {
           />
         );
       })}
-      <Panel title={`动作时间线（${detail.actions.length}）`}>
+      <Panel title={`审核记录（${detail.actions.length}）`}>
         {detail.actions.length ? (
           <ol className="space-y-3">
             {detail.actions.map((action) => (
@@ -197,7 +189,7 @@ export function ReviewSnapshot() {
             ))}
           </ol>
         ) : (
-          <p className="text-sm text-ink-500">尚无审核动作。</p>
+          <p className="text-sm text-ink-500">尚无审核记录。</p>
         )}
       </Panel>
     </section>
@@ -232,34 +224,13 @@ function VariantCard({
     <Panel title={`${platformLabel(variant.platform_code)} · ${statusLabel(variant.status)}`}>
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Frozen
-              label="冻结内容版本"
-              lines={[variant.content_version_id, `Schema ${frozen?.schema_version ?? '—'}`]}
-              hash={variant.content_hash}
-            />
-            <Frozen
-              label="平台规则"
-              lines={[
-                `ID ${variant.platform_rule_version_id}`,
-                `版本 ${frozen?.platform_rule.version ?? '—'}`,
-              ]}
-              hash={frozen?.platform_rule.content_hash}
-            />
-            <Frozen
-              label="质量报告"
-              lines={[
-                `ID ${variant.quality_report_id}`,
-                `得分 ${frozen?.quality_report.score ?? '—'} / decision ${frozen?.quality_report.decision ?? '—'}`,
-              ]}
-            />
+          <div className="rounded-xl bg-surface-subtle p-4 text-sm text-ink-700">
+            质量得分：
+            <strong className="text-ink-950">{frozen?.quality_report.score ?? '—'} 分</strong>
           </div>
-          <h3 className="mt-5 text-sm font-semibold text-ink-950">冻结内容</h3>
-          <pre className="mt-2 max-h-80 overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-5 whitespace-pre-wrap text-slate-100">
-            {JSON.stringify(frozen?.content_json ?? {}, null, 2)}
-          </pre>
+          <ContentPreview value={frozen?.content_json} />
           <h3 className="mt-5 text-sm font-semibold text-ink-950">
-            引用证据（{frozen?.citations.length ?? 0}）
+            事实依据（{frozen?.citations.length ?? 0}）
           </h3>
           <div className="mt-2 space-y-3">
             {frozen?.citations.map((c) => (
@@ -271,64 +242,111 @@ function VariantCard({
                 <blockquote className="mt-2 border-l-2 border-brand-200 pl-3 text-sm text-ink-600">
                   {c.quote_text}
                 </blockquote>
-                <Hash label="quote hash" value={c.quote_hash} />
               </article>
             )) ?? null}
           </div>
+          <TechnicalDetails summary="本平台内容技术信息">
+            <p>内容版本：{variant.content_version_id}</p>
+            <p>内容校验值：{variant.content_hash}</p>
+            <p>平台规则：{variant.platform_rule_version_id}</p>
+            <p>规则版本：{frozen?.platform_rule.version ?? '—'}</p>
+            <p>质量报告：{variant.quality_report_id}</p>
+            <p>数据格式：{frozen?.schema_version ?? '—'}</p>
+          </TechnicalDetails>
         </div>
-        <div className="space-y-3 rounded-xl bg-surface-subtle p-4">
-          <label className="block text-sm text-ink-700">
-            意见
-            <textarea
-              className={`${controlClass} min-h-24 py-3`}
-              onChange={(event) => setComment(event.target.value)}
-              value={comment}
-            />
-          </label>
-          <label className="block text-sm text-ink-700">
-            加签角色
-            <select
-              className={controlClass}
-              onChange={(event) => setRequiredRole(event.target.value)}
-              value={requiredRole}
-            >
-              <option value="reviewer">审核人</option>
-              <option value="tenant_admin">租户管理员</option>
-              <option value="tenant_owner">租户所有者</option>
-            </select>
-          </label>
-          <div className="grid gap-2">
-            <button
-              className={primaryButton}
-              disabled={busy || variant.status !== 'in_review'}
-              onClick={() => void onDecision(variant, 'approve', normalizedComment)}
-              type="button"
-            >
-              逐变体通过
-            </button>
-            <button
-              className={dangerButton}
-              disabled={busy || variant.status !== 'in_review' || normalizedComment === null}
-              onClick={() => void onDecision(variant, 'reject', normalizedComment)}
-              type="button"
-            >
-              退回（意见必填）
-            </button>
-            <button
-              className={secondaryButton}
-              disabled={busy || variant.status !== 'in_review'}
-              onClick={() => void onSignoff(variant, requiredRole, normalizedComment)}
-              type="button"
-            >
-              请求加签
-            </button>
+        {variant.status === 'in_review' ? (
+          <div className="space-y-3 rounded-xl bg-surface-subtle p-4">
+            <label className="block text-sm text-ink-700">
+              意见
+              <textarea
+                className={`${controlClass} min-h-24 py-3`}
+                onChange={(event) => setComment(event.target.value)}
+                value={comment}
+              />
+            </label>
+            <label className="block text-sm text-ink-700">
+              需要谁共同确认
+              <select
+                className={controlClass}
+                onChange={(event) => setRequiredRole(event.target.value)}
+                value={requiredRole}
+              >
+                <option value="reviewer">其他审核人</option>
+                <option value="tenant_admin">企业管理员</option>
+                <option value="tenant_owner">企业所有者</option>
+              </select>
+            </label>
+            <div className="grid gap-2">
+              <button
+                className={primaryButton}
+                disabled={busy}
+                onClick={() => void onDecision(variant, 'approve', normalizedComment)}
+                type="button"
+              >
+                {busy ? '正在保存审核结果…' : '通过此平台内容'}
+              </button>
+              <button
+                className={dangerButton}
+                disabled={busy || normalizedComment === null}
+                onClick={() => void onDecision(variant, 'reject', normalizedComment)}
+                type="button"
+              >
+                退回修改（请填写原因）
+              </button>
+              <button
+                className={secondaryButton}
+                disabled={busy}
+                onClick={() => void onSignoff(variant, requiredRole, normalizedComment)}
+                type="button"
+              >
+                邀请他人共同确认
+              </button>
+            </div>
+            <p className="text-xs leading-5 text-ink-500">
+              提交决定前，系统会再次确认你看到的内容没有被替换。
+            </p>
           </div>
-          <p className="text-xs leading-5 text-ink-500">
-            所有动作携带快照 version；服务端重算冻结 hash，漂移时返回 409，页面不会乐观标记成功。
-          </p>
-        </div>
+        ) : (
+          <DecisionResult status={variant.status} variantId={variant.variant_id} />
+        )}
       </div>
     </Panel>
+  );
+}
+
+function DecisionResult({
+  status,
+  variantId,
+}: {
+  readonly status: 'approved' | 'rejected';
+  readonly variantId: string;
+}) {
+  const approved = status === 'approved';
+  return (
+    <div
+      aria-live="polite"
+      className={`rounded-xl border p-5 ${approved ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}
+      role="status"
+    >
+      <h3 className={`font-semibold ${approved ? 'text-emerald-900' : 'text-amber-900'}`}>
+        {approved ? '此平台内容已通过' : '此平台内容已退回修改'}
+      </h3>
+      <p className={`mt-2 text-sm leading-6 ${approved ? 'text-emerald-800' : 'text-amber-800'}`}>
+        {approved
+          ? '审核结果已经保存，这份内容可以进入发布准备。'
+          : '审核结果已经保存，内容负责人可以根据退回原因进行修改。'}
+      </p>
+      <div className="mt-4 flex flex-wrap gap-3">
+        {approved ? (
+          <Link className={primaryButton} href={`/pub-02?variant_id=${variantId}`}>
+            安排发布
+          </Link>
+        ) : null}
+        <Link className={`${secondaryButton} bg-white`} href="/rev-01">
+          返回待审核内容
+        </Link>
+      </div>
+    </div>
   );
 }
 function Panel({
@@ -345,39 +363,34 @@ function Panel({
     </section>
   );
 }
-function Frozen({
-  hash,
-  json,
-  label,
-  lines = [],
+function ContentPreview({
+  value,
 }: {
-  readonly hash?: string | undefined;
-  readonly json?: Readonly<Record<string, unknown>>;
-  readonly label: string;
-  readonly lines?: readonly string[];
+  readonly value: Readonly<Record<string, unknown>> | undefined;
 }) {
+  const title = typeof value?.title === 'string' ? value.title : '';
+  const summary = typeof value?.summary === 'string' ? value.summary : '';
+  const blocks = Array.isArray(value?.blocks) ? value.blocks : [];
   return (
-    <article className="rounded-xl border border-line p-4">
-      <h3 className="text-sm font-semibold text-ink-950">{label}</h3>
-      {lines.map((line) => (
-        <p className="mt-2 break-all font-mono text-xs text-ink-600" key={line}>
-          {line}
-        </p>
-      ))}
-      {hash ? <Hash label="content hash" value={hash} /> : null}
-      {json ? (
-        <pre className="mt-3 max-h-40 overflow-auto rounded-lg bg-surface-subtle p-3 text-xs whitespace-pre-wrap">
-          {JSON.stringify(json, null, 2)}
-        </pre>
-      ) : null}
+    <article className="mt-5 rounded-xl border border-line p-4">
+      <h3 className="text-lg font-semibold text-ink-950">{title || '待审核内容'}</h3>
+      {summary ? <p className="mt-3 leading-7 text-ink-600">{summary}</p> : null}
+      <div className="mt-4 space-y-4">
+        {blocks.map((block, index) => {
+          const record =
+            typeof block === 'object' && block ? (block as Record<string, unknown>) : {};
+          const text = typeof record.text === 'string' ? record.text : '';
+          const heading = typeof record.heading === 'string' ? record.heading : '';
+          if (!text && !heading) return null;
+          return (
+            <section className="leading-7 text-ink-700" key={index}>
+              {heading ? <h4 className="font-semibold text-ink-950">{heading}</h4> : null}
+              {text ? <p className={heading ? 'mt-2' : ''}>{text}</p> : null}
+            </section>
+          );
+        })}
+      </div>
     </article>
-  );
-}
-function Hash({ label, value }: { readonly label: string; readonly value: string }) {
-  return (
-    <p className="mt-3 break-all font-mono text-xs text-ink-500">
-      {label}: {value}
-    </p>
   );
 }
 function Status({ value }: { readonly value: string }) {
@@ -397,7 +410,7 @@ function StatePanel({ title, text }: { readonly title: string; readonly text: st
 }
 function conflictMessage(error: unknown) {
   return error instanceof ReviewSnapshotRequestError && error.status === 409
-    ? '动作已被服务端拒绝：冻结 hash 或版本不匹配，请刷新后复核。'
+    ? '内容已发生变化，请刷新页面并重新确认后再提交。'
     : '操作失败，请检查状态、权限或输入后重试。';
 }
 function isAccessError(error: unknown) {

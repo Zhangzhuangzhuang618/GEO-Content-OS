@@ -132,10 +132,10 @@ describe('SkillRunner', () => {
   });
 
   it('falls back to JSON mode when an Adapter cannot enforce JSON Schema', async () => {
-    const adapter = new MockModelAdapter({
+    const adapter = new RecordingMockAdapter({
       capabilities: { jsonMode: true, jsonSchema: false },
       modelKey: 'flash',
-      responses: [{ text: '{"answer":"json-mode"}' }],
+      responses: [{ text: '{}' }, { text: '{"answer":"json-mode"}' }],
     });
     const runner = new SkillRunner(
       adapter,
@@ -145,7 +145,19 @@ describe('SkillRunner', () => {
 
     await expect(runner.run(runInput())).resolves.toMatchObject({
       output: { answer: 'json-mode' },
+      schemaRepairAttempts: 1,
     });
+    expect(adapter.requests).toHaveLength(2);
+    for (const request of adapter.requests) {
+      expect(request.responseFormat).toEqual({ type: 'json_object' });
+      const schemaMessage = request.messages.find(
+        (message) => message.role === 'user' && message.content.includes('"output_schema"'),
+      );
+      expect(schemaMessage).toBeDefined();
+      expect(JSON.parse(schemaMessage?.content ?? '{}')).toMatchObject({
+        output_schema: OUTPUT_SCHEMA,
+      });
+    }
   });
 
   it('rejects an Adapter without structured JSON capabilities', async () => {
@@ -387,5 +399,14 @@ class UnlistedToolMockAdapter extends MockModelAdapter {
         },
       ],
     });
+  }
+}
+
+class RecordingMockAdapter extends MockModelAdapter {
+  public readonly requests: ModelRequest[] = [];
+
+  public override generate(input: ModelRequest): Promise<ModelResult> {
+    this.requests.push(input);
+    return super.generate(input);
   }
 }

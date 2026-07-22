@@ -52,9 +52,52 @@ const BASE_INPUT = Object.freeze({
 });
 
 function content(platformCode: 'master' | 'xiaohongshu'): ContentWriterContent {
+  const isMaster = platformCode === 'master';
   return Object.freeze({
     blocks: Object.freeze([
+      Object.freeze({
+        block_key: 'direct-answer',
+        block_type: 'paragraph',
+        text: isMaster
+          ? '判断一个产品是否适合团队，不能只看发布时间。更有效的顺序是先确认正式发布状态，再核对适用对象、迁移成本和使用边界。'
+          : '先说结论：别只问“什么时候发布”，更要确认它现在能不能解决你的问题，以及换过去要付出什么成本。',
+      }),
+      Object.freeze({
+        block_key: 'release-heading',
+        block_type: 'heading',
+        text: '先确认公开事实',
+      }),
       Object.freeze({ block_key: 'release-date', block_type: 'paragraph', text: LOCKED_TEXT }),
+      Object.freeze({
+        block_key: 'decision-heading',
+        block_type: 'heading',
+        text: '再用三步判断是否适合',
+      }),
+      Object.freeze({
+        block_key: 'decision-list',
+        block_type: 'list',
+        text: '1. 列出当前最需要解决的三个问题。\n2. 用真实工作流验证核心能力，不只看演示。\n3. 记录迁移、培训和长期维护成本。',
+      }),
+      Object.freeze({
+        block_key: 'boundary',
+        block_type: 'paragraph',
+        text: '如果缺少价格、兼容范围或服务承诺等资料，就应把这些内容列入待核实清单，而不是根据发布时间推断。',
+      }),
+      Object.freeze({
+        block_key: 'action-heading',
+        block_type: 'heading',
+        text: '一份可直接使用的核对清单',
+      }),
+      Object.freeze({
+        block_key: 'action-list',
+        block_type: 'list',
+        text: '正式版本与更新时间｜目标团队与使用场景｜现有系统兼容性｜数据迁移方式｜培训投入｜售后与退出机制。',
+      }),
+      Object.freeze({
+        block_key: 'conclusion',
+        block_type: 'paragraph',
+        text: '把事实、适用性和成本分开判断，通常比追逐“新不新”更容易做出稳妥决策。',
+      }),
     ]),
     citation_map: Object.freeze([
       Object.freeze({
@@ -63,16 +106,20 @@ function content(platformCode: 'master' | 'xiaohongshu'): ContentWriterContent {
         claim_text: LOCKED_TEXT,
       }),
     ]),
-    cta: platformCode === 'master' ? null : '查看官方发布说明',
-    hashtags: Object.freeze(platformCode === 'master' ? [] : ['产品A', '发布说明']),
+    cta: isMaster ? null : '保存这份清单，试用前逐项核对',
+    hashtags: Object.freeze(isMaster ? [] : ['产品选择', '企业工具', '避坑清单', '产品评测']),
     platform_code: platformCode,
     platform_meta: Object.freeze(
       platformCode === 'master'
         ? {}
-        : { cover_text: '产品A发布', note_type: '图文', topics: ['产品A'] },
+        : {
+            cover_text: '产品试用前先核对',
+            note_type: '图文',
+            topics: ['产品选择', '企业工具', '避坑清单', '产品评测'],
+          },
     ),
-    summary: '基于官方资料说明产品 A 的发布时间。',
-    title: platformCode === 'master' ? '产品 A 发布说明' : '产品A何时发布',
+    summary: '先核实发布时间，再从适用场景、迁移成本和使用边界判断产品是否值得采用。',
+    title: isMaster ? '产品 A 发布与适用性判断指南' : '产品试用前先看这份清单',
   });
 }
 

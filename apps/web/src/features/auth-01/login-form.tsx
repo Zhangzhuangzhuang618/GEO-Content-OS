@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 
+import { returnPathFromSearch, tenantEntryPath } from '../auth-navigation';
 import { login, requestPasswordReset } from './auth-api';
 import { LoginFormSchema, type LoginFormValues } from './login.schema';
 
@@ -12,6 +13,7 @@ const GENERIC_RESET_MESSAGE = '如果该邮箱已注册，你将收到密码重�
 export function LoginForm() {
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
   const {
     clearErrors,
@@ -29,6 +31,14 @@ export function LoginForm() {
 
   useEffect(() => {
     setValue('csrf', readCookie('geo_csrf'), { shouldValidate: false });
+    const reason = new URLSearchParams(window.location.search).get('reason');
+    if (reason === 'session_expired') {
+      setSessionMessage('登录已过期，请重新登录。完成后将返回原页面。');
+    } else if (reason === 'switch_account') {
+      setSessionMessage('已退出原账号，请登录要切换到的账号。');
+    } else if (reason === 'logged_out') {
+      setSessionMessage('你已安全退出登录。');
+    }
   }, [setValue]);
 
   const submit = handleSubmit(async (values) => {
@@ -46,7 +56,7 @@ export function LoginForm() {
 
     try {
       await login(parsed.data);
-      window.location.assign('/auth-02');
+      window.location.assign(tenantEntryPath(returnPathFromSearch(window.location.search), true));
     } catch {
       setFormMessage(GENERIC_LOGIN_ERROR);
     }
@@ -84,6 +94,15 @@ export function LoginForm() {
   return (
     <form className="mt-8" noValidate onSubmit={submit}>
       <input {...register('csrf')} type="hidden" />
+
+      {sessionMessage ? (
+        <p
+          className="mb-5 rounded-control bg-brand-50 px-3 py-2 text-sm text-brand-700"
+          role="status"
+        >
+          {sessionMessage}
+        </p>
+      ) : null}
 
       <div>
         <label className="text-sm font-medium text-ink-700" htmlFor="login-email">

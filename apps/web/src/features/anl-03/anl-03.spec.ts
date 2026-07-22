@@ -44,7 +44,8 @@ test('records screenshot evidence through the visibility API for object storage'
   });
   await form.getByRole('button', { name: '录入' }).click();
   await expect(page.getByText('截图已保存为对象存储证据')).toBeVisible();
-  await expect(page.getByText(ASSET)).toBeVisible();
+  await expect(page.getByText('已保存', { exact: true })).toBeVisible();
+  await expect(page.getByText(ASSET)).toHaveCount(0);
   expect(request).not.toBeNull();
   expect(request!.key).toMatch(/^visibility-create-[0-9a-f-]{36}$/u);
   expect(request!.body['screenshot']).toEqual({

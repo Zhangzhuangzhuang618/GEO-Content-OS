@@ -47,7 +47,7 @@ interface JobRow {
   readonly accountTokenExpiresAt: Date | null;
   readonly attemptCount: number;
   readonly contentVersionId: string;
-  readonly createdAt: Date;
+  readonly createdAt: Date | string;
   readonly createdBy: string;
   readonly externalPostId: string | null;
   readonly externalUrl: string | null;
@@ -60,10 +60,10 @@ interface JobRow {
   readonly packageVersion: number;
   readonly payloadHash: string;
   readonly platformCode: PlatformCode;
-  readonly scheduledAt: Date;
+  readonly scheduledAt: Date | string;
   readonly status: PublishJobView['status'];
   readonly tenantId: string;
-  readonly updatedAt: Date;
+  readonly updatedAt: Date | string;
   readonly variantCurrentContentVersionId: string | null;
   readonly variantId: string;
   readonly variantStatus: ContentVariantStatus;
@@ -590,7 +590,7 @@ function mapJob(row: JobRow): PublishJobView {
     account_id: row.accountId,
     attempt_count: row.attemptCount,
     content_version_id: row.contentVersionId,
-    created_at: row.createdAt.toISOString(),
+    created_at: isoDate(row.createdAt),
     created_by: row.createdBy,
     external_post_id: row.externalPostId,
     external_url: row.externalUrl,
@@ -598,13 +598,17 @@ function mapJob(row: JobRow): PublishJobView {
     idempotency_key: row.idempotencyKey,
     last_error: row.lastError,
     payload_hash: row.payloadHash,
-    scheduled_at: row.scheduledAt.toISOString(),
+    scheduled_at: isoDate(row.scheduledAt),
     status: row.status,
     tenant_id: row.tenantId,
-    updated_at: row.updatedAt.toISOString(),
+    updated_at: isoDate(row.updatedAt),
     variant_id: row.variantId,
     version: row.version,
   };
+}
+
+function isoDate(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
 function safeJob(row: JobRow): PublishJobView {

@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useEffect, useState, type ChangeEvent } from 'react';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { TechnicalDetails } from '../human-readable';
 import { listWorkspaces } from '../set-02/workspace-settings-api';
 import type { Workspace } from '../set-02/workspace-settings.schema';
 import {
@@ -56,7 +57,7 @@ export function MetricsImportManager() {
             batch = await getImportJob(batchId, controller.signal);
           } catch (error) {
             if (!(error instanceof MetricsImportRequestError) || error.status !== 404) throw error;
-            setMessage('批次不存在或无权访问。');
+            setMessage('这次导入不存在或不在你的权限范围内。');
           }
         }
         const requestedWorkspace = readWorkspace();
@@ -74,7 +75,7 @@ export function MetricsImportManager() {
           batch?.id ?? null,
         );
         if (batchId && !UUID.test(batchId)) {
-          setMessage('URL 中的批次 UUID 无效。');
+          setMessage('导入记录链接无效，请从本页重新上传文件。');
         }
         setState('ready');
       } catch (error) {
@@ -129,7 +130,7 @@ export function MetricsImportManager() {
         values[5]!.trim() === '' ||
         !Number.isFinite(Number(values[5]))
       ) {
-        errors.push({ line: index + 2, message: '平台、UUID、日期、指标名或数值无效' });
+        errors.push({ line: index + 2, message: '平台、账号或内容编号、日期、指标名称或数值有误' });
       }
       return values;
     });
@@ -153,32 +154,9 @@ export function MetricsImportManager() {
       const result = await uploadMetrics(preview.file, workspaceId, csrf);
       setJob(result);
       writeUrl(workspaceId, result.id);
-      setMessage('导入批次已创建；重复文件将返回同一批次。');
+      setMessage('数据已提交导入；重复上传同一文件不会产生重复数据。');
     } catch {
       setMessage('导入失败，请检查文件、权限或服务状态。');
-    } finally {
-      setBusy(false);
-    }
-  }
-  async function lookup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const id = String(new FormData(event.currentTarget).get('batch_id') ?? '').trim();
-    if (!UUID.test(id)) {
-      setMessage('请输入有效批次 UUID。');
-      return;
-    }
-    setBusy(true);
-    try {
-      const result = await getImportJob(id);
-      const resultWorkspace = workspaces.some((item) => item.id === result.workspace_id)
-        ? result.workspace_id
-        : '';
-      setWorkspaceId(resultWorkspace);
-      setJob(result);
-      writeUrl(resultWorkspace, result.id);
-      setMessage('批次已刷新。');
-    } catch {
-      setMessage('无法读取该批次。');
     } finally {
       setBusy(false);
     }
@@ -196,9 +174,9 @@ export function MetricsImportManager() {
     setBusy(true);
     try {
       setJob(await rollbackImport(job, reason, csrf));
-      setMessage('批次已回滚；指标历史保留但不再进入聚合。');
+      setMessage('本次导入已撤销；历史记录会保留，但不再进入汇总数据。');
     } catch {
-      setMessage('回滚失败，批次状态可能已变化。');
+      setMessage('撤销失败，导入状态可能已变化。');
     } finally {
       setBusy(false);
     }
@@ -210,7 +188,7 @@ export function MetricsImportManager() {
   }
   if (state === 'loading') return <Panel title="正在加载指标导入" text="正在读取权限和工作区。" />;
   if (state === 'permission')
-    return <Panel title="无权导入指标" text="仅分析师、租户管理员和所有者可访问。" />;
+    return <Panel title="无权导入指标" text="仅分析师、企业管理员和所有者可访问。" />;
   if (state === 'error')
     return <Panel title="无法加载指标导入" text="请检查网络、权限或服务状态。" />;
   if (workspaces.length === 0)
@@ -249,7 +227,7 @@ export function MetricsImportManager() {
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {COLUMNS.map((column) => (
               <label className={label} key={column}>
-                {column}
+                {columnLabel(column)}
                 <select
                   className={control}
                   value={mapping[column]}
@@ -288,24 +266,10 @@ export function MetricsImportManager() {
       ) : (
         <Panel title="暂无预览" text="选择文件并完成列映射后校验。" />
       )}
-      <form
-        key={job?.id ?? readBatch() ?? 'empty'}
-        aria-label="查询导入批次"
-        className="mt-5 flex flex-col gap-3 rounded-2xl border border-line bg-white p-5 sm:flex-row"
-        onSubmit={lookup}
-      >
-        <label className={`${label} flex-1`}>
-          批次 UUID
-          <input className={control} defaultValue={job?.id ?? readBatch() ?? ''} name="batch_id" />
-        </label>
-        <button className={secondary} disabled={busy} type="submit">
-          刷新批次
-        </button>
-      </form>
       {job ? (
         <Batch job={job} busy={busy} onRollback={() => void rollback()} />
       ) : (
-        <Panel title="暂无导入批次" text="导入文件或输入批次 UUID 后查看。" />
+        <Panel title="暂无导入记录" text="选择文件并提交导入后，可在这里查看处理结果。" />
       )}
     </section>
   );
@@ -329,7 +293,7 @@ function Preview({ value }: { readonly value: CsvPreview }) {
               <tr>
                 {value.headers.map((x) => (
                   <th className="p-2" key={x}>
-                    {x}
+                    {columnLabel(x as Column)}
                   </th>
                 ))}
               </tr>
@@ -363,21 +327,23 @@ function Batch({
   const errors = Array.isArray(job.error_json?.['rows']) ? job.error_json['rows'] : [];
   return (
     <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel">
-      <h2 className="text-xl font-semibold">导入批次</h2>
+      <h2 className="text-xl font-semibold">导入结果</h2>
       <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Field label="批次" value={job.id} />
-        <Field label="状态" value={job.status} />
-        <Field label="行数" value={job.row_count === null ? '—' : String(job.row_count)} />
-        <Field label="内容 Hash" value={job.content_hash ?? '—'} />
+        <Field label="状态" value={importStatusLabel(job.status)} />
+        <Field label="数据行数" value={job.row_count === null ? '—' : String(job.row_count)} />
       </dl>
       {errors.length ? (
         <pre className="mt-4 overflow-auto rounded bg-red-50 p-3 text-xs">
           {JSON.stringify(errors, null, 2)}
         </pre>
       ) : null}
+      <TechnicalDetails summary="导入技术信息">
+        <p>导入编号：{job.id}</p>
+        <p>内容校验值：{job.content_hash ?? '—'}</p>
+      </TechnicalDetails>
       {job.status === 'succeeded' ? (
         <button className={danger} disabled={busy} onClick={onRollback} type="button">
-          回滚批次
+          撤销本次导入
         </button>
       ) : null}
     </section>
@@ -387,7 +353,7 @@ function Field({ label: heading, value }: { readonly label: string; readonly val
   return (
     <div>
       <dt className="text-xs text-ink-500">{heading}</dt>
-      <dd className="mt-1 break-all font-mono text-sm">{value}</dd>
+      <dd className="mt-1 break-all text-sm">{value}</dd>
     </div>
   );
 }
@@ -397,6 +363,27 @@ function Panel({ title, text }: { readonly title: string; readonly text: string 
       <h2 className="text-xl font-semibold">{title}</h2>
       <p className="mt-3 text-sm text-ink-500">{text}</p>
     </section>
+  );
+}
+function columnLabel(value: Column): string {
+  return {
+    platform_code: '平台',
+    account_id: '平台账号编号（可选）',
+    variant_id: '平台内容编号（可选）',
+    metric_date: '数据日期',
+    metric_name: '指标名称',
+    metric_value: '指标数值',
+  }[value];
+}
+function importStatusLabel(value: ImportJob['status']): string {
+  return (
+    {
+      queued: '等待处理',
+      running: '正在导入',
+      succeeded: '导入完成',
+      failed: '导入失败',
+      rolled_back: '已撤销',
+    }[value] ?? value
   );
 }
 function parseCsv(text: string) {

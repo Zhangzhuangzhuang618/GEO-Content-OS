@@ -20,6 +20,7 @@ export const PlatformAccountSchema = z
     id: z.string().uuid(),
     platform_code: PlatformCodeSchema,
     provider_account_id: z.string().nullable(),
+    publishing_url: z.url().nullable(),
     publish_mode: z.enum(['api', 'export', 'manual']),
     scopes: z.array(z.string()),
     status: PlatformAccountStatusSchema,
@@ -64,11 +65,19 @@ export const PlatformAccountFormSchema = z
     bearer_token: z.string(),
     display_name: z.string().trim().min(1, '请填写账号名称。').max(120),
     platform_code: PlatformCodeSchema,
+    publishing_url: z.string(),
     publish_mode: z.enum(['api', 'export', 'manual']),
     timezone: z.string().trim().min(1, '请填写 IANA 时区。').max(64),
     workspace_id: z.string().uuid('请选择有效工作区。'),
   })
   .superRefine((value, context) => {
+    if (value.publishing_url.trim() && !isHttpUrl(value.publishing_url.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: '发布后台地址必须是有效的 HTTP 或 HTTPS 地址。',
+        path: ['publishing_url'],
+      });
+    }
     if (value.publish_mode !== 'api') return;
     if (!z.url().safeParse(value.base_url.trim()).success) {
       context.addIssue({
@@ -89,8 +98,51 @@ export const PlatformAccountFormSchema = z
     }
   });
 
+export const PlatformAccountEditSchema = z
+  .object({
+    base_url: z.string(),
+    bearer_token: z.string(),
+    display_name: z.string().trim().min(1, '请填写账号名称。').max(120),
+    publishing_url: z.string(),
+    publish_mode: z.enum(['api', 'export', 'manual']),
+    timezone: z.string().trim().min(1, '请填写 IANA 时区。').max(64),
+  })
+  .superRefine((value, context) => {
+    if (value.publishing_url.trim() && !isHttpUrl(value.publishing_url.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: '发布后台地址必须是有效的 HTTP 或 HTTPS 地址。',
+        path: ['publishing_url'],
+      });
+    }
+    const baseUrl = value.base_url.trim();
+    const token = value.bearer_token.trim();
+    if (!baseUrl && !token) return;
+    if (!z.url().safeParse(baseUrl).success || !baseUrl.startsWith('https://')) {
+      context.addIssue({
+        code: 'custom',
+        message: '更新凭证时，API 地址必须是有效的 HTTPS 地址。',
+        path: ['base_url'],
+      });
+    }
+    if (!token) {
+      context.addIssue({
+        code: 'custom',
+        message: '更新凭证时必须同时填写访问令牌。',
+        path: ['bearer_token'],
+      });
+    }
+  });
+
+function isHttpUrl(value: string) {
+  const parsed = z.url().safeParse(value);
+  if (!parsed.success) return false;
+  return ['http:', 'https:'].includes(new URL(parsed.data).protocol);
+}
+
 export type PlatformAccount = z.infer<typeof PlatformAccountSchema>;
 export type PlatformAccountForm = z.infer<typeof PlatformAccountFormSchema>;
+export type PlatformAccountEdit = z.infer<typeof PlatformAccountEditSchema>;
 export type PlatformAccountStatus = z.infer<typeof PlatformAccountStatusSchema>;
 export type PlatformCode = z.infer<typeof PlatformCodeSchema>;
 

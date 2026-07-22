@@ -17,8 +17,8 @@ import type { Invitation } from './member-admin.schema';
 
 const MANAGER_ROLES = new Set<ActiveTenantRole>(['tenant_owner', 'tenant_admin']);
 const ROLES: readonly [TenantRole, string][] = [
-  ['tenant_owner', '租户所有者'],
-  ['tenant_admin', '租户管理员'],
+  ['tenant_owner', '企业所有者'],
+  ['tenant_admin', '企业管理员'],
   ['strategy_editor', '策略编辑'],
   ['content_editor', '内容编辑'],
   ['reviewer', '审核员'],
@@ -141,7 +141,7 @@ export function MemberAdministration() {
   if (state === 'loading')
     return <StatePanel busy title="正在加载成员" text="正在读取成员、邀请与工作区范围。" />;
   if (state === 'permission')
-    return <StatePanel title="无权管理成员" text="该页面仅对租户所有者和租户管理员开放。" />;
+    return <StatePanel title="无权管理成员" text="该页面仅对企业所有者和企业管理员开放。" />;
   if (state === 'error')
     return <StatePanel title="无法加载成员" text="请检查网络或权限后刷新页面。" />;
 

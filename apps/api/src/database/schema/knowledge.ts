@@ -114,6 +114,9 @@ export const sourceDocuments = pgTable(
     uniqueIndex('uq_source_hash_active')
       .on(table.tenantId, table.workspaceId, table.contentHash)
       .where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex('uq_source_url_active')
+      .on(table.tenantId, table.workspaceId, table.uri)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.sourceType} = 'url'`),
     index('source_documents_scope_status_idx')
       .on(
         table.tenantId,

@@ -149,11 +149,11 @@ export function FactAdjudication() {
   }
 
   if (state === 'permission')
-    return <StatePanel title="无权裁决事实" text="该页面仅对审核人和租户管理员开放。" />;
+    return <StatePanel title="无权确认事实" text="该页面仅对审核人和企业管理员开放。" />;
   if (state === 'error')
     return <StatePanel title="无法加载事实" text="请检查网络或权限后刷新页面。" />;
   if (state === 'empty-scope')
-    return <StatePanel title="暂无可裁决范围" text="当前租户没有可用工作区或项目。" />;
+    return <StatePanel title="暂无可确认范围" text="当前企业没有可用工作区或项目。" />;
 
   return (
     <section className="mt-8">

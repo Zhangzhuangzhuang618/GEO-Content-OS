@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 
+import { TechnicalDetails } from '../human-readable';
 import {
   changeTenantState,
   createPlatformTenant,
@@ -86,9 +87,9 @@ export function PlatformTenantManager() {
       );
       setItems((current) => [tenant, ...current]);
       setShowCreate(false);
-      setMessage('租户、所有者邀请和默认工作区已创建。');
+      setMessage('企业、管理员邀请和默认工作区已创建。');
     } catch {
-      setMessage('创建失败；请检查租户标识、所有者邮箱或重复数据。');
+      setMessage('创建失败；请检查企业标识、管理员邮箱或重复数据。');
     } finally {
       setBusyId(null);
     }
@@ -105,26 +106,25 @@ export function PlatformTenantManager() {
     try {
       const updated = await changeTenantState(tenant, action, csrf, reason ?? undefined);
       setItems((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setMessage(action === 'suspend' ? '租户已暂停。' : '租户已恢复。');
+      setMessage(action === 'suspend' ? '企业账号已暂停。' : '企业账号已恢复。');
     } catch {
-      setMessage('状态变更失败；租户状态或资源版本可能已变化，请刷新后重试。');
+      setMessage('状态变更失败；企业状态可能已变化，请刷新后重试。');
     } finally {
       setBusyId(null);
     }
   }
 
   if (state === 'loading' && items.length === 0)
-    return <StatePanel busy title="正在加载租户" text="正在读取平台级租户元数据与聚合用量。" />;
+    return <StatePanel busy title="正在加载企业" text="正在读取企业状态与汇总用量。" />;
   if (state === 'permission')
-    return <StatePanel title="无权管理平台租户" text="该页面仅对 platform_admin 开放。" />;
+    return <StatePanel title="无权管理企业" text="该页面仅对平台管理员开放。" />;
   if (state === 'error')
-    return <StatePanel title="无法加载平台租户" text="请检查网络、会话或平台权限。" />;
+    return <StatePanel title="无法加载企业" text="请检查网络、登录状态或平台权限。" />;
 
   return (
     <section className="space-y-6">
       <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
-        本页面仅展示平台运营元数据和聚合用量，不读取租户内容。读取租户内容前必须先创建最长 8
-        小时的限时支持授权，且每次读取均需记录审计。
+        本页面只展示企业状态和汇总用量，不会直接读取企业内容。需要协助排障时，必须先获得限时授权。
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <FilterForm
@@ -137,7 +137,7 @@ export function PlatformTenantManager() {
           onClick={() => setShowCreate((value) => !value)}
           type="button"
         >
-          {showCreate ? '取消创建' : '创建租户'}
+          {showCreate ? '取消创建' : '创建企业'}
         </button>
       </div>
       {showCreate ? <CreateTenantForm busy={busyId === 'create'} onSubmit={create} /> : null}
@@ -145,7 +145,7 @@ export function PlatformTenantManager() {
         {message}
       </div>
       {items.length === 0 ? (
-        <StatePanel title="暂无平台租户" text="当前筛选范围内没有匹配租户。" />
+        <StatePanel title="暂无企业" text="当前筛选范围内没有匹配企业。" />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {items.map((tenant) => (
@@ -186,7 +186,7 @@ function FilterForm({
       key={JSON.stringify(filters)}
       onSubmit={onSubmit}
     >
-      <Field label="搜索租户" name="tenant-search">
+      <Field label="搜索企业" name="tenant-search">
         <input
           className={controlClass}
           defaultValue={filters.search}
@@ -229,15 +229,15 @@ function CreateTenantForm({
 }) {
   return (
     <form className="rounded-2xl border border-line bg-white p-5 shadow-panel" onSubmit={onSubmit}>
-      <h2 className="text-lg font-semibold text-ink-950">创建租户</h2>
-      <p className="mt-1 text-sm text-ink-500">提交后原子创建所有者邀请和默认工作区。</p>
+      <h2 className="text-lg font-semibold text-ink-950">创建企业</h2>
+      <p className="mt-1 text-sm text-ink-500">提交后将同时创建管理员邀请和默认工作区。</p>
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <TextInput label="租户名称" name="name" required />
-        <TextInput label="租户标识" name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required />
-        <TextInput defaultValue="trial" label="套餐代码" name="plan_code" required />
+        <TextInput label="企业名称" name="name" required />
+        <TextInput label="企业网址标识" name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" required />
+        <TextInput defaultValue="trial" label="套餐" name="plan_code" required />
         <TextInput defaultValue="Asia/Shanghai" label="时区" name="timezone" required />
-        <TextInput label="所有者邮箱" name="owner_email" required type="email" />
-        <TextInput label="所有者姓名" name="owner_display_name" required />
+        <TextInput label="管理员邮箱" name="owner_email" required type="email" />
+        <TextInput label="管理员姓名" name="owner_display_name" required />
         <TextInput
           defaultValue="默认工作区"
           label="默认工作区名称"
@@ -268,20 +268,24 @@ function TenantCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-ink-950">{tenant.name}</h2>
-          <p className="mt-1 font-mono text-xs text-ink-500">
-            {tenant.slug} · {tenant.id}
-          </p>
+          <p className="mt-1 text-xs text-ink-500">企业标识：{tenant.slug}</p>
         </div>
         <Status status={tenant.status} />
       </div>
       <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
-        <Metric label="套餐" value={tenant.plan_code} />
+        <Metric label="套餐" value={planLabel(tenant.plan_code)} />
         <Metric label="健康" value={healthLabel(tenant.health.status)} />
         <Metric label="本月已结算成本" value={money(tenant.usage.settled_cost_cents)} />
         <Metric label="本月计费记录" value={String(tenant.usage.ledger_entries)} />
         <Metric label="时区" value={tenant.timezone} />
-        <Metric label="资源版本" value={String(tenant.version)} />
       </dl>
+      <div className="mt-4">
+        <TechnicalDetails summary="企业技术信息">
+          <p>企业编号：{tenant.id}</p>
+          <p>套餐代码：{tenant.plan_code}</p>
+          <p>数据版本：{tenant.version}</p>
+        </TechnicalDetails>
+      </div>
       <div className="mt-5 flex flex-wrap gap-3">
         {tenant.status === 'active' ? (
           <button
@@ -344,7 +348,7 @@ function SupportGrantPanel({
       setGrant(created);
       onMessage('限时支持授权已创建；后续内容读取仍必须携带该授权并写审计。');
     } catch {
-      onMessage('授权创建失败；请检查租户状态、原因、有效期或平台管理员身份。');
+      onMessage('授权创建失败；请检查企业状态、原因、有效期或平台管理员身份。');
     } finally {
       setBusy(false);
     }
@@ -358,7 +362,7 @@ function SupportGrantPanel({
         <div>
           <h2 className="font-semibold text-ink-950">{tenant.name} · 限时支持授权</h2>
           <p className="mt-1 text-sm leading-6 text-ink-600">
-            固定最小范围：content.read / tenant_content。此处只创建授权，不读取内容。
+            此处只创建最小范围的临时授权，不会立即读取企业内容。
           </p>
         </div>
         <button className={secondaryButton} onClick={onClose} type="button">
@@ -366,9 +370,12 @@ function SupportGrantPanel({
         </button>
       </div>
       {grant ? (
-        <p className="mt-4 text-sm text-ink-800">
-          授权 {grant.id} 已生效，有效期至 {formatTime(grant.expires_at)}。
-        </p>
+        <div className="mt-4 text-sm text-ink-800">
+          <p>授权已生效，有效期至 {formatTime(grant.expires_at)}。</p>
+          <TechnicalDetails summary="授权技术信息">
+            <p>授权编号：{grant.id}</p>
+          </TechnicalDetails>
+        </div>
       ) : (
         <form
           className="mt-4 grid gap-4 sm:grid-cols-[1fr_10rem_auto] sm:items-end"
@@ -462,6 +469,12 @@ function StatePanel({
 }
 function healthLabel(status: PlatformTenant['health']['status']) {
   return status === 'healthy' ? '健康' : status === 'suspended' ? '已暂停' : '已归档';
+}
+function planLabel(value: string) {
+  return (
+    { trial: '试用版', standard: '标准版', professional: '专业版', enterprise: '企业版' }[value] ??
+    value
+  );
 }
 function money(cents: number) {
   return new Intl.NumberFormat('zh-CN', { currency: 'CNY', style: 'currency' }).format(cents / 100);

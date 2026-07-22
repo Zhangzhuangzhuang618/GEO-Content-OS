@@ -40,6 +40,24 @@ describe('MaterialParser', () => {
     assertLocators(result.text, result.units);
   });
 
+  it('compacts heading paths when a page starts below h1', async () => {
+    const body = Buffer.from(
+      '<html><body><main><h2>服务说明</h2><p>提供企业搬迁服务。</p><h3>服务范围</h3><p>覆盖广州。</p></main></body></html>',
+      'utf8',
+    );
+    const result = await new MaterialParser().parse(
+      source(body, 'url', 'text/html', 'https://example.com/service'),
+    );
+
+    expect(
+      result.units.find((unit) => unit.text === '提供企业搬迁服务。')?.locator.headings,
+    ).toEqual(['服务说明']);
+    expect(result.units.find((unit) => unit.text === '覆盖广州。')?.locator.headings).toEqual([
+      '服务说明',
+      '服务范围',
+    ]);
+  });
+
   it('parses text/plain URL sources allowed by the safe fetch Adapter', async () => {
     const body = Buffer.from('第一段。\n\n第二段。', 'utf8');
     const result = await new MaterialParser().parse(

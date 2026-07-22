@@ -104,6 +104,21 @@ services:
     networks:
       - application
 
+  clamav:
+    image: clamav/clamav:1.4.3
+    platform: linux/amd64
+    restart: unless-stopped
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: [CMD-SHELL, 'clamdscan --ping=1']
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    networks:
+      - application
+
   migrate:
     <<: *app-hardening
     image: geo-content-os/api:dev
@@ -126,10 +141,23 @@ services:
       dockerfile: infra/docker/api.Dockerfile
     environment:
       API_HOST: 0.0.0.0
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       CORS_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-3000},http://127.0.0.1:${WEB_PORT:-3000}
+      CONTENT_MODEL_BALANCED_KEY: ${CONTENT_MODEL_BALANCED_KEY:-deepseek-v4-flash}
+      CONTENT_MODEL_FAST_KEY: ${CONTENT_MODEL_FAST_KEY:-deepseek-v4-flash}
+      CONTENT_MODEL_QUALITY_KEY: ${CONTENT_MODEL_QUALITY_KEY:-deepseek-v4-pro}
+      CONTENT_PLATFORM_RULES_JSON: ${CONTENT_PLATFORM_RULES_JSON:-}
+      CONTENT_REQUIRE_PLATFORM_ACCOUNTS: ${CONTENT_REQUIRE_PLATFORM_ACCOUNTS:-true}
+      CONTENT_WRITER_PROMPT_VERSION_ID: ${CONTENT_WRITER_PROMPT_VERSION_ID:-25000000-0000-4000-8000-000000000004}
+      CONTENT_WRITER_SKILL_VERSION: ${CONTENT_WRITER_SKILL_VERSION:-1.0.0}
+      QUALITY_CHECKER_MODEL_KEY: ${QUALITY_CHECKER_MODEL_KEY:-deepseek-v4-flash}
+      QUALITY_CHECKER_PROMPT_VERSION_ID: ${QUALITY_CHECKER_PROMPT_VERSION_ID:-25000000-0000-4000-8000-000000000006}
+      QUALITY_CHECKER_SKILL_VERSION: ${QUALITY_CHECKER_SKILL_VERSION:-1.0.0}
       DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}
       EMAIL_FROM: '${EMAIL_FROM:-GEO Content OS <no-reply@localhost>}'
       EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-disabled}
+      EMBEDDING_DRIVER: ${EMBEDDING_DRIVER:-local}
+      EMBEDDING_MODEL_KEY: ${EMBEDDING_MODEL_KEY:-embedding-local-ngram-v1}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-geo_minio_local_password}
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-geo_minio}
@@ -140,6 +168,8 @@ services:
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:3000}
       RATE_LIMIT_REDIS_URL: redis://redis:6379/1
       REDIS_URL: redis://redis:6379/0
+      RERANK_DRIVER: ${RERANK_DRIVER:-local}
+      RERANK_MODEL_KEY: ${RERANK_MODEL_KEY:-rerank-local-ngram-v1}
       S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-geo_minio}
       S3_AUTO_CREATE_BUCKET: 'true'
       S3_BUCKET: ${S3_BUCKET:-geo-content-os-dev}
@@ -187,7 +217,10 @@ services:
     build:
       context: ..
       dockerfile: infra/docker/web.Dockerfile
+      args:
+        API_INTERNAL_ORIGIN: http://api:3000
     environment:
+      API_INTERNAL_ORIGIN: http://api:3000
       HOSTNAME: 0.0.0.0
       NODE_ENV: production
       PORT: '3000'
@@ -225,17 +258,75 @@ services:
 
   ai-worker:
     <<: *worker-service
+    image: geo-content-os/ai-worker:dev
+    build:
+      context: ..
+      dockerfile: infra/docker/ai-worker.Dockerfile
     environment:
+      AI_MODEL_DRIVER: ${AI_MODEL_DRIVER:?AI_MODEL_DRIVER must be set via --env-file .env}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com/v1}
+      DEEPSEEK_MAX_OUTPUT_TOKENS: ${DEEPSEEK_MAX_OUTPUT_TOKENS:-32768}
+      DEEPSEEK_MAX_RETRIES: ${DEEPSEEK_MAX_RETRIES:-2}
+      DEEPSEEK_MODEL_KEY: ${DEEPSEEK_MODEL_KEY:-deepseek-v4-flash}
+      DEEPSEEK_PROVIDER_MODEL_ID: ${DEEPSEEK_PROVIDER_MODEL_ID:-deepseek-v4-flash}
+      DEEPSEEK_RETRY_BASE_DELAY_MS: ${DEEPSEEK_RETRY_BASE_DELAY_MS:-500}
+      DEEPSEEK_TIMEOUT_MS: ${DEEPSEEK_TIMEOUT_MS:-300000}
+      CONTENT_MODEL_BALANCED_KEY: ${CONTENT_MODEL_BALANCED_KEY:-deepseek-v4-flash}
+      CONTENT_MODEL_FAST_KEY: ${CONTENT_MODEL_FAST_KEY:-deepseek-v4-flash}
+      CONTENT_MODEL_QUALITY_KEY: ${CONTENT_MODEL_QUALITY_KEY:-deepseek-v4-pro}
+      QUALITY_CHECKER_MODEL_KEY: ${QUALITY_CHECKER_MODEL_KEY:-deepseek-v4-flash}
       HEALTH_PORT: '9090'
+      NODE_ENV: development
       REDIS_URL: redis://redis:6379/0
       WORKER_NAME: ai
 
   knowledge-worker:
     <<: *worker-service
+    image: geo-content-os/knowledge-worker:dev
+    build:
+      context: ..
+      dockerfile: infra/docker/knowledge-worker.Dockerfile
     environment:
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: '3310'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}
+      EMBEDDING_DRIVER: ${EMBEDDING_DRIVER:-local}
+      EMBEDDING_MAX_BATCH_SIZE: ${EMBEDDING_MAX_BATCH_SIZE:-64}
+      EMBEDDING_MODEL_KEY: ${EMBEDDING_MODEL_KEY:-embedding-local-ngram-v1}
       HEALTH_PORT: '9090'
+      KNOWLEDGE_WORKER_CONCURRENCY: ${KNOWLEDGE_WORKER_CONCURRENCY:-2}
+      NODE_ENV: development
+      OCR_DRIVER: ${OCR_DRIVER:-disabled}
       REDIS_URL: redis://redis:6379/0
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-geo_minio}
+      S3_AUTO_CREATE_BUCKET: 'true'
+      S3_BUCKET: ${S3_BUCKET:-geo-content-os-dev}
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_REGION: us-east-1
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-geo_minio_local_password}
+      S3_SERVER_SIDE_ENCRYPTION: 'false'
+      STORAGE_DRIVER: s3
+      WEB_FETCH_ALLOWED_HOSTS: ${WEB_FETCH_ALLOWED_HOSTS:-}
+      WEB_FETCH_ALLOWED_PORTS: ${WEB_FETCH_ALLOWED_PORTS:-80,443}
+      WEB_FETCH_DENIED_HOSTS: ${WEB_FETCH_DENIED_HOSTS:-}
+      WEB_FETCH_MAX_BYTES: ${WEB_FETCH_MAX_BYTES:-10485760}
+      WEB_FETCH_MAX_REDIRECTS: ${WEB_FETCH_MAX_REDIRECTS:-5}
+      WEB_FETCH_TIMEOUT_MS: ${WEB_FETCH_TIMEOUT_MS:-10000}
+      WEB_FETCH_USER_AGENT: ${WEB_FETCH_USER_AGENT:-GEO-Content-OS-WebFetch/1.0}
       WORKER_NAME: knowledge
+    depends_on:
+      api:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   analytics-worker:
     <<: *worker-service
@@ -256,6 +347,7 @@ networks:
     driver: bridge
 
 volumes:
+  clamav-data:
   minio-data:
   postgres-data:
   redis-data:

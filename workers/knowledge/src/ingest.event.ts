@@ -49,16 +49,16 @@ export function validateKnowledgeIngestEvent(raw: unknown): ValidatedKnowledgeIn
     sourceDocumentId !== event.aggregate.id ||
     !Array.isArray(redirectChain) ||
     redirectChain.length > 10 ||
-    redirectChain.some((entry) => typeof entry !== 'string' || !isHttpsUrl(entry))
+    redirectChain.some((entry) => typeof entry !== 'string' || !isHttpUrl(entry))
   ) {
     throw invalidEvent();
   }
   const objectKey = optionalString(data.object_key);
   const sourceUrl = optionalString(data.source_url);
-  if ((objectKey === undefined) === (sourceUrl === undefined)) throw invalidEvent();
+  if (!objectKey && !sourceUrl) throw invalidEvent();
   if (objectKey && !isSafeObjectKey(objectKey)) throw invalidEvent();
-  if (sourceUrl && !isHttpsUrl(sourceUrl)) throw invalidEvent();
-  if (objectKey && redirectChain.length > 0) throw invalidEvent();
+  if (sourceUrl && !isHttpUrl(sourceUrl)) throw invalidEvent();
+  if (!sourceUrl && redirectChain.length > 0) throw invalidEvent();
   const normalizedRedirectChain = redirectChain.map((entry) => String(entry));
   return Object.freeze({
     aggregateId: event.aggregate.id,
@@ -96,10 +96,14 @@ function optionalString(input: unknown): string | undefined {
   return typeof input === 'string' && input.length > 0 ? input : undefined;
 }
 
-function isHttpsUrl(input: string): boolean {
+function isHttpUrl(input: string): boolean {
   try {
     const url = new URL(input);
-    return url.protocol === 'https:' && url.username === '' && url.password === '';
+    return (
+      (url.protocol === 'http:' || url.protocol === 'https:') &&
+      url.username === '' &&
+      url.password === ''
+    );
   } catch {
     return false;
   }

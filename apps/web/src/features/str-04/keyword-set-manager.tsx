@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { listProjects } from '../know-02/source-upload-api';
+import type { ProjectChoice } from '../know-02/source-upload.schema';
+import { listActiveWorkspaces } from '../str-02/brand-profile-api';
 import {
   getKeywordSet,
   listKeywordSets,
@@ -44,6 +47,9 @@ export function KeywordSetManager() {
   const [detail, setDetail] = useState<KeywordSetDetail | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [message, setMessage] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<readonly { id: string; name: string }[]>([]);
+  const [projects, setProjects] = useState<readonly ProjectChoice[]>([]);
+  const [workspaceId, setWorkspaceId] = useState('');
 
   const load = useCallback(async (next: Filters, signal?: AbortSignal) => {
     setState('loading');
@@ -83,6 +89,30 @@ export function KeywordSetManager() {
     return () => controller.abort();
   }, [filters, load]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    void listActiveWorkspaces(controller.signal)
+      .then(setWorkspaces)
+      .catch(() => {
+        if (!controller.signal.aborted) setMessage('无法加载工作区，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceId) {
+      setProjects([]);
+      return;
+    }
+    const controller = new AbortController();
+    void listProjects(workspaceId, controller.signal)
+      .then(setProjects)
+      .catch(() => {
+        if (!controller.signal.aborted) setMessage('无法加载项目，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, [workspaceId]);
+
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -119,12 +149,38 @@ export function KeywordSetManager() {
         className="rounded-2xl border border-line bg-white p-4 shadow-panel"
         onSubmit={applyFilters}
       >
-        <div className="grid gap-4 sm:grid-cols-[1fr_180px_auto] sm:items-end">
-          <TextField
-            {...(filters.projectId ? { defaultValue: filters.projectId } : {})}
-            label="项目 UUID（可选）"
-            name="project_id"
-          />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_180px_auto] lg:items-end">
+          <label className="text-sm text-ink-700">
+            工作区
+            <select
+              className={controlClass}
+              onChange={(event) => setWorkspaceId(event.target.value)}
+              value={workspaceId}
+            >
+              <option value="">全部工作区</option>
+              {workspaces.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-ink-700">
+            项目
+            <select
+              className={controlClass}
+              defaultValue={filters.projectId ?? ''}
+              disabled={!workspaceId}
+              name="project_id"
+            >
+              <option value="">全部项目</option>
+              {projects.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="text-sm text-ink-700">
             关键词集状态
             <select className={controlClass} defaultValue={filters.status ?? ''} name="set_status">
@@ -232,12 +288,12 @@ function KeywordWorkspace({
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-surface-subtle text-ink-500">
               <tr>
-                <th className="p-4">term</th>
-                <th className="p-4">intent</th>
-                <th className="p-4">priority</th>
-                <th className="p-4">synonyms</th>
-                <th className="p-4">platform_scope</th>
-                <th className="p-4">status</th>
+                <th className="p-4">关键词</th>
+                <th className="p-4">搜索意图</th>
+                <th className="p-4">优先级</th>
+                <th className="p-4">同义词</th>
+                <th className="p-4">适用平台</th>
+                <th className="p-4">状态</th>
                 <th className="p-4">动作</th>
               </tr>
             </thead>

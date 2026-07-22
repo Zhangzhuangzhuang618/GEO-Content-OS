@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test';
 
-test('renders the application shell', async ({ page }) => {
+test('redirects the root route to login', async ({ page }) => {
   await page.goto('/');
 
-  await expect(page).toHaveTitle('GEO Content OS');
-  await expect(page.getByRole('heading', { level: 1 })).toHaveText('企业级多平台内容生产系统');
+  await expect(page).toHaveURL(/\/auth-01$/u);
+  await expect(page).toHaveTitle('登录 | GEO Content OS');
+  await expect(page.getByRole('heading', { name: '登录工作空间' })).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
 });
 

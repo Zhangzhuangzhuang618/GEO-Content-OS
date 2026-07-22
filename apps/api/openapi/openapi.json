@@ -18906,6 +18906,12 @@
                           "provider_account_id": {
                             "anyOf": [{ "type": "string" }, { "type": "null" }]
                           },
+                          "publishing_url": {
+                            "anyOf": [
+                              { "type": "string", "maxLength": 2048, "format": "uri" },
+                              { "type": "null" }
+                            ]
+                          },
                           "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
                           "scopes": { "type": "array", "items": { "type": "string" } },
                           "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
@@ -18948,6 +18954,7 @@
                           "id",
                           "platform_code",
                           "provider_account_id",
+                          "publishing_url",
                           "publish_mode",
                           "scopes",
                           "status",
@@ -19076,6 +19083,7 @@
                       "douyin"
                     ]
                   },
+                  "publishing_url": { "type": "string", "maxLength": 2048, "format": "uri" },
                   "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
                   "timezone": { "type": "string", "minLength": 1, "maxLength": 64 },
                   "workspace_id": {
@@ -19138,6 +19146,12 @@
                         "provider_account_id": {
                           "anyOf": [{ "type": "string" }, { "type": "null" }]
                         },
+                        "publishing_url": {
+                          "anyOf": [
+                            { "type": "string", "maxLength": 2048, "format": "uri" },
+                            { "type": "null" }
+                          ]
+                        },
                         "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
                         "scopes": { "type": "array", "items": { "type": "string" } },
                         "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
@@ -19180,6 +19194,477 @@
                         "id",
                         "platform_code",
                         "provider_account_id",
+                        "publishing_url",
+                        "publish_mode",
+                        "scopes",
+                        "status",
+                        "tenant_id",
+                        "timezone",
+                        "token_expires_at",
+                        "updated_at",
+                        "version",
+                        "workspace_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "PlatformAccountView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/platform-accounts/{id}": {
+      "delete": {
+        "operationId": "account_remove",
+        "tags": ["Platform Accounts"],
+        "x-contract-key": "account.remove",
+        "x-idempotency": "resource+version",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "capabilities": {
+                          "type": "object",
+                          "propertyNames": { "type": "string" },
+                          "additionalProperties": {}
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "display_name": { "type": "string" },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "platform_code": {
+                          "type": "string",
+                          "enum": [
+                            "official_site",
+                            "baijiahao",
+                            "toutiao",
+                            "zhihu",
+                            "xiaohongshu",
+                            "wechat_mp",
+                            "douyin"
+                          ]
+                        },
+                        "provider_account_id": {
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
+                        },
+                        "publishing_url": {
+                          "anyOf": [
+                            { "type": "string", "maxLength": 2048, "format": "uri" },
+                            { "type": "null" }
+                          ]
+                        },
+                        "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
+                        "scopes": { "type": "array", "items": { "type": "string" } },
+                        "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "timezone": { "type": "string" },
+                        "token_expires_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "workspace_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        }
+                      },
+                      "required": [
+                        "capabilities",
+                        "created_at",
+                        "display_name",
+                        "id",
+                        "platform_code",
+                        "provider_account_id",
+                        "publishing_url",
+                        "publish_mode",
+                        "scopes",
+                        "status",
+                        "tenant_id",
+                        "timezone",
+                        "token_expires_at",
+                        "updated_at",
+                        "version",
+                        "workspace_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "PlatformAccountView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      },
+      "patch": {
+        "operationId": "account_update",
+        "tags": ["Platform Accounts"],
+        "x-contract-key": "account.update",
+        "x-idempotency": "resource+version",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "credential": {
+                    "type": "object",
+                    "propertyNames": { "type": "string" },
+                    "additionalProperties": {}
+                  },
+                  "display_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "publishing_url": {
+                    "anyOf": [
+                      { "type": "string", "maxLength": 2048, "format": "uri" },
+                      { "type": "null" }
+                    ]
+                  },
+                  "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
+                  "timezone": { "type": "string", "minLength": 1, "maxLength": 64 }
+                },
+                "required": ["display_name", "publish_mode", "timezone"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "capabilities": {
+                          "type": "object",
+                          "propertyNames": { "type": "string" },
+                          "additionalProperties": {}
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "display_name": { "type": "string" },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "platform_code": {
+                          "type": "string",
+                          "enum": [
+                            "official_site",
+                            "baijiahao",
+                            "toutiao",
+                            "zhihu",
+                            "xiaohongshu",
+                            "wechat_mp",
+                            "douyin"
+                          ]
+                        },
+                        "provider_account_id": {
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
+                        },
+                        "publishing_url": {
+                          "anyOf": [
+                            { "type": "string", "maxLength": 2048, "format": "uri" },
+                            { "type": "null" }
+                          ]
+                        },
+                        "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
+                        "scopes": { "type": "array", "items": { "type": "string" } },
+                        "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "timezone": { "type": "string" },
+                        "token_expires_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "workspace_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        }
+                      },
+                      "required": [
+                        "capabilities",
+                        "created_at",
+                        "display_name",
+                        "id",
+                        "platform_code",
+                        "provider_account_id",
+                        "publishing_url",
                         "publish_mode",
                         "scopes",
                         "status",
@@ -19366,6 +19851,12 @@
                         "provider_account_id": {
                           "anyOf": [{ "type": "string" }, { "type": "null" }]
                         },
+                        "publishing_url": {
+                          "anyOf": [
+                            { "type": "string", "maxLength": 2048, "format": "uri" },
+                            { "type": "null" }
+                          ]
+                        },
                         "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
                         "scopes": { "type": "array", "items": { "type": "string" } },
                         "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
@@ -19408,6 +19899,7 @@
                         "id",
                         "platform_code",
                         "provider_account_id",
+                        "publishing_url",
                         "publish_mode",
                         "scopes",
                         "status",
@@ -19599,6 +20091,12 @@
                         "provider_account_id": {
                           "anyOf": [{ "type": "string" }, { "type": "null" }]
                         },
+                        "publishing_url": {
+                          "anyOf": [
+                            { "type": "string", "maxLength": 2048, "format": "uri" },
+                            { "type": "null" }
+                          ]
+                        },
                         "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
                         "scopes": { "type": "array", "items": { "type": "string" } },
                         "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
@@ -19641,6 +20139,229 @@
                         "id",
                         "platform_code",
                         "provider_account_id",
+                        "publishing_url",
+                        "publish_mode",
+                        "scopes",
+                        "status",
+                        "tenant_id",
+                        "timezone",
+                        "token_expires_at",
+                        "updated_at",
+                        "version",
+                        "workspace_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "PlatformAccountView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/platform-accounts/{id}/restore": {
+      "post": {
+        "operationId": "account_restore",
+        "tags": ["Platform Accounts"],
+        "x-contract-key": "account.restore",
+        "x-idempotency": "resource+version",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "capabilities": {
+                          "type": "object",
+                          "propertyNames": { "type": "string" },
+                          "additionalProperties": {}
+                        },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "display_name": { "type": "string" },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "platform_code": {
+                          "type": "string",
+                          "enum": [
+                            "official_site",
+                            "baijiahao",
+                            "toutiao",
+                            "zhihu",
+                            "xiaohongshu",
+                            "wechat_mp",
+                            "douyin"
+                          ]
+                        },
+                        "provider_account_id": {
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
+                        },
+                        "publishing_url": {
+                          "anyOf": [
+                            { "type": "string", "maxLength": 2048, "format": "uri" },
+                            { "type": "null" }
+                          ]
+                        },
+                        "publish_mode": { "type": "string", "enum": ["api", "export", "manual"] },
+                        "scopes": { "type": "array", "items": { "type": "string" } },
+                        "status": { "type": "string", "enum": ["active", "reauth", "disabled"] },
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "timezone": { "type": "string" },
+                        "token_expires_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "workspace_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        }
+                      },
+                      "required": [
+                        "capabilities",
+                        "created_at",
+                        "display_name",
+                        "id",
+                        "platform_code",
+                        "provider_account_id",
+                        "publishing_url",
                         "publish_mode",
                         "scopes",
                         "status",
@@ -30612,6 +31333,221 @@
               }
             },
             "description": "IngestJobView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/sources/batch-url-preview": {
+      "post": {
+        "operationId": "source_batch_url_preview",
+        "tags": ["Sources"],
+        "x-contract-key": "source.batch-url.preview",
+        "x-idempotency": "-",
+        "x-permission": "knowledge.sources.manage",
+        "x-policy": "strategy_or_content_editor_or_admin",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {},
+                  "sheet_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                  "start_row": { "type": "integer", "minimum": 1, "maximum": 100000 },
+                  "title_column": { "type": "string", "pattern": "^[A-Za-z]{1,2}$" },
+                  "url_column": { "default": "D", "type": "string", "pattern": "^[A-Za-z]{1,2}$" }
+                },
+                "required": ["file"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "duplicate_rows": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "file_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+                        "invalid_rows": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "ready_rows": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "rows": {
+                          "maxItems": 500,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "message": {
+                                "anyOf": [
+                                  { "type": "string", "minLength": 1, "maxLength": 240 },
+                                  { "type": "null" }
+                                ]
+                              },
+                              "row_number": {
+                                "type": "integer",
+                                "exclusiveMinimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": ["ready", "invalid", "duplicate"]
+                              },
+                              "title": {
+                                "anyOf": [
+                                  { "type": "string", "minLength": 1, "maxLength": 240 },
+                                  { "type": "null" }
+                                ]
+                              },
+                              "url": { "type": "string", "minLength": 1, "maxLength": 2048 }
+                            },
+                            "required": ["message", "row_number", "status", "title", "url"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "sheet_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                        "sheets": {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 120 }
+                        },
+                        "start_row": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 100000
+                        },
+                        "title_column": {
+                          "anyOf": [
+                            { "type": "string", "pattern": "^[A-Z]{1,2}$" },
+                            { "type": "null" }
+                          ]
+                        },
+                        "total_rows": { "type": "integer", "minimum": 0, "maximum": 500 },
+                        "url_column": { "type": "string", "pattern": "^[A-Z]{1,2}$" }
+                      },
+                      "required": [
+                        "duplicate_rows",
+                        "file_name",
+                        "invalid_rows",
+                        "ready_rows",
+                        "rows",
+                        "sheet_name",
+                        "sheets",
+                        "start_row",
+                        "title_column",
+                        "total_rows",
+                        "url_column"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "BatchUrlPreview"
           },
           "default": {
             "content": {

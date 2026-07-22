@@ -262,7 +262,7 @@ export class ReviewApiService {
         ${JSON.stringify(before)}::text::jsonb,
         ${JSON.stringify({
           claimed_by: claimed.claimedBy,
-          due_at: claimed.dueAt.toISOString(),
+          due_at: iso(claimed.dueAt),
           risk_level: claimed.riskLevel,
           version: claimed.version,
         })}::text::jsonb,
@@ -629,9 +629,11 @@ function decodeCursor(cursor: string): number {
   return offset;
 }
 
-function iso(value: Date): string {
-  return value.toISOString();
+export function toReviewApiIsoTimestamp(value: Date | string): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
+
+const iso = toReviewApiIsoTimestamp;
 
 function notFound(): never {
   throw new ReviewApiError('not_found', 'Review resource was not found');

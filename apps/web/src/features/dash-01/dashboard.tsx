@@ -3,17 +3,28 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import {
+  currentApplicationPath,
+  expiredSessionLoginPath,
+  tenantEntryPath,
+} from '../auth-navigation';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
 import { listWorkspaces } from '../set-02/workspace-settings-api';
 import type { Workspace } from '../set-02/workspace-settings.schema';
-import { DashboardRequestError, listProjects, loadDashboardData } from './dashboard-api';
+import {
+  DashboardRequestError,
+  listContentPackages,
+  listProjects,
+  loadCostCents,
+} from './dashboard-api';
 import type {
   DashboardContentPackage,
   DashboardData,
   DashboardFilters,
   DashboardProject,
 } from './dashboard.schema';
+import { QuickCreate } from './quick-create';
 
 const COST_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'analyst']);
 const REVIEW_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'reviewer']);
@@ -24,13 +35,29 @@ const PUBLISH_TODO_STATUSES = new Set(['scheduled', 'publishing', 'publish_faile
 interface ReadyState {
   readonly data: DashboardData;
   readonly filters: DashboardFilters;
+  readonly issues: DashboardIssues;
   readonly projects: readonly DashboardProject[];
+  readonly refreshing: boolean;
   readonly role: TenantRole;
   readonly status: 'ready';
+  readonly tenantName: string;
   readonly workspaces: readonly Workspace[];
 }
 
-type State = { readonly status: 'empty' | 'error' | 'loading' | 'permission' } | ReadyState;
+interface DashboardIssues {
+  readonly cost: boolean;
+  readonly packages: boolean;
+  readonly projects: boolean;
+}
+
+type State =
+  | { readonly message: string; readonly status: 'error' }
+  | { readonly role: TenantRole; readonly status: 'empty'; readonly tenantName: string }
+  | { readonly status: 'loading' | 'permission' }
+  | ReadyState;
+
+type Attempt<T> =
+  { readonly ok: false; readonly error: unknown } | { readonly ok: true; readonly value: T };
 
 export function Dashboard() {
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -41,63 +68,167 @@ export function Dashboard() {
     return () => controller.abort();
   }, []);
 
-  async function bootstrap(signal: AbortSignal) {
-    try {
-      const [tenants, workspaces] = await Promise.all([
-        listAvailableTenants(signal),
-        listWorkspaces(signal),
-      ]);
-      const role = tenants.find((tenant) => tenant.is_active)?.role_code;
-      if (!role) return setState({ status: 'permission' });
-      const activeWorkspaces = workspaces.filter((workspace) => workspace.status === 'active');
-      if (activeWorkspaces.length === 0) return setState({ status: 'empty' });
-      const requested = filtersFromLocation();
-      const workspaceId = activeWorkspaces.some((item) => item.id === requested.workspaceId)
-        ? requested.workspaceId
-        : activeWorkspaces[0]!.id;
-      const projects = await listProjects(workspaceId, signal);
-      const projectId = projects.some((item) => item.id === requested.projectId)
-        ? requested.projectId
-        : '';
-      const filters = { ...requested, projectId, workspaceId };
-      writeFilters(filters);
-      const data = await loadDashboardData(filters, COST_ROLES.has(role), signal);
-      setState({ data, filters, projects, role, status: 'ready', workspaces: activeWorkspaces });
-    } catch (error) {
-      if (signal.aborted) return;
-      setState({
-        status: isAccessError(error) ? 'permission' : 'error',
-      });
+  async function bootstrap(signal?: AbortSignal) {
+    setState({ status: 'loading' });
+    const tenantsResult = await attempt(listAvailableTenants(signal));
+    if (signal?.aborted) return;
+    if (!tenantsResult.ok) return handleEssentialError(tenantsResult.error);
+
+    const activeTenant = tenantsResult.value.find((tenant) => tenant.is_active);
+    if (!activeTenant) {
+      window.location.replace(tenantEntryPath(currentApplicationPath(window.location), true));
+      return;
     }
+
+    const workspacesResult = await attempt(listWorkspaces(signal));
+    if (signal?.aborted) return;
+    if (!workspacesResult.ok) return handleEssentialError(workspacesResult.error);
+    const activeWorkspaces = workspacesResult.value.filter(
+      (workspace) => workspace.status === 'active',
+    );
+    if (activeWorkspaces.length === 0) {
+      setState({
+        role: activeTenant.role_code,
+        status: 'empty',
+        tenantName: activeTenant.name,
+      });
+      return;
+    }
+
+    const requested = filtersFromLocation();
+    const workspaceId = activeWorkspaces.some((item) => item.id === requested.workspaceId)
+      ? requested.workspaceId
+      : activeWorkspaces[0]!.id;
+    const projectsResult = await attempt(listProjects(workspaceId, signal));
+    if (!projectsResult.ok && redirectForExpiredSession(projectsResult.error)) return;
+    const projects = projectsResult.ok ? projectsResult.value : [];
+    const projectId = projects.some((item) => item.id === requested.projectId)
+      ? requested.projectId
+      : '';
+    const filters = { ...requested, projectId, workspaceId };
+    writeFilters(filters);
+    const sections = await loadSections(filters, COST_ROLES.has(activeTenant.role_code), signal);
+    if (signal?.aborted || redirectForExpiredSession(sections.error)) return;
+    setState({
+      data: sections.data,
+      filters,
+      issues: {
+        ...sections.issues,
+        projects: !projectsResult.ok,
+      },
+      projects,
+      refreshing: false,
+      role: activeTenant.role_code,
+      status: 'ready',
+      tenantName: activeTenant.name,
+      workspaces: activeWorkspaces,
+    });
   }
 
   async function updateFilters(next: DashboardFilters) {
     if (state.status !== 'ready') return;
-    setState({ status: 'loading' });
+    const previous = state;
+    setState({ ...previous, refreshing: true });
     writeFilters(next);
-    try {
-      const projects =
-        next.workspaceId === state.filters.workspaceId
-          ? state.projects
-          : await listProjects(next.workspaceId);
-      const filters = {
-        ...next,
-        projectId: projects.some((project) => project.id === next.projectId) ? next.projectId : '',
-      };
-      writeFilters(filters);
-      const data = await loadDashboardData(filters, COST_ROLES.has(state.role));
-      setState({ ...state, data, filters, projects, status: 'ready' });
-    } catch (error) {
-      setState({
-        status: isAccessError(error) ? 'permission' : 'error',
-      });
-    }
+    const projectsResult =
+      next.workspaceId === previous.filters.workspaceId
+        ? ({ ok: true, value: previous.projects } as const)
+        : await attempt(listProjects(next.workspaceId));
+    if (!projectsResult.ok && redirectForExpiredSession(projectsResult.error)) return;
+    const projects = projectsResult.ok ? projectsResult.value : [];
+    const filters = {
+      ...next,
+      projectId: projects.some((project) => project.id === next.projectId) ? next.projectId : '',
+    };
+    writeFilters(filters);
+    const sections = await loadSections(filters, COST_ROLES.has(previous.role));
+    if (redirectForExpiredSession(sections.error)) return;
+    setState({
+      ...previous,
+      data: sections.data,
+      filters,
+      issues: { ...sections.issues, projects: !projectsResult.ok },
+      projects,
+      refreshing: false,
+    });
   }
 
-  if (state.status === 'loading') return <Panel busy title="正在加载工作台" />;
-  if (state.status === 'permission') return <Panel title="无权查看当前工作台" />;
-  if (state.status === 'error') return <Panel title="无法加载工作台" />;
-  if (state.status === 'empty') return <Panel title="暂无可用工作区" />;
+  async function retrySection(section: 'cost' | 'packages' | 'projects') {
+    if (state.status !== 'ready') return;
+    const current = state;
+    if (section === 'projects') {
+      const result = await attempt(listProjects(current.filters.workspaceId));
+      if (!result.ok && redirectForExpiredSession(result.error)) return;
+      setState({
+        ...current,
+        issues: { ...current.issues, projects: !result.ok },
+        projects: result.ok ? result.value : current.projects,
+      });
+      return;
+    }
+    if (section === 'packages') {
+      const result = await attempt(listContentPackages(current.filters));
+      if (!result.ok && redirectForExpiredSession(result.error)) return;
+      setState({
+        ...current,
+        data: {
+          ...current.data,
+          packages: result.ok ? result.value : current.data.packages,
+        },
+        issues: { ...current.issues, packages: !result.ok },
+      });
+      return;
+    }
+    const result = await attempt(loadCostCents(current.filters));
+    if (!result.ok && redirectForExpiredSession(result.error)) return;
+    setState({
+      ...current,
+      data: {
+        ...current.data,
+        costCents: result.ok ? result.value : current.data.costCents,
+      },
+      issues: { ...current.issues, cost: !result.ok },
+    });
+  }
+
+  function handleEssentialError(error: unknown) {
+    if (redirectForExpiredSession(error)) return;
+    if (isAccessError(error)) {
+      setState({ status: 'permission' });
+      return;
+    }
+    setState({ message: '暂时无法加载工作空间，请稍后重试。', status: 'error' });
+  }
+
+  function redirectForExpiredSession(error: unknown): boolean {
+    if (requestStatus(error) !== 401) return false;
+    window.location.replace(expiredSessionLoginPath(currentApplicationPath(window.location)));
+    return true;
+  }
+
+  if (state.status === 'loading') {
+    return <Panel busy description="正在确认企业和工作空间。" title="正在加载工作台" />;
+  }
+  if (state.status === 'permission') {
+    return (
+      <Panel
+        description="当前账号没有访问该企业工作台的权限，你可以切换企业或联系管理员。"
+        href="/auth-02"
+        linkLabel="切换企业"
+        title="无权查看当前工作台"
+      />
+    );
+  }
+  if (state.status === 'error') {
+    return (
+      <Panel
+        description={state.message}
+        onRetry={() => void bootstrap()}
+        title="工作台暂时不可用"
+      />
+    );
+  }
+  if (state.status === 'empty') return <EmptyWorkspace state={state} />;
   if (state.status !== 'ready') return null;
 
   const packages = withinRange(state.data.packages, state.filters.from, state.filters.to);
@@ -113,6 +244,25 @@ export function Dashboard() {
 
   return (
     <div>
+      <QuickCreate
+        initialProjectId={state.filters.projectId}
+        initialProjects={state.projects}
+        initialWorkspaceId={state.filters.workspaceId}
+        role={state.role}
+        workspaces={state.workspaces}
+      />
+      <section
+        aria-label="当前企业"
+        className="mt-6 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white px-5 py-4"
+      >
+        <div>
+          <p className="text-xs font-medium text-ink-500">当前企业</p>
+          <p className="mt-1 font-semibold text-ink-950">{state.tenantName}</p>
+        </div>
+        <Link className="text-sm font-semibold text-brand-700 hover:text-brand-600" href="/auth-02">
+          切换企业
+        </Link>
+      </section>
       <section
         aria-label="工作台筛选"
         className="grid gap-4 rounded-2xl border border-line bg-white p-5 shadow-panel sm:grid-cols-2 lg:grid-cols-4"
@@ -161,52 +311,103 @@ export function Dashboard() {
           <select
             aria-label="项目"
             className="h-10 w-full rounded-control border border-line bg-white px-3"
+            disabled={state.issues.projects}
             onChange={(event) =>
               void updateFilters({ ...state.filters, projectId: event.target.value })
             }
             value={state.filters.projectId}
           >
-            <option value="">全部项目</option>
+            <option value="">{state.issues.projects ? '项目列表暂时不可用' : '全部项目'}</option>
             {state.projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>
             ))}
           </select>
+          {state.issues.projects ? (
+            <button
+              className="mt-2 text-sm font-semibold text-brand-700"
+              onClick={() => void retrySection('projects')}
+              type="button"
+            >
+              重新加载项目
+            </button>
+          ) : null}
         </Filter>
       </section>
 
+      {state.refreshing ? (
+        <p aria-live="polite" className="mt-3 text-sm text-ink-500" role="status">
+          正在更新筛选结果…
+        </p>
+      ) : null}
+
       <section aria-label="工作台指标" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard label="内容产能" value={`${packages.length} 个内容包`} />
-        <MetricCard label="失败任务" value={`${failed.length} 项`} />
+        <MetricCard
+          error={state.issues.packages}
+          label="内容产能"
+          onRetry={() => void retrySection('packages')}
+          value={state.issues.packages ? '暂时无法获取' : `${packages.length} 个内容任务`}
+        />
+        <MetricCard
+          error={state.issues.packages}
+          label="失败任务"
+          onRetry={() => void retrySection('packages')}
+          value={state.issues.packages ? '暂时无法获取' : `${failed.length} 项`}
+        />
         {REVIEW_ROLES.has(state.role) ? (
-          <MetricCard href="/rev-01" label="审核待办" value={`${inReview.length} 项`} />
+          <MetricCard
+            error={state.issues.packages}
+            href="/rev-01"
+            label="审核待办"
+            onRetry={() => void retrySection('packages')}
+            value={state.issues.packages ? '暂时无法获取' : `${inReview.length} 项`}
+          />
         ) : null}
         {PUBLISH_ROLES.has(state.role) ? (
-          <MetricCard href="/pub-03" label="发布待办" value={`${publishingTodos.length} 项`} />
+          <MetricCard
+            error={state.issues.packages}
+            href="/pub-03"
+            label="发布待办"
+            onRetry={() => void retrySection('packages')}
+            value={state.issues.packages ? '暂时无法获取' : `${publishingTodos.length} 项`}
+          />
         ) : null}
         {COST_ROLES.has(state.role) ? (
-          <MetricCard label="已结算成本" value={formatCost(state.data.costCents ?? 0)} />
+          <MetricCard
+            error={state.issues.cost}
+            label="已结算成本"
+            onRetry={() => void retrySection('cost')}
+            value={state.issues.cost ? '暂时无法获取' : formatCost(state.data.costCents ?? 0)}
+          />
         ) : null}
       </section>
 
       <section className="mt-6 grid gap-4 lg:grid-cols-2" aria-label="工作台快捷入口">
         <ActionPanel title="下一步动作">
-          <div className="flex flex-wrap gap-3">
-            {REVIEW_ROLES.has(state.role) ? <ActionLink href="/rev-01">进入审核</ActionLink> : null}
-            {PUBLISH_ROLES.has(state.role) ? (
-              <ActionLink href="/pub-03">进入发布</ActionLink>
-            ) : null}
-            {latest ? (
-              <ActionLink href={`/cont-04?id=${latest.id}`}>查看最新内容</ActionLink>
-            ) : null}
-          </div>
+          {state.issues.packages ? (
+            <SectionError onRetry={() => void retrySection('packages')} />
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {REVIEW_ROLES.has(state.role) ? (
+                <ActionLink href="/rev-01">进入审核</ActionLink>
+              ) : null}
+              {PUBLISH_ROLES.has(state.role) ? (
+                <ActionLink href="/pub-03">进入发布</ActionLink>
+              ) : null}
+              {latest ? (
+                <ActionLink href={`/cont-04?id=${latest.id}`}>查看最新内容</ActionLink>
+              ) : null}
+            </div>
+          )}
         </ActionPanel>
         <ActionPanel title="失败任务">
-          {latestFailed ? (
+          {state.issues.packages ? (
+            <SectionError onRetry={() => void retrySection('packages')} />
+          ) : latestFailed ? (
             <div className="flex items-center justify-between gap-4 text-sm">
               <div>
-                <p className="font-medium text-ink-950">内容包 {latestFailed.id.slice(0, 8)}</p>
+                <p className="font-medium text-ink-950">最近失败的内容任务</p>
                 <p className="mt-1 text-ink-500">{statusLabel(latestFailed.status)}</p>
               </div>
               <ActionLink href={`/cont-04?id=${latestFailed.id}`}>查看详情</ActionLink>
@@ -216,7 +417,7 @@ export function Dashboard() {
           )}
         </ActionPanel>
       </section>
-      <p className="mt-4 text-xs text-ink-500">内容统计基于当前授权范围内最近 100 个内容包。</p>
+      <p className="mt-4 text-xs text-ink-500">内容统计基于当前可访问的最近 100 项内容任务。</p>
     </div>
   );
 }
@@ -229,31 +430,45 @@ function Filter({
   readonly label: string;
 }) {
   return (
-    <label className="text-sm font-medium text-ink-700">
+    <div className="text-sm font-medium text-ink-700">
       <span className="mb-2 block">{label}</span>
       {children}
-    </label>
+    </div>
   );
 }
 
 function MetricCard({
+  error = false,
   href,
   label,
+  onRetry,
   value,
 }: {
+  readonly error?: boolean;
   readonly href?: string;
   readonly label: string;
+  readonly onRetry?: () => void;
   readonly value: string;
 }) {
   const body = (
     <>
       <p className="text-sm font-medium text-ink-500">{label}</p>
       <p className="mt-3 text-2xl font-semibold tracking-tight text-ink-950">{value}</p>
-      {href ? <p className="mt-3 text-sm font-medium text-brand-700">查看详情</p> : null}
+      {error && onRetry ? (
+        <button
+          className="mt-3 text-sm font-semibold text-brand-700"
+          onClick={onRetry}
+          type="button"
+        >
+          重新加载
+        </button>
+      ) : href ? (
+        <p className="mt-3 text-sm font-medium text-brand-700">查看详情</p>
+      ) : null}
     </>
   );
   const className = 'rounded-2xl border border-line bg-white p-5 shadow-panel';
-  return href ? (
+  return href && !error ? (
     <Link className={className} href={href}>
       {body}
     </Link>
@@ -294,16 +509,122 @@ function ActionLink({
   );
 }
 
-function Panel({ busy = false, title }: { readonly busy?: boolean; readonly title: string }) {
+function SectionError({ onRetry }: { readonly onRetry: () => void }) {
+  return (
+    <div>
+      <p className="text-sm text-ink-500">内容数据暂时无法加载，其他功能仍可继续使用。</p>
+      <button className="mt-3 text-sm font-semibold text-brand-700" onClick={onRetry} type="button">
+        重新加载内容数据
+      </button>
+    </div>
+  );
+}
+
+function EmptyWorkspace({
+  state,
+}: {
+  readonly state: { readonly role: TenantRole; readonly tenantName: string };
+}) {
+  const canManage = state.role === 'tenant_owner' || state.role === 'tenant_admin';
+  return (
+    <Panel
+      description={
+        canManage
+          ? `${state.tenantName} 还没有可用工作区。请先完成企业初始化，再开始配置项目和内容生产流程。`
+          : `${state.tenantName} 还没有向你开放工作区，请联系企业管理员。`
+      }
+      href="/auth-02"
+      linkLabel="切换企业"
+      title="暂无可用工作区"
+    />
+  );
+}
+
+function Panel({
+  busy = false,
+  description,
+  href,
+  linkLabel,
+  onRetry,
+  title,
+}: {
+  readonly busy?: boolean;
+  readonly description?: string;
+  readonly href?: string;
+  readonly linkLabel?: string;
+  readonly onRetry?: () => void;
+  readonly title: string;
+}) {
   return (
     <div
       aria-busy={busy || undefined}
       className="rounded-2xl border border-line bg-white p-10 text-center text-ink-500"
       role="status"
     >
-      <p>{title}</p>
+      <p className="font-semibold text-ink-950">{title}</p>
+      {description ? <p className="mt-2 text-sm leading-6">{description}</p> : null}
+      {onRetry ? (
+        <button
+          className="mt-5 rounded-control bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white"
+          onClick={onRetry}
+          type="button"
+        >
+          重新加载
+        </button>
+      ) : href && linkLabel ? (
+        <Link
+          className="mt-5 inline-flex rounded-control bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white"
+          href={href}
+        >
+          {linkLabel}
+        </Link>
+      ) : null}
     </div>
   );
+}
+
+async function loadSections(
+  filters: DashboardFilters,
+  canReadCost: boolean,
+  signal?: AbortSignal,
+): Promise<{
+  readonly data: DashboardData;
+  readonly error: unknown;
+  readonly issues: Pick<DashboardIssues, 'cost' | 'packages'>;
+}> {
+  const [packagesResult, costResult] = await Promise.all([
+    attempt(listContentPackages(filters, signal)),
+    canReadCost
+      ? attempt(loadCostCents(filters, signal))
+      : Promise.resolve({ ok: true, value: null } as const),
+  ]);
+  const packagesError = packagesResult.ok ? undefined : packagesResult.error;
+  const costError = costResult.ok ? undefined : costResult.error;
+  const error =
+    requestStatus(packagesError) === 401
+      ? packagesError
+      : requestStatus(costError) === 401
+        ? costError
+        : (packagesError ?? costError);
+  return {
+    data: {
+      costCents: costResult.ok ? costResult.value : null,
+      packages: packagesResult.ok ? packagesResult.value : [],
+    },
+    error,
+    issues: {
+      cost: !costResult.ok,
+      packages: !packagesResult.ok,
+    },
+  };
+}
+
+async function attempt<T>(promise: Promise<T>): Promise<Attempt<T>> {
+  try {
+    return { ok: true, value: await promise };
+  } catch (error) {
+    return { error, ok: false };
+  }
 }
 
 function filtersFromLocation(): DashboardFilters {
@@ -359,8 +680,12 @@ function statusLabel(status: DashboardContentPackage['status']) {
 }
 
 function isAccessError(error: unknown): boolean {
-  if (error instanceof DashboardRequestError) return [401, 403, 404].includes(error.status);
-  if (!error || typeof error !== 'object') return false;
+  return [401, 403, 404].includes(requestStatus(error) ?? 0);
+}
+
+function requestStatus(error: unknown): number | undefined {
+  if (error instanceof DashboardRequestError) return error.status;
+  if (!error || typeof error !== 'object') return undefined;
   const status = (error as { status?: unknown }).status;
-  return typeof status === 'number' && [401, 403, 404].includes(status);
+  return typeof status === 'number' ? status : undefined;
 }

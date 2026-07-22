@@ -13,7 +13,7 @@ export default function MemberAdministrationPage() {
         <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">系统设置</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">成员与邀请</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          管理租户成员角色、工作区范围、状态和邀请到期时间。
+          管理企业成员角色、工作区范围、账号状态和邀请到期时间。
         </p>
       </header>
       <MemberAdministration />

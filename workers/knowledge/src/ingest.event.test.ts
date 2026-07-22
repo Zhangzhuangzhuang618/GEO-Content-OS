@@ -25,10 +25,47 @@ describe('knowledge ingest event validation', () => {
     });
   });
 
+  it.each(['http://example.com/source', 'https://example.com/source'])(
+    'accepts a credential-free HTTP(S) URL: %s',
+    (sourceUrl) => {
+      const base = event();
+      const { object_key: _objectKey, ...filelessData } = base.data;
+      expect(
+        validateKnowledgeIngestEvent({
+          ...base,
+          data: {
+            ...filelessData,
+            source_url: sourceUrl,
+          },
+        }),
+      ).toMatchObject({ data: { sourceUrl } });
+    },
+  );
+
+  it('accepts a URL snapshot with its canonical URL and redirect provenance', () => {
+    const base = event();
+    expect(
+      validateKnowledgeIngestEvent({
+        ...base,
+        data: {
+          ...base.data,
+          redirect_chain: ['https://example.com/original'],
+          source_url: 'https://example.com/canonical',
+        },
+      }),
+    ).toMatchObject({
+      data: {
+        objectKey: 'tenant/workspace/source.txt',
+        redirectChain: ['https://example.com/original'],
+        sourceUrl: 'https://example.com/canonical',
+      },
+    });
+  });
+
   it.each([
-    { data: { source_url: 'https://example.com/source' } },
+    { data: { object_key: undefined, source_url: 'ftp://example.com/source' } },
+    { data: { object_key: undefined, source_url: 'https://user@example.com/source' } },
     { data: { unknown: true } },
-    { data: { object_key: undefined, source_url: 'http://example.com/source' } },
     { aggregate: { id: JOB, type: 'source_document' } },
   ])('rejects an ambiguous or forged event %#', (override) => {
     const base = event();

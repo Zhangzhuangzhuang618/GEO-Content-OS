@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { listProjects } from '../know-02/source-upload-api';
+import type { ProjectChoice } from '../know-02/source-upload.schema';
 import { PlatformCodeSchema, type PlatformCode } from '../pub-01/platform-account.schema';
 import { listWorkspaces } from '../set-02/workspace-settings-api';
 import type { Workspace } from '../set-02/workspace-settings.schema';
@@ -23,6 +25,7 @@ const ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'analyst']);
 export function AnalyticsOverview() {
   const [filters, setFilters] = useState<AnalyticsFilters>(readFilters);
   const [workspaces, setWorkspaces] = useState<readonly Workspace[]>([]);
+  const [projects, setProjects] = useState<readonly ProjectChoice[]>([]);
   const [data, setData] = useState<{
     overview: Overview;
     platforms: Platforms;
@@ -48,9 +51,11 @@ export function AnalyticsOverview() {
       );
       setWorkspaces(workspaceItems);
       if (!next.workspaceId) {
+        setProjects([]);
         setState('empty');
         return;
       }
+      setProjects(await listProjects(next.workspaceId, signal));
       const result = await loadAnalytics(next, signal);
       if (signal?.aborted) return;
       setData(result);
@@ -117,12 +122,19 @@ export function AnalyticsOverview() {
             </select>
           </label>
           <label className={labelClass}>
-            项目 UUID
-            <input
+            项目
+            <select
               className={controlClass}
               defaultValue={filters.projectId ?? ''}
               name="project_id"
-            />
+            >
+              <option value="">全部项目</option>
+              {projects.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className={labelClass}>
             平台
@@ -176,12 +188,12 @@ export function AnalyticsOverview() {
       </form>
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
         {message}
-        {exportJob ? ` 任务 ${exportJob.id}：${exportJob.status}` : ''}
+        {exportJob ? ` ${exportStatusLabel(exportJob.status)}` : ''}
       </div>
       {state === 'loading' ? (
         <Panel title="正在加载数据总览" text="正在按统一口径聚合指标和已结算成本。" />
       ) : state === 'permission' ? (
-        <Panel title="无权查看数据总览" text="仅分析师、租户管理员和所有者可访问。" />
+        <Panel title="无权查看数据总览" text="仅分析师、企业管理员和所有者可访问。" />
       ) : state === 'error' ? (
         <Panel title="无法加载数据总览" text="请检查日期、工作区、权限或服务状态。" />
       ) : state === 'empty' || !data ? (
@@ -355,6 +367,15 @@ function percent(value: number) {
 }
 function platformLabel(code: PlatformCode) {
   return PLATFORMS.find(([item]) => item === code)?.[1] ?? code;
+}
+function exportStatusLabel(value: ExportJob['status']) {
+  return {
+    queued: '导出文件正在等待生成。',
+    running: '导出文件正在生成。',
+    succeeded: '导出文件已生成。',
+    failed: '导出失败，请稍后重试。',
+    expired: '导出文件已过期，请重新导出。',
+  }[value];
 }
 const PLATFORMS = [
   ['official_site', '官网'],

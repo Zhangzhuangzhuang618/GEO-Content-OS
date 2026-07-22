@@ -37,6 +37,11 @@ interface VariantRow {
   readonly version: number;
 }
 
+interface TargetAccountRow {
+  readonly id: string;
+  readonly platformCode: PlatformCode;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const MODEL_KEY = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/u;
 const SEMVER = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/u;
@@ -70,10 +75,15 @@ export class GenerationRequestService {
         throw generationStateInvalid(`Variant ${variant.id} cannot enter generation`);
       }
     }
+    const accountTargetsRequired = requiresPlatformAccounts();
+    const targetAccounts = accountTargetsRequired
+      ? await lockTargetAccounts(transaction, context, required)
+      : new Map<PlatformCode, string>();
 
     const inputHash = sha256(
       canonicalJson({
         model_key: input.modelKey,
+        model_policy: input.modelPolicy,
         package_id: input.packageId,
         package_version: packageRow.version,
         prompt_version_id: input.promptVersionId,
@@ -81,6 +91,7 @@ export class GenerationRequestService {
         variants: required.map((variant) => ({
           current_content_version_id: variant.currentContentVersionId,
           platform_code: variant.platformCode,
+          platform_account_id: targetAccounts.get(variant.platformCode) ?? null,
           status: variant.status,
           variant_id: variant.id,
           version: variant.version,
@@ -100,7 +111,14 @@ export class GenerationRequestService {
     for (const variant of required) {
       const rows = await transaction<{ id: string }[]>`
         UPDATE content_variants
-        SET status = 'generating', version = version + 1
+        SET
+          status = 'generating',
+          platform_account_id = CASE
+            WHEN ${accountTargetsRequired}
+            THEN ${targetAccounts.get(variant.platformCode) ?? null}::uuid
+            ELSE platform_account_id
+          END,
+          version = version + 1
         WHERE
           id = ${variant.id}::uuid
           AND tenant_id = ${context.scope.tenantId}::uuid
@@ -132,6 +150,7 @@ export class GenerationRequestService {
           input_hash: inputHash,
           master_run_id: masterRunId,
           model_key: input.modelKey,
+          model_policy: input.modelPolicy,
           package_id: input.packageId,
           project_id: context.scope.projectId,
           prompt_version_id: input.promptVersionId,
@@ -162,6 +181,47 @@ export class GenerationRequestService {
       variantRuns: Object.freeze(variantRuns),
     });
   }
+}
+
+async function lockTargetAccounts(
+  transaction: TransactionSql,
+  context: GenerationRequestContext,
+  variants: readonly VariantRow[],
+): Promise<ReadonlyMap<PlatformCode, string>> {
+  const platforms = variants.map((variant) => variant.platformCode);
+  const rows = await transaction<TargetAccountRow[]>`
+    SELECT account.id, account.platform_code AS "platformCode"
+    FROM platform_accounts AS account
+    WHERE
+      account.tenant_id = ${context.scope.tenantId}::uuid
+      AND account.workspace_id = ${context.scope.workspaceId}::uuid
+      AND account.platform_code = ANY(${platforms}::varchar[])
+      AND account.status = 'active'
+      AND account.deleted_at IS NULL
+    ORDER BY account.platform_code, account.id
+    FOR SHARE
+  `;
+  const grouped = new Map<PlatformCode, string[]>();
+  for (const row of rows) {
+    const ids = grouped.get(row.platformCode) ?? [];
+    ids.push(row.id);
+    grouped.set(row.platformCode, ids);
+  }
+  const targets = new Map<PlatformCode, string>();
+  for (const platform of platforms) {
+    const ids = grouped.get(platform) ?? [];
+    if (ids.length !== 1) {
+      throw generationStateInvalid(
+        `Platform ${platform} requires exactly one active account before generation`,
+      );
+    }
+    targets.set(platform, ids[0]!);
+  }
+  return targets;
+}
+
+function requiresPlatformAccounts(): boolean {
+  return process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] === 'true';
 }
 
 async function lockPackage(
@@ -336,6 +396,9 @@ function validateInput(input: RequestGenerationInput): void {
     throw generationInputInvalid('Expected package version must be a positive integer');
   }
   if (!MODEL_KEY.test(input.modelKey)) throw generationInputInvalid('Model key is invalid');
+  if (!['fast', 'balanced', 'quality'].includes(input.modelPolicy)) {
+    throw generationInputInvalid('Model policy is invalid');
+  }
   if (!SEMVER.test(input.skillVersion) || input.skillVersion.length > 32) {
     throw generationInputInvalid('Skill version is invalid');
   }

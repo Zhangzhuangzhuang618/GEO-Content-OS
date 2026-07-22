@@ -1,8 +1,9 @@
 import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
+  QUALITY_CHECKER_DATA_SCHEMA,
   QUALITY_CHECKER_INPUT_SCHEMA,
-  QUALITY_CHECKER_OUTPUT_SCHEMA,
   QUALITY_CHECKER_SKILL_VERSION,
+  type QualityCheckerData,
   type QualityCheckerOutput,
 } from '@geo-content-os/contracts/skills';
 import {
@@ -23,8 +24,14 @@ import {
 export interface QualityCheckerSkillRunInput {
   readonly context: SkillContext;
   readonly input: Readonly<Record<string, unknown>>;
+  readonly prompt?: QualityCheckerPublishedPrompt;
   readonly recordUsage: (usage: ModelUsage) => Promise<void> | void;
   readonly signal?: AbortSignal;
+}
+
+export interface QualityCheckerPublishedPrompt {
+  readonly systemPrompt: string;
+  readonly taskTemplate: string;
 }
 
 interface CheckerInput {
@@ -47,44 +54,92 @@ export class QualityCheckerSkill {
     invocation: QualityCheckerSkillRunInput,
   ): Promise<SkillRunResult<QualityCheckerOutput>> {
     assertContext(invocation.context);
-    const result = await this.runner.run<Readonly<Record<string, unknown>>, QualityCheckerOutput>({
+    const result = await this.runner.run<Readonly<Record<string, unknown>>, QualityCheckerData>({
       context: invocation.context,
       input: invocation.input,
       inputSchema: QUALITY_CHECKER_INPUT_SCHEMA,
       maxOutputTokens: 8_192,
-      messages: messages(invocation.input),
-      outputSchema: QUALITY_CHECKER_OUTPUT_SCHEMA,
+      messages: messages(invocation.input, invocation.prompt),
+      outputSchema: QUALITY_CHECKER_DATA_SCHEMA,
       recordUsage: invocation.recordUsage,
       ...(invocation.signal ? { signal: invocation.signal } : {}),
       temperature: 0,
       toolNames: QUALITY_CHECKER_TOOL_NAMES_V1,
     });
-    assertOutput(invocation.context, invocation.input as unknown as CheckerInput, result.output);
-    return result;
+    const output = serverOwnedOutput(invocation.context, result.output, result.usages);
+    assertOutput(invocation.context, invocation.input as unknown as CheckerInput, output);
+    return Object.freeze({ ...result, output });
   }
 }
 
-function messages(input: Readonly<Record<string, unknown>>): readonly ModelMessage[] {
+function messages(
+  input: Readonly<Record<string, unknown>>,
+  prompt?: QualityCheckerPublishedPrompt,
+): readonly ModelMessage[] {
   const examples = QUALITY_CHECKER_FEW_SHOTS_V1.flatMap<ModelMessage>((example) => [
     {
       content: JSON.stringify({ example_input: example.input, purpose: example.purpose }),
       role: 'user',
     },
-    { content: JSON.stringify(example.output), role: 'assistant' },
+    { content: JSON.stringify(example.output.data), role: 'assistant' },
   ]);
   return Object.freeze([
-    { content: QUALITY_CHECKER_SYSTEM_PROMPT_V1, role: 'system' },
-    { content: QUALITY_CHECKER_TASK_PROMPT_V1, role: 'user' },
+    {
+      content: prompt
+        ? `${QUALITY_CHECKER_SYSTEM_PROMPT_V1}\n\nPublished prompt policy:\n${prompt.systemPrompt}`
+        : QUALITY_CHECKER_SYSTEM_PROMPT_V1,
+      role: 'system',
+    },
+    {
+      content: prompt
+        ? `${QUALITY_CHECKER_TASK_PROMPT_V1}\n\nPublished task policy:\n${prompt.taskTemplate}`
+        : QUALITY_CHECKER_TASK_PROMPT_V1,
+      role: 'user',
+    },
     ...examples,
     {
       content: JSON.stringify({
         instruction:
-          'Check only this input. Do not copy identifiers, trace fields, usage, issues, or decisions from examples.',
+          'Check only this input and return only score, decision, issues, and geo_scores. The server adds identity, status, usage, and trace. Do not copy findings or decisions from examples.',
         quality_checker_input: input,
       }),
       role: 'user',
     },
   ]);
+}
+
+function serverOwnedOutput(
+  context: SkillContext,
+  data: QualityCheckerData,
+  usages: readonly ModelUsage[],
+): QualityCheckerOutput {
+  const blocked = data.decision === 'block';
+  return Object.freeze({
+    blockers: Object.freeze(
+      blocked
+        ? [{ code: 'POLICY_BLOCK', message: 'A frozen quality rule blocked this content.' }]
+        : [],
+    ),
+    citations: Object.freeze([]),
+    data,
+    skill_name: 'quality-checker' as const,
+    skill_version: context.skillVersion,
+    status: 'success' as const,
+    trace: Object.freeze({
+      input_hash: context.inputHash,
+      prompt_version_id: context.promptVersionId,
+      request_id: context.requestId,
+      run_id: context.runId,
+    }),
+    usage: Object.freeze({
+      cost_cents: 0,
+      input_tokens: usages.reduce((total, usage) => total + usage.inputTokens, 0),
+      model_key: context.modelKey,
+      output_tokens: usages.reduce((total, usage) => total + usage.outputTokens, 0),
+      provider: usages[0]?.providerCode ?? 'unknown',
+    }),
+    warnings: Object.freeze([]),
+  });
 }
 
 function assertContext(context: SkillContext): void {

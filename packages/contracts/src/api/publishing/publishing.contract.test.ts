@@ -8,11 +8,11 @@ import {
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all twelve publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(12);
+  it('contains all fifteen publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(15);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(12);
+    ).toBe(15);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -23,7 +23,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(12);
+    expect(operations).toHaveLength(15);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()

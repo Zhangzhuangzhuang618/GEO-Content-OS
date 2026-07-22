@@ -4,6 +4,11 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { listProjects } from '../know-02/source-upload-api';
+import type { ProjectChoice } from '../know-02/source-upload.schema';
+import { listActiveWorkspaces } from '../str-02/brand-profile-api';
+import { listKeywordSets } from '../str-04/keyword-set-api';
+import type { KeywordSet } from '../str-04/keyword-set.schema';
 import {
   adoptTopicCandidate,
   generateTopicPlan,
@@ -102,7 +107,7 @@ export function TopicPlanning() {
       setItems((current) =>
         current.map((item) => (item.id === topic.id ? { ...item, status: 'adopted' } : item)),
       );
-      setMessage(`已采纳为 Brief：${briefTitle}`);
+      setMessage(`已采纳为内容需求：${briefTitle}`);
     } catch {
       setMessage('采纳失败，选题版本可能已变化，请刷新后重试。');
     } finally {
@@ -190,16 +195,59 @@ export function TopicPlanning() {
 
 function GeneratePanel({ onMessage }: { onMessage: (message: string | null) => void }) {
   const [submitting, setSubmitting] = useState(false);
+  const [workspaces, setWorkspaces] = useState<readonly { id: string; name: string }[]>([]);
+  const [projects, setProjects] = useState<readonly ProjectChoice[]>([]);
+  const [keywordSets, setKeywordSets] = useState<readonly KeywordSet[]>([]);
+  const [workspaceId, setWorkspaceId] = useState('');
+  const [projectId, setProjectId] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void listActiveWorkspaces(controller.signal)
+      .then(setWorkspaces)
+      .catch(() => {
+        if (!controller.signal.aborted) onMessage('无法加载工作区，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, [onMessage]);
+
+  useEffect(() => {
+    if (!workspaceId) {
+      setProjects([]);
+      return;
+    }
+    const controller = new AbortController();
+    void listProjects(workspaceId, controller.signal)
+      .then(setProjects)
+      .catch(() => {
+        if (!controller.signal.aborted) onMessage('无法加载项目，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, [onMessage, workspaceId]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setKeywordSets([]);
+      return;
+    }
+    const controller = new AbortController();
+    void listKeywordSets({ projectId, status: 'active' }, controller.signal)
+      .then(setKeywordSets)
+      .catch(() => {
+        if (!controller.signal.aborted) onMessage('无法加载关键词集，请稍后重试。');
+      });
+    return () => controller.abort();
+  }, [onMessage, projectId]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const workspaceId = String(data.get('workspace_id') ?? '').trim();
     const projectId = String(data.get('project_id') ?? '').trim();
-    const keywordSetIds = splitValues(String(data.get('keyword_set_ids') ?? ''));
+    const keywordSetIds = data.getAll('keyword_set_ids').map(String);
     const platformCodes = data.getAll('platform_codes').map(String).filter(isPlatformCode);
     if (!isUuid(workspaceId) || !isUuid(projectId) || keywordSetIds.some((id) => !isUuid(id))) {
-      onMessage('工作区、项目和关键词集必须填写有效 UUID。');
+      onMessage('请选择工作区、项目和关键词集。');
       return;
     }
     if (keywordSetIds.length === 0 || platformCodes.length === 0) {
@@ -214,7 +262,7 @@ function GeneratePanel({ onMessage }: { onMessage: (message: string | null) => v
     setSubmitting(true);
     onMessage(null);
     try {
-      const runId = await generateTopicPlan(
+      await generateTopicPlan(
         {
           keywordSetIds,
           maxTopics: Number(data.get('max_topics')),
@@ -225,7 +273,7 @@ function GeneratePanel({ onMessage }: { onMessage: (message: string | null) => v
         },
         csrf,
       );
-      onMessage(`选题生成任务已创建：${runId}`);
+      onMessage('选题生成已开始，完成后会出现在下方列表中。');
     } catch {
       onMessage('选题生成任务创建失败，请检查输入或稍后重试。');
     } finally {
@@ -245,9 +293,58 @@ function GeneratePanel({ onMessage }: { onMessage: (message: string | null) => v
         </button>
       </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <TextField label="工作区 UUID" name="workspace_id" required />
-        <TextField label="项目 UUID" name="project_id" required />
-        <TextField label="关键词集 UUID（逗号或换行分隔）" name="keyword_set_ids" required />
+        <label className="text-sm text-ink-700">
+          工作区
+          <select
+            className={controlClass}
+            name="workspace_id"
+            onChange={(event) => {
+              setWorkspaceId(event.target.value);
+              setProjectId('');
+            }}
+            required
+            value={workspaceId}
+          >
+            <option value="">请选择工作区</option>
+            {workspaces.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-ink-700">
+          项目
+          <select
+            className={controlClass}
+            disabled={!workspaceId}
+            name="project_id"
+            onChange={(event) => setProjectId(event.target.value)}
+            required
+            value={projectId}
+          >
+            <option value="">请选择项目</option>
+            {projects.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <fieldset>
+          <legend className="text-sm text-ink-700">关键词集</legend>
+          <div className="mt-2 space-y-2">
+            {keywordSets.map((item) => (
+              <label className="flex items-center gap-2 text-sm" key={item.id}>
+                <input name="keyword_set_ids" type="checkbox" value={item.id} />
+                {item.name}
+              </label>
+            ))}
+            {projectId && keywordSets.length === 0 ? (
+              <p className="text-xs text-ink-500">该项目还没有可用的关键词集。</p>
+            ) : null}
+          </div>
+        </fieldset>
         <TextField label="种子问题（逗号或换行分隔）" name="seed_queries" />
         <label className="text-sm text-ink-700">
           生成数量
@@ -312,7 +409,7 @@ function TopicCard({
           </dl>
           {!hasEvidence ? (
             <p className="mt-4 rounded-control bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-              缺少证据：该选题为高风险，补充证据前不能采纳为 Brief。
+              缺少资料依据：补充资料前不能采纳为内容需求。
             </p>
           ) : null}
         </div>
@@ -325,7 +422,7 @@ function TopicCard({
               onClick={() => void onAdopt(topic)}
               type="button"
             >
-              采纳为 Brief
+              采纳为内容需求
             </button>
             {!hasEvidence ? (
               <span className="sr-only" id={`risk-${topic.id}`}>

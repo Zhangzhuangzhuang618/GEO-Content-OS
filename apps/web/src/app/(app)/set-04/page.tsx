@@ -14,7 +14,7 @@ export default function AuditLogPage() {
         <p className="text-sm font-semibold tracking-[0.16em] text-brand-600 uppercase">系统设置</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">审计日志</h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          查看当前租户不可变的 Actor、Action、资源、变更前后值、Request ID、IP 和时间。
+          查看当前企业的重要操作、操作人、变更内容、来源地址和时间。
         </p>
       </header>
       <AuditLog />

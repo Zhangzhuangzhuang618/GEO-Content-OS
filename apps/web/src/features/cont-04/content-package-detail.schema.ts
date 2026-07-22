@@ -144,5 +144,10 @@ export interface PackageDetail {
   readonly variants: readonly VariantDetail[];
 }
 
-export type PackageAction = 'generate' | 'abandon' | 'archive' | 'submit-review';
+export type PackageAction =
+  | 'generate'
+  | 'quality-check'
+  | 'abandon'
+  | 'archive'
+  | 'submit-review';
 export type ModelPolicy = 'fast' | 'balanced' | 'quality';

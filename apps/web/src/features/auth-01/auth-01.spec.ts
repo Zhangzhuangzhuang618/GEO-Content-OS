@@ -46,7 +46,7 @@ test('uses the same generic error for unknown email and wrong password', async (
   });
 });
 
-test('submits remember-me and redirects successful login to tenant selection', async ({ page }) => {
+test('submits remember-me and starts automatic tenant entry after login', async ({ page }) => {
   let requestBody: Record<string, unknown> | undefined;
   await page.route('**/api/v1/auth/login', async (route) => {
     requestBody = route.request().postDataJSON() as Record<string, unknown>;
@@ -64,14 +64,29 @@ test('submits remember-me and redirects successful login to tenant selection', a
     });
   });
 
-  await page.goto('/auth-01');
+  await page.goto('/auth-01?return_to=%2Fcont-03%3Fstatus%3Ddraft');
   await page.getByLabel('企业邮箱').fill('member@example.com');
   await page.getByLabel('密码').fill('correct-password');
   await page.getByLabel('30 天内保持登录').check();
   await page.getByRole('button', { name: '登录' }).click();
 
-  await expect(page).toHaveURL(/\/auth-02$/u);
+  await expect(page).toHaveURL(/\/auth-02\?return_to=%2Fcont-03%3Fstatus%3Ddraft&auto=1$/u);
   expect(requestBody).toMatchObject({ remember_me: true });
+});
+
+test('explains an expired session without exposing technical details', async ({ page }) => {
+  await page.goto('/auth-01?reason=session_expired&return_to=%2Fdash-01');
+
+  await expect(page.getByRole('status')).toHaveText('登录已过期，请重新登录。完成后将返回原页面。');
+  await expect(page.getByRole('status')).not.toContainText(/cookie|session|401/iu);
+});
+
+test('explains logout and account switching in plain language', async ({ page }) => {
+  await page.goto('/auth-01?reason=logged_out');
+  await expect(page.getByRole('status')).toHaveText('你已安全退出登录。');
+
+  await page.goto('/auth-01?reason=switch_account&return_to=%2Fcont-03');
+  await expect(page.getByRole('status')).toHaveText('已退出原账号，请登录要切换到的账号。');
 });
 
 test('keeps password-reset responses generic and supports keyboard use on mobile', async ({

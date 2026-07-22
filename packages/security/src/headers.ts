@@ -1,6 +1,7 @@
 export interface WebSecurityHeaderOptions {
   readonly nonce: string;
   readonly production: boolean;
+  readonly secureTransport?: boolean;
   readonly connectOrigins?: readonly string[];
 }
 
@@ -11,10 +12,12 @@ export interface ApiSecurityHeaderOptions {
 export function createWebSecurityHeaders(
   options: WebSecurityHeaderOptions,
 ): Readonly<Record<string, string>> {
+  const secureTransport = options.secureTransport ?? options.production;
   const csp = buildContentSecurityPolicy({
     ...(options.connectOrigins ? { connectOrigins: options.connectOrigins } : {}),
     nonce: options.nonce,
     production: options.production,
+    secureTransport,
   });
 
   return Object.freeze({
@@ -26,7 +29,7 @@ export function createWebSecurityHeaders(
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'X-Permitted-Cross-Domain-Policies': 'none',
-    ...(options.production
+    ...(secureTransport
       ? { 'Strict-Transport-Security': 'max-age=63072000; includeSubDomains; preload' }
       : {}),
   });
@@ -84,7 +87,7 @@ function buildContentSecurityPolicy(options: WebSecurityHeaderOptions): string {
     `script-src ${scriptSources.join(' ')}`,
     `style-src ${styleSources.join(' ')}`,
     "worker-src 'self' blob:",
-    ...(options.production ? ['upgrade-insecure-requests'] : []),
+    ...(options.secureTransport ? ['upgrade-insecure-requests'] : []),
   ];
   return directives.join('; ');
 }

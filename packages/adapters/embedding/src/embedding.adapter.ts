@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { EmbeddingConfiguration } from './embedding.config.js';
 import { EmbeddingAdapterError, EmbeddingProviderError } from './embedding.errors.js';
+import { LocalEmbeddingProvider } from './local-embedding.provider.js';
 import { MockEmbeddingProvider } from './mock-embedding.provider.js';
 import {
   EMBEDDING_ADAPTER_VERSION,
@@ -19,7 +20,13 @@ export function createEmbeddingAdapter(
 ): EmbeddingAdapter {
   if (configuration.driver === 'disabled')
     return new DisabledEmbeddingAdapter(configuration.modelKey);
-  return new ProviderEmbeddingAdapter(configuration, provider ?? new MockEmbeddingProvider());
+  return new ProviderEmbeddingAdapter(
+    configuration,
+    provider ??
+      (configuration.driver === 'local'
+        ? new LocalEmbeddingProvider()
+        : new MockEmbeddingProvider()),
+  );
 }
 
 export class DisabledEmbeddingAdapter implements EmbeddingAdapter {

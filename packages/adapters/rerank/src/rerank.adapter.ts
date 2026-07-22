@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import type { RerankConfiguration } from './rerank.config.js';
 import { RerankAdapterError, RerankProviderError } from './rerank.errors.js';
+import { LocalRerankProvider } from './local-rerank.provider.js';
 import { MockRerankProvider } from './mock-rerank.provider.js';
 import {
   RERANK_ADAPTER_VERSION,
@@ -18,7 +19,11 @@ export function createRerankAdapter(
 ): RerankAdapter {
   validateConfiguration(configuration);
   if (configuration.driver === 'disabled') return new DisabledRerankAdapter(configuration.modelKey);
-  return new ProviderRerankAdapter(configuration, provider ?? new MockRerankProvider());
+  return new ProviderRerankAdapter(
+    configuration,
+    provider ??
+      (configuration.driver === 'local' ? new LocalRerankProvider() : new MockRerankProvider()),
+  );
 }
 
 export class DisabledRerankAdapter implements RerankAdapter {
@@ -174,7 +179,7 @@ export class ProviderRerankAdapter implements RerankAdapter {
 
 function validateConfiguration(configuration: RerankConfiguration): void {
   if (
-    (configuration.driver !== 'disabled' && configuration.driver !== 'mock') ||
+    !['disabled', 'local', 'mock'].includes(configuration.driver) ||
     !Number.isSafeInteger(configuration.maxDocuments) ||
     configuration.maxDocuments < 1 ||
     configuration.maxDocuments > 100 ||
