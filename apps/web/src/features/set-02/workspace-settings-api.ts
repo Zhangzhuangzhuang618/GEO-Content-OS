@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   WorkspacePageSchema,
   WorkspaceResponseSchema,
@@ -80,7 +82,7 @@ async function parseResponse(response: Response): Promise<Workspace> {
 function writeHeaders(csrf: string, version: number, operation: string) {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'if-match': `"${version}"`,
     'x-csrf-token': csrf,
   };

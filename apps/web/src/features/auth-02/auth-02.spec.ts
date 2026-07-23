@@ -4,6 +4,12 @@ const TENANT_A_ID = '10000000-0000-4000-8000-000000000001';
 const TENANT_B_ID = '10000000-0000-4000-8000-000000000002';
 
 test('shows only active memberships and switches an available tenant', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    });
+  });
   let switchCalls = 0;
   let switchRequest:
     | { readonly body: Record<string, unknown>; readonly headers: Record<string, string> }

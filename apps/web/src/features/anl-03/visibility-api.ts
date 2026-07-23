@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   ImportResponseSchema,
   ObservationResponseSchema,
@@ -41,7 +43,7 @@ export async function createVisibilityObservation(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `visibility-create-${crypto.randomUUID()}`,
+      'idempotency-key': `visibility-create-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',
@@ -58,7 +60,7 @@ export async function importVisibilityObservations(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `visibility-import-${crypto.randomUUID()}`,
+      'idempotency-key': `visibility-import-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

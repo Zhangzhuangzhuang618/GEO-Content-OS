@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   InvitationPageResponseSchema,
   InvitationResponseSchema,
@@ -125,7 +127,7 @@ async function parseMutation<T>(
 function writeHeaders(csrf: string, operation: string) {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'x-csrf-token': csrf,
   };
 }

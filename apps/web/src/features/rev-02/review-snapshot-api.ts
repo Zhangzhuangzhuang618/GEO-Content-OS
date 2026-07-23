@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import { RequirementResponseSchema, ReviewSnapshotResponseSchema } from './review-snapshot.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
@@ -61,7 +63,7 @@ async function write(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `review-${action}-${crypto.randomUUID()}`,
+      'idempotency-key': `review-${action}-${createRequestUuid()}`,
       'if-match': `"${version}"`,
       'x-csrf-token': csrf,
     },

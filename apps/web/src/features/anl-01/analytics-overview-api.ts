@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   CostsResponseSchema,
   ExportResponseSchema,
@@ -29,7 +31,7 @@ export async function requestAnalyticsExport(filters: AnalyticsFilters) {
   query.set('format', 'csv');
   const response = await fetch(`${API_ORIGIN}/api/v1/analytics/export?${query}`, {
     credentials: 'include',
-    headers: { 'idempotency-key': `analytics-export-${crypto.randomUUID()}` },
+    headers: { 'idempotency-key': `analytics-export-${createRequestUuid()}` },
     method: 'GET',
   });
   if (!response.ok) throw new AnalyticsRequestError(response.status);

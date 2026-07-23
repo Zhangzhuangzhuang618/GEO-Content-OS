@@ -305,7 +305,7 @@ Web 已配置同源 `/api/v1` 反向代理，浏览器访问 Web 时不需要直
 1. 使用 `http://<Windows主机IP>:3000`；
 2. 在 Windows Defender 防火墙中仅向可信网段开放 Web 端口；
 3. 不要向公网暴露 5432、6379、9000；
-4. 正式环境应在 Web 前增加 HTTPS 反向代理；
+4. Web 写操作已兼容普通局域网 HTTP 环境；正式环境仍应在 Web 前增加 HTTPS 反向代理；
 5. `PUBLIC_APP_URL`、Cookie Secure 策略和可信代理头需要按正式域名配置。
 
 ## 8. Owner 初始化

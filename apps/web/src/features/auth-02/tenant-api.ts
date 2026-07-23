@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import { TenantChoicesResponseSchema, type TenantChoice } from './tenant.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
@@ -21,7 +23,7 @@ export async function switchTenant(tenantId: string, csrf: string): Promise<void
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `tenant-switch-${crypto.randomUUID()}`,
+      'idempotency-key': `tenant-switch-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

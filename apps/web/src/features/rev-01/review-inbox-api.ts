@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   ReviewClaimResponseSchema,
   ReviewInboxPageSchema,
@@ -40,7 +42,7 @@ export async function claimReview(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `review-claim-${crypto.randomUUID()}`,
+      'idempotency-key': `review-claim-${createRequestUuid()}`,
       'if-match': `"${version}"`,
       'x-csrf-token': csrf,
     },

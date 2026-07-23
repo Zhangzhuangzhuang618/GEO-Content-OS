@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import { ContentPackageResponseSchema } from '../cont-03/content-package-list.schema';
 import {
   ContentPackageBaseDetailResponseSchema,
@@ -129,7 +131,7 @@ async function write(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `${input.operation}-${crypto.randomUUID()}`,
+      'idempotency-key': `${input.operation}-${createRequestUuid()}`,
       ...(input.version === undefined ? {} : { 'if-match': `"${input.version}"` }),
       'x-csrf-token': csrf,
     },

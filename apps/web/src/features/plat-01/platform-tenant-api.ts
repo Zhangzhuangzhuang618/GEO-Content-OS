@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   SessionResponseSchema,
   SupportGrantResponseSchema,
@@ -52,7 +54,7 @@ export async function createPlatformTenant(
     },
     csrf,
     TenantResponseSchema,
-    { idempotency: `tenant-create-${crypto.randomUUID()}` },
+    { idempotency: `tenant-create-${createRequestUuid()}` },
   );
 }
 
@@ -92,7 +94,7 @@ export async function createSupportGrant(
     },
     csrf,
     SupportGrantResponseSchema,
-    { idempotency: `support-grant-${crypto.randomUUID()}` },
+    { idempotency: `support-grant-${createRequestUuid()}` },
   );
 }
 

@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   BatchUrlPreviewResponseSchema,
   ProjectPageSchema,
@@ -40,7 +42,7 @@ export async function uploadSource(
   const response = await fetch(`${API_ORIGIN}/api/v1/sources`, {
     body,
     credentials: 'include',
-    headers: { 'idempotency-key': `source-upload-${crypto.randomUUID()}`, 'x-csrf-token': csrf },
+    headers: { 'idempotency-key': `source-upload-${createRequestUuid()}`, 'x-csrf-token': csrf },
     method: 'POST',
   });
   if (!response.ok) throw createUploadRequestError(response);

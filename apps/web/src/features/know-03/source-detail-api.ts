@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   IngestJobResponseSchema,
   SourceDetailResponseSchema,
@@ -67,7 +69,7 @@ function scopeQuery(scope: SourceDetailScope): URLSearchParams {
 function writeHeaders(csrf: string, operation: string): Record<string, string> {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'x-csrf-token': csrf,
   };
 }
