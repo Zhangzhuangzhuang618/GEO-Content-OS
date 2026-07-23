@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   BrandProfileResponseSchema,
   WorkspacePageSchema,
@@ -98,7 +100,7 @@ function splitLines(value: string): string[] {
 function writeHeaders(csrf: string, operation: string): Record<string, string> {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'x-csrf-token': csrf,
   };
 }

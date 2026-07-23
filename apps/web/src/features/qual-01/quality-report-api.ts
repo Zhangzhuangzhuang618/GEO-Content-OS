@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   QualityMutationResponseSchema,
   QualityVariantDetailResponseSchema,
@@ -52,7 +54,7 @@ async function write(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `${input.operation}-${crypto.randomUUID()}`,
+      'idempotency-key': `${input.operation}-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

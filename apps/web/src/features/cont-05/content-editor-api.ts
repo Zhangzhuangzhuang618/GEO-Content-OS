@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   ContentDiffResponseSchema,
   ContentVersionSchema,
@@ -108,7 +110,7 @@ export async function rollbackVersion(
 function writeHeaders(operation: string, csrf: string, version: number) {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'if-match': `"${version}"`,
     'x-csrf-token': csrf,
   };

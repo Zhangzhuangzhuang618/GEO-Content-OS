@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import { BrandProfileResponseSchema } from '../str-02/brand-profile.schema';
 import {
   BrandProfilePageSchema,
@@ -41,7 +43,7 @@ async function mutate(
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `brand-profile-${action}-${crypto.randomUUID()}`,
+      'idempotency-key': `brand-profile-${action}-${createRequestUuid()}`,
       'if-match': `"${profile.version}"`,
       'x-csrf-token': csrf,
     },

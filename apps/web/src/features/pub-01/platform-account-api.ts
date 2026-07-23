@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   CapabilityResponseSchema,
   PlatformAccountPageSchema,
@@ -199,7 +201,7 @@ async function parseAccount(response: Response) {
 function writeHeaders(csrf: string, version?: number, operation?: string) {
   return {
     'content-type': 'application/json',
-    ...(operation ? { 'idempotency-key': `${operation}-${crypto.randomUUID()}` } : {}),
+    ...(operation ? { 'idempotency-key': `${operation}-${createRequestUuid()}` } : {}),
     ...(version === undefined ? {} : { 'if-match': `"${version}"` }),
     'x-csrf-token': csrf,
   };

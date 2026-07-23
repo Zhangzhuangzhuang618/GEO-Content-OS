@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   PromptPageResponseSchema,
   PromptResponseSchema,
@@ -176,7 +178,7 @@ async function parseMutation<T>(
 function createHeaders(csrf: string, operation: string) {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'x-csrf-token': csrf,
   };
 }

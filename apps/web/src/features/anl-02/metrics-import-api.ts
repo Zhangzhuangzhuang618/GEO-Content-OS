@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import { ImportJobResponseSchema, type ImportJob } from './metrics-import.schema';
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 export async function uploadMetrics(
@@ -11,7 +13,7 @@ export async function uploadMetrics(
   const response = await fetch(`${API_ORIGIN}/api/v1/metrics/import`, {
     body,
     credentials: 'include',
-    headers: { 'idempotency-key': `metrics-import-${crypto.randomUUID()}`, 'x-csrf-token': csrf },
+    headers: { 'idempotency-key': `metrics-import-${createRequestUuid()}`, 'x-csrf-token': csrf },
     method: 'POST',
   });
   return parse(response);
@@ -34,7 +36,7 @@ export async function rollbackImport(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `metrics-rollback-${job.id}-${crypto.randomUUID()}`,
+      'idempotency-key': `metrics-rollback-${job.id}-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

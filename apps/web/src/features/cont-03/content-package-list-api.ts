@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   ContentPackageDetailResponseSchema,
   ContentPackagePageSchema,
@@ -98,7 +100,7 @@ export async function copyContentPackage(item: ContentPackage, csrf: string) {
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `content-package-copy-${crypto.randomUUID()}`,
+      'idempotency-key': `content-package-copy-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

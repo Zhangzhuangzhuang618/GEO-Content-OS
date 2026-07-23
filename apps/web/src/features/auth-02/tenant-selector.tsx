@@ -84,7 +84,7 @@ export function TenantSelector() {
         redirectToLogin();
         return true;
       }
-      setSwitchError('无法切换到该企业。成员权限可能已变更，请刷新后重试。');
+      setSwitchError(tenantSwitchErrorMessage(error));
       setSwitchingId(null);
       return false;
     }
@@ -223,6 +223,17 @@ export function TenantSelector() {
       </div>
     </section>
   );
+}
+
+function tenantSwitchErrorMessage(error: unknown): string {
+  if (!(error instanceof TenantRequestError)) {
+    return '浏览器无法发起安全请求，请刷新页面；若仍失败，请升级浏览器或联系管理员。';
+  }
+  if (error.status === 403) return '安全校验失败，请刷新页面后重新进入企业。';
+  if (error.status === 404) return '你已无法进入该企业，请联系企业管理员确认成员资格。';
+  if (error.status === 409) return '企业切换状态发生冲突，请刷新页面后重试。';
+  if (error.status >= 500) return '企业服务暂时不可用，请稍后重试。';
+  return '暂时无法进入该企业，请刷新页面后重试。';
 }
 
 function isAutomaticEntry(): boolean {

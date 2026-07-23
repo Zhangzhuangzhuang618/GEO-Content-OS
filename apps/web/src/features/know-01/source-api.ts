@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   SourceDetailSchema,
   SourcePageSchema,
@@ -102,7 +104,7 @@ export class SourceRequestError extends Error {
 function writeHeaders(csrf: string, operation: string): Record<string, string> {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'x-csrf-token': csrf,
   };
 }

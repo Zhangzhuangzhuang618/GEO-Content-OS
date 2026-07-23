@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import type { ContentVariant } from '../cont-03/content-package-list.schema';
 import {
   ContentPackageDetailResponseSchema,
@@ -108,7 +110,7 @@ export async function createPublishJob(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `publish-calendar-${crypto.randomUUID()}`,
+      'idempotency-key': `publish-calendar-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

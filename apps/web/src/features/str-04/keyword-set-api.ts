@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   KeywordListResponseSchema,
   KeywordSetDetailResponseSchema,
@@ -19,7 +21,7 @@ export async function createKeywordSet(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `keyword-set-create-${crypto.randomUUID()}`,
+      'idempotency-key': `keyword-set-create-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',
@@ -70,7 +72,7 @@ export async function upsertKeywords(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `keyword-upsert-${crypto.randomUUID()}`,
+      'idempotency-key': `keyword-upsert-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

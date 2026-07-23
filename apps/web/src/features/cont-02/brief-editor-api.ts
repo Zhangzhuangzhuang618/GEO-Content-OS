@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import type { Brief } from '../cont-01/brief-list.schema';
 import {
   BriefResponseSchema,
@@ -39,7 +41,7 @@ export async function saveBrief(
       credentials: 'include',
       headers: {
         'content-type': 'application/json',
-        'idempotency-key': `brief-save-${crypto.randomUUID()}`,
+        'idempotency-key': `brief-save-${createRequestUuid()}`,
         ...(current ? { 'if-match': `"${current.version}"` } : {}),
         'x-csrf-token': csrf,
       },
@@ -59,7 +61,7 @@ export async function createContentPackage(brief: Brief, csrf: string): Promise<
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `content-package-create-${crypto.randomUUID()}`,
+      'idempotency-key': `content-package-create-${createRequestUuid()}`,
       'x-csrf-token': csrf,
     },
     method: 'POST',

@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   FactPageSchema,
   FactResponseSchema,
@@ -50,7 +52,7 @@ export async function adjudicateFact(
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `fact-adjudication-${crypto.randomUUID()}`,
+      'idempotency-key': `fact-adjudication-${createRequestUuid()}`,
       'if-match': `"${fact.updated_at}"`,
       'x-csrf-token': csrf,
     },

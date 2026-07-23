@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   BriefResponseSchema,
   GenerationRunResponseSchema,
@@ -75,7 +77,7 @@ export class TopicPlanningRequestError extends Error {
 function writeHeaders(csrf: string, operation: string): Record<string, string> {
   return {
     'content-type': 'application/json',
-    'idempotency-key': `${operation}-${crypto.randomUUID()}`,
+    'idempotency-key': `${operation}-${createRequestUuid()}`,
     'x-csrf-token': csrf,
   };
 }

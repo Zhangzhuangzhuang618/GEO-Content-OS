@@ -1,3 +1,5 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import type { PublishJob } from '../pub-02/publishing-calendar.schema';
 import {
   PublishJobDetailResponseSchema,
@@ -76,7 +78,7 @@ async function parseJob(response: Response): Promise<PublishJob> {
 function writeHeaders(csrf: string, version: number, idempotencyKey?: string) {
   return {
     'content-type': 'application/json',
-    ...(idempotencyKey ? { 'idempotency-key': `${idempotencyKey}-${crypto.randomUUID()}` } : {}),
+    ...(idempotencyKey ? { 'idempotency-key': `${idempotencyKey}-${createRequestUuid()}` } : {}),
     'if-match': `"${version}"`,
     'x-csrf-token': csrf,
   };
