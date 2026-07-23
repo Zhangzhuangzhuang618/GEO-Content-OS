@@ -1,0 +1,30 @@
+{
+  "name": "@geo-content-os/adapter-model-deepseek",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Configuration-driven DeepSeek implementation of the Model Adapter contract",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/adapter-model build && tsc --project tsconfig.build.json --pretty false",
+    "test": "pnpm --filter @geo-content-os/adapter-model build && vitest run --config vitest.config.ts",
+    "test:integration": "pnpm test",
+    "typecheck": "pnpm --filter @geo-content-os/adapter-model build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-model": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
+}

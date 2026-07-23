@@ -1,0 +1,4477 @@
+{
+  "dataset_version": "rag-eval-v1",
+  "predictions": [
+    {
+      "case_id": "rag-001",
+      "citations": [
+        {
+          "chunk_id": "chunk-001-evidence-1",
+          "quote": "产品001的官方发布日期为2026年9月1日。",
+          "text_hash": "900c8629f30a509439225543d71c7e1a34ecd9ab3edb9359dce2403d13da9bba"
+        },
+        {
+          "chunk_id": "chunk-001-evidence-2",
+          "quote": "产品001的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "31c424f34ce724b3673355337284814561565f62ca2a3f00c416f85350e81ea5"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-002",
+      "citations": [
+        {
+          "chunk_id": "chunk-002-evidence-1",
+          "quote": "产品002的官方建议零售价为1999元。",
+          "text_hash": "577ee5a1d9b6dd94800e89c5835f56b45ca1c1276cb8bcb7d44a559ec9d8d3a6"
+        },
+        {
+          "chunk_id": "chunk-002-evidence-2",
+          "quote": "产品002在中国大陆以人民币计价。",
+          "text_hash": "4fd8058f1f08f2290fcf36d1e97ad17b9db21efd37e1013b324b4af02a47c484"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-003",
+      "citations": [
+        {
+          "chunk_id": "chunk-003-evidence-1",
+          "quote": "产品003符合GB/T 35273-2020标准。",
+          "text_hash": "f296afc760c55d32c0549376bb3cdb7a73161d3524570e06a271da84f2ea7f4a"
+        },
+        {
+          "chunk_id": "chunk-003-evidence-2",
+          "quote": "产品003的认证有效期截至2027年12月31日。",
+          "text_hash": "da6a8ed1e31394bf64b38d02168df65ed6bb3bcf6429bc08c30f0c2e4521ac79"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-004",
+      "citations": [
+        {
+          "chunk_id": "chunk-004-evidence-1",
+          "quote": "产品004净重1.25千克。",
+          "text_hash": "e57ac76a03390b9d55eca83fd111aceabd7f9f4c339ddb20271fc83f1d995b3b"
+        },
+        {
+          "chunk_id": "chunk-004-evidence-2",
+          "quote": "产品004尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "3111a00fbee1692eeb6d98ed70a0fa7d3499561ea31db57c4482021a09ade5f8"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-005",
+      "citations": [
+        {
+          "chunk_id": "chunk-005-evidence-1",
+          "quote": "产品005兼容Windows和macOS。",
+          "text_hash": "23e78be61ad4c51bc3a3feb400fbc032f052a8322295abd4c8f76f3472467928"
+        },
+        {
+          "chunk_id": "chunk-005-evidence-2",
+          "quote": "产品005要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "ea492e1abcbd2d15c60239f975e47a95bc7b89c326a1e6d5709169d1bddedafb"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-006",
+      "citations": [
+        {
+          "chunk_id": "chunk-006-evidence-1",
+          "quote": "产品006人工客服时间为工作日9:00至18:00。",
+          "text_hash": "547bfe2f2dc039172574b94b33ace2aee27384a0e96b47528d8a240fc0922f76"
+        },
+        {
+          "chunk_id": "chunk-006-evidence-2",
+          "quote": "产品006上门服务覆盖中国大陆省会城市。",
+          "text_hash": "9befa23f853176110e7ce6642089338d114ec36a2c1470d67e82cf3bddf091c4"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-007",
+      "citations": [
+        {
+          "chunk_id": "chunk-007-evidence-1",
+          "quote": "产品007建议每日使用不超过2次。",
+          "text_hash": "eaf65ad9415a5a6c3d47a401ae2916fe9311f29e77d3efa082e2b4360ca52ba8"
+        },
+        {
+          "chunk_id": "chunk-007-evidence-2",
+          "quote": "产品007不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "12909dfb9b3ecdaf7a6dd02a45e74376a6994e877708efa10d6e4282232e742a"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-008",
+      "citations": [
+        {
+          "chunk_id": "chunk-008-evidence-1",
+          "quote": "产品008退换政策自2026年1月1日起生效。",
+          "text_hash": "951d08ca3a9a15e38eaf2472939ae4cf6af1275ae3d469b7f00332397a64b6ed"
+        },
+        {
+          "chunk_id": "chunk-008-evidence-2",
+          "quote": "产品008退换申请须在签收后7日内提交。",
+          "text_hash": "00114bc0109c6cae72e6b3b5d6653cc4b9fd145499afe702ef3141e92383c9af"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-009",
+      "citations": [
+        {
+          "chunk_id": "chunk-009-evidence-1",
+          "quote": "产品009首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "beb931fc2c4479870e4a0b5ea41cbe81d177660b3974a4ab8965709e98d9f7a9"
+        },
+        {
+          "chunk_id": "chunk-009-evidence-2",
+          "quote": "产品009仅通过官网和授权经销商销售。",
+          "text_hash": "55ddd71e8b8502821a749e6ed462c22bc087bcf1177ddf095b633a4f0f1a6892"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-010",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-011",
+      "citations": [
+        {
+          "chunk_id": "chunk-011-evidence-1",
+          "quote": "产品011的官方发布日期为2026年9月1日。",
+          "text_hash": "469e38bec9f7d245a02b63114212185c6ed5e401aede8075a54e8f2efb275209"
+        },
+        {
+          "chunk_id": "chunk-011-evidence-2",
+          "quote": "产品011的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "67092fe44bac0f00a9d4cf0159ce5a53157dd1aaac468bedccb21b87642d124e"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-012",
+      "citations": [
+        {
+          "chunk_id": "chunk-012-evidence-1",
+          "quote": "产品012的官方建议零售价为1999元。",
+          "text_hash": "58f1eb1a666c23fd879cd50459bc1853c91d0eaa6ff7a539cd8f062b6ccd8d9e"
+        },
+        {
+          "chunk_id": "chunk-012-evidence-2",
+          "quote": "产品012在中国大陆以人民币计价。",
+          "text_hash": "dec0f6fb886d5ab341bdded37d800a9a48d160f2fc45a4dfc49c7d70fb0aa303"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-013",
+      "citations": [
+        {
+          "chunk_id": "chunk-013-evidence-1",
+          "quote": "产品013符合GB/T 35273-2020标准。",
+          "text_hash": "7a2524a48a36ceae0bee694c821ab4e1f23659626e7e1636b8549fe55268c12c"
+        },
+        {
+          "chunk_id": "chunk-013-evidence-2",
+          "quote": "产品013的认证有效期截至2027年12月31日。",
+          "text_hash": "01aa98c376b59b2dd46d51bb5d1e24271e2c353ed27ed8a80bc816c20967ef97"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-014",
+      "citations": [
+        {
+          "chunk_id": "chunk-014-evidence-1",
+          "quote": "产品014净重1.25千克。",
+          "text_hash": "86c3c40a47661e41e3cb45354d36e4d36142e0d0707434949d8513bd8f3c87a1"
+        },
+        {
+          "chunk_id": "chunk-014-evidence-2",
+          "quote": "产品014尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "29a5b695aaf97cc549243a771a9512141b7a0c34c9b3fba72e56811c75fde1c0"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-015",
+      "citations": [
+        {
+          "chunk_id": "chunk-015-evidence-1",
+          "quote": "产品015兼容Windows和macOS。",
+          "text_hash": "69a51ba6ff1f947b565684bf4de225cfab37e9e7622d6ca2d2a30544d18716cb"
+        },
+        {
+          "chunk_id": "chunk-015-evidence-2",
+          "quote": "产品015要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "b3b3fa574cb91a745cd5add151d15a862b92d20ac4d367df9bbaaa06ae9ff1db"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-016",
+      "citations": [
+        {
+          "chunk_id": "chunk-016-evidence-1",
+          "quote": "产品016人工客服时间为工作日9:00至18:00。",
+          "text_hash": "363207624796e6ebf9865987bf2fa5695edee0787b9761bb5e839cabca9027ec"
+        },
+        {
+          "chunk_id": "chunk-016-evidence-2",
+          "quote": "产品016上门服务覆盖中国大陆省会城市。",
+          "text_hash": "31263a0e87a822f5e9b9aa6a11e53b7d6f5177297b40b1b5ba79daa9c9b0d76c"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-017",
+      "citations": [
+        {
+          "chunk_id": "chunk-017-evidence-1",
+          "quote": "产品017建议每日使用不超过2次。",
+          "text_hash": "83092039a498cbd97ff4b4fbc0ec77ffd5511d5a7b2a8a239eb970becc11006d"
+        },
+        {
+          "chunk_id": "chunk-017-evidence-2",
+          "quote": "产品017不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "537eaa9a245be87242974c51908de820d0d22731b15b2e5ab3eec8df10ef7099"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-018",
+      "citations": [
+        {
+          "chunk_id": "chunk-018-evidence-1",
+          "quote": "产品018退换政策自2026年1月1日起生效。",
+          "text_hash": "2c29af5a993ee3bc79fef0d29011241ef1743e1dad05c7d0c0ee7b9d613bba5c"
+        },
+        {
+          "chunk_id": "chunk-018-evidence-2",
+          "quote": "产品018退换申请须在签收后7日内提交。",
+          "text_hash": "5d46246932565a935e08110fb76755cb602c3c754fef816e6e22379ea90eb5d4"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-019",
+      "citations": [
+        {
+          "chunk_id": "chunk-019-evidence-1",
+          "quote": "产品019首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "960aa6fc4096cee7e01fa3cb5db318539cf496e84578898d3f37819f4e6155de"
+        },
+        {
+          "chunk_id": "chunk-019-evidence-2",
+          "quote": "产品019仅通过官网和授权经销商销售。",
+          "text_hash": "7831f42f7d1eb57c832a2dc79bd0b328f2f09f2a6b0e8b2d9be3f43b1631ea63"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-020",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-021",
+      "citations": [
+        {
+          "chunk_id": "chunk-021-evidence-1",
+          "quote": "产品021的官方发布日期为2026年9月1日。",
+          "text_hash": "20062e4289d61b334e1080d05fd1dde0bb2943de055c12632a8ca421ed1d1e04"
+        },
+        {
+          "chunk_id": "chunk-021-evidence-2",
+          "quote": "产品021的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "8afcda046517aad9f1d4abc4833834197a293827b39680209207baa428171d5e"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-022",
+      "citations": [
+        {
+          "chunk_id": "chunk-022-evidence-1",
+          "quote": "产品022的官方建议零售价为1999元。",
+          "text_hash": "a6f8956a3f289876e55175eda196649a043c500c5b956a312b4ea35eed28d657"
+        },
+        {
+          "chunk_id": "chunk-022-evidence-2",
+          "quote": "产品022在中国大陆以人民币计价。",
+          "text_hash": "6efb47f17cf0e9d8ace50076e89c2029457f172c4bef14d42f05f062101ceb8b"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-023",
+      "citations": [
+        {
+          "chunk_id": "chunk-023-evidence-1",
+          "quote": "产品023符合GB/T 35273-2020标准。",
+          "text_hash": "e430c2e049df7e969a978a3f3dafac029efb9b68a6c90c77f924144a1d064a84"
+        },
+        {
+          "chunk_id": "chunk-023-evidence-2",
+          "quote": "产品023的认证有效期截至2027年12月31日。",
+          "text_hash": "270370b346cee438c19ac37ebbc82529d85f04320dc62139d3bf5decd0c2592e"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-024",
+      "citations": [
+        {
+          "chunk_id": "chunk-024-evidence-1",
+          "quote": "产品024净重1.25千克。",
+          "text_hash": "c91c8649b42de3d35a1a6934b6b28dbbf84d7c3170b523fe88491603df2ede87"
+        },
+        {
+          "chunk_id": "chunk-024-evidence-2",
+          "quote": "产品024尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "ba905effa9390b88394af9ac8b975c03ba71645b24c9bc3bb29d2737adfe4d6b"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-025",
+      "citations": [
+        {
+          "chunk_id": "chunk-025-evidence-1",
+          "quote": "产品025兼容Windows和macOS。",
+          "text_hash": "77b8fdb491ebda9bd7dac744f844628a15cc50854f656662d9fbc663ca015e9a"
+        },
+        {
+          "chunk_id": "chunk-025-evidence-2",
+          "quote": "产品025要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "0620a8cb385ed96323fce354842064283f9b7983036748c46e7232c4ad24cd1b"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-026",
+      "citations": [
+        {
+          "chunk_id": "chunk-026-evidence-1",
+          "quote": "产品026人工客服时间为工作日9:00至18:00。",
+          "text_hash": "89bf91b57dae99d5f90af2e0da32a136426f9fdd1ced6906b3f9eb6dd3bfaa9e"
+        },
+        {
+          "chunk_id": "chunk-026-evidence-2",
+          "quote": "产品026上门服务覆盖中国大陆省会城市。",
+          "text_hash": "d1d3d35c7c72046a38f7ac444516b2484c73ff5bb8cfcee4823ac7a696bf0681"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-027",
+      "citations": [
+        {
+          "chunk_id": "chunk-027-evidence-1",
+          "quote": "产品027建议每日使用不超过2次。",
+          "text_hash": "c009dced8e15a61c80ce13527e77252e3808d56dd532ea10f3ce4f3101c9d4da"
+        },
+        {
+          "chunk_id": "chunk-027-evidence-2",
+          "quote": "产品027不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "3a9e22a0838b1d241031a2437a3fc5b25ac661bc509d2b0e7781a28ae1d80355"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-028",
+      "citations": [
+        {
+          "chunk_id": "chunk-028-evidence-1",
+          "quote": "产品028退换政策自2026年1月1日起生效。",
+          "text_hash": "baa0ffa31a90795cad078666704451ad728be1ca1eafe86b2cdbd009165d1cb4"
+        },
+        {
+          "chunk_id": "chunk-028-evidence-2",
+          "quote": "产品028退换申请须在签收后7日内提交。",
+          "text_hash": "f170d762d4c9b1605bd1531ac4bc4e5e670c8b317070688b0087e350d8213803"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-029",
+      "citations": [
+        {
+          "chunk_id": "chunk-029-evidence-1",
+          "quote": "产品029首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "2047350ae1bfa05b57218a8e12f7b382eb3a66cc1e9ec4d1e76e7c34df460434"
+        },
+        {
+          "chunk_id": "chunk-029-evidence-2",
+          "quote": "产品029仅通过官网和授权经销商销售。",
+          "text_hash": "f8fd28852a6c213acef54b2cc1245b98fe9b7bcda05923c9c43a23d3fd088948"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-030",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-031",
+      "citations": [
+        {
+          "chunk_id": "chunk-031-evidence-1",
+          "quote": "产品031的官方发布日期为2026年9月1日。",
+          "text_hash": "aa9deb0801b3cf9f4289d612710b1b9e35bb3caf78a0619732b66b393b281e82"
+        },
+        {
+          "chunk_id": "chunk-031-evidence-2",
+          "quote": "产品031的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "b4a050598e1745d9b2051793a9cc5af868284d7a76fadef1f5785642accfec52"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-032",
+      "citations": [
+        {
+          "chunk_id": "chunk-032-evidence-1",
+          "quote": "产品032的官方建议零售价为1999元。",
+          "text_hash": "2d16b28c208e3656f8337282b2441b83f9659736d62419205c634f0b7bd0b627"
+        },
+        {
+          "chunk_id": "chunk-032-evidence-2",
+          "quote": "产品032在中国大陆以人民币计价。",
+          "text_hash": "3c9e18a15f1c8279fe24df39a526500fa8681d25095113e976c0865bdc54bde8"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-033",
+      "citations": [
+        {
+          "chunk_id": "chunk-033-evidence-1",
+          "quote": "产品033符合GB/T 35273-2020标准。",
+          "text_hash": "9190673a1af84e3fb8060dbe77ce6a62826668b6e27998f7cd8a0970b1d9b57e"
+        },
+        {
+          "chunk_id": "chunk-033-evidence-2",
+          "quote": "产品033的认证有效期截至2027年12月31日。",
+          "text_hash": "e62621271cb44d4b8aa81c70a2e7488c1d5d161e0542b3d407be55b72e5ff8a5"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-034",
+      "citations": [
+        {
+          "chunk_id": "chunk-034-evidence-1",
+          "quote": "产品034净重1.25千克。",
+          "text_hash": "048a71bcd33b31642e2bd2008337113bf72088072250ce157c6142f14a3ed5cc"
+        },
+        {
+          "chunk_id": "chunk-034-evidence-2",
+          "quote": "产品034尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "bc0107792d2043466fb16176dcc78da8e77f254987c2cb4b1027eaae9d8f54b4"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-035",
+      "citations": [
+        {
+          "chunk_id": "chunk-035-evidence-1",
+          "quote": "产品035兼容Windows和macOS。",
+          "text_hash": "3fa003bea57b181ea3fda3fe059c716ded0969bc16478dd0f00d973ee767f37f"
+        },
+        {
+          "chunk_id": "chunk-035-evidence-2",
+          "quote": "产品035要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "f4e0a457698e5205c36cd93f0245131efd26d48cefc0783e60050531ca6f372b"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-036",
+      "citations": [
+        {
+          "chunk_id": "chunk-036-evidence-1",
+          "quote": "产品036人工客服时间为工作日9:00至18:00。",
+          "text_hash": "93d3e7e246589232b1af65c72e886cd454250eeb760b879ffa9264d5976b9c15"
+        },
+        {
+          "chunk_id": "chunk-036-evidence-2",
+          "quote": "产品036上门服务覆盖中国大陆省会城市。",
+          "text_hash": "2f8a2b6b23144056447903d12d40ec2574f2e49269316fedd3842b7419f1745c"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-037",
+      "citations": [
+        {
+          "chunk_id": "chunk-037-evidence-1",
+          "quote": "产品037建议每日使用不超过2次。",
+          "text_hash": "8abd124514ed6c58f7388595656281ed7d0ef9ec82486bb24817a1d3a4a2448e"
+        },
+        {
+          "chunk_id": "chunk-037-evidence-2",
+          "quote": "产品037不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "2596045e99bd2da52c82cb027e8c8362b68b630118728b4fa4a006e1342d2388"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-038",
+      "citations": [
+        {
+          "chunk_id": "chunk-038-evidence-1",
+          "quote": "产品038退换政策自2026年1月1日起生效。",
+          "text_hash": "d5745920e56c2a358a2539eb191fb413a63f9539940e303e7820273c926906ba"
+        },
+        {
+          "chunk_id": "chunk-038-evidence-2",
+          "quote": "产品038退换申请须在签收后7日内提交。",
+          "text_hash": "b395da99eb205e0122bb695a5a9363aaeda11493dc253fff4897e1b929638ffe"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-039",
+      "citations": [
+        {
+          "chunk_id": "chunk-039-evidence-1",
+          "quote": "产品039首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "d4c937212f1906f11c2cbe8e82b6419e7e86d4c509a82a998c8d47a329c6cba8"
+        },
+        {
+          "chunk_id": "chunk-039-evidence-2",
+          "quote": "产品039仅通过官网和授权经销商销售。",
+          "text_hash": "e9f395999f905f2c2f7f5090e7f1c3a6cc64122212375945bab643a1d2ab54c4"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-040",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-041",
+      "citations": [
+        {
+          "chunk_id": "chunk-041-evidence-1",
+          "quote": "产品041的官方发布日期为2026年9月1日。",
+          "text_hash": "4ea372d59c35b3631c7c1d2f242fd38e2b8a6a6b6b71d14cf248ae40b5089e38"
+        },
+        {
+          "chunk_id": "chunk-041-evidence-2",
+          "quote": "产品041的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "3d3b465b4811fa6cb328232bdc8e9b096b8bce69343c8ff5d36b2080c9c2af28"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-042",
+      "citations": [
+        {
+          "chunk_id": "chunk-042-evidence-1",
+          "quote": "产品042的官方建议零售价为1999元。",
+          "text_hash": "1c890649d5bc3fdc492664ad5915131d5494d2bbfc4190b02f84d1853f737de5"
+        },
+        {
+          "chunk_id": "chunk-042-evidence-2",
+          "quote": "产品042在中国大陆以人民币计价。",
+          "text_hash": "f05bc0409db1da21f60f96e249c4d8de157d18352586565c948c71667536730c"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-043",
+      "citations": [
+        {
+          "chunk_id": "chunk-043-evidence-1",
+          "quote": "产品043符合GB/T 35273-2020标准。",
+          "text_hash": "25749d750c19584ca309381d1f464b213ddf49dff9d5f58f52898b6d7a869396"
+        },
+        {
+          "chunk_id": "chunk-043-evidence-2",
+          "quote": "产品043的认证有效期截至2027年12月31日。",
+          "text_hash": "49bd78ebca533995ad366b02c574b3c07fc4eb842f02367d7168eb1ca58d4247"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-044",
+      "citations": [
+        {
+          "chunk_id": "chunk-044-evidence-1",
+          "quote": "产品044净重1.25千克。",
+          "text_hash": "8012766a986dd5c3d7dcb9a9cf050a7b9613898c34253bc4ba63549da5425932"
+        },
+        {
+          "chunk_id": "chunk-044-evidence-2",
+          "quote": "产品044尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "a04471f22ac1620e61204e422a2260bb95eb5c8f4ab445a2e2a0cd5936c4dc5a"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-045",
+      "citations": [
+        {
+          "chunk_id": "chunk-045-evidence-1",
+          "quote": "产品045兼容Windows和macOS。",
+          "text_hash": "c542c48d0767dc7a3d0a9c508af76b5f4443cddc2f5d7605fec8a17f944f40e5"
+        },
+        {
+          "chunk_id": "chunk-045-evidence-2",
+          "quote": "产品045要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "aec2e183523102afaf6f02b673e3fc6cad4297610285276f2f7c907ebc9fb1ad"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-046",
+      "citations": [
+        {
+          "chunk_id": "chunk-046-evidence-1",
+          "quote": "产品046人工客服时间为工作日9:00至18:00。",
+          "text_hash": "1f44d0dab410b139de228a280850e9cd0eb81f15da8a8c211dc9114719d97713"
+        },
+        {
+          "chunk_id": "chunk-046-evidence-2",
+          "quote": "产品046上门服务覆盖中国大陆省会城市。",
+          "text_hash": "a41b1d5e204f2358574fff2d48b3d971b7323a57cbcb75eb0219518acb35f249"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-047",
+      "citations": [
+        {
+          "chunk_id": "chunk-047-evidence-1",
+          "quote": "产品047建议每日使用不超过2次。",
+          "text_hash": "a2ea7125063e2b52ebf442cf21b1addb92b65a62d263f094e6a5155f35cbd5ec"
+        },
+        {
+          "chunk_id": "chunk-047-evidence-2",
+          "quote": "产品047不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "2b577676cfa6adb59d93da6b7e55d33e1543471070da0623c444727dca3fd120"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-048",
+      "citations": [
+        {
+          "chunk_id": "chunk-048-evidence-1",
+          "quote": "产品048退换政策自2026年1月1日起生效。",
+          "text_hash": "a387f97d54c12ee1eafc12f0c48c4c536c3960fa3ca3228c73e3023744ea79c6"
+        },
+        {
+          "chunk_id": "chunk-048-evidence-2",
+          "quote": "产品048退换申请须在签收后7日内提交。",
+          "text_hash": "ef35d98fccc3fa6206e467da2529d8af5d44c58b5ee4e177f019aa709dc559d8"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-049",
+      "citations": [
+        {
+          "chunk_id": "chunk-049-evidence-1",
+          "quote": "产品049首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "4bb2749234e3051e9155e4d0cbcb69659256a9f3fdb2e82d4c97699f393871cc"
+        },
+        {
+          "chunk_id": "chunk-049-evidence-2",
+          "quote": "产品049仅通过官网和授权经销商销售。",
+          "text_hash": "8c3ff4e92e47fe179dd423d736d6355500ec1e21e4b99577a97c94512b33c42d"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-050",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-051",
+      "citations": [
+        {
+          "chunk_id": "chunk-051-evidence-1",
+          "quote": "产品051的官方发布日期为2026年9月1日。",
+          "text_hash": "1af793773a3122eaa7aa822bdfe819dccf106d5d67d536d88b86778b707257db"
+        },
+        {
+          "chunk_id": "chunk-051-evidence-2",
+          "quote": "产品051的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "4261c1898195b4bddd0ac8106e10e3097c7fce10a09368c9e80d2faeaa35315a"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-052",
+      "citations": [
+        {
+          "chunk_id": "chunk-052-evidence-1",
+          "quote": "产品052的官方建议零售价为1999元。",
+          "text_hash": "c4648d1eb6c22fcfc5ccf556893306cf500fba06e8d54638b7008ab3fe1db58e"
+        },
+        {
+          "chunk_id": "chunk-052-evidence-2",
+          "quote": "产品052在中国大陆以人民币计价。",
+          "text_hash": "23c3d06275f52e27b9dc0ba05e2b6b13b9110e4fca29a26331badbb29940fb0f"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-053",
+      "citations": [
+        {
+          "chunk_id": "chunk-053-evidence-1",
+          "quote": "产品053符合GB/T 35273-2020标准。",
+          "text_hash": "528749ed15c6f841d377c0cac3c5f8c1d9f03951ad1dc72fbf798a3b63ac01e4"
+        },
+        {
+          "chunk_id": "chunk-053-evidence-2",
+          "quote": "产品053的认证有效期截至2027年12月31日。",
+          "text_hash": "6626e9c88a6455b603d42bf3234ebe4af98c5b94087949eed9197746b6b32382"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-054",
+      "citations": [
+        {
+          "chunk_id": "chunk-054-evidence-1",
+          "quote": "产品054净重1.25千克。",
+          "text_hash": "d960e124b88edba2a7f78fa5f13144d00f9d6a50ec936d1931e8ae070c187b1c"
+        },
+        {
+          "chunk_id": "chunk-054-evidence-2",
+          "quote": "产品054尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "956806d563a291a5cc9331ed2b3b9f0387c7b3ea25cd7930cd5f4e33dbaf925a"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-055",
+      "citations": [
+        {
+          "chunk_id": "chunk-055-evidence-1",
+          "quote": "产品055兼容Windows和macOS。",
+          "text_hash": "3858ef2384a8b8f923f2543e5827bcaeeab9b08fda5a764765dfc244511fe59d"
+        },
+        {
+          "chunk_id": "chunk-055-evidence-2",
+          "quote": "产品055要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "4bbae1e91357a1cc7b4dbc0bc1d7c8dde8cbf67cb7b884449c0bd2c5026a9642"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-056",
+      "citations": [
+        {
+          "chunk_id": "chunk-056-evidence-1",
+          "quote": "产品056人工客服时间为工作日9:00至18:00。",
+          "text_hash": "0eac3bd99e1126ebcafd95ca1c784763f21837bb8e1a00a48802b3190318c365"
+        },
+        {
+          "chunk_id": "chunk-056-evidence-2",
+          "quote": "产品056上门服务覆盖中国大陆省会城市。",
+          "text_hash": "451ebbd716cd1f83eb80770b4308bf81bfe7ae0607f6e80cbc60952c98abb4dc"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-057",
+      "citations": [
+        {
+          "chunk_id": "chunk-057-evidence-1",
+          "quote": "产品057建议每日使用不超过2次。",
+          "text_hash": "ef35ed545a5fc96e5bec459417c5b37b4f92f063193d632b670f24ac37db7b12"
+        },
+        {
+          "chunk_id": "chunk-057-evidence-2",
+          "quote": "产品057不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "70b797e0e5bb5d665842f029034df620427bb3c246963be4cfcbc012d555214a"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-058",
+      "citations": [
+        {
+          "chunk_id": "chunk-058-evidence-1",
+          "quote": "产品058退换政策自2026年1月1日起生效。",
+          "text_hash": "90488dd0e6beeb86ef7b22f9979b5305feeb48365dedadd4fc2f50a22f9f6038"
+        },
+        {
+          "chunk_id": "chunk-058-evidence-2",
+          "quote": "产品058退换申请须在签收后7日内提交。",
+          "text_hash": "caf19453bcc7177e9fbcfec85c2754314eeddcafc6857e8b9e943997b5dec0d2"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-059",
+      "citations": [
+        {
+          "chunk_id": "chunk-059-evidence-1",
+          "quote": "产品059首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "40cc716b45a77f5c3afa43e28a0ad8c68e8e8622dd71cdde8388c34fba4a6b81"
+        },
+        {
+          "chunk_id": "chunk-059-evidence-2",
+          "quote": "产品059仅通过官网和授权经销商销售。",
+          "text_hash": "f70a77086777c485355a81a14c85ec5ba34c6040f11b1867c07e2ec4d8c001b5"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-060",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-061",
+      "citations": [
+        {
+          "chunk_id": "chunk-061-evidence-1",
+          "quote": "产品061的官方发布日期为2026年9月1日。",
+          "text_hash": "48c41fad9b76b0d2ee305d0ab67ae46aecc0e1ec11cc83585c32e05352500f7b"
+        },
+        {
+          "chunk_id": "chunk-061-evidence-2",
+          "quote": "产品061的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "dc393060c12ed31796c642fcd6d87f7ef7991ff309fc75cc232c0a1f8c5fc397"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-062",
+      "citations": [
+        {
+          "chunk_id": "chunk-062-evidence-1",
+          "quote": "产品062的官方建议零售价为1999元。",
+          "text_hash": "909f3da30fa32b21ea8d3f2542b4926dd978f616d11936ed77ed111b480e72bc"
+        },
+        {
+          "chunk_id": "chunk-062-evidence-2",
+          "quote": "产品062在中国大陆以人民币计价。",
+          "text_hash": "e51f510c33966cacf5b3a0c1a154394b498ef82ba5bea1b1f2d6ef1fbc8836f4"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-063",
+      "citations": [
+        {
+          "chunk_id": "chunk-063-evidence-1",
+          "quote": "产品063符合GB/T 35273-2020标准。",
+          "text_hash": "a968d626e5d4c541b5f71a4605b051fd0641e97737af52712fab1acc513eb71a"
+        },
+        {
+          "chunk_id": "chunk-063-evidence-2",
+          "quote": "产品063的认证有效期截至2027年12月31日。",
+          "text_hash": "c7464500cd7b5315e89b5c2020dc49894fa7636b9c9b4d35d06c1bfeb4da285a"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-064",
+      "citations": [
+        {
+          "chunk_id": "chunk-064-evidence-1",
+          "quote": "产品064净重1.25千克。",
+          "text_hash": "b5e95574de931eee05ad0704b161d29e732145ae102b27250fcfd397a61e88b0"
+        },
+        {
+          "chunk_id": "chunk-064-evidence-2",
+          "quote": "产品064尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "d2079efce1158cab1338e91e72b311ce97e509d81cc54563d545bc9f95b50f8e"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-065",
+      "citations": [
+        {
+          "chunk_id": "chunk-065-evidence-1",
+          "quote": "产品065兼容Windows和macOS。",
+          "text_hash": "aa63fa50e260e8bf2e524a815f385bdd679fcbe46ef8043f2be87259aed199ae"
+        },
+        {
+          "chunk_id": "chunk-065-evidence-2",
+          "quote": "产品065要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "790e6a389e2a90a46bed70b0cae46662c3237bff8b810c956d617a4c316fda49"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-066",
+      "citations": [
+        {
+          "chunk_id": "chunk-066-evidence-1",
+          "quote": "产品066人工客服时间为工作日9:00至18:00。",
+          "text_hash": "643c002dc413f7d9eb2d9a2e5b59d477f9599e23a08976e6d10bb3d14b8b27cb"
+        },
+        {
+          "chunk_id": "chunk-066-evidence-2",
+          "quote": "产品066上门服务覆盖中国大陆省会城市。",
+          "text_hash": "be02fd986a0f241156e5215401964d7ebe8b9cbbd619b16a993860cbdba10bbd"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-067",
+      "citations": [
+        {
+          "chunk_id": "chunk-067-evidence-1",
+          "quote": "产品067建议每日使用不超过2次。",
+          "text_hash": "d069c27fa8a0fd70b166da95bba6d6f5bdacd8d169c4358bec961357acb130d2"
+        },
+        {
+          "chunk_id": "chunk-067-evidence-2",
+          "quote": "产品067不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "701db9d273dc8e914c076fb737a0211b65e9ed2fb5c88c4c5d41f79e16d1b87b"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-068",
+      "citations": [
+        {
+          "chunk_id": "chunk-068-evidence-1",
+          "quote": "产品068退换政策自2026年1月1日起生效。",
+          "text_hash": "dc8d85233945aeed0775819c303fdcd8ff8f19ea541f05675ffafd6aecfdb3b0"
+        },
+        {
+          "chunk_id": "chunk-068-evidence-2",
+          "quote": "产品068退换申请须在签收后7日内提交。",
+          "text_hash": "d29ba3a757bdbe5338e7cf665eba16118857f4345bf6cf8f7dee12bab7eb5c24"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-069",
+      "citations": [
+        {
+          "chunk_id": "chunk-069-evidence-1",
+          "quote": "产品069首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "bc9f96f62a1e2cd99138153205d7a89519a953ad0fab87f5a388f168877b4d85"
+        },
+        {
+          "chunk_id": "chunk-069-evidence-2",
+          "quote": "产品069仅通过官网和授权经销商销售。",
+          "text_hash": "64a926a2e4fd686d76cbf5ff138acae6f52ba8ad747a37a043d72081cc8a8bb9"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-070",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-071",
+      "citations": [
+        {
+          "chunk_id": "chunk-071-evidence-1",
+          "quote": "产品071的官方发布日期为2026年9月1日。",
+          "text_hash": "69e5eb5c732e45dc4a100f46bb64cde7ecf5214bd16e6045bd9b2805a862cd7c"
+        },
+        {
+          "chunk_id": "chunk-071-evidence-2",
+          "quote": "产品071的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "774a26336f8dc2e0c7bc7e066fdb6f93bcd0a168aec8fbe749b3931044e29896"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-072",
+      "citations": [
+        {
+          "chunk_id": "chunk-072-evidence-1",
+          "quote": "产品072的官方建议零售价为1999元。",
+          "text_hash": "66139fb0ee715e9c752b5bfd4ebfe9bd0cc221b0f244d30bd3a741d1810a93e2"
+        },
+        {
+          "chunk_id": "chunk-072-evidence-2",
+          "quote": "产品072在中国大陆以人民币计价。",
+          "text_hash": "0187d1c2f88eb760c635a96fc994de538ebf08a8936878dfb6c402a167667135"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-073",
+      "citations": [
+        {
+          "chunk_id": "chunk-073-evidence-1",
+          "quote": "产品073符合GB/T 35273-2020标准。",
+          "text_hash": "79ed7630e4602c1e462fc7ec53c871bca63337dcfce96c8cda3517d85e7744c6"
+        },
+        {
+          "chunk_id": "chunk-073-evidence-2",
+          "quote": "产品073的认证有效期截至2027年12月31日。",
+          "text_hash": "d4b226a4de7c303bfbefddc94fb628c44f1ade863d1e1b11fef3a8839f35b605"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-074",
+      "citations": [
+        {
+          "chunk_id": "chunk-074-evidence-1",
+          "quote": "产品074净重1.25千克。",
+          "text_hash": "a8e9235ad74f636eca820be33c90255415609bfb13f778e602c9bf69eef06b1b"
+        },
+        {
+          "chunk_id": "chunk-074-evidence-2",
+          "quote": "产品074尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "748ae37e98637ce3f51b9b782ae1f10ba60a680eeb59d49f2b487321bf81ab26"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-075",
+      "citations": [
+        {
+          "chunk_id": "chunk-075-evidence-1",
+          "quote": "产品075兼容Windows和macOS。",
+          "text_hash": "2d50bef7190c51780be332699db406649bdbf31744e3a3bf6da5b4f04961bc3d"
+        },
+        {
+          "chunk_id": "chunk-075-evidence-2",
+          "quote": "产品075要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "60990ff1b23d12b8041a9010dcdbff08203d30001a823731e2cdebf9316204a7"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-076",
+      "citations": [
+        {
+          "chunk_id": "chunk-076-evidence-1",
+          "quote": "产品076人工客服时间为工作日9:00至18:00。",
+          "text_hash": "f870e4053a9b5fa6138cae18e95ce0fd297c330b27d01d63e4a8de21557817f3"
+        },
+        {
+          "chunk_id": "chunk-076-evidence-2",
+          "quote": "产品076上门服务覆盖中国大陆省会城市。",
+          "text_hash": "5c2552ee5d1c77b741f7a99917cadaedbd2ad2ec958c11c48ee34ff23dcdfa4f"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-077",
+      "citations": [
+        {
+          "chunk_id": "chunk-077-evidence-1",
+          "quote": "产品077建议每日使用不超过2次。",
+          "text_hash": "3b5e0b4ad3c6fd6538a71161638d4d04b22587dd879ed16228e62e2f18675a83"
+        },
+        {
+          "chunk_id": "chunk-077-evidence-2",
+          "quote": "产品077不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "0dce637d5feedf9ddf0d63d0efafbc2a07e5706e662b7b24887f36020928bcff"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-078",
+      "citations": [
+        {
+          "chunk_id": "chunk-078-evidence-1",
+          "quote": "产品078退换政策自2026年1月1日起生效。",
+          "text_hash": "63d731c2036657e87d58bd4994652a49c94ae58942e3b12a82cffb7978aaa636"
+        },
+        {
+          "chunk_id": "chunk-078-evidence-2",
+          "quote": "产品078退换申请须在签收后7日内提交。",
+          "text_hash": "847178b79279c27306ca9ee1bf51a10dbc1ac387badb3d08a527a13e4b053c7e"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-079",
+      "citations": [
+        {
+          "chunk_id": "chunk-079-evidence-1",
+          "quote": "产品079首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "859b23ec40f2874cb6d01fffc5b77b9e4da9762477453ee16f62256428fad1fd"
+        },
+        {
+          "chunk_id": "chunk-079-evidence-2",
+          "quote": "产品079仅通过官网和授权经销商销售。",
+          "text_hash": "9ae396c20799a1abf4871aff81eeb2d8941d9095e519f766a2e421a48b73a159"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-080",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-081",
+      "citations": [
+        {
+          "chunk_id": "chunk-081-evidence-1",
+          "quote": "产品081的官方发布日期为2026年9月1日。",
+          "text_hash": "494a1eb43805b6bb3d3fb3c6291d389c7a27dee1016735a96b2bb28c39050e58"
+        },
+        {
+          "chunk_id": "chunk-081-evidence-2",
+          "quote": "产品081的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "306ed072affb4ae0a3f86480c0e73bc846ac2acef62538c9805049dec918000b"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-082",
+      "citations": [
+        {
+          "chunk_id": "chunk-082-evidence-1",
+          "quote": "产品082的官方建议零售价为1999元。",
+          "text_hash": "ff94baa42a0eaf6406b648c57f29536642cb7556527c0dcef3d89775b66a4caf"
+        },
+        {
+          "chunk_id": "chunk-082-evidence-2",
+          "quote": "产品082在中国大陆以人民币计价。",
+          "text_hash": "eae0d09e3f8df640d08b7efeb80a13a378411aea5063fcc0b03d50ddd9141f1f"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-083",
+      "citations": [
+        {
+          "chunk_id": "chunk-083-evidence-1",
+          "quote": "产品083符合GB/T 35273-2020标准。",
+          "text_hash": "fa45d62ce40d43c89c079d924db2a8bd68aa04a4b2cb507976981faa733f63db"
+        },
+        {
+          "chunk_id": "chunk-083-evidence-2",
+          "quote": "产品083的认证有效期截至2027年12月31日。",
+          "text_hash": "da29c09081d7c46cafc55aa0d1a4598aa8d36b46557aff9a9009eb94b75c6e12"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-084",
+      "citations": [
+        {
+          "chunk_id": "chunk-084-evidence-1",
+          "quote": "产品084净重1.25千克。",
+          "text_hash": "9613c644a74e553eaff959d2d5f4f30641f57d09f2ff9f1fb87cab47f11d0d3e"
+        },
+        {
+          "chunk_id": "chunk-084-evidence-2",
+          "quote": "产品084尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "d74b17490e4e94c38b8524f263be84c1d2ee5583f401384217f03a64c77f8c4c"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-085",
+      "citations": [
+        {
+          "chunk_id": "chunk-085-evidence-1",
+          "quote": "产品085兼容Windows和macOS。",
+          "text_hash": "f105051b751b3e54eb6f4f7d2037a2f6501b558c1142c44110cb577a3aed719d"
+        },
+        {
+          "chunk_id": "chunk-085-evidence-2",
+          "quote": "产品085要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "3b73e05df9a340c893f3b8f37ebd14a2a14e710df4ba035decef082bbfa98221"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-086",
+      "citations": [
+        {
+          "chunk_id": "chunk-086-evidence-1",
+          "quote": "产品086人工客服时间为工作日9:00至18:00。",
+          "text_hash": "b0fcceb97765be045d109d91912fe9e556448fabaddcc1d2c95ed7e8070d821c"
+        },
+        {
+          "chunk_id": "chunk-086-evidence-2",
+          "quote": "产品086上门服务覆盖中国大陆省会城市。",
+          "text_hash": "043108d642fa7d4bb15f62731ef7c479c5a02fd053328c1576cb2e7a79a0f010"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-087",
+      "citations": [
+        {
+          "chunk_id": "chunk-087-evidence-1",
+          "quote": "产品087建议每日使用不超过2次。",
+          "text_hash": "a722dce0ddbb912e8ec0f3f1fa59c72b8c51c38cb9dcc19a6b3bd35aa96a9186"
+        },
+        {
+          "chunk_id": "chunk-087-evidence-2",
+          "quote": "产品087不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "833546fdffed55e0653681cf813e10649f5ec76628b6fe3b954c18c044e052dd"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-088",
+      "citations": [
+        {
+          "chunk_id": "chunk-088-evidence-1",
+          "quote": "产品088退换政策自2026年1月1日起生效。",
+          "text_hash": "b0be203864b64503a88f0f743a77bf94b3030dfe4e43d5480b8a5c6274383dcf"
+        },
+        {
+          "chunk_id": "chunk-088-evidence-2",
+          "quote": "产品088退换申请须在签收后7日内提交。",
+          "text_hash": "57c2a0069cfb68ae84565b7835c839714a5a9bfc4f482969d4e96a8f4150badf"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-089",
+      "citations": [
+        {
+          "chunk_id": "chunk-089-evidence-1",
+          "quote": "产品089首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "b665b9bc22d758a0bfdca33a04b27402a0d50b2600fab0618b4c66e9860510c5"
+        },
+        {
+          "chunk_id": "chunk-089-evidence-2",
+          "quote": "产品089仅通过官网和授权经销商销售。",
+          "text_hash": "311c26fcfe0d5ae0c35f4ca9ef4bec46e01dff16054e212aeabe83d1597a4edd"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-090",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-091",
+      "citations": [
+        {
+          "chunk_id": "chunk-091-evidence-1",
+          "quote": "产品091的官方发布日期为2026年9月1日。",
+          "text_hash": "2887b35f824c0573deede4f61f7e9c3da7d5697d4cb3404aca60543713594ce9"
+        },
+        {
+          "chunk_id": "chunk-091-evidence-2",
+          "quote": "产品091的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "d3e47b8ecc8f68e7416d2b90e20d0a49496e81dacac7c0289742b1e400e2ad09"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-092",
+      "citations": [
+        {
+          "chunk_id": "chunk-092-evidence-1",
+          "quote": "产品092的官方建议零售价为1999元。",
+          "text_hash": "9bdbde6ef27e6a8e7dcbfc34dd351dc6b89d61e5aad5cfe4932a0006e1c983f2"
+        },
+        {
+          "chunk_id": "chunk-092-evidence-2",
+          "quote": "产品092在中国大陆以人民币计价。",
+          "text_hash": "198f6dac40fb4b3302822c2c4beaa7544fc8c8460205ddc61a23c9be374238e2"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-093",
+      "citations": [
+        {
+          "chunk_id": "chunk-093-evidence-1",
+          "quote": "产品093符合GB/T 35273-2020标准。",
+          "text_hash": "291aea14affc32ecb7f2cb0efa59f5d3e135b774b077607810a04dcc460988a4"
+        },
+        {
+          "chunk_id": "chunk-093-evidence-2",
+          "quote": "产品093的认证有效期截至2027年12月31日。",
+          "text_hash": "e3d16ce68411259e5fae79c505eaebe215f185614ae87205fc83fd9c546f0a88"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-094",
+      "citations": [
+        {
+          "chunk_id": "chunk-094-evidence-1",
+          "quote": "产品094净重1.25千克。",
+          "text_hash": "cb57c8d96447508ee91c4a0c361ce062f5d1edd84d8718de1afc0c9ea2cf7189"
+        },
+        {
+          "chunk_id": "chunk-094-evidence-2",
+          "quote": "产品094尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "bfc30bf3192ba56bb546af33183bf2af36147581dbe90a70063e4d720505b4c6"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-095",
+      "citations": [
+        {
+          "chunk_id": "chunk-095-evidence-1",
+          "quote": "产品095兼容Windows和macOS。",
+          "text_hash": "ebc5ee68733fdd907c165526a80089895809bfe1a87a051eda3a79892ad5c3c3"
+        },
+        {
+          "chunk_id": "chunk-095-evidence-2",
+          "quote": "产品095要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "ec42d874347f87069a7865cb6ff203bd1d04a5b27955a1070b2e85c75bf485fe"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-096",
+      "citations": [
+        {
+          "chunk_id": "chunk-096-evidence-1",
+          "quote": "产品096人工客服时间为工作日9:00至18:00。",
+          "text_hash": "9f2390f88ef052fc0e6f34563b3c4c1f6068641956dafa35f38bdf30ec82f4c9"
+        },
+        {
+          "chunk_id": "chunk-096-evidence-2",
+          "quote": "产品096上门服务覆盖中国大陆省会城市。",
+          "text_hash": "0f2842174dc64cfb74d866140b765c18a717ea443e8e65dcfed1b56908a50113"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-097",
+      "citations": [
+        {
+          "chunk_id": "chunk-097-evidence-1",
+          "quote": "产品097建议每日使用不超过2次。",
+          "text_hash": "0e965a1c55dda63c16fba5553ea491b5b241ac721ac885509c3e997b48e3c130"
+        },
+        {
+          "chunk_id": "chunk-097-evidence-2",
+          "quote": "产品097不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "d3774e21139da851add8bf930b56afe9f42f404bc4dfc206b983335b178c6d80"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-098",
+      "citations": [
+        {
+          "chunk_id": "chunk-098-evidence-1",
+          "quote": "产品098退换政策自2026年1月1日起生效。",
+          "text_hash": "239b453aedbc275a6b2e3cf8ea48364e0baa62d9bd0095d7d95a78783186b5e2"
+        },
+        {
+          "chunk_id": "chunk-098-evidence-2",
+          "quote": "产品098退换申请须在签收后7日内提交。",
+          "text_hash": "c7ef79995c9c5c39513086aa008f021c96dd96f3ea28d8c847b6307c055d3c47"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-099",
+      "citations": [
+        {
+          "chunk_id": "chunk-099-evidence-1",
+          "quote": "产品099首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "4afc483eb5513a24f5b7acad0ca5633fe57784245bb66e426ee7c11fcd32acc6"
+        },
+        {
+          "chunk_id": "chunk-099-evidence-2",
+          "quote": "产品099仅通过官网和授权经销商销售。",
+          "text_hash": "34f5f50e502c3d1fdefdd9c7216d8addf0b42cefc3d5b04ddc79ff8d829b8499"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-100",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-101",
+      "citations": [
+        {
+          "chunk_id": "chunk-101-evidence-1",
+          "quote": "产品101的官方发布日期为2026年9月1日。",
+          "text_hash": "d342de57dd04cfcea2b92ac0f6cdf568e9f1c038afcd03acd9b61a1cdc67f570"
+        },
+        {
+          "chunk_id": "chunk-101-evidence-2",
+          "quote": "产品101的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "46e35de0663277da4468ccdad1f4e9523a84ef83206f8b73aad474690465f889"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-102",
+      "citations": [
+        {
+          "chunk_id": "chunk-102-evidence-1",
+          "quote": "产品102的官方建议零售价为1999元。",
+          "text_hash": "2a948cad6fc62bc5f4f460a3cb922ed06d4ccc4504b1f2b6cac44639ea5f3e08"
+        },
+        {
+          "chunk_id": "chunk-102-evidence-2",
+          "quote": "产品102在中国大陆以人民币计价。",
+          "text_hash": "149b75b95f1333178e8ba62582d3bf0bc38b0a9cece9ac4b9471a32038d2c706"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-103",
+      "citations": [
+        {
+          "chunk_id": "chunk-103-evidence-1",
+          "quote": "产品103符合GB/T 35273-2020标准。",
+          "text_hash": "51655a9cb47f8c43a2cb5704937e8c814398d8572b2da72229c7a23da2211af1"
+        },
+        {
+          "chunk_id": "chunk-103-evidence-2",
+          "quote": "产品103的认证有效期截至2027年12月31日。",
+          "text_hash": "d97ced6f9a2c614e2402985c5698d58248d5b8c354a3b2132257ad9fb6db616d"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-104",
+      "citations": [
+        {
+          "chunk_id": "chunk-104-evidence-1",
+          "quote": "产品104净重1.25千克。",
+          "text_hash": "92a8a868c34fc853057a17a2fa74cc7cae20287220ea5fcd4d0de7e1cc0ff633"
+        },
+        {
+          "chunk_id": "chunk-104-evidence-2",
+          "quote": "产品104尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "0933b30a93aa29954e5fe64bc48aa674400f827deac331410a352b70fea272fc"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-105",
+      "citations": [
+        {
+          "chunk_id": "chunk-105-evidence-1",
+          "quote": "产品105兼容Windows和macOS。",
+          "text_hash": "ebe8bba74bd73306421794d6b04f1b50856acfc95f1f9f5479a203041f190b2e"
+        },
+        {
+          "chunk_id": "chunk-105-evidence-2",
+          "quote": "产品105要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "5046357829e1de829bcaac0840a9971f56a578358ee3c7703066addcb9d3df72"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-106",
+      "citations": [
+        {
+          "chunk_id": "chunk-106-evidence-1",
+          "quote": "产品106人工客服时间为工作日9:00至18:00。",
+          "text_hash": "fb0faea7468f9fda49f550614353811a53de337be35af6255f534c7cdab4c651"
+        },
+        {
+          "chunk_id": "chunk-106-evidence-2",
+          "quote": "产品106上门服务覆盖中国大陆省会城市。",
+          "text_hash": "bf01fa72acc40777c1897c05acd3d274ea87d28dc494dca20bdb95d10ce8c9e0"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-107",
+      "citations": [
+        {
+          "chunk_id": "chunk-107-evidence-1",
+          "quote": "产品107建议每日使用不超过2次。",
+          "text_hash": "25dc06f712a7400824ff8b8985ce4ae8763ad144749c1364f3a5fed3634ffcf1"
+        },
+        {
+          "chunk_id": "chunk-107-evidence-2",
+          "quote": "产品107不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "e8c8e480007b2edfa88900ed915f6731f173b259d9f813aaf4eebe914bfabae9"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-108",
+      "citations": [
+        {
+          "chunk_id": "chunk-108-evidence-1",
+          "quote": "产品108退换政策自2026年1月1日起生效。",
+          "text_hash": "bf3a2a5648777fa7dfc511646060a1c90906ff77fc8b1bdf5f7e9da3f0088a72"
+        },
+        {
+          "chunk_id": "chunk-108-evidence-2",
+          "quote": "产品108退换申请须在签收后7日内提交。",
+          "text_hash": "e5d1802779222b1db7ba76432f1112f0253a5f3d0372ee1d35d62aa89e2439d9"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-109",
+      "citations": [
+        {
+          "chunk_id": "chunk-109-evidence-1",
+          "quote": "产品109首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "b0c6a95da06b14e381c9c83877d278d67239a5555e04dff06b3672877d50de98"
+        },
+        {
+          "chunk_id": "chunk-109-evidence-2",
+          "quote": "产品109仅通过官网和授权经销商销售。",
+          "text_hash": "a8f472cded5d077ee49688bf5b88d8c5940d11b64b38972cdf9926ae61aebcb9"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-110",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-111",
+      "citations": [
+        {
+          "chunk_id": "chunk-111-evidence-1",
+          "quote": "产品111的官方发布日期为2026年9月1日。",
+          "text_hash": "6785b715569099c5e01d82853e4e9137d32a85491601daf27409252f95d49550"
+        },
+        {
+          "chunk_id": "chunk-111-evidence-2",
+          "quote": "产品111的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "99d325122aa5ea2b6ad5a917722ff177a88f38d9aae2e12e8689ba32e9d55bbe"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-112",
+      "citations": [
+        {
+          "chunk_id": "chunk-112-evidence-1",
+          "quote": "产品112的官方建议零售价为1999元。",
+          "text_hash": "9c72e97a6fe208fa9f7d031632b183c97c8d0a9372159d871fba6aab9bbca1de"
+        },
+        {
+          "chunk_id": "chunk-112-evidence-2",
+          "quote": "产品112在中国大陆以人民币计价。",
+          "text_hash": "1fbf9f5f3325b7114b0f60819531eaa445de49556ed353eee5f8791a6d31fd03"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-113",
+      "citations": [
+        {
+          "chunk_id": "chunk-113-evidence-1",
+          "quote": "产品113符合GB/T 35273-2020标准。",
+          "text_hash": "4def8e22229874c5f77f028365424eccafa6a8e17447a0e2f962d3e7e47946d4"
+        },
+        {
+          "chunk_id": "chunk-113-evidence-2",
+          "quote": "产品113的认证有效期截至2027年12月31日。",
+          "text_hash": "6089130f2aa30c9cd4d3e3e00e11f075caff5fda37c0b42db543c951f1483241"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-114",
+      "citations": [
+        {
+          "chunk_id": "chunk-114-evidence-1",
+          "quote": "产品114净重1.25千克。",
+          "text_hash": "3d35176ac97606ad061226a70766221488279e7c995fa0ffe8a6b1c7464f8312"
+        },
+        {
+          "chunk_id": "chunk-114-evidence-2",
+          "quote": "产品114尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "d03026939d955af1c948f1f701d70d8f88d84081b0b1acb37ce16d3305d812b5"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-115",
+      "citations": [
+        {
+          "chunk_id": "chunk-115-evidence-1",
+          "quote": "产品115兼容Windows和macOS。",
+          "text_hash": "3157c9d7118fcc81716bebc56b21d3cd035b6c001b6fbdb5c8901c39ff105fae"
+        },
+        {
+          "chunk_id": "chunk-115-evidence-2",
+          "quote": "产品115要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "230d36aedd4e78f24a98c608e940f0e21dde139b52e8f53640b2fe21cce38743"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-116",
+      "citations": [
+        {
+          "chunk_id": "chunk-116-evidence-1",
+          "quote": "产品116人工客服时间为工作日9:00至18:00。",
+          "text_hash": "2c78a115033236c49a94b6012522e3343f1542ccd15ce42cab8201badab2de1a"
+        },
+        {
+          "chunk_id": "chunk-116-evidence-2",
+          "quote": "产品116上门服务覆盖中国大陆省会城市。",
+          "text_hash": "2b3aadeff5b5d6101e4a62717d321ac982dc9f5eaa3561d6d70573b4d462d2ab"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-117",
+      "citations": [
+        {
+          "chunk_id": "chunk-117-evidence-1",
+          "quote": "产品117建议每日使用不超过2次。",
+          "text_hash": "b4863d9ef3adcd9f4754edafefbb6f7a9bc13a7973500485018868a514e5634a"
+        },
+        {
+          "chunk_id": "chunk-117-evidence-2",
+          "quote": "产品117不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "ba5d67871c364976fa9f047fe847fafe2965749a1635baf8ee233da1d5471278"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-118",
+      "citations": [
+        {
+          "chunk_id": "chunk-118-evidence-1",
+          "quote": "产品118退换政策自2026年1月1日起生效。",
+          "text_hash": "0948211b777149e2edb4d6b89419507f2d68723392c488e193e94ecfc4c334ae"
+        },
+        {
+          "chunk_id": "chunk-118-evidence-2",
+          "quote": "产品118退换申请须在签收后7日内提交。",
+          "text_hash": "307dc9698657588b48bcfeee915d154054f3817d3e362a39b20dd4bce88ec75c"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-119",
+      "citations": [
+        {
+          "chunk_id": "chunk-119-evidence-1",
+          "quote": "产品119首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "0924615fe6ebfc04f494b806ac7e86cbe9f13cbce25ee231200933ba6da8029f"
+        },
+        {
+          "chunk_id": "chunk-119-evidence-2",
+          "quote": "产品119仅通过官网和授权经销商销售。",
+          "text_hash": "68392bb23d194eff48257d412ed303a44da9cf8c2ec1ddc9b74342f1fb2b66d0"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-120",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-121",
+      "citations": [
+        {
+          "chunk_id": "chunk-121-evidence-1",
+          "quote": "产品121的官方发布日期为2026年9月1日。",
+          "text_hash": "ae723918f075c479f3f245ad1cba908801bfcacea38cfd0a9494e36425821b34"
+        },
+        {
+          "chunk_id": "chunk-121-evidence-2",
+          "quote": "产品121的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "a79b8f2833a1d0b213781efc60e5e3b1138da5794f49bfd496f5bcb09169f1cb"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-122",
+      "citations": [
+        {
+          "chunk_id": "chunk-122-evidence-1",
+          "quote": "产品122的官方建议零售价为1999元。",
+          "text_hash": "f3397750330be7842384fd3a2d8608348307fe3b47bddada2e509d826651a0cf"
+        },
+        {
+          "chunk_id": "chunk-122-evidence-2",
+          "quote": "产品122在中国大陆以人民币计价。",
+          "text_hash": "97f30d9b984972ff9e833b833dd6cd059e1db03482e529cf7df438b48e929bab"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-123",
+      "citations": [
+        {
+          "chunk_id": "chunk-123-evidence-1",
+          "quote": "产品123符合GB/T 35273-2020标准。",
+          "text_hash": "e895857c380c9e1700423173b50d3dd4c26f29e76dda022981b80f63cbdeca95"
+        },
+        {
+          "chunk_id": "chunk-123-evidence-2",
+          "quote": "产品123的认证有效期截至2027年12月31日。",
+          "text_hash": "81d6a9ad6607484121b6cfa276dd53fae1b34c1f1e4a8818f72fc4fc52bcfd3d"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-124",
+      "citations": [
+        {
+          "chunk_id": "chunk-124-evidence-1",
+          "quote": "产品124净重1.25千克。",
+          "text_hash": "7380ddcad9d7019e4b3d4845c9e6223ada7e19099bf97e6bbb28041e6cb21e53"
+        },
+        {
+          "chunk_id": "chunk-124-evidence-2",
+          "quote": "产品124尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "1807ce03e1f3f5069c1780a0a05ac8ee6e7b1926708c4ba97148816b288bea1e"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-125",
+      "citations": [
+        {
+          "chunk_id": "chunk-125-evidence-1",
+          "quote": "产品125兼容Windows和macOS。",
+          "text_hash": "af9ea59cf4df86d3fde9cf76a65df18a08281796e2167b5b61ae3929f39e4a43"
+        },
+        {
+          "chunk_id": "chunk-125-evidence-2",
+          "quote": "产品125要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "ee10223b43c2f464be5195450c6c455407393328ba5286e1e58da3cc5d26bd94"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-126",
+      "citations": [
+        {
+          "chunk_id": "chunk-126-evidence-1",
+          "quote": "产品126人工客服时间为工作日9:00至18:00。",
+          "text_hash": "70ee9a0b26cd8128d71bb9af03de6ee20cebd93e65449306b1f0593fa6d2e05c"
+        },
+        {
+          "chunk_id": "chunk-126-evidence-2",
+          "quote": "产品126上门服务覆盖中国大陆省会城市。",
+          "text_hash": "c6116ce98941933d3319278752e7e8a14c43654abbbf528d1572c1bde28aac87"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-127",
+      "citations": [
+        {
+          "chunk_id": "chunk-127-evidence-1",
+          "quote": "产品127建议每日使用不超过2次。",
+          "text_hash": "ed51c5c09a2f9bdf8e26b6f9b26357df10a1af1d5c3cb95bc21cc24c4d0cf6e2"
+        },
+        {
+          "chunk_id": "chunk-127-evidence-2",
+          "quote": "产品127不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "4f73bc9bfec6b65a563a1a237433c65cf39465fbd0b7066ccf32f41524c9bc5a"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-128",
+      "citations": [
+        {
+          "chunk_id": "chunk-128-evidence-1",
+          "quote": "产品128退换政策自2026年1月1日起生效。",
+          "text_hash": "f845fff417b614841746fe5511909a3dfafaf7861ce794dd6ed77252d7ac4618"
+        },
+        {
+          "chunk_id": "chunk-128-evidence-2",
+          "quote": "产品128退换申请须在签收后7日内提交。",
+          "text_hash": "6cb59089d6fafe9e57e45bbda89d0acb57c76a259d521e6eaa088796ccb8fadb"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-129",
+      "citations": [
+        {
+          "chunk_id": "chunk-129-evidence-1",
+          "quote": "产品129首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "b5193f66dfb3616f53ed738a4223b3a8e0f55337394aca8f23678411682d59f5"
+        },
+        {
+          "chunk_id": "chunk-129-evidence-2",
+          "quote": "产品129仅通过官网和授权经销商销售。",
+          "text_hash": "3327e67a380ef9dbc00f81d51ab6e0d477e7232f8a6b1eb3d81e40e05b3b35e9"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-130",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-131",
+      "citations": [
+        {
+          "chunk_id": "chunk-131-evidence-1",
+          "quote": "产品131的官方发布日期为2026年9月1日。",
+          "text_hash": "391a6184b0988cb02c95689bd5871ff9e05738b15f772a3ce2a7709c98d2b798"
+        },
+        {
+          "chunk_id": "chunk-131-evidence-2",
+          "quote": "产品131的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "37c9154c922e6346c84ecc9e12a6551367fe364f476c1ea7eeac5889066dd062"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-132",
+      "citations": [
+        {
+          "chunk_id": "chunk-132-evidence-1",
+          "quote": "产品132的官方建议零售价为1999元。",
+          "text_hash": "badcf2d7dafee8573b9e276353e4ea491faea987ea188c6dfed65c59ff581b68"
+        },
+        {
+          "chunk_id": "chunk-132-evidence-2",
+          "quote": "产品132在中国大陆以人民币计价。",
+          "text_hash": "f40b8f72d30978e96fef6769ca0764a4e80453414934931d15abe6f93829bcb2"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-133",
+      "citations": [
+        {
+          "chunk_id": "chunk-133-evidence-1",
+          "quote": "产品133符合GB/T 35273-2020标准。",
+          "text_hash": "7b7a962273c305115da24ddb75be20306b1467095764aeb2941ded82ab40fb6a"
+        },
+        {
+          "chunk_id": "chunk-133-evidence-2",
+          "quote": "产品133的认证有效期截至2027年12月31日。",
+          "text_hash": "20398e17167866c70c3098ee7e843466d094f5ac1d353fc090e759c1847991aa"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-134",
+      "citations": [
+        {
+          "chunk_id": "chunk-134-evidence-1",
+          "quote": "产品134净重1.25千克。",
+          "text_hash": "9a147d07bf9929e337e7aa86f5de32c620dd55737f47aa4a412666dbc09cc5d3"
+        },
+        {
+          "chunk_id": "chunk-134-evidence-2",
+          "quote": "产品134尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "451895b3f2d8152ac11af6555eebde1ce99d862b3c476f1384a77f620f053352"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-135",
+      "citations": [
+        {
+          "chunk_id": "chunk-135-evidence-1",
+          "quote": "产品135兼容Windows和macOS。",
+          "text_hash": "838491df85d7359ac182d020a31db3abdaa642b50d62ecf8213f6ebb82fa2b94"
+        },
+        {
+          "chunk_id": "chunk-135-evidence-2",
+          "quote": "产品135要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "803700b6dbf368c473f024d081a93a89e53537734ee4fd7e2215ea590281ebb0"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-136",
+      "citations": [
+        {
+          "chunk_id": "chunk-136-evidence-1",
+          "quote": "产品136人工客服时间为工作日9:00至18:00。",
+          "text_hash": "03ddcc5c4868b5e3de183cb9eadd41d3bbf2207a1db61d5942bbdaf14a5f2265"
+        },
+        {
+          "chunk_id": "chunk-136-evidence-2",
+          "quote": "产品136上门服务覆盖中国大陆省会城市。",
+          "text_hash": "a46755816ec442db7754dcdb59842046a61b8d5a8a58deb83a5578d09392098e"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-137",
+      "citations": [
+        {
+          "chunk_id": "chunk-137-evidence-1",
+          "quote": "产品137建议每日使用不超过2次。",
+          "text_hash": "3845753b6c2e193f7051d5fa9e5d3d9e35658d4984a080f46bc3f837480cb407"
+        },
+        {
+          "chunk_id": "chunk-137-evidence-2",
+          "quote": "产品137不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "e6ed985a2b08284db1c5294bed266392790e4b8413a4495c6f1840654f3cb74b"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-138",
+      "citations": [
+        {
+          "chunk_id": "chunk-138-evidence-1",
+          "quote": "产品138退换政策自2026年1月1日起生效。",
+          "text_hash": "ea294edf7e1bd2c0a42fc22bef11ccc898165fab692ab38cfcdd70c5edc75541"
+        },
+        {
+          "chunk_id": "chunk-138-evidence-2",
+          "quote": "产品138退换申请须在签收后7日内提交。",
+          "text_hash": "842025ce894f5ccf9d048ff1433b22343c1880dd67c0565a533fbc65baae5c0a"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-139",
+      "citations": [
+        {
+          "chunk_id": "chunk-139-evidence-1",
+          "quote": "产品139首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "15e6f01c0d7acffcba80906d3a6c2f12e76bb99033f92f6660b3217355e44dfb"
+        },
+        {
+          "chunk_id": "chunk-139-evidence-2",
+          "quote": "产品139仅通过官网和授权经销商销售。",
+          "text_hash": "d21703700c756b19152e8557506c4ed551fdb1c645081e500b462da4b4c4e3aa"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-140",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-141",
+      "citations": [
+        {
+          "chunk_id": "chunk-141-evidence-1",
+          "quote": "产品141的官方发布日期为2026年9月1日。",
+          "text_hash": "c5717cc7b6879e38acafab3745f2a50d784b04e7d9afeac9c571da214e9f35c4"
+        },
+        {
+          "chunk_id": "chunk-141-evidence-2",
+          "quote": "产品141的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "4c4321be00e3e065f0404ea81466f9e06b94d56337d6405def0164e4f6606c07"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-142",
+      "citations": [
+        {
+          "chunk_id": "chunk-142-evidence-1",
+          "quote": "产品142的官方建议零售价为1999元。",
+          "text_hash": "9a77ebf11752936254c021a47f44fe4b18e95daa74e101ba80f81154cc94216b"
+        },
+        {
+          "chunk_id": "chunk-142-evidence-2",
+          "quote": "产品142在中国大陆以人民币计价。",
+          "text_hash": "072f7879156911c922bd1fdd45f7888c3c0f96e10d3916f1213464eed95ef7a9"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-143",
+      "citations": [
+        {
+          "chunk_id": "chunk-143-evidence-1",
+          "quote": "产品143符合GB/T 35273-2020标准。",
+          "text_hash": "a53bd87bc7ddbc2d8008b4497a73564ee147854b2cc98dba758ba3dbc9a9ff6f"
+        },
+        {
+          "chunk_id": "chunk-143-evidence-2",
+          "quote": "产品143的认证有效期截至2027年12月31日。",
+          "text_hash": "f73719a96a2a6226596a99a41a7f849f1ddb911194e4edaddf78df15081da98b"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-144",
+      "citations": [
+        {
+          "chunk_id": "chunk-144-evidence-1",
+          "quote": "产品144净重1.25千克。",
+          "text_hash": "d5734fbe1c5bd798c69824ea350f8b4c40554b8357ae9e2b4f31937ecc37d6f7"
+        },
+        {
+          "chunk_id": "chunk-144-evidence-2",
+          "quote": "产品144尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "f9b1f8181a80583e284a19053f351b2356ca5a1aeebf38c1e7965f903c4b78f7"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-145",
+      "citations": [
+        {
+          "chunk_id": "chunk-145-evidence-1",
+          "quote": "产品145兼容Windows和macOS。",
+          "text_hash": "c78d7664cda21896e46d12d313e8b23721f0129fa0c76842d5e04a4db6ac4ad4"
+        },
+        {
+          "chunk_id": "chunk-145-evidence-2",
+          "quote": "产品145要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "a0ce939ff12bcea824e980422db947cf97d588b5a83fa8254973c7731a9d719c"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-146",
+      "citations": [
+        {
+          "chunk_id": "chunk-146-evidence-1",
+          "quote": "产品146人工客服时间为工作日9:00至18:00。",
+          "text_hash": "b0ae8de8eea631949c897c7093c8c37c7a6311316c333257b3d1827dc1bf8502"
+        },
+        {
+          "chunk_id": "chunk-146-evidence-2",
+          "quote": "产品146上门服务覆盖中国大陆省会城市。",
+          "text_hash": "06c3b1dab4207009a2f17b5dea3f3a4093ede79184adb511e9ee4101715647a4"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-147",
+      "citations": [
+        {
+          "chunk_id": "chunk-147-evidence-1",
+          "quote": "产品147建议每日使用不超过2次。",
+          "text_hash": "9bb213271b3826d0e30d7d9adfe996dfe224d58fc3a6862de3099dd0e82cd7d9"
+        },
+        {
+          "chunk_id": "chunk-147-evidence-2",
+          "quote": "产品147不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "8688697bf9a7351a85735d0d7beb6ea90e6a2e7def88093a96bb626f05576802"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-148",
+      "citations": [
+        {
+          "chunk_id": "chunk-148-evidence-1",
+          "quote": "产品148退换政策自2026年1月1日起生效。",
+          "text_hash": "eb91bc6d195d548b6d0e553753eb36b75344a7c9f48ef04ba1b57f79f5710656"
+        },
+        {
+          "chunk_id": "chunk-148-evidence-2",
+          "quote": "产品148退换申请须在签收后7日内提交。",
+          "text_hash": "ab7ffc9093d9741be27a4fbc4acd8917d784e6671134e5275efaed9ec8f2df4e"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-149",
+      "citations": [
+        {
+          "chunk_id": "chunk-149-evidence-1",
+          "quote": "产品149首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "842f4078caca6078c642ce47e90c94a88eb950619226ccd380d213c989bf5239"
+        },
+        {
+          "chunk_id": "chunk-149-evidence-2",
+          "quote": "产品149仅通过官网和授权经销商销售。",
+          "text_hash": "57e680f71572ec3b98cd3c9273c04ec4fc2296496f63f0ab9368cc7e9a36fbdf"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-150",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-151",
+      "citations": [
+        {
+          "chunk_id": "chunk-151-evidence-1",
+          "quote": "产品151的官方发布日期为2026年9月1日。",
+          "text_hash": "dd383a738b95d02a0e4bb223c869183d4a62afd595643e18ec9f8636dceebd59"
+        },
+        {
+          "chunk_id": "chunk-151-evidence-2",
+          "quote": "产品151的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "bf1ca899b095604f7bbeea882bb577a8ffd52753d2ecc501c35e71acbba8ffcf"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-152",
+      "citations": [
+        {
+          "chunk_id": "chunk-152-evidence-1",
+          "quote": "产品152的官方建议零售价为1999元。",
+          "text_hash": "f100d3e63d566d0c208d372fb1016fea1409c97c436b302ed73965e8db907380"
+        },
+        {
+          "chunk_id": "chunk-152-evidence-2",
+          "quote": "产品152在中国大陆以人民币计价。",
+          "text_hash": "2c6112036e3a0bf0bac00b541bcc9c1a580efa00bb97b2e3a8d1b2e87d61b811"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-153",
+      "citations": [
+        {
+          "chunk_id": "chunk-153-evidence-1",
+          "quote": "产品153符合GB/T 35273-2020标准。",
+          "text_hash": "38168984bbd473dc96dbe878ed7cdf77f58e368e0932da7cac146afee59a4bd7"
+        },
+        {
+          "chunk_id": "chunk-153-evidence-2",
+          "quote": "产品153的认证有效期截至2027年12月31日。",
+          "text_hash": "5b1d542c47fdba4c4639262fde6e2a0d35b2eed548eed0a8234c11de49f3b1ea"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-154",
+      "citations": [
+        {
+          "chunk_id": "chunk-154-evidence-1",
+          "quote": "产品154净重1.25千克。",
+          "text_hash": "7eae43d7e67aec587e038f86294ca1346056421f9d8352556f1a3b5c410775eb"
+        },
+        {
+          "chunk_id": "chunk-154-evidence-2",
+          "quote": "产品154尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "de6901e3ecd2d0bda0b31dc431dcb3db3b5d33e287fa7542f8c4ad58b3fac6d6"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-155",
+      "citations": [
+        {
+          "chunk_id": "chunk-155-evidence-1",
+          "quote": "产品155兼容Windows和macOS。",
+          "text_hash": "f3e25d24f245f39d8c677c0b2cf20d3fde97ccf104a240880247b5d20d69eed5"
+        },
+        {
+          "chunk_id": "chunk-155-evidence-2",
+          "quote": "产品155要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "896383ee175496bacd1be5e912fbbcc5197ddbc59469b0f79100c3bf41be5ea3"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-156",
+      "citations": [
+        {
+          "chunk_id": "chunk-156-evidence-1",
+          "quote": "产品156人工客服时间为工作日9:00至18:00。",
+          "text_hash": "026b8399cc6f01d2ca0db15f56d7d7d8df557f6576d51513cfa666e26b8026b0"
+        },
+        {
+          "chunk_id": "chunk-156-evidence-2",
+          "quote": "产品156上门服务覆盖中国大陆省会城市。",
+          "text_hash": "036eb520bddcf83349458ee9dee4c376e1db15aa2734152a4fd7e63d7ec84505"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-157",
+      "citations": [
+        {
+          "chunk_id": "chunk-157-evidence-1",
+          "quote": "产品157建议每日使用不超过2次。",
+          "text_hash": "fb79a540e152f651f5f689976284369438f83d69bd59edc18a533521104d242a"
+        },
+        {
+          "chunk_id": "chunk-157-evidence-2",
+          "quote": "产品157不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "0b1300301538c830e9dd61267ae1db5e6f8b795795147a3aa5705540827c4828"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-158",
+      "citations": [
+        {
+          "chunk_id": "chunk-158-evidence-1",
+          "quote": "产品158退换政策自2026年1月1日起生效。",
+          "text_hash": "6908f6c830e070e09032a27c8088d745feef3b5c837c0819afdbf182de5c0b57"
+        },
+        {
+          "chunk_id": "chunk-158-evidence-2",
+          "quote": "产品158退换申请须在签收后7日内提交。",
+          "text_hash": "10aee39515bcbf58b438bedf209449a3e98aa4acd18de45e12b08f4cdd89ff73"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-159",
+      "citations": [
+        {
+          "chunk_id": "chunk-159-evidence-1",
+          "quote": "产品159首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "d69e3e923c1d120e82728503f5db42bb9f236f9fb0c3bc68c74fc89e9caf2f8b"
+        },
+        {
+          "chunk_id": "chunk-159-evidence-2",
+          "quote": "产品159仅通过官网和授权经销商销售。",
+          "text_hash": "2be32687cf1c4bf91846b291398a98258bc288852933c437587810972a2d2d2a"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-160",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-161",
+      "citations": [
+        {
+          "chunk_id": "chunk-161-evidence-1",
+          "quote": "产品161的官方发布日期为2026年9月1日。",
+          "text_hash": "c5d2d7b917c1a5db226e769e8d57a209a398e10b1be4c482e92b3682dba9f928"
+        },
+        {
+          "chunk_id": "chunk-161-evidence-2",
+          "quote": "产品161的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "34e50f2275ba3acdc663483d53c9630c5449f5aa49ac54725df53c0baf34ae49"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-162",
+      "citations": [
+        {
+          "chunk_id": "chunk-162-evidence-1",
+          "quote": "产品162的官方建议零售价为1999元。",
+          "text_hash": "200e1dca29232c05ecb598e7cc363e6c3bca724ca628516bfa927c986bc33312"
+        },
+        {
+          "chunk_id": "chunk-162-evidence-2",
+          "quote": "产品162在中国大陆以人民币计价。",
+          "text_hash": "bab541fcda9cccb3c06f2902d6fc3724c4539269060c648283d0670bd11e0446"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-163",
+      "citations": [
+        {
+          "chunk_id": "chunk-163-evidence-1",
+          "quote": "产品163符合GB/T 35273-2020标准。",
+          "text_hash": "36e17f898ce585e46f928e7ea5809688db9c48a9c6b78b28ac06a6d9a49fd10d"
+        },
+        {
+          "chunk_id": "chunk-163-evidence-2",
+          "quote": "产品163的认证有效期截至2027年12月31日。",
+          "text_hash": "abad42cd70ece0de7f34f5798bd295b6a480b23fc2de504cfefd4bee1688fb5c"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-164",
+      "citations": [
+        {
+          "chunk_id": "chunk-164-evidence-1",
+          "quote": "产品164净重1.25千克。",
+          "text_hash": "ac176451b5d30c04859920afdb155680dfb99f96ff3e1c634981c573b63c8a69"
+        },
+        {
+          "chunk_id": "chunk-164-evidence-2",
+          "quote": "产品164尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "ce28ceae93ff034dd0b9c2f101dce1d535924e648436586eef8bef2de3f6efb8"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-165",
+      "citations": [
+        {
+          "chunk_id": "chunk-165-evidence-1",
+          "quote": "产品165兼容Windows和macOS。",
+          "text_hash": "eae91c6887068eaf6c21994abf5c8a17f36fc3a9199e4acee203f40807dd03f3"
+        },
+        {
+          "chunk_id": "chunk-165-evidence-2",
+          "quote": "产品165要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "29b3d5ee6ee0e5a79589045a46efffd63f7a066bf5770b93602f23861ef41a56"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-166",
+      "citations": [
+        {
+          "chunk_id": "chunk-166-evidence-1",
+          "quote": "产品166人工客服时间为工作日9:00至18:00。",
+          "text_hash": "4aa7dc028d11f02b9158e0816c5739faa5cce7d89316255aa2cd40f2a6935737"
+        },
+        {
+          "chunk_id": "chunk-166-evidence-2",
+          "quote": "产品166上门服务覆盖中国大陆省会城市。",
+          "text_hash": "0dae23dd40340025b29086fccc40481e889c81e3b014d2aaa80e24c0286dee43"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-167",
+      "citations": [
+        {
+          "chunk_id": "chunk-167-evidence-1",
+          "quote": "产品167建议每日使用不超过2次。",
+          "text_hash": "9d66f5a3dcd3ca7fab818962a5e96cf3fc118cad22fd112f2dfa05f22e80ee15"
+        },
+        {
+          "chunk_id": "chunk-167-evidence-2",
+          "quote": "产品167不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "15b08e77fb5be7fa6d4826dfa7fb0efd9cbe613481acb0cc46b5f1034d9dbdcf"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-168",
+      "citations": [
+        {
+          "chunk_id": "chunk-168-evidence-1",
+          "quote": "产品168退换政策自2026年1月1日起生效。",
+          "text_hash": "86ed1fdabec1b8501d564ac848a92ef43e9302e49e3026b01245e4a3ce7437bd"
+        },
+        {
+          "chunk_id": "chunk-168-evidence-2",
+          "quote": "产品168退换申请须在签收后7日内提交。",
+          "text_hash": "9e60c74cb05d987992d2fc9604f7589e60b11597d0dbc029679d58b6044b006e"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-169",
+      "citations": [
+        {
+          "chunk_id": "chunk-169-evidence-1",
+          "quote": "产品169首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "0787672d1637974884012c37d4b4c7ca554590ad41561ebabeb86bb8541a9039"
+        },
+        {
+          "chunk_id": "chunk-169-evidence-2",
+          "quote": "产品169仅通过官网和授权经销商销售。",
+          "text_hash": "b75c27b1d5bd3fd3e641820d988cae4b785e1572c7b93fe5bb6cee703738bf33"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-170",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-171",
+      "citations": [
+        {
+          "chunk_id": "chunk-171-evidence-1",
+          "quote": "产品171的官方发布日期为2026年9月1日。",
+          "text_hash": "74b9fa2aa66b3654e328d45f0c48caf928c29582b4d1bc3339f54889d0808a17"
+        },
+        {
+          "chunk_id": "chunk-171-evidence-2",
+          "quote": "产品171的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "efa0f5cdb6f5cc000f08c91313ef40c1ea80ddc116f47ff60e4a22ed844c236d"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-172",
+      "citations": [
+        {
+          "chunk_id": "chunk-172-evidence-1",
+          "quote": "产品172的官方建议零售价为1999元。",
+          "text_hash": "8683fca59c3c748fee5d5473de91e8afb58ab2f8854cde131e3ebff96a6b3e4b"
+        },
+        {
+          "chunk_id": "chunk-172-evidence-2",
+          "quote": "产品172在中国大陆以人民币计价。",
+          "text_hash": "088548142e43e14e6470f4f1101fbcc52174b17e2038af915064bf462ab76e61"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-173",
+      "citations": [
+        {
+          "chunk_id": "chunk-173-evidence-1",
+          "quote": "产品173符合GB/T 35273-2020标准。",
+          "text_hash": "f969c8bd7efe08f43557278a942f2e3db9d35f1acee645d69e629991acae2410"
+        },
+        {
+          "chunk_id": "chunk-173-evidence-2",
+          "quote": "产品173的认证有效期截至2027年12月31日。",
+          "text_hash": "11234b731402c737e1d1a2f76cbc96811984825d71b8c43402da7ec9bfecce6c"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-174",
+      "citations": [
+        {
+          "chunk_id": "chunk-174-evidence-1",
+          "quote": "产品174净重1.25千克。",
+          "text_hash": "2377b19fd8ed9876852fe88935b6501ec17735318715b18f402125a111b4e698"
+        },
+        {
+          "chunk_id": "chunk-174-evidence-2",
+          "quote": "产品174尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "ce9f9ac66c10db9eb205933c970a08d61224ec9b359597f597a8c3c4cfd1b8b1"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-175",
+      "citations": [
+        {
+          "chunk_id": "chunk-175-evidence-1",
+          "quote": "产品175兼容Windows和macOS。",
+          "text_hash": "49ea9178e246eef9958ba8a7cdef310f3c0e76e386300d2f2f916c199bf752d0"
+        },
+        {
+          "chunk_id": "chunk-175-evidence-2",
+          "quote": "产品175要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "b0745c312faf211db5a2df418c4c9f1dd579ce582fe2ba25350a974bfc1cbb77"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-176",
+      "citations": [
+        {
+          "chunk_id": "chunk-176-evidence-1",
+          "quote": "产品176人工客服时间为工作日9:00至18:00。",
+          "text_hash": "8bb7220596c96eda7cf06a4ad406e2834e8be2ff6817d2e3bd9a7924ebe4acdc"
+        },
+        {
+          "chunk_id": "chunk-176-evidence-2",
+          "quote": "产品176上门服务覆盖中国大陆省会城市。",
+          "text_hash": "941e1c901b6e92c21130d457c41c8f48282ac1297836f5b7d870e896ceea901f"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-177",
+      "citations": [
+        {
+          "chunk_id": "chunk-177-evidence-1",
+          "quote": "产品177建议每日使用不超过2次。",
+          "text_hash": "ac27dd2f5af4a24d76ab4f727f288206245f598e77df6d3372aeab7659f12839"
+        },
+        {
+          "chunk_id": "chunk-177-evidence-2",
+          "quote": "产品177不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "d7e0c9f9d676bb0b1c3267ec7ffde654441ae7a2d06c7879a314a3b863159af3"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-178",
+      "citations": [
+        {
+          "chunk_id": "chunk-178-evidence-1",
+          "quote": "产品178退换政策自2026年1月1日起生效。",
+          "text_hash": "38ef6609fba142bee8240388a6179c1ce5d85fe7b14d52462e58a8829705abf9"
+        },
+        {
+          "chunk_id": "chunk-178-evidence-2",
+          "quote": "产品178退换申请须在签收后7日内提交。",
+          "text_hash": "62f91d055c90374ce702abb4741207667bbcf629c242ba9cdfad642d62a44b29"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-179",
+      "citations": [
+        {
+          "chunk_id": "chunk-179-evidence-1",
+          "quote": "产品179首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "02aba648ead62b356ee0c0e1a499996ee8c964854bd5b8f37c3c73b9f09958b7"
+        },
+        {
+          "chunk_id": "chunk-179-evidence-2",
+          "quote": "产品179仅通过官网和授权经销商销售。",
+          "text_hash": "9f8c0475f9535936c6ce4bc2609e28fcc52acd6fca4b34433a7a66228abe775c"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-180",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-181",
+      "citations": [
+        {
+          "chunk_id": "chunk-181-evidence-1",
+          "quote": "产品181的官方发布日期为2026年9月1日。",
+          "text_hash": "d1b7f3c5f9ae7d2d8fa6e5922bf9e0d21dc454dc1186411aedc6f521cafc7519"
+        },
+        {
+          "chunk_id": "chunk-181-evidence-2",
+          "quote": "产品181的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "e98953ffa2fb00499e28445f7dea1603d026654b055dbffdc96f2e0ff962b744"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-182",
+      "citations": [
+        {
+          "chunk_id": "chunk-182-evidence-1",
+          "quote": "产品182的官方建议零售价为1999元。",
+          "text_hash": "0de34596120545ec39b399b88b957ef781d500d0141379fae42e857426ebdabf"
+        },
+        {
+          "chunk_id": "chunk-182-evidence-2",
+          "quote": "产品182在中国大陆以人民币计价。",
+          "text_hash": "9420314c6f354237be3907a31fdd540366481f27080457ca1b0c5a08470fc99f"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-183",
+      "citations": [
+        {
+          "chunk_id": "chunk-183-evidence-1",
+          "quote": "产品183符合GB/T 35273-2020标准。",
+          "text_hash": "a6e697f944f8aaf062f8081374b0f2decb10b5684afb3915823531b7f3c6e9e8"
+        },
+        {
+          "chunk_id": "chunk-183-evidence-2",
+          "quote": "产品183的认证有效期截至2027年12月31日。",
+          "text_hash": "993223bc52b9249e7b277415cbe984fa07ca2768f403e86af170565d973371b1"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-184",
+      "citations": [
+        {
+          "chunk_id": "chunk-184-evidence-1",
+          "quote": "产品184净重1.25千克。",
+          "text_hash": "c5ad7cc0406b1847df120195aba749d4b4df692e334b89f2243a311047d905e9"
+        },
+        {
+          "chunk_id": "chunk-184-evidence-2",
+          "quote": "产品184尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "24051749b5b14eb2e662932185343608d3fccab3f1ea9b8aae6a506fca2987c5"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-185",
+      "citations": [
+        {
+          "chunk_id": "chunk-185-evidence-1",
+          "quote": "产品185兼容Windows和macOS。",
+          "text_hash": "7f75e982efc932c051d1da7b6c3f1cadee24cb127e0e63dbd536dfcf2ca942d6"
+        },
+        {
+          "chunk_id": "chunk-185-evidence-2",
+          "quote": "产品185要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "1d8373272cf1fff595ccf43fcc5d60223367ef201ac740a5de31760bd40ded3a"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-186",
+      "citations": [
+        {
+          "chunk_id": "chunk-186-evidence-1",
+          "quote": "产品186人工客服时间为工作日9:00至18:00。",
+          "text_hash": "e79cc8f5b8312c4e6b36f4ae7e9ec679f2cd430bdefa5a9540bb55c09176dd5f"
+        },
+        {
+          "chunk_id": "chunk-186-evidence-2",
+          "quote": "产品186上门服务覆盖中国大陆省会城市。",
+          "text_hash": "53a4af28dccb757d955431874867acb098830d6975d4567e3701012dcdf8828b"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-187",
+      "citations": [
+        {
+          "chunk_id": "chunk-187-evidence-1",
+          "quote": "产品187建议每日使用不超过2次。",
+          "text_hash": "3a5aa1ba10d48895ebb825889edf8ccc292918cdd635f7b973bb3081380973d7"
+        },
+        {
+          "chunk_id": "chunk-187-evidence-2",
+          "quote": "产品187不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "4b67c6905e134577fc0cece66e0ee9b9d17acb4875743ea1a09b5666885a72c5"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-188",
+      "citations": [
+        {
+          "chunk_id": "chunk-188-evidence-1",
+          "quote": "产品188退换政策自2026年1月1日起生效。",
+          "text_hash": "c6823eb2a307ae8a6d7183be3c7eebb3099dfd4d12ff4b491f40b29be79812ea"
+        },
+        {
+          "chunk_id": "chunk-188-evidence-2",
+          "quote": "产品188退换申请须在签收后7日内提交。",
+          "text_hash": "505d700c6fa69894db3f35de142c71b18337e6ecc4a86814a75e346d3959fe04"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-189",
+      "citations": [
+        {
+          "chunk_id": "chunk-189-evidence-1",
+          "quote": "产品189首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "5b0c0133c8aaf844b5e268b0afb234bd68ddeefe88a04fbfc325b0e105545701"
+        },
+        {
+          "chunk_id": "chunk-189-evidence-2",
+          "quote": "产品189仅通过官网和授权经销商销售。",
+          "text_hash": "3cb513a249981bf85cbed3a145cc13cb6b2763ca459ef1dee02d00fc7c6e7a3a"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-190",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-191",
+      "citations": [
+        {
+          "chunk_id": "chunk-191-evidence-1",
+          "quote": "产品191的官方发布日期为2026年9月1日。",
+          "text_hash": "a073dbeaf36f948c7bc4d1e999216cd37a087bc66eef70e58cb160fb30bf6548"
+        },
+        {
+          "chunk_id": "chunk-191-evidence-2",
+          "quote": "产品191的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "6d8afbeee0758339f696b8b1dd64f2e1f4741a2cd6e5dbcda2787ecc6c45ad65"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-192",
+      "citations": [
+        {
+          "chunk_id": "chunk-192-evidence-1",
+          "quote": "产品192的官方建议零售价为1999元。",
+          "text_hash": "2d1eb27cd1b241e0a433bc20d043fb1dafb8a241d54320545bd6d1b2b894fd3f"
+        },
+        {
+          "chunk_id": "chunk-192-evidence-2",
+          "quote": "产品192在中国大陆以人民币计价。",
+          "text_hash": "07ac2902c314f1ffabc90121158afde7384adfaaf722aee489bae853e8ab630d"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-193",
+      "citations": [
+        {
+          "chunk_id": "chunk-193-evidence-1",
+          "quote": "产品193符合GB/T 35273-2020标准。",
+          "text_hash": "405b45158d5531bf9edf942d10a052ea7fdf7c145ab22b8662c856ff661e9f10"
+        },
+        {
+          "chunk_id": "chunk-193-evidence-2",
+          "quote": "产品193的认证有效期截至2027年12月31日。",
+          "text_hash": "dd9b3daf52da8d3ef3340ae5873310b3a54b3e07cdfe11435cc60b2c202fe0ec"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-194",
+      "citations": [
+        {
+          "chunk_id": "chunk-194-evidence-1",
+          "quote": "产品194净重1.25千克。",
+          "text_hash": "b707e6cb7595512692150fe8e1cc7c2190048bb87aacf3162003feb0d411c3a1"
+        },
+        {
+          "chunk_id": "chunk-194-evidence-2",
+          "quote": "产品194尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "031ec8b2b48548257b952d409445d72e2a423ae775cc0d9a7bfe1426eb39b2e3"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-195",
+      "citations": [
+        {
+          "chunk_id": "chunk-195-evidence-1",
+          "quote": "产品195兼容Windows和macOS。",
+          "text_hash": "347dcde6bc8a02099c140eceb5ce9b14a7e56d56fdc927f3bea87c0b9569847b"
+        },
+        {
+          "chunk_id": "chunk-195-evidence-2",
+          "quote": "产品195要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "0f5609521966f4f4ebec52e99753fdd755c13ab350f597c44338f69149cd43b4"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-196",
+      "citations": [
+        {
+          "chunk_id": "chunk-196-evidence-1",
+          "quote": "产品196人工客服时间为工作日9:00至18:00。",
+          "text_hash": "962c05e9f7f0171e4607de4e0b7403466041b653aec2807f4d7db685afa3e701"
+        },
+        {
+          "chunk_id": "chunk-196-evidence-2",
+          "quote": "产品196上门服务覆盖中国大陆省会城市。",
+          "text_hash": "500c00b4f471eba3fa0a86402a81d6d44135c8f818bae21cad24a1d027bbcd3b"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-197",
+      "citations": [
+        {
+          "chunk_id": "chunk-197-evidence-1",
+          "quote": "产品197建议每日使用不超过2次。",
+          "text_hash": "7b931e4dfc08190c0ceff82d46b22d27af3c37adea81f2f4b0acf64b8f0c2bd9"
+        },
+        {
+          "chunk_id": "chunk-197-evidence-2",
+          "quote": "产品197不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "9a9bd32a4a4ad3b5c522caf1d70c050997de6e4220b62e8764369ea883e53610"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-198",
+      "citations": [
+        {
+          "chunk_id": "chunk-198-evidence-1",
+          "quote": "产品198退换政策自2026年1月1日起生效。",
+          "text_hash": "ca8aefbb21129ad4c56c4a1fd4716af129fc6fb02b9441f1744c6f33187db6ee"
+        },
+        {
+          "chunk_id": "chunk-198-evidence-2",
+          "quote": "产品198退换申请须在签收后7日内提交。",
+          "text_hash": "ee4caf6ac25de4b68b6ce007ded6d8bdb71df24d21a5e12dd90daa515d249cd5"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-199",
+      "citations": [
+        {
+          "chunk_id": "chunk-199-evidence-1",
+          "quote": "产品199首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "132c68a2678fab8c98d31a541f41043eaf0054159098d11f8e4513caf874fd67"
+        },
+        {
+          "chunk_id": "chunk-199-evidence-2",
+          "quote": "产品199仅通过官网和授权经销商销售。",
+          "text_hash": "ff168bb080031c313e75a9875e8acc1e7f172776c900f681ce7f40eb3f90327b"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-200",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-201",
+      "citations": [
+        {
+          "chunk_id": "chunk-201-evidence-1",
+          "quote": "产品201的官方发布日期为2026年9月1日。",
+          "text_hash": "006a4ee23105823dcd4add51c40119e9001ba04110439160b7d6db43120ac606"
+        },
+        {
+          "chunk_id": "chunk-201-evidence-2",
+          "quote": "产品201的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "58a039b6574f2bdfb170a5bfb56d6297f6f5de66a02edc9479876da13de30cf2"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-202",
+      "citations": [
+        {
+          "chunk_id": "chunk-202-evidence-1",
+          "quote": "产品202的官方建议零售价为1999元。",
+          "text_hash": "417ea0778a4db74d1472e1a6d664c2e572a478faf7bb7a16e2495a5c42929a06"
+        },
+        {
+          "chunk_id": "chunk-202-evidence-2",
+          "quote": "产品202在中国大陆以人民币计价。",
+          "text_hash": "948acbd04e94af4bb814767faf29d0c4329c52bcc27a054cfc4675dab1ec693b"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-203",
+      "citations": [
+        {
+          "chunk_id": "chunk-203-evidence-1",
+          "quote": "产品203符合GB/T 35273-2020标准。",
+          "text_hash": "cd486a92670b46758d6f1984e8a237376d22edbaf2990df94ef0d048f6de9de4"
+        },
+        {
+          "chunk_id": "chunk-203-evidence-2",
+          "quote": "产品203的认证有效期截至2027年12月31日。",
+          "text_hash": "989a3610d3f2efb1c4b36b4ca6eaacc790e4c4b4fa1f11e3e17383aa6c5de51f"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-204",
+      "citations": [
+        {
+          "chunk_id": "chunk-204-evidence-1",
+          "quote": "产品204净重1.25千克。",
+          "text_hash": "2cb723b7b9ab69ae5dd5d34668e56113d76f8581b15e6ecf3cbb362232e07a0d"
+        },
+        {
+          "chunk_id": "chunk-204-evidence-2",
+          "quote": "产品204尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "af7f9eb8092489c974645868b421e1ca5cf79fabdb6750224604241a73ce6d7f"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-205",
+      "citations": [
+        {
+          "chunk_id": "chunk-205-evidence-1",
+          "quote": "产品205兼容Windows和macOS。",
+          "text_hash": "fc803b85edb1756be1c7a1aba158feaa1892fdf6bd95555670fcd25586dfe8e2"
+        },
+        {
+          "chunk_id": "chunk-205-evidence-2",
+          "quote": "产品205要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "76f064beb542e1fbab196a88b0d0847ec9218c56aa714b72e0a1981275346643"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-206",
+      "citations": [
+        {
+          "chunk_id": "chunk-206-evidence-1",
+          "quote": "产品206人工客服时间为工作日9:00至18:00。",
+          "text_hash": "f1e73f74597c1f37385e13aa6be936be4f821f595f6ccc650a0b55cf603ab966"
+        },
+        {
+          "chunk_id": "chunk-206-evidence-2",
+          "quote": "产品206上门服务覆盖中国大陆省会城市。",
+          "text_hash": "a8ef538b7d1a965f210bd31423e6a69f76389690139a82f445482a6cf2849c9b"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-207",
+      "citations": [
+        {
+          "chunk_id": "chunk-207-evidence-1",
+          "quote": "产品207建议每日使用不超过2次。",
+          "text_hash": "6958411687100b6a9e068cf90860ca5ea5dbc2b0e506a0cc9885627e8fcda770"
+        },
+        {
+          "chunk_id": "chunk-207-evidence-2",
+          "quote": "产品207不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "16cba096a1edb0975befff2c77bd7cf4f93ed46600139c9112a3d795e8244bfd"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-208",
+      "citations": [
+        {
+          "chunk_id": "chunk-208-evidence-1",
+          "quote": "产品208退换政策自2026年1月1日起生效。",
+          "text_hash": "6524bb62c9081f36595d311769c1b47fc4bb1c2485fea4825d74278c39cc1ece"
+        },
+        {
+          "chunk_id": "chunk-208-evidence-2",
+          "quote": "产品208退换申请须在签收后7日内提交。",
+          "text_hash": "02a494996574e8407d9f00c05f2af35eab9f8617420727ca22ae925bda55e86c"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-209",
+      "citations": [
+        {
+          "chunk_id": "chunk-209-evidence-1",
+          "quote": "产品209首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "5e775db1ccffacbb20abe27fecb377f6a2454663dd7fdae0a58da33486620306"
+        },
+        {
+          "chunk_id": "chunk-209-evidence-2",
+          "quote": "产品209仅通过官网和授权经销商销售。",
+          "text_hash": "e966f9f9a56720bd41905c4cf5474ca7b9345bf0377a2fa8c34434af390b526f"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-210",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-211",
+      "citations": [
+        {
+          "chunk_id": "chunk-211-evidence-1",
+          "quote": "产品211的官方发布日期为2026年9月1日。",
+          "text_hash": "4ca2d2183b62c20bda3f8aa964c5706ba3e2989a6da09de0b59dc82111274d95"
+        },
+        {
+          "chunk_id": "chunk-211-evidence-2",
+          "quote": "产品211的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "5a35fb710cd9b97d29178d51a1eaf18dfcfd3f735fcf1f756926e1fd5baadcc7"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-212",
+      "citations": [
+        {
+          "chunk_id": "chunk-212-evidence-1",
+          "quote": "产品212的官方建议零售价为1999元。",
+          "text_hash": "d5eda08b0ae58e620ce07ca38c4062f3d3227ed6d6228c7188eb20fdc9f3ac54"
+        },
+        {
+          "chunk_id": "chunk-212-evidence-2",
+          "quote": "产品212在中国大陆以人民币计价。",
+          "text_hash": "0bf6156d8e7bed6dbb0535fdced891fc00af10a0f244caf4670e2179509bd074"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-213",
+      "citations": [
+        {
+          "chunk_id": "chunk-213-evidence-1",
+          "quote": "产品213符合GB/T 35273-2020标准。",
+          "text_hash": "fea80a4c5b7deff1697cd0b68783f0685c5d636d701fad37e36ffeaacd3b52fc"
+        },
+        {
+          "chunk_id": "chunk-213-evidence-2",
+          "quote": "产品213的认证有效期截至2027年12月31日。",
+          "text_hash": "b9c2a9b9442093356b7d7ef25b84dcf45e13cac5dbb3dee51bce5bcd8ad8c9f0"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-214",
+      "citations": [
+        {
+          "chunk_id": "chunk-214-evidence-1",
+          "quote": "产品214净重1.25千克。",
+          "text_hash": "4618b397e0f89cfecf96a2522bda9aeb788ad5e38ea32f0acd676fa29fb7ad15"
+        },
+        {
+          "chunk_id": "chunk-214-evidence-2",
+          "quote": "产品214尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "3f56105b865379390579902d3ee569093dfd25efc1ae0dd12a80b7cc41f4b0e6"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-215",
+      "citations": [
+        {
+          "chunk_id": "chunk-215-evidence-1",
+          "quote": "产品215兼容Windows和macOS。",
+          "text_hash": "4b111325a50ce46b66898424f2c2f95cf7f574ea97ec2a8c7cdb3a392991b9d9"
+        },
+        {
+          "chunk_id": "chunk-215-evidence-2",
+          "quote": "产品215要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "ee7bb1b41e39d55330bac0d601cd7028a8076e0a87a59337e4bbf6067fcf2189"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-216",
+      "citations": [
+        {
+          "chunk_id": "chunk-216-evidence-1",
+          "quote": "产品216人工客服时间为工作日9:00至18:00。",
+          "text_hash": "d846e4b9d21c411507b9bddb027867894baa7b2ad9f759d3e424232985cdebf9"
+        },
+        {
+          "chunk_id": "chunk-216-evidence-2",
+          "quote": "产品216上门服务覆盖中国大陆省会城市。",
+          "text_hash": "f3d10ad09fee60dc14ef49d82ed2bb56baf59aaac392251dfc6a6241c2f198ed"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-217",
+      "citations": [
+        {
+          "chunk_id": "chunk-217-evidence-1",
+          "quote": "产品217建议每日使用不超过2次。",
+          "text_hash": "332931884d28ba52f59b80dfc1d109cebcdf53f7e736ca62a97c9235e3902cd3"
+        },
+        {
+          "chunk_id": "chunk-217-evidence-2",
+          "quote": "产品217不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "37a0aab5b0bb0e51c5a3e44536cd7f35c349ff6272cdef3e29d86a9687355a02"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-218",
+      "citations": [
+        {
+          "chunk_id": "chunk-218-evidence-1",
+          "quote": "产品218退换政策自2026年1月1日起生效。",
+          "text_hash": "65c6c2cc142f48537562f9c2d6fed250d801e22207eb5cdcc23b7d17d5c8829c"
+        },
+        {
+          "chunk_id": "chunk-218-evidence-2",
+          "quote": "产品218退换申请须在签收后7日内提交。",
+          "text_hash": "164448707da436e5eb73d8ccdee7381d3785e8f13bada1ff17b4c8a34e927a99"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-219",
+      "citations": [
+        {
+          "chunk_id": "chunk-219-evidence-1",
+          "quote": "产品219首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "c4a3d8c1914d4a3da69c56400ade14bac3ecd077794f4bc701fe77f8ff737fbc"
+        },
+        {
+          "chunk_id": "chunk-219-evidence-2",
+          "quote": "产品219仅通过官网和授权经销商销售。",
+          "text_hash": "e0d428d11e3032a108d3e274aa165ac1c9f76b4f2b993c40a9be5a03f66ed88c"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-220",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-221",
+      "citations": [
+        {
+          "chunk_id": "chunk-221-evidence-1",
+          "quote": "产品221的官方发布日期为2026年9月1日。",
+          "text_hash": "a1b1440e11582ec777bd9197a816deb9c7ef71adbaaf22159167a55810a79237"
+        },
+        {
+          "chunk_id": "chunk-221-evidence-2",
+          "quote": "产品221的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "19649333e0b21a0408114cc364d9433d67b3cea81442f9caecc45d83f80b062b"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-222",
+      "citations": [
+        {
+          "chunk_id": "chunk-222-evidence-1",
+          "quote": "产品222的官方建议零售价为1999元。",
+          "text_hash": "f8912a91975507cf9912f886045e076f2f01613c0faf45db607c01d11249c192"
+        },
+        {
+          "chunk_id": "chunk-222-evidence-2",
+          "quote": "产品222在中国大陆以人民币计价。",
+          "text_hash": "4b02c97ae38340d9d05be81b95b6940079a44bd208be75305193b444183a6b87"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-223",
+      "citations": [
+        {
+          "chunk_id": "chunk-223-evidence-1",
+          "quote": "产品223符合GB/T 35273-2020标准。",
+          "text_hash": "58f48a7590d95d7604445b20b2524c542727966ff08b7cc10439205640ce1595"
+        },
+        {
+          "chunk_id": "chunk-223-evidence-2",
+          "quote": "产品223的认证有效期截至2027年12月31日。",
+          "text_hash": "1641238c5770d309f38f987a6a5e3746e6d797baa6d0a0ed9819efe7c628fd6b"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-224",
+      "citations": [
+        {
+          "chunk_id": "chunk-224-evidence-1",
+          "quote": "产品224净重1.25千克。",
+          "text_hash": "4cf401b245b80b02748725148fc101baa66695e384494b2d4d8e5847b5610ac5"
+        },
+        {
+          "chunk_id": "chunk-224-evidence-2",
+          "quote": "产品224尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "9e17bc103781a9e05eb5ed21c71bc579f463c5068c4a0892e9f81b26b7925bd0"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-225",
+      "citations": [
+        {
+          "chunk_id": "chunk-225-evidence-1",
+          "quote": "产品225兼容Windows和macOS。",
+          "text_hash": "75231a7bfbc916a254e00b8b10cfa802ec01ffd86ff42fb5157bcc42b8ed2ea1"
+        },
+        {
+          "chunk_id": "chunk-225-evidence-2",
+          "quote": "产品225要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "101ade694fab407b24c449415800e13006d2adc18881c23dede2def0c91a77fd"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-226",
+      "citations": [
+        {
+          "chunk_id": "chunk-226-evidence-1",
+          "quote": "产品226人工客服时间为工作日9:00至18:00。",
+          "text_hash": "b974c9d7257ad2e8966c8d55300d1f74458c4b60a30c2cade8265d58b444b7ff"
+        },
+        {
+          "chunk_id": "chunk-226-evidence-2",
+          "quote": "产品226上门服务覆盖中国大陆省会城市。",
+          "text_hash": "139560b24e1a4650b4a2db1abd2959605fd395cecdd6b9bdea837eda36e0ef84"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-227",
+      "citations": [
+        {
+          "chunk_id": "chunk-227-evidence-1",
+          "quote": "产品227建议每日使用不超过2次。",
+          "text_hash": "48639a317aca8792a065e38fe8c78606c7ad78e97f0d98a864afbb26a4f3768a"
+        },
+        {
+          "chunk_id": "chunk-227-evidence-2",
+          "quote": "产品227不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "5e21bb8283b8fa6823889e552787770aee91f30febb593808e3e0f376a9b29c0"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-228",
+      "citations": [
+        {
+          "chunk_id": "chunk-228-evidence-1",
+          "quote": "产品228退换政策自2026年1月1日起生效。",
+          "text_hash": "a893f929f22a4f8c856663f0ff26b900abf37140a317f6ab52d7b11ee153a8a1"
+        },
+        {
+          "chunk_id": "chunk-228-evidence-2",
+          "quote": "产品228退换申请须在签收后7日内提交。",
+          "text_hash": "bfbbde4def57c4ba62648f05736f00ce0da74f5c469e5c45061f94dbd1ab05af"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-229",
+      "citations": [
+        {
+          "chunk_id": "chunk-229-evidence-1",
+          "quote": "产品229首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "471a10298b34580ba5f716ad21f26c3b3babf32c4e1dbba76b098cd3fbe966bc"
+        },
+        {
+          "chunk_id": "chunk-229-evidence-2",
+          "quote": "产品229仅通过官网和授权经销商销售。",
+          "text_hash": "3037bc71715bf1241a73f9f10aa5d42cf9947a660d7d2c3f1e532e2f43f7577d"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-230",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-231",
+      "citations": [
+        {
+          "chunk_id": "chunk-231-evidence-1",
+          "quote": "产品231的官方发布日期为2026年9月1日。",
+          "text_hash": "04fb47aeee94a93811a36fba0fe27ab31e621df5df9fec276d5b0e8d4b26f667"
+        },
+        {
+          "chunk_id": "chunk-231-evidence-2",
+          "quote": "产品231的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "76c9f780a3870952d360b5c530149c13ff4710bce46d4f1ccea0395d948b00c4"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-232",
+      "citations": [
+        {
+          "chunk_id": "chunk-232-evidence-1",
+          "quote": "产品232的官方建议零售价为1999元。",
+          "text_hash": "a8baacf7c478c23d01171267a384cbc547ea8f7dee51bb074e74bca9961c296e"
+        },
+        {
+          "chunk_id": "chunk-232-evidence-2",
+          "quote": "产品232在中国大陆以人民币计价。",
+          "text_hash": "707459a8804fcf8cbd2fe3ae48bcb52f5cba8f40a23356d1532f252a3d052316"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-233",
+      "citations": [
+        {
+          "chunk_id": "chunk-233-evidence-1",
+          "quote": "产品233符合GB/T 35273-2020标准。",
+          "text_hash": "251a6be3ac0ff5a55385ef8f239de8bc7e3a2c90b47b1c507de8890bb6b28f6a"
+        },
+        {
+          "chunk_id": "chunk-233-evidence-2",
+          "quote": "产品233的认证有效期截至2027年12月31日。",
+          "text_hash": "48058429ace7ee3337558fe9781ff75fb9e890cf90e22d5a29254e2c5921c0ba"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-234",
+      "citations": [
+        {
+          "chunk_id": "chunk-234-evidence-1",
+          "quote": "产品234净重1.25千克。",
+          "text_hash": "1614f3adae3fe634886dc7e3a24f8434e372bfdc1e4a99c74ac3bb46641a52c0"
+        },
+        {
+          "chunk_id": "chunk-234-evidence-2",
+          "quote": "产品234尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "ea9ee13a53373f3396a2745e142a33e8a4f4c6d665286d7c53c988e1c58c7ca3"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-235",
+      "citations": [
+        {
+          "chunk_id": "chunk-235-evidence-1",
+          "quote": "产品235兼容Windows和macOS。",
+          "text_hash": "10ca797fbdac94df1ac55f3bc24ba336ed9c06e9380ab9cd4f1e36c78d9c19a5"
+        },
+        {
+          "chunk_id": "chunk-235-evidence-2",
+          "quote": "产品235要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "78fafd3be097a3d0f58ed413cd3d0282d94e7a06e6103363e259aec8422fcd1a"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-236",
+      "citations": [
+        {
+          "chunk_id": "chunk-236-evidence-1",
+          "quote": "产品236人工客服时间为工作日9:00至18:00。",
+          "text_hash": "4a3f648cbc17d250ff73247d306de7b2aaf9b68d5db5951ba7e28d4a0c7c6380"
+        },
+        {
+          "chunk_id": "chunk-236-evidence-2",
+          "quote": "产品236上门服务覆盖中国大陆省会城市。",
+          "text_hash": "7faabb4f917b908fce427e4513329503c649f6fb3c4c0586a176646a527465e3"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-237",
+      "citations": [
+        {
+          "chunk_id": "chunk-237-evidence-1",
+          "quote": "产品237建议每日使用不超过2次。",
+          "text_hash": "19a70b4a938728742255fe189179f3c9aaa00e788267ec4ce912a16be0a06291"
+        },
+        {
+          "chunk_id": "chunk-237-evidence-2",
+          "quote": "产品237不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "d8b60892b8d9bb533680d4872aa43d6660779b81f13909338ae4fc823b46404b"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-238",
+      "citations": [
+        {
+          "chunk_id": "chunk-238-evidence-1",
+          "quote": "产品238退换政策自2026年1月1日起生效。",
+          "text_hash": "f4bc9a47b9ab5d3356fcde15c33794cbe404c0f5c92d127b6140c8bb0725f570"
+        },
+        {
+          "chunk_id": "chunk-238-evidence-2",
+          "quote": "产品238退换申请须在签收后7日内提交。",
+          "text_hash": "04660d456c39f4e1bd6eb267c4295819290f9fa22d6ce9ca0c1f662afbb008ea"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-239",
+      "citations": [
+        {
+          "chunk_id": "chunk-239-evidence-1",
+          "quote": "产品239首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "d736c98645fba3efa2a86957ae0c2178d9afd7b5925426b97befd2d6b88e86ba"
+        },
+        {
+          "chunk_id": "chunk-239-evidence-2",
+          "quote": "产品239仅通过官网和授权经销商销售。",
+          "text_hash": "d3102a7e61117196a3b8c255a87843c86db8911688a749cacd08eba6e968f09f"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-240",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-241",
+      "citations": [
+        {
+          "chunk_id": "chunk-241-evidence-1",
+          "quote": "产品241的官方发布日期为2026年9月1日。",
+          "text_hash": "a5e5474bfa0026e06326f4ef58779016d31bbaa1da97b4c5c120cfb37a1c061e"
+        },
+        {
+          "chunk_id": "chunk-241-evidence-2",
+          "quote": "产品241的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "6635b4a00699b11a957be5a3d69299e05c7e00a599b4be448eeea661dcb0c349"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-242",
+      "citations": [
+        {
+          "chunk_id": "chunk-242-evidence-1",
+          "quote": "产品242的官方建议零售价为1999元。",
+          "text_hash": "0940f4cf86550829410467d21c2bcaa456998287a2cc367b6caaf2bdd03193ed"
+        },
+        {
+          "chunk_id": "chunk-242-evidence-2",
+          "quote": "产品242在中国大陆以人民币计价。",
+          "text_hash": "0ae8be1b90c7c4a00d8fb94c20bccf2fd2d4b6e5e3af299317b3665eb26a84e5"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-243",
+      "citations": [
+        {
+          "chunk_id": "chunk-243-evidence-1",
+          "quote": "产品243符合GB/T 35273-2020标准。",
+          "text_hash": "e651f4c1230dde3b7e725a76a9a4c9dad2691a22fc3ddf8308c75989b7a77ab2"
+        },
+        {
+          "chunk_id": "chunk-243-evidence-2",
+          "quote": "产品243的认证有效期截至2027年12月31日。",
+          "text_hash": "a0f01dafa9b7b6bee819fd03ad1e3e6d3f418f6d6f7d7d5b0f1302e8716e1db9"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-244",
+      "citations": [
+        {
+          "chunk_id": "chunk-244-evidence-1",
+          "quote": "产品244净重1.25千克。",
+          "text_hash": "568af4c68cae48a9a4807784cffa4b0f13410502e8fe8d50eea5a97461f9efba"
+        },
+        {
+          "chunk_id": "chunk-244-evidence-2",
+          "quote": "产品244尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "5fa27b081591b3ae9363df91cdaa005b3f7c03f01149b2b649a31353acd09a93"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-245",
+      "citations": [
+        {
+          "chunk_id": "chunk-245-evidence-1",
+          "quote": "产品245兼容Windows和macOS。",
+          "text_hash": "aea191c970eb2d815a1dc57c59580cebb2ddea835c088f1f5d1980c1b68896bd"
+        },
+        {
+          "chunk_id": "chunk-245-evidence-2",
+          "quote": "产品245要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "eb0d4b1e4c37454becd10ab95f29b69d663eef253cbf25109d87413bff466ac0"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-246",
+      "citations": [
+        {
+          "chunk_id": "chunk-246-evidence-1",
+          "quote": "产品246人工客服时间为工作日9:00至18:00。",
+          "text_hash": "011e47613193db5aaadfa009f076999a6bf689e9d72d7553fff59f7d7b3ff334"
+        },
+        {
+          "chunk_id": "chunk-246-evidence-2",
+          "quote": "产品246上门服务覆盖中国大陆省会城市。",
+          "text_hash": "9884cc54291752a8e077eae761a14c85028f31858cb138b64d35ad3ca0fe3622"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-247",
+      "citations": [
+        {
+          "chunk_id": "chunk-247-evidence-1",
+          "quote": "产品247建议每日使用不超过2次。",
+          "text_hash": "db8ba463cf569a8abd160d1fe674928016d4493b9b4ae3f2613a6f6aa198b760"
+        },
+        {
+          "chunk_id": "chunk-247-evidence-2",
+          "quote": "产品247不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "d0eb30a22fd432e9e0fb331e8854c55237c1d689cb9bcb7902d8ec349d5ab17e"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-248",
+      "citations": [
+        {
+          "chunk_id": "chunk-248-evidence-1",
+          "quote": "产品248退换政策自2026年1月1日起生效。",
+          "text_hash": "366482618e9018c0a7e745f1d8ec93bb87f55405bf32e9c0a49dedc689e6c73c"
+        },
+        {
+          "chunk_id": "chunk-248-evidence-2",
+          "quote": "产品248退换申请须在签收后7日内提交。",
+          "text_hash": "0a1d02e35eed6f1ae173c0d287eabfd0baf7c3f3702294e52cf3c8b870227823"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-249",
+      "citations": [
+        {
+          "chunk_id": "chunk-249-evidence-1",
+          "quote": "产品249首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "c99ad37c753f1106732c8b6917e84bd6f787aa4fc1d99e913c436ed3dbc4db9f"
+        },
+        {
+          "chunk_id": "chunk-249-evidence-2",
+          "quote": "产品249仅通过官网和授权经销商销售。",
+          "text_hash": "74d720dea35fa726b92659e001665e6ccefb316368e13675d3e990ac95d9cf2c"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-250",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-251",
+      "citations": [
+        {
+          "chunk_id": "chunk-251-evidence-1",
+          "quote": "产品251的官方发布日期为2026年9月1日。",
+          "text_hash": "4e01ff026ee4faee2c877c832c8068b9a6259295e6de110412d141041d8ccd70"
+        },
+        {
+          "chunk_id": "chunk-251-evidence-2",
+          "quote": "产品251的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "d2db23787789f4e6b2fbfc92ed27bfdc4ecf33c616dfec7d783327ac5af0fc2b"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-252",
+      "citations": [
+        {
+          "chunk_id": "chunk-252-evidence-1",
+          "quote": "产品252的官方建议零售价为1999元。",
+          "text_hash": "1f9eed99b62af68b93448b089eee57b3498d7950cf28dba3dfa4cf40b5d1f980"
+        },
+        {
+          "chunk_id": "chunk-252-evidence-2",
+          "quote": "产品252在中国大陆以人民币计价。",
+          "text_hash": "c80aa181f490406c125b81ad86efabf913fbef45d8f9c15eb045654c74be85d7"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-253",
+      "citations": [
+        {
+          "chunk_id": "chunk-253-evidence-1",
+          "quote": "产品253符合GB/T 35273-2020标准。",
+          "text_hash": "b70440b43b52b2da18c0d4617050d8a19117191502ae5797f1f5a4b70e1c8977"
+        },
+        {
+          "chunk_id": "chunk-253-evidence-2",
+          "quote": "产品253的认证有效期截至2027年12月31日。",
+          "text_hash": "5145e76b703951dc63f3b6326d2d1ed2777041fc05ca75cb36d8c0ba837bdb99"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-254",
+      "citations": [
+        {
+          "chunk_id": "chunk-254-evidence-1",
+          "quote": "产品254净重1.25千克。",
+          "text_hash": "384d893832034a5c90482fac87a12868098dbf11866a404c09231e6781609d6b"
+        },
+        {
+          "chunk_id": "chunk-254-evidence-2",
+          "quote": "产品254尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "eeff55d1b347904f03f26bb2ef8cf6ab73a8022ad13de13e17b65676c5c22f70"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-255",
+      "citations": [
+        {
+          "chunk_id": "chunk-255-evidence-1",
+          "quote": "产品255兼容Windows和macOS。",
+          "text_hash": "917f6f4c93e48c16cab77ffb8168fee13615a3a40c838556af6fab9f8034a1ff"
+        },
+        {
+          "chunk_id": "chunk-255-evidence-2",
+          "quote": "产品255要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "3f9be954f6e8b3e99678dd604402711aad24afb18444c267590616b3abb33541"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-256",
+      "citations": [
+        {
+          "chunk_id": "chunk-256-evidence-1",
+          "quote": "产品256人工客服时间为工作日9:00至18:00。",
+          "text_hash": "c81b41a94ce0f597a99f89f03d562ce55f72c5e91ae6b9e0400d25218d9c22da"
+        },
+        {
+          "chunk_id": "chunk-256-evidence-2",
+          "quote": "产品256上门服务覆盖中国大陆省会城市。",
+          "text_hash": "6a4ba32f046fa9b1d501a599492138c9d14ae3c898df36aa4479cdf35d6ed2ba"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-257",
+      "citations": [
+        {
+          "chunk_id": "chunk-257-evidence-1",
+          "quote": "产品257建议每日使用不超过2次。",
+          "text_hash": "b43087d98eed39d426a92dbda3d303bdc539e57be74c13695174128c52572832"
+        },
+        {
+          "chunk_id": "chunk-257-evidence-2",
+          "quote": "产品257不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "0f842e69b5088d009ebcf72e3157b73f89c4d1eae05a8c5ea238555fd0aaf1ab"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-258",
+      "citations": [
+        {
+          "chunk_id": "chunk-258-evidence-1",
+          "quote": "产品258退换政策自2026年1月1日起生效。",
+          "text_hash": "736a0fb5651226bbab5f11d45812e6b0f673632a2949033707d8defce6070258"
+        },
+        {
+          "chunk_id": "chunk-258-evidence-2",
+          "quote": "产品258退换申请须在签收后7日内提交。",
+          "text_hash": "f50b1769c977b75862c34f585840ca308594412513aa2dc5d618bf94fdd49ebc"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-259",
+      "citations": [
+        {
+          "chunk_id": "chunk-259-evidence-1",
+          "quote": "产品259首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "f084e24874fe5cb8ebd7e2c931f1d26d683e2d2c4680437af8233b84f8b5f345"
+        },
+        {
+          "chunk_id": "chunk-259-evidence-2",
+          "quote": "产品259仅通过官网和授权经销商销售。",
+          "text_hash": "c49446b603795f2ca0cafe40ba33049f7f52cf99db8d01f2d8575420775d80ad"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-260",
+      "citations": [],
+      "latency_ms": 39
+    },
+    {
+      "case_id": "rag-261",
+      "citations": [
+        {
+          "chunk_id": "chunk-261-evidence-1",
+          "quote": "产品261的官方发布日期为2026年9月1日。",
+          "text_hash": "72a52b91e2fc37939755891b41c328084d8b37da07df15e29b73d9fd05e26405"
+        },
+        {
+          "chunk_id": "chunk-261-evidence-2",
+          "quote": "产品261的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "54bb1b53e773109bb123eecdc1d72864978a44ed31f15cd09921cd6cbbca0264"
+        }
+      ],
+      "latency_ms": 40
+    },
+    {
+      "case_id": "rag-262",
+      "citations": [
+        {
+          "chunk_id": "chunk-262-evidence-1",
+          "quote": "产品262的官方建议零售价为1999元。",
+          "text_hash": "2209dd3a5274e98ad741a869412c6241a71b11730e4743eeae38df6e857a8ba1"
+        },
+        {
+          "chunk_id": "chunk-262-evidence-2",
+          "quote": "产品262在中国大陆以人民币计价。",
+          "text_hash": "3604bc9cf002cc8960849bb19b40674cee3fbb7f654b6abc369653664489ac53"
+        }
+      ],
+      "latency_ms": 41
+    },
+    {
+      "case_id": "rag-263",
+      "citations": [
+        {
+          "chunk_id": "chunk-263-evidence-1",
+          "quote": "产品263符合GB/T 35273-2020标准。",
+          "text_hash": "003e678cab9d9c1e464da85631e67cfe9aec652558c346275e2cdbcf9a45f00c"
+        },
+        {
+          "chunk_id": "chunk-263-evidence-2",
+          "quote": "产品263的认证有效期截至2027年12月31日。",
+          "text_hash": "68ecd18231c3642846c81c3c229d18c15a47cb9fe439d86c3972e5e1c167689e"
+        }
+      ],
+      "latency_ms": 42
+    },
+    {
+      "case_id": "rag-264",
+      "citations": [
+        {
+          "chunk_id": "chunk-264-evidence-1",
+          "quote": "产品264净重1.25千克。",
+          "text_hash": "d379e26af17541a6888f502abc11030a8c2acffe43696e03eaf29527ffcb8603"
+        },
+        {
+          "chunk_id": "chunk-264-evidence-2",
+          "quote": "产品264尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "cd3870113f0ddca167ff2da47ad012ff1e66c3f05de906593bf57d757c3672dc"
+        }
+      ],
+      "latency_ms": 43
+    },
+    {
+      "case_id": "rag-265",
+      "citations": [
+        {
+          "chunk_id": "chunk-265-evidence-1",
+          "quote": "产品265兼容Windows和macOS。",
+          "text_hash": "1412287c8879aafe122d3ce03240ff91dd9b97f908f232bf4dc6d91b27bf1ca4"
+        },
+        {
+          "chunk_id": "chunk-265-evidence-2",
+          "quote": "产品265要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "4fd88fed9ab3144178d35353d25fce718f16b3869d8b08e0be87d8962020bc54"
+        }
+      ],
+      "latency_ms": 44
+    },
+    {
+      "case_id": "rag-266",
+      "citations": [
+        {
+          "chunk_id": "chunk-266-evidence-1",
+          "quote": "产品266人工客服时间为工作日9:00至18:00。",
+          "text_hash": "e4396ddef804129567fb66445e9f0021733e38e0f152ff7a34f910ad49ab264d"
+        },
+        {
+          "chunk_id": "chunk-266-evidence-2",
+          "quote": "产品266上门服务覆盖中国大陆省会城市。",
+          "text_hash": "0749cf9d9368c6ed4795bb1639153709f240b0799f2f782aa5850425830053c7"
+        }
+      ],
+      "latency_ms": 45
+    },
+    {
+      "case_id": "rag-267",
+      "citations": [
+        {
+          "chunk_id": "chunk-267-evidence-1",
+          "quote": "产品267建议每日使用不超过2次。",
+          "text_hash": "e781ba62f4acc9a6208c316328568105bcc61daabb88e9949b434668b66c934b"
+        },
+        {
+          "chunk_id": "chunk-267-evidence-2",
+          "quote": "产品267不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "4654456cffee544ec7afa27e25585ab98fc8c7570d927c4d469ab9a07e7be24a"
+        }
+      ],
+      "latency_ms": 46
+    },
+    {
+      "case_id": "rag-268",
+      "citations": [
+        {
+          "chunk_id": "chunk-268-evidence-1",
+          "quote": "产品268退换政策自2026年1月1日起生效。",
+          "text_hash": "a3c4a5409dcb1e235c09a6d2b57ee86d399fde15734ede07bde4f1397723a709"
+        },
+        {
+          "chunk_id": "chunk-268-evidence-2",
+          "quote": "产品268退换申请须在签收后7日内提交。",
+          "text_hash": "6f3a1018c729062fea5de27e7f136852ad17e2a25d91cb91b4837a9c13e32628"
+        }
+      ],
+      "latency_ms": 47
+    },
+    {
+      "case_id": "rag-269",
+      "citations": [
+        {
+          "chunk_id": "chunk-269-evidence-1",
+          "quote": "产品269首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "9f283335416dc0c03d943204caa21e70b0dda01fba5be3e9d768a19b7a5aa84f"
+        },
+        {
+          "chunk_id": "chunk-269-evidence-2",
+          "quote": "产品269仅通过官网和授权经销商销售。",
+          "text_hash": "7dfbf449ad9ea38215db1d439cfd38008036f017348b1a088f317180255e23f9"
+        }
+      ],
+      "latency_ms": 48
+    },
+    {
+      "case_id": "rag-270",
+      "citations": [],
+      "latency_ms": 49
+    },
+    {
+      "case_id": "rag-271",
+      "citations": [
+        {
+          "chunk_id": "chunk-271-evidence-1",
+          "quote": "产品271的官方发布日期为2026年9月1日。",
+          "text_hash": "db3063b3e96cea8db914961960eeabb67f6490b8980f23d42aa45aba21021f68"
+        },
+        {
+          "chunk_id": "chunk-271-evidence-2",
+          "quote": "产品271的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "f1f7a3e239c486a8a92fcd6e2c9b3f9d4f779f8c68dbeafdec909ed692c7e262"
+        }
+      ],
+      "latency_ms": 50
+    },
+    {
+      "case_id": "rag-272",
+      "citations": [
+        {
+          "chunk_id": "chunk-272-evidence-1",
+          "quote": "产品272的官方建议零售价为1999元。",
+          "text_hash": "3a0d16bd73a3c59368d073d8f7c6f4c2131fa29d587577b6592837aa54f83806"
+        },
+        {
+          "chunk_id": "chunk-272-evidence-2",
+          "quote": "产品272在中国大陆以人民币计价。",
+          "text_hash": "977e07fabc1d26e4aa3c76271de5932fc75f5f6d37b2278be55c947750ba13c7"
+        }
+      ],
+      "latency_ms": 51
+    },
+    {
+      "case_id": "rag-273",
+      "citations": [
+        {
+          "chunk_id": "chunk-273-evidence-1",
+          "quote": "产品273符合GB/T 35273-2020标准。",
+          "text_hash": "c071f8fda02651e2e9ab75c066d616650513566acfc42daaf6a99b4ec39e60e2"
+        },
+        {
+          "chunk_id": "chunk-273-evidence-2",
+          "quote": "产品273的认证有效期截至2027年12月31日。",
+          "text_hash": "b1b240b73f3ce8248e0a6a86a1aea00addd239fb6e4c2057342784b983d09775"
+        }
+      ],
+      "latency_ms": 52
+    },
+    {
+      "case_id": "rag-274",
+      "citations": [
+        {
+          "chunk_id": "chunk-274-evidence-1",
+          "quote": "产品274净重1.25千克。",
+          "text_hash": "8d5c6b58e5724badf541a6f7a105a2c24ab32868113e75a15b8238caa6504736"
+        },
+        {
+          "chunk_id": "chunk-274-evidence-2",
+          "quote": "产品274尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "eaf00dd78df71c74cab97e9cb11c64ae4317f4a486c2e8889447e866694ee6e6"
+        }
+      ],
+      "latency_ms": 53
+    },
+    {
+      "case_id": "rag-275",
+      "citations": [
+        {
+          "chunk_id": "chunk-275-evidence-1",
+          "quote": "产品275兼容Windows和macOS。",
+          "text_hash": "18244402411e0e13d8efd221023eb89320d054aabf3c1b026729c21c386d8c9d"
+        },
+        {
+          "chunk_id": "chunk-275-evidence-2",
+          "quote": "产品275要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "53ee4b3f5c446da3abd96f7f6dd0cdd556ee1a49bff71a43a267477bb21d4d46"
+        }
+      ],
+      "latency_ms": 54
+    },
+    {
+      "case_id": "rag-276",
+      "citations": [
+        {
+          "chunk_id": "chunk-276-evidence-1",
+          "quote": "产品276人工客服时间为工作日9:00至18:00。",
+          "text_hash": "263fbc862fd01ff229ced063a5f0d225ea2e34c68bf777d05bba2feae36e3f34"
+        },
+        {
+          "chunk_id": "chunk-276-evidence-2",
+          "quote": "产品276上门服务覆盖中国大陆省会城市。",
+          "text_hash": "4eac982950bc5dd954a535f7efcc11032acbd8f9a9d1dbdff3743ffc3ef037de"
+        }
+      ],
+      "latency_ms": 55
+    },
+    {
+      "case_id": "rag-277",
+      "citations": [
+        {
+          "chunk_id": "chunk-277-evidence-1",
+          "quote": "产品277建议每日使用不超过2次。",
+          "text_hash": "889e5f3be86e0388a04bc06539b01b39b5326fbc2cebff5a158330b965071457"
+        },
+        {
+          "chunk_id": "chunk-277-evidence-2",
+          "quote": "产品277不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "5f91577b3f2dfce52370216f5d8fd37997e841fac5b2387deb97ad49b37fc981"
+        }
+      ],
+      "latency_ms": 56
+    },
+    {
+      "case_id": "rag-278",
+      "citations": [
+        {
+          "chunk_id": "chunk-278-evidence-1",
+          "quote": "产品278退换政策自2026年1月1日起生效。",
+          "text_hash": "91bb492ea061239ca7d57c91ac51f7d7a85ba5c7e36d11c431274422161c69f6"
+        },
+        {
+          "chunk_id": "chunk-278-evidence-2",
+          "quote": "产品278退换申请须在签收后7日内提交。",
+          "text_hash": "30adc98d021387bf019b5a886b91a8094ac82cac1dc850013d9ea7e59e7226ee"
+        }
+      ],
+      "latency_ms": 57
+    },
+    {
+      "case_id": "rag-279",
+      "citations": [
+        {
+          "chunk_id": "chunk-279-evidence-1",
+          "quote": "产品279首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "ffab7e1e27ef063e9923082e91a1503575f0b6c2bad4cf7f1fbe2329cf6abe93"
+        },
+        {
+          "chunk_id": "chunk-279-evidence-2",
+          "quote": "产品279仅通过官网和授权经销商销售。",
+          "text_hash": "b48c3b0327757d05d377c4fd2a42610d7a6acc3315ccc53414b18a10a326553d"
+        }
+      ],
+      "latency_ms": 58
+    },
+    {
+      "case_id": "rag-280",
+      "citations": [],
+      "latency_ms": 59
+    },
+    {
+      "case_id": "rag-281",
+      "citations": [
+        {
+          "chunk_id": "chunk-281-evidence-1",
+          "quote": "产品281的官方发布日期为2026年9月1日。",
+          "text_hash": "e3a8eb5a10111845722a9083440eafae55c602b233f2ce89833c91c7d456ea7d"
+        },
+        {
+          "chunk_id": "chunk-281-evidence-2",
+          "quote": "产品281的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "fafb640895adcabaf947ff719dc9b58be51d89493b14203c11b9358166741c90"
+        }
+      ],
+      "latency_ms": 20
+    },
+    {
+      "case_id": "rag-282",
+      "citations": [
+        {
+          "chunk_id": "chunk-282-evidence-1",
+          "quote": "产品282的官方建议零售价为1999元。",
+          "text_hash": "002e730f187464d48c9d3131f26e3ba91ffbdb2a2de5c53c76c6cc2dc64f9a42"
+        },
+        {
+          "chunk_id": "chunk-282-evidence-2",
+          "quote": "产品282在中国大陆以人民币计价。",
+          "text_hash": "c5597b8528c87bd9727572c4f02ba10becc3f181f54ec43efb4370c03e3f1a90"
+        }
+      ],
+      "latency_ms": 21
+    },
+    {
+      "case_id": "rag-283",
+      "citations": [
+        {
+          "chunk_id": "chunk-283-evidence-1",
+          "quote": "产品283符合GB/T 35273-2020标准。",
+          "text_hash": "94c8ad3699c4b0462c1f912f7db50d4939af33884bdfda09bfab20fa1fe0f760"
+        },
+        {
+          "chunk_id": "chunk-283-evidence-2",
+          "quote": "产品283的认证有效期截至2027年12月31日。",
+          "text_hash": "ba7b03ee74d811371df16fc10c9475fc6ce198b2f904afc7ccca2a39bea3b752"
+        }
+      ],
+      "latency_ms": 22
+    },
+    {
+      "case_id": "rag-284",
+      "citations": [
+        {
+          "chunk_id": "chunk-284-evidence-1",
+          "quote": "产品284净重1.25千克。",
+          "text_hash": "c69fb662f4e91cc4992b08e1aa0e922c9bd5ae4507a0e7570aa991bc2f7c9d8a"
+        },
+        {
+          "chunk_id": "chunk-284-evidence-2",
+          "quote": "产品284尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "a4757c484835a00a83afafbc1762c9f1d337dd9f842ca209278c2d91e4d9eef2"
+        }
+      ],
+      "latency_ms": 23
+    },
+    {
+      "case_id": "rag-285",
+      "citations": [
+        {
+          "chunk_id": "chunk-285-evidence-1",
+          "quote": "产品285兼容Windows和macOS。",
+          "text_hash": "5791434bb5422a1967f957a1486744c3ea303776d1bb753d71efa46dc2b0eca2"
+        },
+        {
+          "chunk_id": "chunk-285-evidence-2",
+          "quote": "产品285要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "913e3e8429309fc7caf72d3c750efa73230da67350ffa406b94e85b3d94c6bff"
+        }
+      ],
+      "latency_ms": 24
+    },
+    {
+      "case_id": "rag-286",
+      "citations": [
+        {
+          "chunk_id": "chunk-286-evidence-1",
+          "quote": "产品286人工客服时间为工作日9:00至18:00。",
+          "text_hash": "dca06ec2cfd51de76ed321ce84465a71ea810d425306eed0e232b896d68fcdd3"
+        },
+        {
+          "chunk_id": "chunk-286-evidence-2",
+          "quote": "产品286上门服务覆盖中国大陆省会城市。",
+          "text_hash": "aa2deff8d8a37029c50def3c7b2e520a2013954ff9d10f305b4ca26263db7dc7"
+        }
+      ],
+      "latency_ms": 25
+    },
+    {
+      "case_id": "rag-287",
+      "citations": [
+        {
+          "chunk_id": "chunk-287-evidence-1",
+          "quote": "产品287建议每日使用不超过2次。",
+          "text_hash": "875defce554e0f3b1ee8639808eae4dabfcac4e5d26788b815ec9e9e896fc3c8"
+        },
+        {
+          "chunk_id": "chunk-287-evidence-2",
+          "quote": "产品287不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "eeef665fa67a8229884da223ac936903f0acbe38e6024dc22d9ef5a943f005d8"
+        }
+      ],
+      "latency_ms": 26
+    },
+    {
+      "case_id": "rag-288",
+      "citations": [
+        {
+          "chunk_id": "chunk-288-evidence-1",
+          "quote": "产品288退换政策自2026年1月1日起生效。",
+          "text_hash": "c11eccfecf56dc1494b1bf170d82fc0966ea22588c0e81f9f32e92355be5595b"
+        },
+        {
+          "chunk_id": "chunk-288-evidence-2",
+          "quote": "产品288退换申请须在签收后7日内提交。",
+          "text_hash": "f506e5db33bd64c8302b95436610a42d904aa6700d5423ccf3c722330b2263f6"
+        }
+      ],
+      "latency_ms": 27
+    },
+    {
+      "case_id": "rag-289",
+      "citations": [
+        {
+          "chunk_id": "chunk-289-evidence-1",
+          "quote": "产品289首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "87ce32849063e3e56cc792689fbeee6f70fbdc0e810468b9996047fe26a276bf"
+        },
+        {
+          "chunk_id": "chunk-289-evidence-2",
+          "quote": "产品289仅通过官网和授权经销商销售。",
+          "text_hash": "2399fceeb28adc5fbe470fb001e636eab36168831e9bde94ad84ec69b1880328"
+        }
+      ],
+      "latency_ms": 28
+    },
+    {
+      "case_id": "rag-290",
+      "citations": [],
+      "latency_ms": 29
+    },
+    {
+      "case_id": "rag-291",
+      "citations": [
+        {
+          "chunk_id": "chunk-291-evidence-1",
+          "quote": "产品291的官方发布日期为2026年9月1日。",
+          "text_hash": "00df06ac296c9138d107400d352901ae5454faee327ceb46c088d4ad1b7438a7"
+        },
+        {
+          "chunk_id": "chunk-291-evidence-2",
+          "quote": "产品291的官方保修期为2年，适用于授权渠道。",
+          "text_hash": "c634a732128368df6900d8965913c9c284409910b191e542ee1c6778717de578"
+        }
+      ],
+      "latency_ms": 30
+    },
+    {
+      "case_id": "rag-292",
+      "citations": [
+        {
+          "chunk_id": "chunk-292-evidence-1",
+          "quote": "产品292的官方建议零售价为1999元。",
+          "text_hash": "cf383082a19836e263349dd88966a95a2d3578f518fa3f9855ae1a2b6885075e"
+        },
+        {
+          "chunk_id": "chunk-292-evidence-2",
+          "quote": "产品292在中国大陆以人民币计价。",
+          "text_hash": "484a3f448b1c77f6eb18783c82f60e4837ca641657b5ab1eda8e8c7d6eb859c8"
+        }
+      ],
+      "latency_ms": 31
+    },
+    {
+      "case_id": "rag-293",
+      "citations": [
+        {
+          "chunk_id": "chunk-293-evidence-1",
+          "quote": "产品293符合GB/T 35273-2020标准。",
+          "text_hash": "cca44dc6f0f22737df178d69e870b9eecb6f9c33c820701f2154c37b29154e42"
+        },
+        {
+          "chunk_id": "chunk-293-evidence-2",
+          "quote": "产品293的认证有效期截至2027年12月31日。",
+          "text_hash": "ae7605c090b2ae3f0bd2ff124dab8c67397fc6ecdd5b1709eb4d86fc5a3cde2e"
+        }
+      ],
+      "latency_ms": 32
+    },
+    {
+      "case_id": "rag-294",
+      "citations": [
+        {
+          "chunk_id": "chunk-294-evidence-1",
+          "quote": "产品294净重1.25千克。",
+          "text_hash": "36d8aeb849aa32a396357110023da5289bcef3f88a91fcc3a27d860ce7463ab7"
+        },
+        {
+          "chunk_id": "chunk-294-evidence-2",
+          "quote": "产品294尺寸为长320毫米、宽210毫米、高45毫米。",
+          "text_hash": "4cc062df8fe218e703af76d8c51e039c5741b4433f4e1805a7a0fb31bb20746d"
+        }
+      ],
+      "latency_ms": 33
+    },
+    {
+      "case_id": "rag-295",
+      "citations": [
+        {
+          "chunk_id": "chunk-295-evidence-1",
+          "quote": "产品295兼容Windows和macOS。",
+          "text_hash": "ed392642f947e504cfaaa81d64213949b1317a9b10cb25f9678520ce590ed69c"
+        },
+        {
+          "chunk_id": "chunk-295-evidence-2",
+          "quote": "产品295要求Windows 11或macOS 14及以上版本。",
+          "text_hash": "ff1867c560ff0bb1f3d682aa3f6619d15bde5d3c0616f0b523caf65aff3c820f"
+        }
+      ],
+      "latency_ms": 34
+    },
+    {
+      "case_id": "rag-296",
+      "citations": [
+        {
+          "chunk_id": "chunk-296-evidence-1",
+          "quote": "产品296人工客服时间为工作日9:00至18:00。",
+          "text_hash": "5fe2d6f520210947df346941d0d0670726270c1f12612450ac340b3c96fa7391"
+        },
+        {
+          "chunk_id": "chunk-296-evidence-2",
+          "quote": "产品296上门服务覆盖中国大陆省会城市。",
+          "text_hash": "fada298b39d09b7e3c1ba5f32c7a8841e85b28b70dc3c21a375b86ce9ef5b2fb"
+        }
+      ],
+      "latency_ms": 35
+    },
+    {
+      "case_id": "rag-297",
+      "citations": [
+        {
+          "chunk_id": "chunk-297-evidence-1",
+          "quote": "产品297建议每日使用不超过2次。",
+          "text_hash": "51c312b2a483e551592bfaa23e30f0c8e3b5b5b5e65444e5317300c2ccbae104"
+        },
+        {
+          "chunk_id": "chunk-297-evidence-2",
+          "quote": "产品297不得在环境温度超过45摄氏度时使用。",
+          "text_hash": "4733e8a509ee73f709fcd383a72786dce85a198f8dde335bdcfd501e983ecab9"
+        }
+      ],
+      "latency_ms": 36
+    },
+    {
+      "case_id": "rag-298",
+      "citations": [
+        {
+          "chunk_id": "chunk-298-evidence-1",
+          "quote": "产品298退换政策自2026年1月1日起生效。",
+          "text_hash": "25ea498f19f32f76beac7b3ef7f743cf0deb40520b480dcad2a191d016791714"
+        },
+        {
+          "chunk_id": "chunk-298-evidence-2",
+          "quote": "产品298退换申请须在签收后7日内提交。",
+          "text_hash": "d9c91d02b7aaf4dc2e3cad9bd4c3f51f4112b9c3b11192855239312e178e4017"
+        }
+      ],
+      "latency_ms": 37
+    },
+    {
+      "case_id": "rag-299",
+      "citations": [
+        {
+          "chunk_id": "chunk-299-evidence-1",
+          "quote": "产品299首发地区为中国大陆、新加坡和马来西亚。",
+          "text_hash": "2ec7507a254df360134630f5f8732f177e6da99bd6f2aeb816729d8f69e6d079"
+        },
+        {
+          "chunk_id": "chunk-299-evidence-2",
+          "quote": "产品299仅通过官网和授权经销商销售。",
+          "text_hash": "41cbfaedb677cf4468b2f20870db1ec407d1baf64b6fc8c439581043bdfca801"
+        }
+      ],
+      "latency_ms": 38
+    },
+    {
+      "case_id": "rag-300",
+      "citations": [],
+      "latency_ms": 39
+    }
+  ],
+  "schema_version": "rag-eval-predictions@1",
+  "system_version": "citation-search-v1"
+}

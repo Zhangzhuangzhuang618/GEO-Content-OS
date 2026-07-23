@@ -5,8 +5,8 @@
 ## 1. 项目入口与冻结基线
 
 - `PROJECT_CONTEXT.md` 是每次会话必须加载的全局入口。
-- 当前冻结版本为 `v2.0 / 2026-07-13 / 全面开发冻结版`。
-- 五份冻结文档位于 `docs/freeze-v2.0/`，不得直接改写或用实现结果反向覆盖。
+- 当前冻结版本为 `v2.1 / 2026-07-15 / 全面开发冻结修订版`；可执行修正见 `docs/adr/ADR-0001` 至 `ADR-0021`。
+- 五份冻结文档位于 `docs/freeze-v2.1/`，不得直接改写或用实现结果反向覆盖。
 - 可执行事实源的优先级遵循 `PROJECT_CONTEXT.md`：contracts > database migrations > generated OpenAPI > 冻结解释文档。
 - 若代码、迁移、OpenAPI、任务卡或冻结文档发生冲突，停止冲突范围内的实现，列出差异并请求决策；禁止静默选择一种口径。
 
@@ -14,13 +14,13 @@
 
 | 需要确认的内容 | 必读文件 |
 |---|---|
-| 产品范围、页面、字段、权限、流程、验收 | `docs/freeze-v2.0/PRD产品需求文档.docx` |
-| 架构、模块、API、队列、部署、成本、Adapter | `docs/freeze-v2.0/技术设计文档（AI开发友好）.docx` |
-| Skills、Prompt、JSON Schema、Few-shot、Tool Calling、平台规则 | `docs/freeze-v2.0/AI Skills & Prompt设计规范.docx` |
-| 56 张表、字段、索引、约束、迁移、示例数据 | `docs/freeze-v2.0/数据库设计手册.docx` |
-| T001–T144 任务、依赖、文件范围、验收和测试命令 | `docs/freeze-v2.0/Claude Code开发任务拆解.docx` |
+| 产品范围、页面、字段、权限、流程、验收 | `docs/freeze-v2.1/PRD产品需求文档.docx` |
+| 架构、模块、API、队列、部署、成本、Adapter | `docs/freeze-v2.1/技术设计文档（AI开发友好）.docx` |
+| Skills、Prompt、JSON Schema、Few-shot、Tool Calling、平台规则 | `docs/freeze-v2.1/AI Skills & Prompt设计规范.docx` |
+| 57 张表、字段、索引、约束、迁移、示例数据 | `docs/freeze-v2.1/数据库设计手册.docx` |
+| T001–T144 任务、依赖、文件范围、验收和测试命令 | `docs/freeze-v2.1/Claude Code开发任务拆解.docx` |
 
-DOCX 仅允许只读解析。若当前工具不能直接读取，使用可审计的只读提取方式读取正文与表格；不得修改原文件。冻结文件哈希见 `docs/freeze-v2.0/SHA256SUMS`。
+DOCX 仅允许只读解析。若当前工具不能直接读取，使用可审计的只读提取方式读取正文与表格；不得修改原文件。冻结文件哈希见 `docs/freeze-v2.1/SHA256SUMS`。`docs/freeze-v2.0/` 仅保留为历史只读基线。
 
 ## 3. 每个开发任务的强制步骤
 
@@ -45,4 +45,4 @@ DOCX 仅允许只读解析。若当前工具不能直接读取，使用可审计
 
 ## 5. 首次会话规则
 
-首次进入项目时先做只读认知验收，不立即编码：核对 32 个页面、103 个 API、56 张表、6 个核心 Skills、144 个任务及主要依赖能否互相对应，并报告冲突或读取失败。认知验收通过后，再从 T001 或用户指定的已解锁任务开始。
+首次进入项目时先做只读认知验收，不立即编码：核对 32 个页面、127 个可执行 API（含 ADR-0002 至 ADR-0021 的可执行修正）、59 张表、0037 版迁移、6 个核心 Skills、144 个任务及主要依赖能否互相对应，并报告冲突或读取失败。认知验收通过后，再从 T001 或用户指定的已解锁任务开始。

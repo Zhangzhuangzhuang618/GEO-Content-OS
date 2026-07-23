@@ -1,0 +1,30 @@
+{
+  "rule_version": "xiaohongshu-render-rules@1.0.0",
+  "content": {
+    "platform_code": "xiaohongshu",
+    "title": "这是一个明确超过二十个字符并且不能被静默截断的小红书标题",
+    "summary": "本人亲测的无效示例。",
+    "blocks": [
+      {
+        "block_key": "long-paragraph",
+        "block_type": "paragraph",
+        "text": "这是一段用于稳定验证短段规则的文字。它会重复足够多的内容，使普通段落明确超过一百二十个字符。渲染器必须返回阻断问题，不能静默截断或改写原始内容。这是一段用于稳定验证短段规则的文字。它会重复足够多的内容，使普通段落明确超过一百二十个字符。渲染器必须返回阻断问题，不能静默截断或改写原始内容。"
+      }
+    ],
+    "hashtags": [],
+    "cta": null,
+    "citation_map": [
+      {
+        "claim_key": "claim-missing",
+        "claim_text": "这是一条需要来源的事实。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000111"]
+      }
+    ],
+    "platform_meta": {
+      "topics": [],
+      "cover_text": "无效示例",
+      "note_type": "note"
+    }
+  },
+  "citations": []
+}

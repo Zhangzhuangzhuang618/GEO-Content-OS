@@ -1,0 +1,60 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-brand-50: #eef5ff;
+  --color-brand-100: #d9e9ff;
+  --color-brand-500: #246bfd;
+  --color-brand-600: #1657dd;
+  --color-brand-700: #1546b3;
+  --color-ink-950: #101828;
+  --color-ink-700: #344054;
+  --color-ink-500: #667085;
+  --color-line: #d0d5dd;
+  --color-surface-subtle: #f8fafc;
+  --font-sans:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --radius-control: 0.625rem;
+  --shadow-panel: 0 1px 2px rgb(16 24 40 / 5%), 0 8px 24px rgb(16 24 40 / 6%);
+}
+
+:root {
+  color-scheme: light;
+  --app-background: #f4f7fb;
+  --app-surface: #ffffff;
+  --focus-ring: #246bfd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 20rem;
+  background: var(--app-background);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 20% -10%, rgb(36 107 253 / 10%), transparent 32rem),
+    var(--app-background);
+  color: var(--color-ink-950);
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--focus-ring) 35%, transparent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--color-brand-100);
+  color: var(--color-brand-700);
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@geo-content-os/parsers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic PDF, DOCX, TXT, and HTML material parsers with source locators",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "mammoth": "1.12.0",
+    "parse5": "8.0.1",
+    "pdfjs-dist": "6.1.200"
+  },
+  "devDependencies": {
+    "fflate": "0.8.2",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
+}

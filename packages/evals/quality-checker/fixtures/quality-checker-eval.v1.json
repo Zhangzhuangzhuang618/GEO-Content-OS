@@ -1,0 +1,16 @@
+{
+  "schema_version": "quality-checker-eval-manifest@1",
+  "dataset_version": "quality-checker-eval-v1",
+  "case_ids": [
+    "clean-content-positive",
+    "wechat-title-hard-limit-negative",
+    "warning-threshold-boundary"
+  ],
+  "thresholds": {
+    "decision_gate_minimum": 1,
+    "expected_behavior_minimum": 1,
+    "geo_integrity_minimum": 1,
+    "hard_rule_minimum": 1,
+    "schema_validity_minimum": 1
+  }
+}

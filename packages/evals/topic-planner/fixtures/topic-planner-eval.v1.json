@@ -1,0 +1,17 @@
+{
+  "schema_version": "topic-planner-eval-manifest@1",
+  "dataset_version": "topic-planner-eval-v1",
+  "case_ids": [
+    "evidenced-topic-positive",
+    "evidence-free-topic-boundary",
+    "platform-policy-conflict-negative"
+  ],
+  "thresholds": {
+    "brief_linkage_minimum": 1,
+    "evidence_integrity_minimum": 1,
+    "expected_behavior_minimum": 1,
+    "no_evidence_safety_minimum": 1,
+    "scope_compliance_minimum": 1,
+    "schema_validity_minimum": 1
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "rule_version": "zhihu-render-rules@1.0.0",
+  "content": {
+    "platform_code": "zhihu",
+    "title": "不容错过的企业内容方案",
+    "summary": "无效示例",
+    "blocks": [
+      {
+        "block_key": "question-only",
+        "block_type": "heading",
+        "text": "企业应该如何生产内容？"
+      },
+      {
+        "block_key": "marketing",
+        "block_type": "paragraph",
+        "text": "这套方案可以完美解决所有内容问题。"
+      }
+    ],
+    "hashtags": [],
+    "cta": null,
+    "citation_map": [
+      {
+        "claim_key": "claim-missing",
+        "claim_text": "方案可以解决所有问题。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000109"]
+      }
+    ],
+    "platform_meta": {
+      "question_id": "question-109",
+      "content_type": "answer",
+      "topics": []
+    }
+  },
+  "citations": []
+}

@@ -1,0 +1,10 @@
+{
+  "citation_link_count": 1,
+  "content_type": "answer",
+  "payload_sha256": "9af2f47d655322e65d0fe65c36a6bc0ebb380e6ca8e2b506f657280369634f67",
+  "platform_code": "zhihu",
+  "question_id": "question-109",
+  "rule_version": "zhihu-render-rules@1.0.0",
+  "schema_version": "zhihu-payload@1",
+  "topic_count": 3
+}

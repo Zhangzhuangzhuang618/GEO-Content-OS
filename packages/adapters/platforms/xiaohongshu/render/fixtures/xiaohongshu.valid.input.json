@@ -1,0 +1,46 @@
+{
+  "rule_version": "xiaohongshu-render-rules@1.0.0",
+  "content": {
+    "platform_code": "xiaohongshu",
+    "title": "企业GEO证据链怎么做",
+    "summary": "用短段和清单说明企业GEO内容的可信证据链。",
+    "blocks": [
+      {
+        "block_key": "intro",
+        "block_type": "paragraph",
+        "text": "企业做GEO内容，先把结论和来源绑定，再进入生成、审核和发布。"
+      },
+      {
+        "block_key": "checklist",
+        "block_type": "list",
+        "text": "- 记录资料版本和适用时间\n- 让每条事实指向具体来源\n- 审核时固定内容与引用\n- 发布前校验载荷哈希"
+      },
+      {
+        "block_key": "boundary",
+        "block_type": "paragraph",
+        "text": "有链接不代表事实必然成立，过期来源仍需重新核验。"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产", "证据链"],
+    "cta": "先从一条可核验的事实开始。",
+    "citation_map": [
+      {
+        "claim_key": "claim-workflow",
+        "claim_text": "审核时应固定内容版本与引用。",
+        "citation_ids": ["10000000-0000-4000-8000-000000000111"]
+      }
+    ],
+    "platform_meta": {
+      "topics": ["GEO", "内容生产", "可信AI"],
+      "cover_text": "GEO证据链清单",
+      "note_type": "note"
+    }
+  },
+  "citations": [
+    {
+      "citation_id": "10000000-0000-4000-8000-000000000111",
+      "label": "可信内容生产规范",
+      "url": "https://example.com/references/trusted-content"
+    }
+  ]
+}

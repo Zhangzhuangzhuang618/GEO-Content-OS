@@ -2,10 +2,21 @@
   "name": "@geo-content-os/sdk",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — 前端 SDK 和类型安全的 API 客户端",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "type": "module",
+  "description": "GEO Content OS — 从 OpenAPI 契约生成的 API 客户端",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "test": "echo 'test — implemented in T003'"
-  }
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "files": [
+    "dist"
+  ]
 }

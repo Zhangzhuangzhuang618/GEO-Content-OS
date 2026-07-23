@@ -1,0 +1,9 @@
+{
+  "author": "GEO内容团队",
+  "citation_link_count": 1,
+  "internal_link_count": 1,
+  "payload_sha256": "ee15205d5fcea1eee45c24ff3f2c8c61a48a32eb8a0916b65c0e528c2a2e11d4",
+  "platform_code": "wechat_mp",
+  "rule_version": "wechat-mp-render-rules@1.0.0",
+  "schema_version": "wechat-mp-payload@1"
+}

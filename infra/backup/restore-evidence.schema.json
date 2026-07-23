@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://geo-content-os.local/schemas/restore-evidence@1.json",
+  "title": "GEO Content OS restore drill evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "mode",
+    "status",
+    "started_at",
+    "completed_at",
+    "backup_duration_seconds",
+    "configured_rpo_bound_seconds",
+    "observed_data_loss_seconds",
+    "rto_seconds",
+    "thresholds",
+    "checks"
+  ],
+  "properties": {
+    "schema_version": { "const": "restore-evidence@1" },
+    "task_id": { "const": "T137" },
+    "mode": { "const": "automated_local_container_drill" },
+    "status": { "const": "passed" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": "string", "format": "date-time" },
+    "configured_rpo_bound_seconds": { "type": "number", "minimum": 0, "maximum": 900 },
+    "observed_data_loss_seconds": { "type": "number", "minimum": 0, "maximum": 900 },
+    "rto_seconds": { "type": "number", "minimum": 0, "maximum": 3600 },
+    "backup_duration_seconds": { "type": "number", "minimum": 0 },
+    "postgres_image": { "type": "string", "minLength": 1 },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rpo_seconds", "rto_seconds"],
+      "properties": {
+        "rpo_seconds": { "const": 900 },
+        "rto_seconds": { "const": 3600 }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archive_mode_enabled",
+        "backup_manifest_verified",
+        "baseline_transaction_recovered",
+        "post_backup_transaction_recovered",
+        "wal_archived_without_failure"
+      ],
+      "properties": {
+        "archive_mode_enabled": { "const": true },
+        "backup_manifest_verified": { "const": true },
+        "baseline_transaction_recovered": { "const": true },
+        "post_backup_transaction_recovered": { "const": true },
+        "wal_archived_without_failure": { "const": true }
+      }
+    }
+  }
+}

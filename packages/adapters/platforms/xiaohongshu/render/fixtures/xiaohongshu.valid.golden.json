@@ -1,0 +1,9 @@
+{
+  "citation_link_count": 1,
+  "note_type": "note",
+  "payload_sha256": "f6d57d90488f7fb99b9f3e32e692ae71a9c927c588594032330ce2943383b223",
+  "platform_code": "xiaohongshu",
+  "rule_version": "xiaohongshu-render-rules@1.0.0",
+  "schema_version": "xiaohongshu-payload@1",
+  "topic_count": 3
+}

@@ -1,0 +1,24 @@
+{
+  "rule_version": "baijiahao-render-rules@1.0.0",
+  "content": {
+    "platform_code": "baijiahao",
+    "title": "这是一个明显超过四十个字符并且不应被渲染器静默截断的百家号内容标题示例文本用于校验",
+    "summary": "无效示例",
+    "blocks": [
+      {
+        "block_key": "only-segment",
+        "block_type": "paragraph",
+        "text": "近日系统完成升级，但这里没有提供明确日期，因此时间信息不能被验证。"
+      }
+    ],
+    "hashtags": [],
+    "cta": null,
+    "citation_map": [],
+    "platform_meta": {
+      "abstract": "这是一个用于验证摘要长度硬约束的无效摘要。它会持续重复必要的说明文字，以确保字符数量超过一百二十个，同时仍然保持在通用输入结构允许的二百四十个字符以内。渲染器必须返回阻断问题，不能通过静默截断摘要来制造一个看似合规但已经改变原始内容的发布载荷。这里继续补充文字用于稳定超过限制。",
+      "tags": ["GEO", "内容生产"],
+      "content_type": "article"
+    }
+  },
+  "citations": []
+}

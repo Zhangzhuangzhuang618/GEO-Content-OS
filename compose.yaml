@@ -1,0 +1,4 @@
+name: ${COMPOSE_PROJECT_NAME:-geo-content-os}
+
+include:
+  - path: ./infra/compose.yaml

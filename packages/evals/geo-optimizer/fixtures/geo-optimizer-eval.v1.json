@@ -1,0 +1,13 @@
+{
+  "schema_version": "geo-optimizer-eval-manifest@1",
+  "dataset_version": "geo-optimizer-eval-v1",
+  "case_ids": ["answerability-positive", "citation-loss-negative", "locked-block-boundary"],
+  "thresholds": {
+    "citation_integrity_minimum": 1,
+    "expected_behavior_minimum": 1,
+    "lock_integrity_minimum": 1,
+    "rewrite_plan_integrity_minimum": 1,
+    "schema_validity_minimum": 1,
+    "weighted_score_minimum": 1
+  }
+}

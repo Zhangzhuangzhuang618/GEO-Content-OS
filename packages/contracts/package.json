@@ -2,11 +2,39 @@
   "name": "@geo-content-os/contracts",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
+  "sideEffects": false,
   "description": "GEO Content OS — 单一事实源：枚举、状态、权限、错误码、事件、API DTO、Skill Schema",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./api": {
+      "types": "./dist/api/index.d.ts",
+      "import": "./dist/api/index.js"
+    },
+    "./skills": {
+      "types": "./dist/skills/index.d.ts",
+      "import": "./dist/skills/index.js"
+    }
+  },
   "scripts": {
-    "test": "echo 'test — implemented in T003'",
-    "typecheck": "echo 'typecheck — implemented in T002'"
-  }
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run",
+    "test:contract": "vitest run src/api/strategy src/api/knowledge src/api/content src/api/review src/api/tenant-lifecycle src/api/analytics src/api/publishing src/api/platform-tenants",
+    "test:watch": "vitest",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

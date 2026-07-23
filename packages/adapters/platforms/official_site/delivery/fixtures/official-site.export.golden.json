@@ -1,0 +1,10 @@
+{
+  "bundle_sha256": "45edfa4085cb13e474de9389a61a4518a1af17372eaab8968a2c14d0898d0116",
+  "file_paths": [
+    "enterprise-geo-content-system/index.html",
+    "enterprise-geo-content-system/index.md",
+    "enterprise-geo-content-system/schema-org.json",
+    "enterprise-geo-content-system/manifest.json"
+  ],
+  "schema_version": "official-site-export@1"
+}

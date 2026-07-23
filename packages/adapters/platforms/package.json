@@ -1,0 +1,84 @@
+{
+  "name": "@geo-content-os/adapter-platforms",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic validate, render and delivery adapters for GEO content platforms",
+  "exports": {
+    "./baijiahao/delivery": {
+      "types": "./dist/baijiahao/delivery/src/index.d.ts",
+      "import": "./dist/baijiahao/delivery/src/index.js"
+    },
+    "./baijiahao/render": {
+      "types": "./dist/baijiahao/render/src/index.d.ts",
+      "import": "./dist/baijiahao/render/src/index.js"
+    },
+    "./official_site/delivery": {
+      "types": "./dist/official_site/delivery/src/index.d.ts",
+      "import": "./dist/official_site/delivery/src/index.js"
+    },
+    "./official_site/render": {
+      "types": "./dist/official_site/render/src/index.d.ts",
+      "import": "./dist/official_site/render/src/index.js"
+    },
+    "./toutiao/render": {
+      "types": "./dist/toutiao/render/src/index.d.ts",
+      "import": "./dist/toutiao/render/src/index.js"
+    },
+    "./toutiao/delivery": {
+      "types": "./dist/toutiao/delivery/src/index.d.ts",
+      "import": "./dist/toutiao/delivery/src/index.js"
+    },
+    "./zhihu/render": {
+      "types": "./dist/zhihu/render/src/index.d.ts",
+      "import": "./dist/zhihu/render/src/index.js"
+    },
+    "./zhihu/delivery": {
+      "types": "./dist/zhihu/delivery/src/index.d.ts",
+      "import": "./dist/zhihu/delivery/src/index.js"
+    },
+    "./xiaohongshu/render": {
+      "types": "./dist/xiaohongshu/render/src/index.d.ts",
+      "import": "./dist/xiaohongshu/render/src/index.js"
+    },
+    "./xiaohongshu/delivery": {
+      "types": "./dist/xiaohongshu/delivery/src/index.d.ts",
+      "import": "./dist/xiaohongshu/delivery/src/index.js"
+    },
+    "./wechat_mp/render": {
+      "types": "./dist/wechat_mp/render/src/index.d.ts",
+      "import": "./dist/wechat_mp/render/src/index.js"
+    },
+    "./wechat_mp/delivery": {
+      "types": "./dist/wechat_mp/delivery/src/index.d.ts",
+      "import": "./dist/wechat_mp/delivery/src/index.js"
+    },
+    "./douyin/render": {
+      "types": "./dist/douyin/render/src/index.d.ts",
+      "import": "./dist/douyin/render/src/index.js"
+    },
+    "./douyin/delivery": {
+      "types": "./dist/douyin/delivery/src/index.d.ts",
+      "import": "./dist/douyin/delivery/src/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render toutiao/render zhihu/render xiaohongshu/render wechat_mp/render douyin/render",
+    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery toutiao/delivery zhihu/delivery xiaohongshu/delivery wechat_mp/delivery douyin/delivery",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
+}

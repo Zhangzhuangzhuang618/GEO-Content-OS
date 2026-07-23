@@ -1,0 +1,84 @@
+groups:
+  - name: geo-content-os-slo
+    rules:
+      - alert: GeoApiErrorRateHigh
+        expr: |
+          sum(rate(geo_api_requests_total{status_class="5xx"}[5m]))
+          / clamp_min(sum(rate(geo_api_requests_total[5m])), 0.001) > 0.02
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API 5xx error rate exceeds 2% for five minutes
+
+      - alert: GeoApiLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(geo_api_request_duration_seconds_bucket[5m]))
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: API P95 latency exceeds 800 ms for five minutes
+
+      - alert: GeoQueueLagHigh
+        expr: geo_queue_lag_jobs > 1000 or geo_queue_oldest_job_age_seconds > 300
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Queue lag exceeds 1000 jobs or oldest waiting job exceeds five minutes
+
+      - alert: GeoAiCostSpike
+        expr: |
+          sum(increase(geo_ai_cost_cents_total[1h]))
+          > 1.15 * sum(increase(geo_ai_cost_cents_total[1h] offset 7d))
+          and sum(increase(geo_ai_cost_cents_total[1h] offset 7d)) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI cost is more than 15% above the same hour one week ago
+
+      - alert: GeoAiSchemaFailureRateHigh
+        expr: |
+          sum(rate(geo_ai_schema_results_total{result="failed"}[5m]))
+          / clamp_min(sum(rate(geo_ai_schema_results_total[5m])), 0.001) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: AI structured output schema failure rate exceeds 1%
+
+      - alert: GeoPublishSuccessRateLow
+        expr: |
+          sum by (platform) (rate(geo_publish_attempts_total{status="success"}[5m]))
+          / clamp_min(sum by (platform) (rate(geo_publish_attempts_total[5m])), 0.001) < 0.95
+          and sum by (platform) (rate(geo_publish_attempts_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Publish success rate is below 95%
+
+      - alert: GeoPublishUnknown
+        expr: increase(geo_publish_attempts_total{status="unknown"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: At least one publish attempt entered unknown state
+
+      - alert: GeoAuditWriteFailure
+        expr: increase(geo_audit_write_failures_total{risk="high"}[1m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: A high-risk audit event failed to persist
+
+      - alert: GeoOutboxTerminalFailure
+        expr: increase(geo_outbox_terminal_failures_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: An outbox event exhausted all publish attempts

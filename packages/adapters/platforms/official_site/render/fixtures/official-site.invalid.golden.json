@@ -1,0 +1,8 @@
+{
+  "blocker_codes": [
+    "BODY_LENGTH_OUT_OF_RANGE",
+    "FIRST_PARAGRAPH_REQUIRED",
+    "H2_REQUIRED",
+    "TITLE_LENGTH_OUT_OF_RANGE"
+  ]
+}

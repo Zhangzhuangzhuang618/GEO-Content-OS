@@ -2,9 +2,37 @@
   "name": "@geo-content-os/worker-knowledge",
   "version": "0.0.0",
   "private": true,
-  "description": "GEO Content OS — Knowledge Worker：资料入库、分块、Embedding、FTS 索引",
+  "type": "module",
+  "description": "GEO Content OS — recoverable knowledge ingestion and embedding worker",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "dev": "echo 'dev — implemented in T040'",
-    "test": "echo 'test — implemented in T040'"
-  }
+    "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-ocr build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build && tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-ocr build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-embedding": "workspace:*",
+    "@geo-content-os/adapter-ocr": "workspace:*",
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/adapter-web-fetch": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "@geo-content-os/parsers": "workspace:*",
+    "bullmq": "5.80.2",
+    "ioredis": "5.10.1",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@geo-content-os/testkit": "workspace:*",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

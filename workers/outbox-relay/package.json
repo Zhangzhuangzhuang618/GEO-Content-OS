@@ -2,9 +2,35 @@
   "name": "@geo-content-os/worker-outbox-relay",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "GEO Content OS — Outbox Relay：SKIP LOCKED 领取、BullMQ 投递、租约管理",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "dev": "echo 'dev — implemented in T009'",
-    "test": "echo 'test — implemented in T009'"
-  }
+    "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/observability build && tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "test:chaos": "pnpm --filter @geo-content-os/testkit build && pnpm build && vitest run --config vitest.chaos.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/observability build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
+    "@geo-content-os/observability": "workspace:*",
+    "bullmq": "5.80.2",
+    "bullmq-otel": "1.3.1",
+    "ioredis": "5.10.1",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@geo-content-os/testkit": "workspace:*",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

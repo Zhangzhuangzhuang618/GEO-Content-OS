@@ -1,0 +1,17 @@
+{
+  "schema_version": "fact-checker-eval-manifest@1",
+  "dataset_version": "fact-checker-eval-v1",
+  "case_ids": [
+    "supported-date-positive",
+    "unsupported-market-leader-negative",
+    "outdated-capability-boundary"
+  ],
+  "thresholds": {
+    "claim_coverage_minimum": 1,
+    "evidence_rule_minimum": 1,
+    "expected_behavior_minimum": 1,
+    "high_risk_decision_minimum": 1,
+    "quote_integrity_minimum": 1,
+    "schema_validity_minimum": 1
+  }
+}

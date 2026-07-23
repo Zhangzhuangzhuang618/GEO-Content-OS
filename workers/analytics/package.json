@@ -2,9 +2,30 @@
   "name": "@geo-content-os/worker-analytics",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "description": "GEO Content OS — Analytics Worker：指标导入、聚合、成本计算",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "dev": "echo 'dev — implemented in T127'",
-    "test": "echo 'test — implemented in T127'"
-  }
+    "build": "tsc --project tsconfig.build.json --pretty false",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
 }

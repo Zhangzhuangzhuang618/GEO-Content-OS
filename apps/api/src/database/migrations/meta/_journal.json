@@ -1,0 +1,272 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783968000000,
+      "tag": "0000_postgresql_extensions",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783972000000,
+      "tag": "0001_outbox_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783976400000,
+      "tag": "0002_idempotency_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783980000000,
+      "tag": "0003_identity_tenant",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783983600000,
+      "tag": "0004_password_reset_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783987200000,
+      "tag": "0005_invitation_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783990800000,
+      "tag": "0006_support_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783994400000,
+      "tag": "0007_workspace_strategy",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783998000000,
+      "tag": "0008_workspace_api_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784001600000,
+      "tag": "0009_project_api_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784005200000,
+      "tag": "0010_brand_profile_api",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1784008800000,
+      "tag": "0011_keyword_api_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1784012400000,
+      "tag": "0012_topic_api_and_brief_base",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784016000000,
+      "tag": "0013_knowledge_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784019600000,
+      "tag": "0014_chunking_fts_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1784023200000,
+      "tag": "0015_content_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1784109600000,
+      "tag": "0016_usage_ledger",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784113200000,
+      "tag": "0017_publishing_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784116800000,
+      "tag": "0018_analytics_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784120400000,
+      "tag": "0019_fact_check_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1784124000000,
+      "tag": "0020_quality_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784127600000,
+      "tag": "0021_review_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784131200000,
+      "tag": "0022_tenant_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784134800000,
+      "tag": "0023_analytics_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784149200000,
+      "tag": "0024_review_inbox_claim",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784156400000,
+      "tag": "0025_publishing_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784160000000,
+      "tag": "0026_publishing_job_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784170800000,
+      "tag": "0027_membership_version_owner_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1784178000000,
+      "tag": "0028_platform_config_contract",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1784181600000,
+      "tag": "0029_platform_tenant_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1784185200000,
+      "tag": "0030_freeze_v21",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1784214000000,
+      "tag": "0031_content_generation_account_target",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1784221200000,
+      "tag": "0032_official_site_first_party_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1784224800000,
+      "tag": "0033_single_published_platform_rule",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1784514313000,
+      "tag": "0034_source_url_uniqueness",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1784606400000,
+      "tag": "0035_platform_account_publishing_url",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1784774400000,
+      "tag": "0036_official_site_automation",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1784775600000,
+      "tag": "0037_official_site_automation_prompts",
+      "breakpoints": true
+    }
+  ]
+}
