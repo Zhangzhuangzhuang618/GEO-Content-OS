@@ -54,7 +54,7 @@ export async function createPlatformAccount(
       workspace_id: form.workspace_id,
     }),
     credentials: 'include',
-    headers: writeHeaders(csrf, undefined, 'platform-account-create'),
+    headers: jsonWriteHeaders(csrf, undefined, 'platform-account-create'),
     method: 'POST',
   });
   return parseAccount(response);
@@ -64,7 +64,7 @@ export async function refreshPlatformAccount(account: PlatformAccount, csrf: str
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}/refresh`, {
     body: '{}',
     credentials: 'include',
-    headers: writeHeaders(csrf, account.version),
+    headers: jsonWriteHeaders(csrf, account.version),
     method: 'POST',
   });
   return parseAccount(response);
@@ -88,7 +88,7 @@ export async function updatePlatformAccount(
       timezone: form.timezone.trim(),
     }),
     credentials: 'include',
-    headers: writeHeaders(csrf, account.version),
+    headers: jsonWriteHeaders(csrf, account.version),
     method: 'PATCH',
   });
   return parseAccount(response);
@@ -114,7 +114,7 @@ export async function disablePlatformAccount(
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}/disable`, {
     body: JSON.stringify({ reason }),
     credentials: 'include',
-    headers: writeHeaders(csrf, account.version),
+    headers: jsonWriteHeaders(csrf, account.version),
     method: 'POST',
   });
   return parseAccount(response);
@@ -200,9 +200,15 @@ async function parseAccount(response: Response) {
 
 function writeHeaders(csrf: string, version?: number, operation?: string) {
   return {
-    'content-type': 'application/json',
     ...(operation ? { 'idempotency-key': `${operation}-${createRequestUuid()}` } : {}),
     ...(version === undefined ? {} : { 'if-match': `"${version}"` }),
     'x-csrf-token': csrf,
+  };
+}
+
+function jsonWriteHeaders(csrf: string, version?: number, operation?: string) {
+  return {
+    'content-type': 'application/json',
+    ...writeHeaders(csrf, version, operation),
   };
 }

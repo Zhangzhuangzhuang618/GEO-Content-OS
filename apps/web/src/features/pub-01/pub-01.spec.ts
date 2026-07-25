@@ -182,6 +182,22 @@ test('edits credentials, tests, stops, restores and deletes with optimistic vers
     'POST',
     'DELETE',
   ]);
+  expect(writes.map(({ headers }) => headers['content-type'] ?? null)).toEqual([
+    'application/json',
+    null,
+    'application/json',
+    'application/json',
+    null,
+    null,
+  ]);
+  expect(writes.map(({ body }) => body)).toMatchObject([
+    {},
+    null,
+    {},
+    { reason: '账号停用' },
+    null,
+    null,
+  ]);
   expect(writes.map(({ headers }) => headers['if-match'])).toEqual([
     '"1"',
     '"2"',
