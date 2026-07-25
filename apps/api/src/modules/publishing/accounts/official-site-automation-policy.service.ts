@@ -127,8 +127,10 @@ export class OfficialSiteAutomationPolicyService {
         ) VALUES (
           ${scope.tenantId}::uuid,${scope.userId}::uuid,
           'official_site.automation_policy.updated','official_site_automation_policy',
-          ${after.id}::uuid,${before ? transaction.json(mapPolicy(before)) : null},
-          ${transaction.json(mapPolicy(after))},${audit.ip ?? null},${audit.requestId}
+          ${after.id}::uuid,
+          ${before ? jsonbText(transaction, mapPolicy(before)) : null}::jsonb,
+          ${jsonbText(transaction, mapPolicy(after))}::jsonb,
+          ${audit.ip ?? null},${audit.requestId}
         )
       `;
       return mapPolicy(after);
@@ -159,6 +161,10 @@ export class OfficialSiteAutomationPolicyService {
     if (!account) throw notFound();
     return account;
   }
+}
+
+function jsonbText(transaction: TransactionSql, value: unknown) {
+  return transaction.typed(JSON.stringify(value), 25);
 }
 
 function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {

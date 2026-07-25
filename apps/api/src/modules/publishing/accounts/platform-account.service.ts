@@ -6,7 +6,6 @@ import type {
 } from '@geo-content-os/contracts';
 import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
 import type { TransactionSql } from 'postgres';
-import type { JsonValue } from '../../../common/idempotency/index.js';
 import {
   resolveDatabaseClient,
   type DatabaseClient,
@@ -77,7 +76,7 @@ export class PlatformAccountService {
       : null;
     const rows = await tx<
       Row[]
-    >`INSERT INTO platform_accounts (tenant_id,workspace_id,platform_code,provider_account_id,display_name,publishing_url,credential_ciphertext,credential_key_version,scopes,token_expires_at,capabilities_json,publish_mode,status,timezone) VALUES (${scope.tenantId}::uuid,${input.workspace_id}::uuid,${input.platform_code},${probe.providerAccountId},${input.display_name},${input.publishing_url ?? null},${stored?.credentialCiphertext ?? null},${stored?.credentialKeyVersion ?? null},${tx.array([...probe.scopes], 25)}::text[],${probe.tokenExpiresAt},${tx.json(probe.capabilities as JsonValue)},${probe.publishMode},${probe.status},${input.timezone}) RETURNING *`;
+    >`INSERT INTO platform_accounts (tenant_id,workspace_id,platform_code,provider_account_id,display_name,publishing_url,credential_ciphertext,credential_key_version,scopes,token_expires_at,capabilities_json,publish_mode,status,timezone) VALUES (${scope.tenantId}::uuid,${input.workspace_id}::uuid,${input.platform_code},${probe.providerAccountId},${input.display_name},${input.publishing_url ?? null},${stored?.credentialCiphertext ?? null},${stored?.credentialKeyVersion ?? null},${tx.array([...probe.scopes], 25)}::text[],${probe.tokenExpiresAt},${jsonbText(tx, probe.capabilities)}::jsonb,${probe.publishMode},${probe.status},${input.timezone}) RETURNING *`;
     const row = rows[0];
     if (!row) throw invalid();
     await this.audit(tx, scope, audit, 'platform_account.connected', row.id, null, safe(row));
@@ -111,7 +110,7 @@ export class PlatformAccountService {
         : null;
       const rows = await tx<
         Row[]
-      >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${tx.json(probe.capabilities as JsonValue)},publish_mode=${probe.publishMode},status=${probe.status},credential_ciphertext=COALESCE(${stored?.credentialCiphertext ?? null},credential_ciphertext),credential_key_version=COALESCE(${stored?.credentialKeyVersion ?? null},credential_key_version),version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
+      >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,publish_mode=${probe.publishMode},status=${probe.status},credential_ciphertext=COALESCE(${stored?.credentialCiphertext ?? null},credential_ciphertext),credential_key_version=COALESCE(${stored?.credentialKeyVersion ?? null},credential_key_version),version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
       return requireRow(rows);
     });
   }
@@ -144,7 +143,7 @@ export class PlatformAccountService {
         return requireRow(
           await tx<
             Row[]
-          >`UPDATE platform_accounts account SET display_name=${input.display_name},publishing_url=${input.publishing_url === undefined ? row.publishing_url : input.publishing_url},timezone=${input.timezone},provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${tx.json(probe.capabilities as JsonValue)},publish_mode=${probe.publishMode},status=${nextStatus},credential_ciphertext=${stored?.credentialCiphertext ?? null},credential_key_version=${stored?.credentialKeyVersion ?? null},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`,
+          >`UPDATE platform_accounts account SET display_name=${input.display_name},publishing_url=${input.publishing_url === undefined ? row.publishing_url : input.publishing_url},timezone=${input.timezone},provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,publish_mode=${probe.publishMode},status=${nextStatus},credential_ciphertext=${stored?.credentialCiphertext ?? null},credential_key_version=${stored?.credentialKeyVersion ?? null},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`,
         );
       },
       { allowDisabled: true },
@@ -170,7 +169,7 @@ export class PlatformAccountService {
         });
         const rows = await tx<
           Row[]
-        >`UPDATE platform_accounts account SET capabilities_json=${tx.json(probe.capabilities as JsonValue)},status=${probe.status},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
+        >`UPDATE platform_accounts account SET capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,status=${probe.status},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
         return requireRow(rows);
       },
     );
@@ -228,7 +227,7 @@ export class PlatformAccountService {
         return requireRow(
           await tx<
             Row[]
-          >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${tx.json(probe.capabilities as JsonValue)},status=${probe.status},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`,
+          >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,status=${probe.status},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`,
         );
       },
       { allowDisabled: true },
@@ -333,8 +332,12 @@ export class PlatformAccountService {
     before: unknown,
     after: unknown,
   ) {
-    await tx`INSERT INTO audit_events(tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,ip,request_id) VALUES(${scope.tenantId}::uuid,${scope.userId}::uuid,${action},'platform_account',${id}::uuid,${before ? tx.json(before as JsonValue) : null},${tx.json(after as JsonValue)},${audit.ip ?? null},${audit.requestId})`;
+    await tx`INSERT INTO audit_events(tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,ip,request_id) VALUES(${scope.tenantId}::uuid,${scope.userId}::uuid,${action},'platform_account',${id}::uuid,${before ? jsonbText(tx, before) : null}::jsonb,${jsonbText(tx, after)}::jsonb,${audit.ip ?? null},${audit.requestId})`;
   }
+}
+
+function jsonbText(client: Client, value: unknown) {
+  return client.typed(JSON.stringify(value), 25);
 }
 
 async function disableAutomationPolicies(
