@@ -16,7 +16,7 @@ export class NestStructuredLogger implements LoggerService {
   }
 
   public error(message: unknown, ...optionalParameters: unknown[]): void {
-    const error = optionalParameters.find((value) => value instanceof Error);
+    const error = errorFrom(message, optionalParameters);
     this.logger.error(toMessage(message), error, contextAttributes(optionalParameters));
   }
 
@@ -45,4 +45,18 @@ function toMessage(value: unknown): string {
 function contextAttributes(values: readonly unknown[]): Record<string, unknown> {
   const context = [...values].reverse().find((value) => typeof value === 'string');
   return context ? { nest_context: context } : {};
+}
+
+function errorFrom(message: unknown, values: readonly unknown[]): Error | undefined {
+  if (message instanceof Error) return message;
+  const existing = values.find((value): value is Error => value instanceof Error);
+  if (existing) return existing;
+  const stack = values.find(
+    (value): value is string =>
+      typeof value === 'string' && value.includes('\n') && /\bat\s+\S+/u.test(value),
+  );
+  if (!stack) return undefined;
+  const error = new Error(toMessage(message));
+  error.stack = stack;
+  return error;
 }
