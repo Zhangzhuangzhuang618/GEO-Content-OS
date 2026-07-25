@@ -46,7 +46,7 @@ describe('publish jobs', () => {
   beforeAll(async () => {
     container = await startPostgresTestContainer();
     await migrateDatabase(container.getConnectionUri());
-    client = postgres(container.getConnectionUri(), { max: 4 });
+    client = postgres(container.getConnectionUri(), { max: 4, prepare: false });
   }, 120_000);
 
   beforeEach(async () => {

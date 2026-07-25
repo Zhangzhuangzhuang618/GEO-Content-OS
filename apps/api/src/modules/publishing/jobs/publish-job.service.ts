@@ -122,13 +122,15 @@ export class PublishJobService {
     assertIdempotencyKey(idempotencyKey);
     const target = await loadPublishTarget(transaction, scope, input);
     assertSchedulable(target);
+    const scheduledAtIso = scheduledAt.toISOString();
     const rows = await transaction<JobRow[]>`
         INSERT INTO publish_jobs (
           tenant_id, variant_id, content_version_id, account_id, scheduled_at,
           idempotency_key, payload_hash, status, created_by
         ) VALUES (
           ${scope.tenantId}::uuid, ${target.variantId}::uuid,
-          ${target.contentVersionId}::uuid, ${target.accountId}::uuid, ${scheduledAt},
+          ${target.contentVersionId}::uuid, ${target.accountId}::uuid,
+          ${scheduledAtIso}::timestamptz,
           ${idempotencyKey}, ${target.contentHash}, 'scheduled', ${scope.userId}::uuid
         )
         RETURNING
@@ -299,9 +301,11 @@ export class PublishJobService {
       throw stateInvalid('Unknown external publish state requires manual resolution');
     }
     assertAccountReady(before);
+    const scheduledAtIso = scheduledAt.toISOString();
     const rows = await transaction<JobRow[]>`
         UPDATE publish_jobs SET
-          status='scheduled', scheduled_at=${scheduledAt}, last_error_json=NULL, version=version+1
+          status='scheduled', scheduled_at=${scheduledAtIso}::timestamptz,
+          last_error_json=NULL, version=version+1
         WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
           AND version=${expectedVersion} AND status='failed'
         RETURNING
@@ -542,6 +546,7 @@ async function enqueueExecution(
   job: Pick<JobRow, 'id' | 'version'>,
   scheduledAt: Date,
 ): Promise<void> {
+  const scheduledAtIso = scheduledAt.toISOString();
   const event = await outbox.enqueue(
     {
       aggregateId: job.id,
@@ -550,7 +555,7 @@ async function enqueueExecution(
         job_id: job.id,
         job_version: job.version,
         request_id: scope.requestId,
-        scheduled_at: scheduledAt.toISOString(),
+        scheduled_at: scheduledAtIso,
       },
       eventType: 'publishing.job.execution_requested.v1',
       tenantId: scope.tenantId,
@@ -558,7 +563,7 @@ async function enqueueExecution(
     transaction,
   );
   await transaction`
-    UPDATE outbox_events SET next_attempt_at=GREATEST(${scheduledAt},now())
+    UPDATE outbox_events SET next_attempt_at=GREATEST(${scheduledAtIso}::timestamptz,now())
     WHERE id=${event.event_id}::uuid AND tenant_id=${scope.tenantId}::uuid
   `;
 }
