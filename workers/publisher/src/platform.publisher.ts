@@ -87,6 +87,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
     signal?: AbortSignal,
   ): Promise<PlatformDelivery> {
     const config = deliveryConfig(claim, credential);
+    const content = platformRenderContent(claim.content);
     switch (claim.platformCode) {
       case 'official_site':
         return execute(
@@ -94,7 +95,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderOfficialSite({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
           }),
           hashOfficialSitePayload,
@@ -106,7 +107,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderBaijiahao({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: BAIJIAHAO_RENDER_RULE_VERSION,
           }),
           hashBaijiahaoPayload,
@@ -118,7 +119,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderToutiao({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: TOUTIAO_RENDER_RULE_VERSION,
           }),
           hashToutiaoPayload,
@@ -130,7 +131,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderZhihu({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: ZHIHU_RENDER_RULE_VERSION,
           }),
           hashZhihuPayload,
@@ -142,7 +143,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderXiaohongshu({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: XIAOHONGSHU_RENDER_RULE_VERSION,
           }),
           hashXiaohongshuPayload,
@@ -154,7 +155,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderWechatMp({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: WECHAT_MP_RENDER_RULE_VERSION,
           }),
           hashWechatMpPayload,
@@ -166,7 +167,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderDouyin({
             citations: claim.citations,
-            content: claim.content,
+            content,
             rule_version: DOUYIN_RENDER_RULE_VERSION,
           }),
           hashDouyinPayload,
@@ -174,6 +175,20 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
         );
     }
   }
+}
+
+function platformRenderContent(
+  content: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  if (content['schema_version'] !== 'content-writer-data@1') {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'CONTENT_SCHEMA_UNSUPPORTED: Content version is not supported by this publisher',
+    );
+  }
+  const renderContent = { ...content };
+  delete renderContent['schema_version'];
+  return Object.freeze(renderContent);
 }
 
 async function execute<TPayload>(

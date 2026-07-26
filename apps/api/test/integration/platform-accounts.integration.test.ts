@@ -8,7 +8,7 @@ import {
 } from '@geo-content-os/testkit';
 import { randomBytes } from 'node:crypto';
 import postgres, { type Sql } from 'postgres';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
 import {
@@ -17,6 +17,7 @@ import {
   type PlatformAccountConnector,
   type PlatformAccountScope,
 } from '../../src/modules/publishing/accounts/index.js';
+import { PlatformDeliveryAccountConnector } from '../../src/modules/publishing/accounts/platform-account.connector.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000123';
 const OTHER_USER_ID = '12000000-0000-4000-8000-000000000123';
@@ -38,7 +39,7 @@ describe('platform accounts', () => {
   beforeAll(async () => {
     container = await startPostgresTestContainer();
     await migrateDatabase(container.getConnectionUri());
-    client = postgres(container.getConnectionUri(), { max: 4 });
+    client = postgres(container.getConnectionUri(), { max: 4, prepare: false });
   }, 120_000);
 
   beforeEach(async () => {
@@ -58,6 +59,10 @@ describe('platform accounts', () => {
     kms?.destroy();
     await client?.end();
     await container?.stop();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('supports the complete account lifecycle without exposing credentials', async () => {
@@ -227,6 +232,69 @@ describe('platform accounts', () => {
       ),
     ).rejects.toMatchObject({
       code: 'PLATFORM_ACCOUNT_NOT_FOUND',
+    });
+  });
+
+  it('persists official-site connector results with empty scopes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ get_status: true, metrics: false, publish: true }), {
+            headers: { 'content-type': 'application/json' },
+            status: 200,
+          }),
+        ),
+      ),
+    );
+    const database = requireClient(client);
+    const service = new PlatformAccountService(
+      database,
+      new CredentialEnvelopeService(requireKms(kms)),
+      new PlatformDeliveryAccountConnector(),
+    );
+    const credential = {
+      base_url: 'https://cms.example.test/api/geo/v1/',
+      bearer_token: SECRET,
+    };
+    const connected = await service.create(
+      SCOPE,
+      {
+        credential,
+        display_name: 'Production Official Site',
+        platform_code: 'official_site',
+        publishing_url: 'https://cms.example.test/webadmin/articleEdit',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: WORKSPACE_ID,
+      },
+      { requestId: 'req-real-connector-create' },
+    );
+
+    const updated = await service.update(
+      SCOPE,
+      connected.id,
+      {
+        credential,
+        display_name: 'Production Official Site Updated',
+        publishing_url: 'https://cms.example.test/webadmin/articleEdit',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+      },
+      connected.version,
+      { requestId: 'req-real-connector-update' },
+    );
+
+    expect(updated).toMatchObject({
+      capabilities: {
+        get_status: true,
+        metrics: false,
+        publish: true,
+      },
+      display_name: 'Production Official Site Updated',
+      scopes: [],
+      status: 'active',
+      version: 2,
     });
   });
 
