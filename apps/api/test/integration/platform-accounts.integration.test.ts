@@ -318,7 +318,7 @@ describe('platform accounts', () => {
     const created = await policies.update(
       SCOPE,
       account.id,
-      { enabled: true, project_id: PROJECT_ID },
+      { daily_enabled: true, enabled: true, project_id: PROJECT_ID },
       { requestId: 'req-automation-enable' },
     );
     expect(created).toMatchObject({
@@ -327,12 +327,30 @@ describe('platform accounts', () => {
       geo_total_min: 85,
       factual_accuracy_min: 90,
       brand_consistency_min: 90,
+      daily_candidate_limit: 30,
+      daily_enabled: true,
+      daily_generation_time: '00:00:00',
+      daily_schedule_times: [
+        '08:00:00',
+        '09:30:00',
+        '11:00:00',
+        '12:30:00',
+        '14:00:00',
+        '15:30:00',
+        '17:00:00',
+        '18:30:00',
+        '20:00:00',
+        '21:30:00',
+      ],
+      daily_target_count: 10,
+      daily_timezone: 'Asia/Shanghai',
       readability_safety_min: 85,
       question_coverage_min: 80,
       platform_fit_min: 80,
       max_rewrites: 3,
       publish_attempt_limit: 3,
       project_id: PROJECT_ID,
+      today_batch: null,
       version: 1,
     });
     await expect(policies.list(SCOPE, account.id)).resolves.toEqual([created]);
@@ -348,7 +366,9 @@ describe('platform accounts', () => {
     await accounts.disable(SCOPE, account.id, 'maintenance', account.version, {
       requestId: 'req-automation-account-disable',
     });
-    expect((await policies.list(SCOPE, account.id))[0]?.enabled).toBe(false);
+    expect(await policies.list(SCOPE, account.id)).toEqual([
+      expect.objectContaining({ daily_enabled: false, enabled: false }),
+    ]);
   });
 });
 

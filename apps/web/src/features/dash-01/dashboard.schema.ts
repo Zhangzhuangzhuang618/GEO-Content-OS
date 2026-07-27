@@ -18,6 +18,13 @@ export const ProjectPageSchema = z
   })
   .strict();
 
+export const ProjectResponseSchema = z
+  .object({
+    data: ProjectSchema,
+    meta: z.object({ request_id: z.string().min(1) }).passthrough(),
+  })
+  .strict();
+
 export const ContentPackageStatusSchema = z.enum([
   'draft',
   'generating',

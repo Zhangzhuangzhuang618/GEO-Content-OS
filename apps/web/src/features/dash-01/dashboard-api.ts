@@ -1,7 +1,10 @@
+import { createRequestUuid } from '@/lib/request-uuid';
+
 import {
   ContentPackagePageSchema,
   CostBreakdownResponseSchema,
   ProjectPageSchema,
+  ProjectResponseSchema,
   type DashboardContentPackage,
   type DashboardFilters,
   type DashboardProject,
@@ -16,6 +19,37 @@ export async function listProjects(
   const query = new URLSearchParams({ limit: '100', status: 'active', workspace_id: workspaceId });
   const response = await request(`/api/v1/projects?${query}`, signal);
   const parsed = ProjectPageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new DashboardRequestError(502);
+  return parsed.data.data;
+}
+
+export async function createProject(
+  input: {
+    readonly name: string;
+    readonly ownerId: string;
+    readonly workspaceId: string;
+  },
+  csrf: string,
+): Promise<DashboardProject> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/projects`, {
+    body: JSON.stringify({
+      end_date: null,
+      name: input.name.trim(),
+      objective: null,
+      owner_id: input.ownerId,
+      start_date: null,
+      workspace_id: input.workspaceId,
+    }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `dashboard-project-create-${createRequestUuid()}`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw new DashboardRequestError(response.status);
+  const parsed = ProjectResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new DashboardRequestError(502);
   return parsed.data.data;
 }

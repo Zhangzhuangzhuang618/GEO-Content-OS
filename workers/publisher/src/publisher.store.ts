@@ -261,6 +261,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
       if (updated.length !== 1) throw leaseLost();
       if (row.origin === 'official_site_automation') {
         await completeAutomationRun(transaction, claim.tenantId, claim.jobId, 'published', null);
+        await completeDailyBatchItem(transaction, claim.tenantId, claim.jobId, delivery);
       }
       await transitionVariant(
         transaction,
@@ -329,6 +330,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           'publish_failed',
           error,
         );
+        await failDailyBatchItem(transaction, claim.tenantId, claim.jobId, error);
       }
       await transitionVariant(
         transaction,
@@ -553,6 +555,65 @@ async function completeAutomationRun(
     RETURNING id
   `;
   if (rows.length !== 1) throw stateInvalid();
+}
+
+async function completeDailyBatchItem(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  delivery: PlatformDelivery,
+): Promise<void> {
+  const items = await transaction<{ batchId: string }[]>`
+    UPDATE official_site_daily_batch_items SET
+      status='published',
+      published_at=${delivery.mode === 'api' ? publishedAt(delivery) : new Date()}
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status='scheduled'
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  await transaction`
+    UPDATE official_site_daily_batches AS batch SET
+      status='completed',completed_at=now(),last_error_json=NULL,version=version+1
+    WHERE batch.id=${batchId}::uuid AND batch.tenant_id=${tenantId}::uuid
+      AND batch.status='scheduled'
+      AND (
+        SELECT count(*) FROM official_site_daily_batch_items AS item
+        WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+          AND item.status='published'
+      ) >= 10
+  `;
+}
+
+async function failDailyBatchItem(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  error: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  const items = await transaction<{ batchId: string }[]>`
+    UPDATE official_site_daily_batch_items SET
+      status='publish_failed',
+      last_error_json=${JSON.stringify(error)}::text::jsonb
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status='scheduled'
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  await transaction`
+    UPDATE official_site_daily_batches SET
+      status='attention_required',
+      last_error_json=${JSON.stringify({
+        code: 'DAILY_PUBLISH_FAILED',
+        message: '官网发布重试 3 次后仍失败，请检查官网连接。',
+        schema_version: 'official-site-daily-error@1',
+      })}::text::jsonb,
+      version=version+1
+    WHERE id=${batchId}::uuid AND tenant_id=${tenantId}::uuid
+      AND status='scheduled'
+  `;
 }
 
 async function transitionVariant(

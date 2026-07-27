@@ -28,6 +28,8 @@ const ACCOUNT_ID = '91000000-0000-4000-8000-000000000125';
 const JOB_ID = 'a1000000-0000-4000-8000-000000000125';
 const POLICY_ID = 'a2000000-0000-4000-8000-000000000125';
 const AUTOMATION_RUN_ID = 'a3000000-0000-4000-8000-000000000125';
+const DAILY_BATCH_ID = 'a4000000-0000-4000-8000-000000000125';
+const DAILY_ITEM_ID = 'a5000000-0000-4000-8000-000000000125';
 const CONTENT_HASH = 'a'.repeat(64);
 const PLATFORM_PAYLOAD_HASH = 'b'.repeat(64);
 const ACCESS_TOKEN = 't125-platform-secret';
@@ -105,6 +107,7 @@ describe('publisher worker', () => {
   it('retries an idempotent official-site unknown state twice and stops after attempt three', async () => {
     const database = requireClient(client);
     await enableAutomation(database);
+    await seedDailyPublishItem(database);
     const platform = new FakePlatform(undefined, 'PUBLISH_STATE_UNKNOWN');
     const worker = createWorker(database, requireCredentials(credentials), platform);
 
@@ -122,11 +125,21 @@ describe('publisher worker', () => {
       packageStatus: 'publish_failed',
       variantStatus: 'publish_failed',
     });
+    expect(
+      await database<{ batchStatus: string; itemStatus: string }[]>`
+        SELECT batch.status AS "batchStatus",item.status AS "itemStatus"
+        FROM official_site_daily_batch_items AS item
+        JOIN official_site_daily_batches AS batch
+          ON batch.id=item.batch_id AND batch.tenant_id=item.tenant_id
+        WHERE item.id=${DAILY_ITEM_ID}::uuid
+      `,
+    ).toEqual([{ batchStatus: 'attention_required', itemStatus: 'publish_failed' }]);
   });
 
   it('completes the official-site automation run and records the remote publication time', async () => {
     const database = requireClient(client);
     await enableAutomation(database);
+    await seedDailyPublishItem(database);
     const worker = createWorker(
       database,
       requireCredentials(credentials),
@@ -146,6 +159,12 @@ describe('publisher worker', () => {
       publishedAt: '2026-07-23T01:02:03.000Z',
       variantStatus: 'published',
     });
+    expect(
+      await database<{ publishedAt: Date | null; status: string }[]>`
+        SELECT status,published_at AS "publishedAt"
+        FROM official_site_daily_batch_items WHERE id=${DAILY_ITEM_ID}::uuid
+      `,
+    ).toEqual([{ publishedAt: expect.any(Date), status: 'published' }]);
   });
 
   it('stores an export artifact when the account has no publishing API', async () => {
@@ -327,6 +346,33 @@ async function enableAutomation(database: Sql): Promise<void> {
     ) VALUES(
       ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,${VARIANT_ID}::uuid,
       ${VERSION_ID}::uuid,'publishing',${JOB_ID}::uuid
+    )
+  `;
+}
+
+async function seedDailyPublishItem(database: Sql): Promise<void> {
+  await database`
+    UPDATE official_site_automation_policies SET daily_enabled=true
+    WHERE id=${POLICY_ID}::uuid
+  `;
+  await database`
+    INSERT INTO official_site_daily_batches(
+      id,tenant_id,policy_id,business_date,status,scheduled_at
+    ) VALUES(
+      ${DAILY_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2026-07-23','scheduled',now()
+    )
+  `;
+  await database`
+    INSERT INTO official_site_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,angle_key,title,
+      brief_id,package_id,variant_id,content_version_id,publish_job_id,
+      status,qualified_at,scheduled_at
+    ) VALUES(
+      ${DAILY_ITEM_ID}::uuid,${TENANT_ID}::uuid,${DAILY_BATCH_ID}::uuid,1,
+      'selection-guide','Approved content',
+      ${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,
+      ${VERSION_ID}::uuid,${JOB_ID}::uuid,'scheduled',now(),now()
     )
   `;
 }

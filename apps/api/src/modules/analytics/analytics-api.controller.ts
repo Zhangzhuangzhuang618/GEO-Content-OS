@@ -1,5 +1,11 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import {
+  AiVisibilityQuerySetCreateSchema,
+  AiVisibilityQuerySetListQuerySchema,
+  AiVisibilityRunCreateSchema,
+  AiVisibilityRunDetailQuerySchema,
+  AiVisibilityRunListQuerySchema,
+  AiVisibilityRunParamsSchema,
   AnalyticsExportQuerySchema,
   AnalyticsQuerySchema,
   ContentAnalyticsQuerySchema,
@@ -14,6 +20,11 @@ import {
   VisibilityObservationRequestSchema,
   VisibilityTrendQuerySchema,
 } from '@geo-content-os/contracts';
+import {
+  AiVisibilityService,
+  AiVisibilityStateError,
+  AiVisibilityValidationError,
+} from './ai-visibility/index.js';
 import {
   Controller,
   Get,
@@ -84,6 +95,7 @@ export class AnalyticsApiController {
     @Inject(CostQueryService) private readonly costs: CostQueryService,
     @Inject(MetricsImportService) private readonly metrics: MetricsImportService,
     @Inject(VisibilityService) private readonly visibility: VisibilityService,
+    @Inject(AiVisibilityService) private readonly aiVisibility: AiVisibilityService,
     @Inject(AnalyticsApiService) private readonly api: AnalyticsApiService,
     @Inject(IdempotencyService) private readonly idempotency: IdempotencyService,
     @Inject(ANALYTICS_STORAGE) private readonly storage: ObjectStorageAdapter,
@@ -485,6 +497,128 @@ export class AnalyticsApiController {
     }
   }
 
+  @Post('ai-visibility/query-sets')
+  @RequirePermissions('analytics.read')
+  public async createAiVisibilityQuerySet(
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = AiVisibilityQuerySetCreateSchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      const scope = requireScope(request);
+      const result = await this.idempotency.execute(
+        idempotencyInput(request, scope, '/ai-visibility/query-sets', parsed.data),
+        async (transaction) => ({
+          body: apiResponse(
+            await this.aiVisibility.createQuerySet(transaction, scope, parsed.data),
+            request.id,
+          ),
+          statusCode: HttpStatus.CREATED,
+        }),
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Get('ai-visibility/query-sets')
+  @RequirePermissions('analytics.read')
+  public async listAiVisibilityQuerySets(
+    @Query() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = AiVisibilityQuerySetListQuerySchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      return sendData(
+        reply,
+        request.id,
+        await this.aiVisibility.listQuerySets(requireScope(request), parsed.data),
+      );
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Post('ai-visibility/runs')
+  @RequirePermissions('analytics.read')
+  public async createAiVisibilityRuns(
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = AiVisibilityRunCreateSchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      const scope = requireScope(request);
+      const result = await this.idempotency.execute(
+        idempotencyInput(request, scope, '/ai-visibility/runs', parsed.data),
+        async (transaction) => ({
+          body: apiResponse(
+            await this.aiVisibility.createRuns(transaction, scope, parsed.data),
+            request.id,
+          ),
+          statusCode: HttpStatus.CREATED,
+        }),
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Get('ai-visibility/runs')
+  @RequirePermissions('analytics.read')
+  public async listAiVisibilityRuns(
+    @Query() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const parsed = AiVisibilityRunListQuerySchema.safeParse(raw);
+    if (!parsed.success) return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    try {
+      return sendData(
+        reply,
+        request.id,
+        await this.aiVisibility.listRuns(requireScope(request), parsed.data),
+      );
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
+  @Get('ai-visibility/runs/:id')
+  @RequirePermissions('analytics.read')
+  public async getAiVisibilityRun(
+    @Param() rawParams: unknown,
+    @Query() rawQuery: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ) {
+    const params = AiVisibilityRunParamsSchema.safeParse(rawParams);
+    const query = AiVisibilityRunDetailQuerySchema.safeParse(rawQuery);
+    if (!params.success || !query.success) {
+      return sendError(reply, request.id, 'SCHEMA_VALIDATION_FAILED');
+    }
+    try {
+      return sendData(
+        reply,
+        request.id,
+        await this.aiVisibility.getRun(
+          requireScope(request),
+          query.data.workspace_id,
+          params.data.id,
+        ),
+      );
+    } catch (error) {
+      return sendAnalyticsError(reply, request.id, error);
+    }
+  }
+
   @Get('analytics/export')
   @RequirePermissions('analytics.read')
   public async export(
@@ -631,6 +765,7 @@ async function sendAnalyticsError(reply: FastifyReply, requestId: string, error:
     error instanceof AnalyticsQueryStateError ||
     error instanceof CostQueryStateError ||
     error instanceof MetricsImportStateError ||
+    error instanceof AiVisibilityStateError ||
     error instanceof VisibilityStateError
   )
     return sendError(reply, requestId, 'RESOURCE_NOT_FOUND');
@@ -639,6 +774,7 @@ async function sendAnalyticsError(reply: FastifyReply, requestId: string, error:
     error instanceof AnalyticsQueryValidationError ||
     error instanceof CostQueryValidationError ||
     error instanceof MetricsImportValidationError ||
+    error instanceof AiVisibilityValidationError ||
     error instanceof VisibilityValidationError ||
     error instanceof IdempotencyKeyValidationError
   )

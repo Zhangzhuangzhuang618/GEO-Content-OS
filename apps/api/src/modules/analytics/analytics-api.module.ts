@@ -8,6 +8,7 @@ import { AuthModule } from '../identity/auth/auth.module.js';
 import { RbacModule } from '../identity/rbac/rbac.module.js';
 import { OutboxModule, OutboxWriter } from '../outbox/index.js';
 import { AnalyticsApiController } from './analytics-api.controller.js';
+import { AiVisibilityService } from './ai-visibility/index.js';
 import { AnalyticsApiService } from './analytics-api.service.js';
 import { ANALYTICS_STORAGE } from './analytics.tokens.js';
 import { MetricsImportService } from './imports/index.js';
@@ -61,6 +62,12 @@ import { VisibilityService } from './visibility/index.js';
         database: IdentityAuthDatabase,
         storage: ReturnType<typeof createStorageAdapter>,
       ) => new VisibilityService(database, storage),
+    },
+    {
+      provide: AiVisibilityService,
+      inject: [IdentityAuthDatabase, OutboxWriter],
+      useFactory: (database: IdentityAuthDatabase, outbox: OutboxWriter) =>
+        new AiVisibilityService(database, outbox),
     },
     {
       provide: AnalyticsApiService,

@@ -347,7 +347,7 @@ async function disableAutomationPolicies(
 ): Promise<void> {
   await transaction`
     UPDATE official_site_automation_policies
-    SET enabled=false,version=version+1
+    SET enabled=false,daily_enabled=false,version=version+1
     WHERE tenant_id=${tenantId}::uuid AND account_id=${accountId}::uuid AND enabled
   `;
 }

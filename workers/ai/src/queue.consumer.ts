@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import type { ContentGenerationWorker } from './generation.worker.js';
 import type { OfficialSiteAutomation } from './official-site-automation.js';
 import type { QualityCheckWorker } from './quality.worker.js';
+import type { VisibilityProbeWorker } from './visibility.worker.js';
 
 export interface AiQueueConsumerOptions {
   readonly concurrency: number;
@@ -20,6 +21,7 @@ export class AiQueueConsumer {
     generation: ContentGenerationWorker,
     quality: QualityCheckWorker,
     automation: OfficialSiteAutomation,
+    visibility: VisibilityProbeWorker,
     options: AiQueueConsumerOptions,
   ) {
     const onError = options.onError ?? (() => undefined);
@@ -40,6 +42,9 @@ export class AiQueueConsumer {
         }
         if (job.name === 'content.variant.official_site_rewrite_requested.v1') {
           return automation.runRewrite(job.data);
+        }
+        if (job.name === 'analytics.visibility.probe_requested.v1') {
+          return visibility.run(job.data);
         }
         throw new Error(`AI Worker does not handle ${job.name}`);
       },

@@ -37,6 +37,13 @@ test.beforeEach(async ({ context, page }) => {
   await page.route('**/api/v1/brand-profiles?*', (route) =>
     json(route, [brandProfile('published')]),
   );
+  await page.route('**/api/v1/sources?*', (route) =>
+    route.fulfill({
+      body: JSON.stringify({ data: [], meta: { next_cursor: null, request_id: 'sources' } }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
   await page.route('**/api/v1/content-packages?*', (route) =>
     json(route, [
       contentPackage('in_review', '40000000-0000-4000-8000-000000000073'),
@@ -70,7 +77,7 @@ test('exposes account, enterprise switching and logout actions in the global hea
   });
   await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
 
-  await page.locator('header details summary').click();
+  await page.getByLabel('打开账号与企业菜单').click();
   await expect(page.getByText('admin@example.com')).toBeVisible();
   await expect(
     page.locator('header details').getByRole('link', { name: '切换企业' }),
@@ -83,6 +90,7 @@ test('exposes account, enterprise switching and logout actions in the global hea
 test('persists time, workspace and project filters in the URL', async ({ page }) => {
   await page.goto(`/dash-01?from=2026-07-01&to=2026-07-31&workspace_id=${WORKSPACE_ID}`);
   await expect(page.getByRole('heading', { name: '开始创作' })).toBeVisible();
+  await page.getByText('工作概览与筛选').click();
   await page.getByLabel('项目', { exact: true }).selectOption(PROJECT_ID);
   await expect(page).toHaveURL(
     new RegExp(
@@ -90,29 +98,66 @@ test('persists time, workspace and project filters in the URL', async ({ page })
       'u',
     ),
   );
-  await expect(page.getByText('2 个内容任务')).toBeVisible();
+  await expect(
+    page.getByLabel('工作台指标').getByText('内容任务', { exact: true }).locator('..'),
+  ).toContainText('2 项');
   await expect(page.getByText('¥123.45')).toBeVisible();
-  await expect(page.getByRole('region', { name: '当前企业' })).toContainText('示例企业');
+  await expect(page.getByRole('region', { name: '当前创作范围' })).toContainText('示例企业');
   await expect(page.getByRole('link', { name: '切换企业' })).toHaveAttribute('href', '/auth-02');
+});
+
+test('creates the first project inline and keeps the user in the content flow', async ({
+  page,
+}) => {
+  let createBody: Record<string, unknown> | null = null;
+  await page.route('**/api/v1/projects*', async (route) => {
+    if (route.request().method() === 'POST') {
+      createBody = route.request().postDataJSON() as Record<string, unknown>;
+      await response(route, project(), 201);
+      return;
+    }
+    await json(route, []);
+  });
+
+  await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
+  await expect(page.getByRole('heading', { name: '先创建第一个项目' })).toBeVisible();
+  await page.getByLabel('项目名称').fill('官网内容运营');
+  await page.getByRole('button', { name: '创建项目' }).click();
+
+  await expect(page.getByText('项目已创建，可以继续填写主题并生成内容。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '先创建第一个项目' })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dash-01\?/u);
+  await expect(page).toHaveURL(new RegExp(`workspace_id=${WORKSPACE_ID}`, 'u'));
+  expect(createBody).toMatchObject({
+    name: '官网内容运营',
+    owner_id: OWNER_ID,
+    workspace_id: WORKSPACE_ID,
+  });
 });
 
 test('shows only cards and actions allowed by the active role', async ({ page }) => {
   await page.goto(`/dash-01?from=2026-07-01&to=2026-07-31&workspace_id=${WORKSPACE_ID}`);
-  await expect(page.getByText('审核待办')).toBeVisible();
-  await expect(page.getByText('发布待办')).toBeVisible();
+  await expect(page.getByText('等待审核').first()).toBeVisible();
+  await expect(page.getByText('发布任务').first()).toBeVisible();
+  await page.getByText('工作概览与筛选').click();
   await expect(page.getByText('已结算成本')).toBeVisible();
-  await expect(page.getByRole('link', { name: '进入审核' })).toBeVisible();
-  await expect(page.getByRole('link', { name: '进入发布' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /等待审核/u }).first()).toHaveAttribute(
+    'href',
+    '/rev-01',
+  );
+  await expect(page.getByRole('link', { name: /发布任务/u }).first()).toHaveAttribute(
+    'href',
+    '/pub-03',
+  );
 
   await mockRole(page, 'viewer');
   await page.reload();
-  await expect(page.getByText('内容产能')).toBeVisible();
-  await expect(page.getByText('失败任务').first()).toBeVisible();
-  await expect(page.getByText('审核待办')).toHaveCount(0);
-  await expect(page.getByText('发布待办')).toHaveCount(0);
+  await expect(page.getByText('需要处理的异常')).toBeVisible();
+  await expect(page.getByText('最近内容')).toBeVisible();
+  await expect(page.getByText('等待审核')).toHaveCount(0);
+  await expect(page.getByText('发布任务')).toHaveCount(0);
+  await page.getByText('工作概览与筛选').click();
   await expect(page.getByText('已结算成本')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: '进入审核' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: '进入发布' })).toHaveCount(0);
 });
 
 test('renders permission and empty states without leaking dashboard cards', async ({ page }) => {
@@ -154,8 +199,14 @@ test('keeps successful dashboard sections usable when cost loading fails and ret
   });
 
   await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
-  await expect(page.getByText('2 个内容任务')).toBeVisible();
-  const costCard = page.getByText('已结算成本').locator('..');
+  await page.getByText('工作概览与筛选').click();
+  await expect(
+    page.getByLabel('工作台指标').getByText('内容任务', { exact: true }).locator('..'),
+  ).toContainText('2 项');
+  const costCard = page
+    .getByLabel('工作台指标')
+    .getByText('已结算成本', { exact: true })
+    .locator('..');
   await expect(costCard).toContainText('暂时无法获取');
   await costCard.getByRole('button', { name: '重新加载' }).click();
   await expect(costCard).toContainText('¥123.45');
@@ -188,7 +239,142 @@ test('remains usable at mobile width with a keyboard focus entry', async ({ page
   await expect(page.getByRole('heading', { name: '开始创作' })).toBeVisible();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('link', { name: '跳到主要内容' })).toBeFocused();
-  await expect(page.getByLabel('工作台筛选')).toBeVisible();
+  await expect(page.getByText('工作概览与筛选')).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '移动端主导航' })).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: '移动端主导航' }).getByRole('link', {
+      name: '内容创作',
+    }),
+  ).toBeVisible();
+});
+
+test('exposes every standalone function page through visible navigation', async ({ page }) => {
+  await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
+
+  const primaryNavigation = page.getByRole('navigation', { name: '主导航' });
+  const primaryEntries = [
+    ['首页', '/dash-01'],
+    ['内容创作', '/cont-03'],
+    ['品牌与选题', '/str-01'],
+    ['待办审核', '/rev-01'],
+    ['发布管理', '/pub-02'],
+    ['企业资料', '/know-01'],
+    ['数据', '/anl-01'],
+    ['设置', '/set-02'],
+  ] as const;
+  for (const [name, href] of primaryEntries) {
+    await expect(primaryNavigation.getByRole('link', { name, exact: true })).toHaveAttribute(
+      'href',
+      href,
+    );
+  }
+
+  const sections = [
+    {
+      label: '内容创作功能',
+      path: '/cont-03',
+      links: [
+        ['内容列表', '/cont-03'],
+        ['内容需求', '/cont-01'],
+        ['新建内容需求', '/cont-02'],
+      ],
+    },
+    {
+      label: '品牌与选题功能',
+      path: '/str-01',
+      links: [
+        ['品牌策略', '/str-01'],
+        ['关键词管理', '/str-04'],
+        ['选题规划', '/str-03'],
+      ],
+    },
+    {
+      label: '审核功能',
+      path: '/rev-01',
+      links: [['待审核内容', '/rev-01']],
+    },
+    {
+      label: '发布管理功能',
+      path: '/pub-02',
+      links: [
+        ['发布任务', '/pub-02'],
+        ['平台账号', '/pub-01'],
+      ],
+    },
+    {
+      label: '企业资料功能',
+      path: '/know-01',
+      links: [
+        ['资料列表', '/know-01'],
+        ['导入资料', '/know-02'],
+        ['事实裁决', '/know-04'],
+      ],
+    },
+    {
+      label: '数据功能',
+      path: '/anl-01',
+      links: [
+        ['数据总览', '/anl-01'],
+        ['AI 可见度', '/anl-03'],
+        ['指标导入', '/anl-02'],
+        ['成本中心', '/anl-04'],
+      ],
+    },
+    {
+      label: '设置功能',
+      path: '/set-02',
+      links: [
+        ['工作区', '/set-02'],
+        ['成员与权限', '/set-01'],
+        ['操作日志', '/set-04'],
+        ['AI 与平台规则（平台运营）', '/set-03'],
+        ['企业管理（平台管理员）', '/plat-01'],
+      ],
+    },
+  ] as const;
+
+  for (const section of sections) {
+    await page.goto(section.path);
+    const navigation = page.getByRole('navigation', { name: section.label });
+    await expect(navigation).toBeVisible();
+    for (const [name, href] of section.links) {
+      await expect(navigation.getByRole('link', { name, exact: true })).toHaveAttribute(
+        'href',
+        href,
+      );
+    }
+  }
+
+  await page.goto('/qual-01');
+  await expect(
+    page.getByRole('navigation', { name: '主导航' }).getByRole('link', {
+      name: '内容创作',
+    }),
+  ).toHaveAttribute('aria-current', 'page');
+  await expect(
+    page.getByRole('navigation', { name: '内容创作功能' }).getByRole('link', {
+      name: '内容列表',
+    }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  await page.goto('/plat-01');
+  await expect(
+    page.getByRole('navigation', { name: '主导航' }).getByRole('link', { name: '设置' }),
+  ).toHaveAttribute('aria-current', 'page');
+  await expect(
+    page.getByRole('navigation', { name: '设置功能' }).getByRole('link', {
+      name: '企业管理（平台管理员）',
+    }),
+  ).toHaveAttribute('aria-current', 'page');
+
+  await page.setViewportSize({ height: 800, width: 375 });
+  await page.goto('/anl-01');
+  await expect(page.getByRole('navigation', { name: '数据功能' })).toBeVisible();
+  await expect(
+    page.getByRole('navigation', { name: '数据功能' }).getByRole('link', {
+      name: '成本中心',
+    }),
+  ).toBeVisible();
 });
 
 test('creates and starts all-platform content from one human-friendly form', async ({ page }) => {
@@ -241,6 +427,7 @@ test('creates and starts all-platform content from one human-friendly form', asy
 
   await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
   await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
+  await page.getByText('选择参考资料和补充要求').click();
   await expect(page.getByText('系统会自动使用你填写的主题创建关键词')).toBeVisible();
   await expect(page.getByText('系统会建立一份基础策略')).toBeVisible();
   await page.getByLabel('想创作什么内容？').fill('企业如何通过 GEO 提升品牌可见度');
@@ -448,6 +635,7 @@ async function mockQuickCreateDetail(page: Page, platforms: readonly string[]) {
   for (const variant of detail.variants) {
     await page.route(`**/api/v1/content-variants/${variant.id}`, (route) =>
       response(route, {
+        automation_run: null,
         citations: [],
         current_content: null,
         locks: [],

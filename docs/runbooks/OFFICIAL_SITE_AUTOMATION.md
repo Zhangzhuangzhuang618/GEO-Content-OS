@@ -2,7 +2,7 @@
 
 ## 前置条件
 
-- PostgreSQL 已执行至迁移 0037；
+- PostgreSQL 已执行至迁移 0039；
 - API、Outbox Relay、AI Worker、Publisher Worker、Redis 正常；
 - AI Worker 配置 DeepSeek，质量检查和重写使用 `deepseek-v4-pro`；
 - 官网项目已部署 `/api/geo/v1`，使用数据库副本完成过验证；
@@ -22,6 +22,7 @@ PUBLISHING_CREDENTIAL_KEY_BASE64=<32-byte-base64>
 PUBLISHING_CREDENTIAL_KEY_VERSION=<stable-version-name>
 PUBLISHER_WORKER_CONCURRENCY=2
 PUBLISHER_STALE_AFTER_MS=120000
+OFFICIAL_SITE_DAILY_TICK_MS=30000
 ```
 
 不得在已有加密平台凭证后直接替换加密密钥。密钥轮换必须先完成凭证重加密。
@@ -41,6 +42,10 @@ PUBLISHER_STALE_AFTER_MS=120000
 
 在官网账号下选择项目并启用自动发布。阈值和次数由数据库约束固定，UI 不允许修改：85/90/90/85/80/80，最多重写 3 次，最多发布 3 次。
 
+如需每天自动发布 10 篇，同时开启“每天自动生产并排期发布 10 篇”。系统每天 00:00 开始准备内容，不合格候选自动补位，最多尝试 30 篇；凑足 10 篇后按页面列出的十个北京时间排期。项目必须已有官网关键词、已发布品牌资料、已发布官网规则、已解析知识资料和 active API 官网账号。缺少前置资料时页面会显示原因；补齐后 AI Worker 会在下一次巡检自动继续。
+
+如果 10 篇内容在部分固定时段之后才准备完成，系统把已错过的时段顺延到当天剩余时间，且不会创建过去时间或跨日补发任务。
+
 ## 状态解释
 
 | 自动化状态 | 含义 | 操作 |
@@ -52,6 +57,8 @@ PUBLISHER_STALE_AFTER_MS=120000
 | `manual_required` | 三次重写仍不通过或重写执行连续失败 | 人工编辑后重新检查质量 |
 | `publish_failed` | 官网发布三次仍失败或确定性拒绝 | 修复官网/凭证后在发布任务重试；总次数不超过 3 |
 | `disabled` | 策略、账号或任务被人工停用/取消 | 确认原因后重新启用策略并重新生成或检查 |
+
+每日批次状态：`running` 表示正在生成、质检或补位；`scheduled` 表示 10 篇均已排期；`completed` 表示 10 篇均已发布；`attention_required` 表示候选达到 30 篇、当天已结束或前置资料缺失。
 
 ## 重试规则
 
@@ -80,6 +87,16 @@ SELECT publish_job_id, attempt_no, status, error_code, created_at
 FROM publish_attempts
 ORDER BY created_at DESC
 LIMIT 50;
+
+SELECT batch.business_date, batch.status, batch.last_error_json,
+       count(item.id) AS attempted,
+       count(item.id) FILTER (WHERE item.status='published') AS published,
+       count(item.id) FILTER (WHERE item.status='retired') AS retired
+FROM official_site_daily_batches AS batch
+LEFT JOIN official_site_daily_batch_items AS item
+  ON item.batch_id=batch.id AND item.tenant_id=batch.tenant_id
+GROUP BY batch.id
+ORDER BY batch.business_date DESC;
 ```
 
 不得把凭证密文、Bearer Token 或 DeepSeek Key 输出到工单和日志。

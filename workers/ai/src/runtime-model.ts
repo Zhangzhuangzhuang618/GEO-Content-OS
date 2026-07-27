@@ -24,6 +24,9 @@ export function createRuntimeModels(
     environment['CONTENT_MODEL_BALANCED_KEY'] ?? 'deepseek-v4-flash',
     environment['CONTENT_MODEL_QUALITY_KEY'] ?? 'deepseek-v4-pro',
     environment['QUALITY_CHECKER_MODEL_KEY'] ?? 'deepseek-v4-flash',
+    environment['VISIBILITY_MODEL_KEY'] ??
+      environment['CONTENT_MODEL_BALANCED_KEY'] ??
+      'deepseek-v4-flash',
   ]);
   return new Map(
     [...keys].map((key) => [
@@ -80,7 +83,7 @@ class RuntimeMockContentModel implements ModelAdapter {
   public async generate(input: ModelRequest): Promise<ModelResult> {
     if (input.signal?.aborted) throw input.signal.reason;
     const output = mockOutput(input);
-    const text = JSON.stringify(output);
+    const text = typeof output === 'string' ? output : JSON.stringify(output);
     const inputTokens = tokens(JSON.stringify(input.messages));
     const outputTokens = tokens(text);
     return Object.freeze({
@@ -107,7 +110,9 @@ class RuntimeMockContentModel implements ModelAdapter {
   }
 }
 
-function mockOutput(input: ModelRequest): ModelJsonObject {
+function mockOutput(input: ModelRequest): ModelJsonObject | string {
+  const visibilityInput = optionalMessageObject(input, 'ai_visibility_query');
+  if (visibilityInput) return string(visibilityInput['text']) || '未提供测试问题。';
   const qualityInput = optionalMessageObject(input, 'quality_checker_input');
   if (qualityInput) return mockQualityOutput(qualityInput);
   const writerInput = messageObject(input, 'content_writer_input');

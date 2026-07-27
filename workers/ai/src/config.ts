@@ -3,6 +3,7 @@ export type AiModelDriver = 'deepseek' | 'mock';
 export interface AiWorkerConfig {
   readonly automation: OfficialSiteAutomationConfig;
   readonly databaseUrl: string;
+  readonly dailySchedulerTickMs: number;
   readonly driver: AiModelDriver;
   readonly healthPort: number;
   readonly queueConcurrency: number;
@@ -51,6 +52,11 @@ export function readAiWorkerConfig(environment = process.env): AiWorkerConfig {
       ),
     }),
     databaseUrl: required(environment['DATABASE_URL'], 'DATABASE_URL'),
+    dailySchedulerTickMs: milliseconds(
+      environment['OFFICIAL_SITE_DAILY_TICK_MS'],
+      30_000,
+      'OFFICIAL_SITE_DAILY_TICK_MS',
+    ),
     driver,
     healthPort: port(environment['HEALTH_PORT'], 9090, 'HEALTH_PORT'),
     queueConcurrency: boundedInteger(
@@ -103,6 +109,14 @@ function port(value: string | undefined, fallback: number, name: string): number
   const parsed = value === undefined ? fallback : Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65_535) {
     throw new Error(`${name} must be a valid TCP port`);
+  }
+  return parsed;
+}
+
+function milliseconds(value: string | undefined, fallback: number, name: string): number {
+  const parsed = value === undefined ? fallback : Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 5_000 || parsed > 300_000) {
+    throw new Error(`${name} must be an integer between 5000 and 300000`);
   }
   return parsed;
 }

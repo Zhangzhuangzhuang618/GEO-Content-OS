@@ -88,15 +88,47 @@ export const PlatformAccountResponseSchema = createDataResponseSchema(PlatformAc
 export const CapabilityResponseSchema = createDataResponseSchema(CapabilityViewSchema);
 export const OfficialSiteAutomationPolicyRequestSchema = z
   .object({
+    daily_enabled: z.boolean().optional(),
     enabled: z.boolean(),
     expected_version: VersionSchema.optional(),
     project_id: UuidSchema,
+  })
+  .strict();
+export const OfficialSiteDailyBatchSummarySchema = z
+  .object({
+    attempted_count: z.number().int().min(0).max(30),
+    business_date: z.iso.date(),
+    in_progress_count: z.number().int().min(0).max(30),
+    last_error_message: z.string().nullable(),
+    published_count: z.number().int().min(0).max(10),
+    qualified_count: z.number().int().min(0).max(30),
+    retired_count: z.number().int().min(0).max(30),
+    scheduled_count: z.number().int().min(0).max(10),
+    status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
+    target_count: z.literal(10),
   })
   .strict();
 export const OfficialSiteAutomationPolicyViewSchema = z
   .object({
     account_id: UuidSchema,
     brand_consistency_min: z.literal(90),
+    daily_candidate_limit: z.literal(30),
+    daily_enabled: z.boolean(),
+    daily_generation_time: z.literal('00:00:00'),
+    daily_schedule_times: z.tuple([
+      z.literal('08:00:00'),
+      z.literal('09:30:00'),
+      z.literal('11:00:00'),
+      z.literal('12:30:00'),
+      z.literal('14:00:00'),
+      z.literal('15:30:00'),
+      z.literal('17:00:00'),
+      z.literal('18:30:00'),
+      z.literal('20:00:00'),
+      z.literal('21:30:00'),
+    ]),
+    daily_target_count: z.literal(10),
+    daily_timezone: z.literal('Asia/Shanghai'),
     enabled: z.boolean(),
     factual_accuracy_min: z.literal(90),
     geo_total_min: z.literal(85),
@@ -108,6 +140,7 @@ export const OfficialSiteAutomationPolicyViewSchema = z
     question_coverage_min: z.literal(80),
     readability_safety_min: z.literal(85),
     tenant_id: UuidSchema,
+    today_batch: OfficialSiteDailyBatchSummarySchema.nullable(),
     updated_at: IsoDateTimeSchema,
     version: VersionSchema,
     workspace_id: UuidSchema,

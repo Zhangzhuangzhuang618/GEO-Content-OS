@@ -38,7 +38,9 @@ export function PlatformAccountManager() {
   const [showConnect, setShowConnect] = useState(false);
   const [editingAccount, setEditingAccount] = useState<PlatformAccount | null>(null);
   const [automationAccount, setAutomationAccount] = useState<PlatformAccount | null>(null);
-  const [publishMode, setPublishMode] = useState<'api' | 'export' | 'manual'>('export');
+  const [platformCode, setPlatformCode] =
+    useState<PlatformAccount['platform_code']>('official_site');
+  const [publishMode, setPublishMode] = useState<'api' | 'export' | 'manual'>('api');
   const [editMode, setEditMode] = useState<'api' | 'export' | 'manual'>('export');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -109,7 +111,8 @@ export function PlatformAccountManager() {
     try {
       await createPlatformAccount(parsed.data, csrf);
       form.reset();
-      setPublishMode('export');
+      setPlatformCode('official_site');
+      setPublishMode('api');
       setShowConnect(false);
       setMessage('平台账号已连接；凭证已安全保存且不会回显。');
       await load(filters);
@@ -197,7 +200,7 @@ export function PlatformAccountManager() {
       setMessage(
         error instanceof PlatformAccountRequestError && error.status === 409
           ? '该账号仍有待发布任务，请先取消相关任务，再停用或删除账号。'
-          : '操作失败；账号版本、凭证或平台能力可能已变化，请刷新后重试。',
+          : '操作失败；账号信息、访问凭证或平台连接可能已变化，请刷新后重试。',
       );
     } finally {
       setBusyId(null);
@@ -213,10 +216,40 @@ export function PlatformAccountManager() {
 
   return (
     <section className="mt-8">
-      <div className="flex flex-col gap-4 rounded-2xl border border-line bg-white p-4 shadow-panel sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-white p-5 shadow-panel">
+        <div>
+          <h2 className="text-lg font-semibold text-ink-950">发布到哪里</h2>
+          <p className="mt-1 text-sm leading-6 text-ink-500">
+            每个账号只需设置一次；创建发布任务时直接选择即可。
+          </p>
+        </div>
+        <button
+          className={primaryButton}
+          onClick={() => {
+            setEditingAccount(null);
+            setFormError(null);
+            setShowConnect((value) => !value);
+          }}
+          type="button"
+        >
+          {showConnect ? '取消连接' : '连接账号'}
+        </button>
+      </div>
+
+      <details
+        className="group mt-4 overflow-hidden rounded-2xl border border-line bg-white shadow-panel"
+        open={Object.keys(filters).length > 0 ? true : undefined}
+      >
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-3">
+          <span className="font-medium text-ink-900">查找账号（可选）</span>
+          <span className="text-sm font-semibold text-brand-700 group-open:hidden">展开</span>
+          <span className="hidden text-sm font-semibold text-brand-700 group-open:inline">
+            收起
+          </span>
+        </summary>
         <form
           aria-label="平台账号筛选"
-          className="grid flex-1 gap-4 sm:grid-cols-3"
+          className="grid gap-4 border-t border-line p-5 sm:grid-cols-3"
           key={JSON.stringify(filters)}
           onSubmit={applyFilters}
         >
@@ -227,7 +260,7 @@ export function PlatformAccountManager() {
             value={filters.platformCode}
           />
           <SelectField
-            label="授权状态"
+            label="连接状态"
             name="status"
             options={STATUS_OPTIONS}
             value={filters.status}
@@ -249,7 +282,7 @@ export function PlatformAccountManager() {
           </label>
           <div className="flex gap-3 sm:col-span-3">
             <button className={secondaryButton} type="submit">
-              应用筛选
+              查找
             </button>
             <button
               className={secondaryButton}
@@ -259,29 +292,23 @@ export function PlatformAccountManager() {
               }}
               type="button"
             >
-              清空
+              重置
             </button>
           </div>
         </form>
-        <button
-          className={primaryButton}
-          onClick={() => {
-            setEditingAccount(null);
-            setFormError(null);
-            setShowConnect((value) => !value);
-          }}
-          type="button"
-        >
-          {showConnect ? '取消连接' : '连接账号'}
-        </button>
-      </div>
+      </details>
 
       {showConnect ? (
         <ConnectForm
           connecting={connecting}
           error={formError}
           onModeChange={setPublishMode}
+          onPlatformChange={(next) => {
+            setPlatformCode(next);
+            setPublishMode(next === 'official_site' ? 'api' : 'export');
+          }}
           onSubmit={connect}
+          platformCode={platformCode}
           publishMode={publishMode}
           workspaces={workspaces}
         />
@@ -316,43 +343,29 @@ export function PlatformAccountManager() {
       {state === 'loading' ? (
         <StatePanel title="正在加载平台账号" text="正在读取当前授权范围内的账号与能力。" />
       ) : accounts.length === 0 ? (
-        <StatePanel title="暂无平台账号" text="当前筛选下没有账号，可使用“连接账号”创建。" />
+        <StatePanel title="还没有可用账号" text="点击“连接账号”，按页面提示选择发布方式。" />
       ) : (
-        <div className="mt-5 overflow-x-auto rounded-2xl border border-line bg-white shadow-panel">
-          <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className="bg-surface-subtle text-ink-500">
-              <tr>
-                <th className="p-4">平台 / 账号</th>
-                <th className="p-4">能力</th>
-                <th className="p-4">授权状态</th>
-                <th className="p-4">到期</th>
-                <th className="p-4">时区</th>
-                <th className="p-4">动作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((account) => (
-                <AccountRow
-                  account={account}
-                  busy={busyId === account.id}
-                  key={account.id}
-                  onAction={runLifecycleAction}
-                  onEdit={(selected) => {
-                    setAutomationAccount(null);
-                    setShowConnect(false);
-                    setFormError(null);
-                    setEditingAccount(selected);
-                    setEditMode(selected.publish_mode);
-                  }}
-                  onAutomation={(selected) => {
-                    setEditingAccount(null);
-                    setShowConnect(false);
-                    setAutomationAccount(selected);
-                  }}
-                />
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-5 grid gap-4">
+          {accounts.map((account) => (
+            <AccountCard
+              account={account}
+              busy={busyId === account.id}
+              key={account.id}
+              onAction={runLifecycleAction}
+              onEdit={(selected) => {
+                setAutomationAccount(null);
+                setShowConnect(false);
+                setFormError(null);
+                setEditingAccount(selected);
+                setEditMode(selected.publish_mode);
+              }}
+              onAutomation={(selected) => {
+                setEditingAccount(null);
+                setShowConnect(false);
+                setAutomationAccount(selected);
+              }}
+            />
+          ))}
         </div>
       )}
     </section>
@@ -408,21 +421,6 @@ function EditForm({
           />
         </label>
         <label className="text-sm text-ink-700">
-          交付模式
-          <select
-            className={controlClass}
-            name="publish_mode"
-            onChange={(event) =>
-              onModeChange(event.currentTarget.value as 'api' | 'export' | 'manual')
-            }
-            value={publishMode}
-          >
-            <option value="api">API 发布</option>
-            <option value="export">确定性导出</option>
-            <option value="manual">人工发布</option>
-          </select>
-        </label>
-        <label className="text-sm text-ink-700">
           时区
           <input
             className={controlClass}
@@ -431,37 +429,48 @@ function EditForm({
             required
           />
         </label>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <DeliveryModeChooser onChange={onModeChange} value={publishMode} />
+        </div>
         <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
-          发布后台地址（可选）
+          {account.platform_code === 'official_site'
+            ? '官网管理后台地址（可选）'
+            : '平台发布页面（可选）'}
           <input
             className={controlClass}
             defaultValue={account.publishing_url ?? ''}
             name="publishing_url"
-            placeholder="官网 CMS 地址，或用于覆盖平台默认发布页面"
+            placeholder="点击“打开发布后台”时跳转到这里"
             type="url"
           />
         </label>
         {publishMode === 'api' ? (
           <>
             <label className="text-sm text-ink-700">
-              新 API 地址
+              新的发布 API 根地址
               <input
                 autoComplete="url"
                 className={controlClass}
                 name="base_url"
-                placeholder="不修改凭证可留空"
+                placeholder="不更换连接可留空"
                 type="url"
               />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                官网示例：https://example.com/api/geo/v1/。这不是后台登录页。
+              </span>
             </label>
             <label className="text-sm text-ink-700">
-              新访问令牌
+              新的发布令牌
               <input
                 autoComplete="new-password"
                 className={controlClass}
                 name="bearer_token"
-                placeholder="不修改凭证可留空"
+                placeholder="不更换连接可留空"
                 type="password"
               />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                由官网运维生成，不是官网后台密码。保存后不会再次显示。
+              </span>
             </label>
           </>
         ) : (
@@ -487,14 +496,18 @@ function ConnectForm({
   connecting,
   error,
   onModeChange,
+  onPlatformChange,
   onSubmit,
+  platformCode,
   publishMode,
   workspaces,
 }: {
   readonly connecting: boolean;
   readonly error: string | null;
   readonly onModeChange: (mode: 'api' | 'export' | 'manual') => void;
+  readonly onPlatformChange: (platform: PlatformAccount['platform_code']) => void;
   readonly onSubmit: (event: FormEvent<HTMLFormElement>) => Promise<void>;
+  readonly platformCode: PlatformAccount['platform_code'];
   readonly publishMode: 'api' | 'export' | 'manual';
   readonly workspaces: readonly Workspace[];
 }) {
@@ -507,9 +520,9 @@ function ConnectForm({
     >
       <h2 className="text-xl font-semibold text-ink-950">连接平台账号</h2>
       <p className="mt-2 text-sm text-ink-500">
-        现有凭证不会读取或回显；API 模式仅接受本次输入的新凭证。
+        先选平台和发布方式。只有“自动发布”需要 API 地址和令牌。
       </p>
-      <div className="mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm text-ink-700">
           工作区
           <select className={controlClass} defaultValue="" name="workspace_id" required>
@@ -523,65 +536,88 @@ function ConnectForm({
             ))}
           </select>
         </label>
-        <SelectField
-          label="平台"
-          name="platform_code"
-          options={PLATFORM_OPTIONS}
-          value="official_site"
-          required
-        />
         <label className="text-sm text-ink-700">
-          账号名称
-          <input className={controlClass} maxLength={120} name="display_name" required />
-        </label>
-        <label className="text-sm text-ink-700">
-          交付模式
+          平台
           <select
             className={controlClass}
-            name="publish_mode"
+            name="platform_code"
             onChange={(event) =>
-              onModeChange(event.currentTarget.value as 'api' | 'export' | 'manual')
+              onPlatformChange(event.currentTarget.value as PlatformAccount['platform_code'])
             }
-            value={publishMode}
+            value={platformCode}
           >
-            <option value="api">API 发布</option>
-            <option value="export">确定性导出</option>
-            <option value="manual">人工发布</option>
+            {PLATFORM_OPTIONS.map(([option, text]) => (
+              <option key={option} value={option}>
+                {text}
+              </option>
+            ))}
           </select>
+        </label>
+        <label className="text-sm text-ink-700">
+          账号名称（自己识别用）
+          <input
+            className={controlClass}
+            maxLength={120}
+            name="display_name"
+            placeholder={`例如：${platformLabel(platformCode)}生产账号`}
+            required
+          />
         </label>
         <label className="text-sm text-ink-700">
           时区
           <input className={controlClass} defaultValue="Asia/Shanghai" name="timezone" required />
         </label>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <DeliveryModeChooser onChange={onModeChange} value={publishMode} />
+        </div>
         <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
-          发布后台地址（可选）
+          {platformCode === 'official_site' ? '官网管理后台地址（可选）' : '平台发布页面（可选）'}
           <input
             className={controlClass}
             name="publishing_url"
-            placeholder="官网请填写 CMS 发布页；其他平台不填则使用默认创作页面"
+            placeholder={
+              platformCode === 'official_site'
+                ? '例如：https://example.com/admin/news'
+                : '不填写时使用系统内置的平台创作页'
+            }
             type="url"
           />
+          <span className="mt-2 block text-xs leading-5 text-ink-500">
+            这里只用于“打开发布后台”，不参与 API 调用。
+          </span>
         </label>
         {publishMode === 'api' ? (
           <>
             <label className="text-sm text-ink-700">
-              API 地址
+              {platformCode === 'official_site' ? '官网发布 API 根地址' : '平台 API 根地址'}
               <input
                 autoComplete="url"
                 className={controlClass}
                 name="base_url"
-                placeholder="https://api.example.com"
+                placeholder={
+                  platformCode === 'official_site'
+                    ? 'https://example.com/api/geo/v1/'
+                    : 'https://api.example.com/'
+                }
                 type="url"
               />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                {platformCode === 'official_site'
+                  ? '系统会在该地址下调用 capabilities、publish、status 和 metrics。'
+                  : '由平台或你的中转服务提供；必须是 HTTPS。'}
+              </span>
             </label>
             <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-1">
-              访问令牌
+              发布令牌
               <input
                 autoComplete="new-password"
                 className={controlClass}
                 name="bearer_token"
                 type="password"
               />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                不是账号密码。令牌由目标系统生成，保存后不会回显。
+              </span>
             </label>
           </>
         ) : (
@@ -589,6 +625,7 @@ function ConnectForm({
         )}
         {publishMode !== 'api' ? <input name="bearer_token" type="hidden" value="" /> : null}
       </div>
+      <ConnectionGuide mode={publishMode} platformCode={platformCode} />
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-red-700">
         {error}
       </div>
@@ -598,14 +635,117 @@ function ConnectForm({
           disabled={connecting || workspaces.length === 0}
           type="submit"
         >
-          {connecting ? '正在连接…' : '确认连接'}
+          {connecting ? '正在保存并测试…' : publishMode === 'api' ? '保存并测试连接' : '保存账号'}
         </button>
       </div>
     </form>
   );
 }
 
-function AccountRow({
+function DeliveryModeChooser({
+  onChange,
+  value,
+}: {
+  readonly onChange: (mode: 'api' | 'export' | 'manual') => void;
+  readonly value: 'api' | 'export' | 'manual';
+}) {
+  const options = [
+    {
+      description: '质检通过后由系统调用平台接口发布。',
+      label: '自动发布',
+      value: 'api',
+    },
+    {
+      description: '生成可下载的发布包，再由你上传。',
+      label: '导出发布包',
+      value: 'export',
+    },
+    {
+      description: '保存平台入口，由你打开后台完成发布。',
+      label: '打开后台手动发布',
+      value: 'manual',
+    },
+  ] as const;
+  return (
+    <fieldset>
+      <legend className="text-sm text-ink-700">希望怎样发布</legend>
+      <div className="mt-2 grid gap-3 lg:grid-cols-3">
+        {options.map((option) => (
+          <label
+            className={`cursor-pointer rounded-xl border p-4 ${
+              value === option.value
+                ? 'border-brand-600 bg-brand-50'
+                : 'border-line bg-white hover:bg-surface-subtle'
+            }`}
+            key={option.value}
+          >
+            <span className="flex items-start gap-3">
+              <input
+                checked={value === option.value}
+                className="mt-1"
+                name="publish_mode"
+                onChange={() => onChange(option.value)}
+                type="radio"
+                value={option.value}
+              />
+              <span>
+                <span className="block font-semibold text-ink-900">{option.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-ink-500">
+                  {option.description}
+                </span>
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function ConnectionGuide({
+  mode,
+  platformCode,
+}: {
+  readonly mode: 'api' | 'export' | 'manual';
+  readonly platformCode: PlatformAccount['platform_code'];
+}) {
+  if (mode === 'export') {
+    return (
+      <div className="mt-5 rounded-xl bg-surface-subtle p-4 text-sm leading-6 text-ink-700">
+        无需填写账号密码或令牌。发布时系统会生成可下载的发布包。
+      </div>
+    );
+  }
+  if (mode === 'manual') {
+    return (
+      <div className="mt-5 rounded-xl bg-surface-subtle p-4 text-sm leading-6 text-ink-700">
+        建议填写上方发布页面地址。以后可从账号卡片直接打开该平台后台。
+      </div>
+    );
+  }
+  if (platformCode !== 'official_site') {
+    return (
+      <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+        只有平台提供正式发布 API，或你已部署合规的中转服务时才能自动发布。请勿填写平台登录密码。
+      </div>
+    );
+  }
+  return (
+    <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm leading-6 text-ink-700">
+      <p className="font-semibold text-ink-900">官网自动发布需要官网开发或运维提供两项信息</p>
+      <ol className="mt-2 list-decimal space-y-1 pl-5">
+        <li>API 根地址，例如 https://example.com/api/geo/v1/</li>
+        <li>专用发布令牌；它不是官网后台账号密码</li>
+      </ol>
+      <p className="mt-3 text-xs leading-5 text-ink-500">
+        保存时系统会测试 capabilities；发布时使用 publish、status 和 metrics。生产环境必须使用
+        HTTPS，本机联调允许 localhost 或 127.0.0.1。
+      </p>
+    </div>
+  );
+}
+
+function AccountCard({
   account,
   busy,
   onAction,
@@ -624,101 +764,103 @@ function AccountRow({
   const disabled = account.status === 'disabled';
   const publishingUrl = resolvePublishingUrl(account);
   return (
-    <tr className="border-t border-line">
-      <td className="p-4">
-        <span className="font-semibold text-ink-950">{platformLabel(account.platform_code)}</span>
-        <p className="mt-1">{account.display_name}</p>
-        <p className="mt-1 text-xs text-ink-500">{modeLabel(account.publish_mode)}</p>
-      </td>
-      <td className="p-4">{capabilitySummary(account.capabilities)}</td>
-      <td className="p-4">
-        <StatusBadge status={account.status} />
-      </td>
-      <td className="p-4">
-        {account.token_expires_at ? formatDate(account.token_expires_at) : '未提供'}
-      </td>
-      <td className="p-4">{account.timezone}</td>
-      <td className="p-4">
-        <div className="flex flex-wrap gap-2">
-          {publishingUrl && !disabled ? (
-            <a
-              className={primarySmallButton}
-              href={publishingUrl}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              前往发布后台
-            </a>
-          ) : null}
+    <article className="rounded-2xl border border-line bg-white p-5 shadow-panel">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <h3 className="text-lg font-semibold text-ink-950">
+              {platformLabel(account.platform_code)} · {account.display_name}
+            </h3>
+            <StatusBadge status={account.status} />
+          </div>
+          <p className="mt-2 text-sm text-ink-600">
+            {modeLabel(account.publish_mode)} · {capabilitySummary(account.capabilities)}
+          </p>
+          <p className="mt-1 text-xs text-ink-500">
+            {account.token_expires_at ? `凭证到期：${formatDate(account.token_expires_at)} · ` : ''}
+            时区：{account.timezone}
+          </p>
+        </div>
+        {publishingUrl && !disabled ? (
+          <a
+            className={primarySmallButton}
+            href={publishingUrl}
+            rel="noopener noreferrer"
+            target="_blank"
+          >
+            打开发布后台
+          </a>
+        ) : null}
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
+        <button
+          className={smallButton}
+          disabled={busy}
+          onClick={() => onEdit(account)}
+          type="button"
+        >
+          修改账号
+        </button>
+        {account.platform_code === 'official_site' ? (
           <button
             className={smallButton}
             disabled={busy}
-            onClick={() => onEdit(account)}
+            onClick={() => onAutomation(account)}
             type="button"
           >
-            编辑
+            官网自动发布
           </button>
-          {account.platform_code === 'official_site' ? (
-            <button
-              className={smallButton}
-              disabled={busy}
-              onClick={() => onAutomation(account)}
-              type="button"
-            >
-              自动发布设置
-            </button>
-          ) : null}
-          {account.publish_mode === 'api' && !disabled ? (
-            <button
-              className={smallButton}
-              disabled={busy}
-              onClick={() => void onAction(account, 'refresh')}
-              type="button"
-            >
-              刷新授权状态
-            </button>
-          ) : null}
-          {!disabled ? (
-            <button
-              className={smallButton}
-              disabled={busy}
-              onClick={() => void onAction(account, 'test')}
-              type="button"
-            >
-              能力测试
-            </button>
-          ) : null}
-          {!disabled ? (
-            <button
-              className={dangerButton}
-              disabled={busy}
-              onClick={() => void onAction(account, 'disable')}
-              type="button"
-            >
-              停用
-            </button>
-          ) : null}
-          {disabled ? (
-            <button
-              className={smallButton}
-              disabled={busy}
-              onClick={() => void onAction(account, 'restore')}
-              type="button"
-            >
-              恢复使用
-            </button>
-          ) : null}
+        ) : null}
+        {account.publish_mode === 'api' && !disabled ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => void onAction(account, 'refresh')}
+            type="button"
+          >
+            重新验证授权
+          </button>
+        ) : null}
+        {!disabled ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => void onAction(account, 'test')}
+            type="button"
+          >
+            测试连接
+          </button>
+        ) : null}
+        {!disabled ? (
           <button
             className={dangerButton}
             disabled={busy}
-            onClick={() => void onAction(account, 'remove')}
+            onClick={() => void onAction(account, 'disable')}
             type="button"
           >
-            删除
+            停止使用
           </button>
-        </div>
-      </td>
-    </tr>
+        ) : null}
+        {disabled ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => void onAction(account, 'restore')}
+            type="button"
+          >
+            恢复使用
+          </button>
+        ) : null}
+        <button
+          className={dangerButton}
+          disabled={busy}
+          onClick={() => void onAction(account, 'remove')}
+          type="button"
+        >
+          删除账号
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -732,16 +874,16 @@ const PLATFORM_OPTIONS = [
   ['douyin', '抖音'],
 ] as const;
 const STATUS_OPTIONS = [
-  ['active', '已授权'],
-  ['reauth', '需重新授权'],
-  ['disabled', '已禁用'],
+  ['active', '连接正常'],
+  ['reauth', '需要重新连接'],
+  ['disabled', '已停止使用'],
 ] as const;
 const ACTION_MESSAGES = {
-  disable: '平台账号已停用，不会再用于新发布任务。',
-  remove: '平台账号已删除。',
-  refresh: '授权状态已刷新。',
-  restore: '平台账号已恢复使用。',
-  test: '能力测试已完成。',
+  disable: '账号已停止使用，不会再用于新发布任务。',
+  remove: '账号已删除。',
+  refresh: '连接状态已重新验证。',
+  restore: '账号已恢复使用。',
+  test: '连接测试已完成。',
 } as const;
 
 function parseFilters(data: FormData): PlatformAccountFilters {
@@ -811,7 +953,8 @@ function StatePanel({ text, title }: { readonly text: string; readonly title: st
 }
 
 function StatusBadge({ status }: { readonly status: PlatformAccount['status'] }) {
-  const text = status === 'active' ? '已授权' : status === 'reauth' ? '需重新授权' : '已禁用';
+  const text =
+    status === 'active' ? '连接正常' : status === 'reauth' ? '需要重新连接' : '已停止使用';
   const color =
     status === 'active'
       ? 'bg-emerald-50 text-emerald-700'
@@ -838,7 +981,7 @@ function platformLabel(code: PlatformAccount['platform_code']) {
   return PLATFORM_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
 }
 function modeLabel(mode: PlatformAccount['publish_mode']) {
-  return mode === 'api' ? 'API 发布' : mode === 'export' ? '确定性导出' : '人工发布';
+  return mode === 'api' ? '自动发布' : mode === 'export' ? '导出发布包' : '手动发布';
 }
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(

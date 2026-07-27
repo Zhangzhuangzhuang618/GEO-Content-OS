@@ -10,17 +10,44 @@ import type { PlatformAccountAudit, PlatformAccountScope } from './platform-acco
 
 interface PolicyRow {
   readonly accountId: string;
+  readonly attemptedCount: number | null;
+  readonly batchBusinessDate: Date | string | null;
+  readonly batchLastErrorMessage: string | null;
+  readonly batchStatus:
+    'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled' | null;
   readonly brandConsistencyMin: 90;
+  readonly dailyCandidateLimit: 30;
+  readonly dailyEnabled: boolean;
+  readonly dailyGenerationTime: '00:00:00';
+  readonly dailyScheduleTimes: readonly [
+    '08:00:00',
+    '09:30:00',
+    '11:00:00',
+    '12:30:00',
+    '14:00:00',
+    '15:30:00',
+    '17:00:00',
+    '18:30:00',
+    '20:00:00',
+    '21:30:00',
+  ];
+  readonly dailyTargetCount: 10;
+  readonly dailyTimezone: 'Asia/Shanghai';
   readonly enabled: boolean;
   readonly factualAccuracyMin: 90;
   readonly geoTotalMin: 85;
   readonly id: string;
+  readonly inProgressCount: number | null;
   readonly maxRewrites: 3;
   readonly platformFitMin: 80;
   readonly projectId: string;
+  readonly publishedCount: number | null;
   readonly publishAttemptLimit: 3;
+  readonly qualifiedCount: number | null;
   readonly questionCoverageMin: 80;
   readonly readabilitySafetyMin: 85;
+  readonly retiredCount: number | null;
+  readonly scheduledCount: number | null;
   readonly tenantId: string;
   readonly updatedAt: Date | string;
   readonly version: number;
@@ -43,6 +70,12 @@ export class OfficialSiteAutomationPolicyService {
       SELECT
         policy.id, policy.tenant_id AS "tenantId", policy.workspace_id AS "workspaceId",
         policy.project_id AS "projectId", policy.account_id AS "accountId", policy.enabled,
+        policy.daily_enabled AS "dailyEnabled",
+        policy.daily_target_count AS "dailyTargetCount",
+        policy.daily_candidate_limit AS "dailyCandidateLimit",
+        policy.daily_generation_time::text AS "dailyGenerationTime",
+        policy.daily_timezone AS "dailyTimezone",
+        policy.daily_schedule_times::text[] AS "dailyScheduleTimes",
         policy.geo_total_min AS "geoTotalMin",
         policy.factual_accuracy_min AS "factualAccuracyMin",
         policy.brand_consistency_min AS "brandConsistencyMin",
@@ -50,8 +83,41 @@ export class OfficialSiteAutomationPolicyService {
         policy.question_coverage_min AS "questionCoverageMin",
         policy.platform_fit_min AS "platformFitMin", policy.max_rewrites AS "maxRewrites",
         policy.publish_attempt_limit AS "publishAttemptLimit", policy.version,
-        policy.updated_at AS "updatedAt"
+        policy.updated_at AS "updatedAt",
+        today.business_date AS "batchBusinessDate", today.status AS "batchStatus",
+        today.last_error_message AS "batchLastErrorMessage",
+        today.attempted_count AS "attemptedCount",
+        today.in_progress_count AS "inProgressCount",
+        today.qualified_count AS "qualifiedCount",
+        today.scheduled_count AS "scheduledCount",
+        today.published_count AS "publishedCount",
+        today.retired_count AS "retiredCount"
       FROM official_site_automation_policies AS policy
+      LEFT JOIN LATERAL (
+        SELECT
+          batch.business_date, batch.status,
+          COALESCE(batch.last_error_json->>'message', batch.last_error_json->>'code')
+            AS last_error_message,
+          count(item.id)::integer AS attempted_count,
+          count(item.id) FILTER (
+            WHERE item.status IN ('generating','quality_check','rewriting')
+          )::integer AS in_progress_count,
+          count(item.id) FILTER (
+            WHERE item.status IN ('qualified','scheduled','published','publish_failed','reserve')
+          )::integer AS qualified_count,
+          count(item.id) FILTER (
+            WHERE item.status IN ('scheduled','published','publish_failed')
+          )::integer AS scheduled_count,
+          count(item.id) FILTER (WHERE item.status='published')::integer AS published_count,
+          count(item.id) FILTER (WHERE item.status='retired')::integer AS retired_count
+        FROM official_site_daily_batches AS batch
+        LEFT JOIN official_site_daily_batch_items AS item
+          ON item.batch_id=batch.id AND item.tenant_id=batch.tenant_id
+        WHERE batch.tenant_id=policy.tenant_id AND batch.policy_id=policy.id
+          AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
+        GROUP BY batch.id
+        LIMIT 1
+      ) AS today ON true
       WHERE policy.tenant_id=${scope.tenantId}::uuid AND policy.account_id=${accountId}::uuid
         AND has_project_scope_access(
           policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
@@ -82,16 +148,29 @@ export class OfficialSiteAutomationPolicyService {
       if (input.enabled && (account.status !== 'active' || account.publishMode !== 'api')) {
         throw stateInvalid('Only an active official-site API account can enable automation');
       }
+      if (input.daily_enabled && !input.enabled) {
+        throw stateInvalid('Daily publishing requires official-site automation to be enabled');
+      }
       const existing = await transaction<PolicyRow[]>`
         SELECT
           id, tenant_id AS "tenantId", workspace_id AS "workspaceId",
           project_id AS "projectId", account_id AS "accountId", enabled,
+          daily_enabled AS "dailyEnabled", daily_target_count AS "dailyTargetCount",
+          daily_candidate_limit AS "dailyCandidateLimit",
+          daily_generation_time::text AS "dailyGenerationTime",
+          daily_timezone AS "dailyTimezone",
+          daily_schedule_times::text[] AS "dailyScheduleTimes",
           geo_total_min AS "geoTotalMin", factual_accuracy_min AS "factualAccuracyMin",
           brand_consistency_min AS "brandConsistencyMin",
           readability_safety_min AS "readabilitySafetyMin",
           question_coverage_min AS "questionCoverageMin", platform_fit_min AS "platformFitMin",
           max_rewrites AS "maxRewrites", publish_attempt_limit AS "publishAttemptLimit",
-          version, updated_at AS "updatedAt"
+          version, updated_at AS "updatedAt",
+          NULL::date AS "batchBusinessDate", NULL::text AS "batchStatus",
+          NULL::text AS "batchLastErrorMessage", NULL::integer AS "attemptedCount",
+          NULL::integer AS "inProgressCount", NULL::integer AS "qualifiedCount",
+          NULL::integer AS "scheduledCount", NULL::integer AS "publishedCount",
+          NULL::integer AS "retiredCount"
         FROM official_site_automation_policies
         WHERE tenant_id=${scope.tenantId}::uuid AND project_id=${input.project_id}::uuid
         FOR UPDATE
@@ -99,24 +178,40 @@ export class OfficialSiteAutomationPolicyService {
       const before = existing[0];
       if (before && input.expected_version !== before.version) throw versionConflict();
       if (!before && input.expected_version !== undefined) throw versionConflict();
+      const dailyEnabled = input.enabled
+        ? (input.daily_enabled ?? before?.dailyEnabled ?? false)
+        : false;
       const rows = await transaction<PolicyRow[]>`
         INSERT INTO official_site_automation_policies (
-          tenant_id,workspace_id,project_id,account_id,enabled,created_by
+          tenant_id,workspace_id,project_id,account_id,enabled,daily_enabled,created_by
         ) VALUES (
           ${scope.tenantId}::uuid,${account.workspaceId}::uuid,${input.project_id}::uuid,
-          ${accountId}::uuid,${input.enabled},${scope.userId}::uuid
+          ${accountId}::uuid,${input.enabled},${dailyEnabled},${scope.userId}::uuid
         )
         ON CONFLICT (tenant_id,project_id) DO UPDATE SET
-          account_id=EXCLUDED.account_id, enabled=EXCLUDED.enabled, version=official_site_automation_policies.version+1
+          account_id=EXCLUDED.account_id, enabled=EXCLUDED.enabled,
+          daily_enabled=EXCLUDED.daily_enabled,
+          version=official_site_automation_policies.version+1
         RETURNING
           id,tenant_id AS "tenantId",workspace_id AS "workspaceId",project_id AS "projectId",
-          account_id AS "accountId",enabled,geo_total_min AS "geoTotalMin",
+          account_id AS "accountId",enabled,daily_enabled AS "dailyEnabled",
+          daily_target_count AS "dailyTargetCount",
+          daily_candidate_limit AS "dailyCandidateLimit",
+          daily_generation_time::text AS "dailyGenerationTime",
+          daily_timezone AS "dailyTimezone",
+          daily_schedule_times::text[] AS "dailyScheduleTimes",
+          geo_total_min AS "geoTotalMin",
           factual_accuracy_min AS "factualAccuracyMin",
           brand_consistency_min AS "brandConsistencyMin",
           readability_safety_min AS "readabilitySafetyMin",
           question_coverage_min AS "questionCoverageMin",platform_fit_min AS "platformFitMin",
           max_rewrites AS "maxRewrites",publish_attempt_limit AS "publishAttemptLimit",
-          version,updated_at AS "updatedAt"
+          version,updated_at AS "updatedAt",
+          NULL::date AS "batchBusinessDate", NULL::text AS "batchStatus",
+          NULL::text AS "batchLastErrorMessage", NULL::integer AS "attemptedCount",
+          NULL::integer AS "inProgressCount", NULL::integer AS "qualifiedCount",
+          NULL::integer AS "scheduledCount", NULL::integer AS "publishedCount",
+          NULL::integer AS "retiredCount"
       `;
       const after = rows[0];
       if (!after) throw stateInvalid('Automation policy was not saved');
@@ -171,6 +266,12 @@ function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
   return {
     account_id: row.accountId,
     brand_consistency_min: row.brandConsistencyMin,
+    daily_candidate_limit: row.dailyCandidateLimit,
+    daily_enabled: row.dailyEnabled,
+    daily_generation_time: row.dailyGenerationTime,
+    daily_schedule_times: [...row.dailyScheduleTimes],
+    daily_target_count: row.dailyTargetCount,
+    daily_timezone: row.dailyTimezone,
     enabled: row.enabled,
     factual_accuracy_min: row.factualAccuracyMin,
     geo_total_min: row.geoTotalMin,
@@ -182,10 +283,29 @@ function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
     question_coverage_min: row.questionCoverageMin,
     readability_safety_min: row.readabilitySafetyMin,
     tenant_id: row.tenantId,
+    today_batch:
+      row.batchBusinessDate && row.batchStatus
+        ? {
+            attempted_count: row.attemptedCount ?? 0,
+            business_date: dateOnly(row.batchBusinessDate),
+            in_progress_count: row.inProgressCount ?? 0,
+            last_error_message: row.batchLastErrorMessage,
+            published_count: row.publishedCount ?? 0,
+            qualified_count: row.qualifiedCount ?? 0,
+            retired_count: row.retiredCount ?? 0,
+            scheduled_count: row.scheduledCount ?? 0,
+            status: row.batchStatus,
+            target_count: row.dailyTargetCount,
+          }
+        : null,
     updated_at: new Date(row.updatedAt).toISOString(),
     version: row.version,
     workspace_id: row.workspaceId,
   };
+}
+
+function dateOnly(value: Date | string): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
 }
 
 function notFound(): PlatformAccountError {

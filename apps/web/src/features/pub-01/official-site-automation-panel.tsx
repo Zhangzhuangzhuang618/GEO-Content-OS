@@ -21,6 +21,7 @@ export function OfficialSiteAutomationPanel({
   const [policies, setPolicies] = useState<readonly OfficialSiteAutomationPolicy[]>([]);
   const [projectId, setProjectId] = useState('');
   const [enabled, setEnabled] = useState(false);
+  const [dailyEnabled, setDailyEnabled] = useState(false);
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
   const [message, setMessage] = useState<string | null>(null);
   const selected = useMemo(
@@ -30,6 +31,7 @@ export function OfficialSiteAutomationPanel({
 
   useEffect(() => {
     const controller = new AbortController();
+    let refreshTimer: ReturnType<typeof setInterval> | null = null;
     void Promise.all([
       listProjects(account.workspace_id, controller.signal),
       listOfficialSiteAutomationPolicies(account.id, controller.signal),
@@ -43,17 +45,33 @@ export function OfficialSiteAutomationPanel({
         setEnabled(
           nextPolicies.find((item) => item.project_id === firstProjectId)?.enabled ?? false,
         );
+        setDailyEnabled(
+          nextPolicies.find((item) => item.project_id === firstProjectId)?.daily_enabled ?? false,
+        );
         setState('ready');
+        refreshTimer = setInterval(() => {
+          void listOfficialSiteAutomationPolicies(account.id, controller.signal)
+            .then((latestPolicies) => {
+              if (!controller.signal.aborted) setPolicies(latestPolicies);
+            })
+            .catch(() => undefined);
+        }, 15_000);
       })
       .catch(() => {
         if (!controller.signal.aborted) setState('error');
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      if (refreshTimer) clearInterval(refreshTimer);
+    };
   }, [account.id, account.workspace_id]);
 
   function changeProject(nextProjectId: string) {
     setProjectId(nextProjectId);
     setEnabled(policies.find((policy) => policy.project_id === nextProjectId)?.enabled ?? false);
+    setDailyEnabled(
+      policies.find((policy) => policy.project_id === nextProjectId)?.daily_enabled ?? false,
+    );
     setMessage(null);
   }
 
@@ -70,6 +88,7 @@ export function OfficialSiteAutomationPanel({
       const saved = await saveOfficialSiteAutomationPolicy(
         account.id,
         {
+          dailyEnabled,
           enabled,
           ...(selected ? { expectedVersion: selected.version } : {}),
           projectId,
@@ -78,12 +97,17 @@ export function OfficialSiteAutomationPanel({
       );
       setPolicies((current) => [
         ...current.filter((policy) => policy.project_id !== saved.project_id),
-        saved,
+        {
+          ...saved,
+          today_batch: saved.today_batch ?? selected?.today_batch ?? null,
+        },
       ]);
       setMessage(
-        saved.enabled
-          ? '已开启：官网内容通过机器门禁后会直接发布；不通过时最多自动重写 3 次。'
-          : '已关闭：新生成的官网内容不会自动进入发布闭环。',
+        saved.daily_enabled
+          ? '已开启每日计划：系统每天准备 10 篇合格内容，并按固定时段自动发布。'
+          : saved.enabled
+            ? '已开启单篇自动发布：官网内容通过机器门禁后会立即发布。'
+            : '已关闭：新生成的官网内容不会自动进入发布闭环。',
       );
       setState('ready');
     } catch {
@@ -137,12 +161,37 @@ export function OfficialSiteAutomationPanel({
               <input
                 checked={enabled}
                 disabled={account.status !== 'active' || account.publish_mode !== 'api'}
-                onChange={(event) => setEnabled(event.currentTarget.checked)}
+                onChange={(event) => {
+                  const checked = event.currentTarget.checked;
+                  setEnabled(checked);
+                  if (!checked) setDailyEnabled(false);
+                }}
                 type="checkbox"
               />
-              通过机器质检后立即发布到官网
+              单篇内容质检通过后立即发布
             </label>
           </div>
+          <label className="mt-5 flex items-start gap-3 rounded-xl border border-brand-200 bg-brand-50 px-4 py-4 text-sm text-ink-900">
+            <input
+              checked={dailyEnabled}
+              className="mt-1"
+              disabled={account.status !== 'active' || account.publish_mode !== 'api'}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setDailyEnabled(checked);
+                if (checked) setEnabled(true);
+              }}
+              type="checkbox"
+            />
+            <span>
+              <span className="block font-semibold text-ink-950">每天自动生产并排期发布 10 篇</span>
+              <span className="mt-1 block leading-6 text-ink-600">
+                每天 00:00 开始准备；不合格内容最多重写 3 次，仍不合格会自动换题补位，最多尝试 30
+                篇，不降低质量标准。
+              </span>
+            </span>
+          </label>
+          {selected?.today_batch ? <TodayBatchStatus policy={selected} /> : null}
           <div className="mt-5 rounded-xl bg-surface-subtle p-4 text-sm leading-6 text-ink-700">
             <p className="font-semibold text-ink-950">固定安全门禁</p>
             <p className="mt-1">
@@ -150,8 +199,12 @@ export function OfficialSiteAutomationPanel({
               ≥80。
             </p>
             <p>
-              任一阻断问题都会禁止发布。未通过时最多重写 3
-              次；仍未通过则转为“待人工处理”。官网调用失败最多重试 3 次。
+              任一阻断问题都会禁止发布。单篇内容连续 3 次重写仍不通过时转为“待人工处理”；
+              每日计划中的不合格候选会退出并自动补位。官网调用失败最多重试 3 次。
+            </p>
+            <p className="mt-2">
+              每日计划发布时间：08:00、09:30、11:00、12:30、14:00、15:30、17:00、18:30、20:00、21:30
+              （北京时间）。
             </p>
           </div>
           <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
@@ -169,6 +222,52 @@ export function OfficialSiteAutomationPanel({
         </>
       ) : null}
     </form>
+  );
+}
+
+function TodayBatchStatus({ policy }: { readonly policy: OfficialSiteAutomationPolicy }) {
+  const batch = policy.today_batch;
+  if (!batch) return null;
+  const statusText = {
+    attention_required: '需要人工处理',
+    cancelled: '已取消',
+    completed: '今日 10 篇已全部发布',
+    running: '正在准备今日内容',
+    scheduled: '今日内容已排期',
+  }[batch.status];
+  return (
+    <section aria-label="今日发布进度" className="mt-5 rounded-xl border border-line bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="font-semibold text-ink-950">今日发布进度</p>
+          <p className="mt-1 text-sm text-ink-600">{statusText}</p>
+        </div>
+        <p className="text-sm font-semibold text-brand-700">
+          已发布 {batch.published_count}/{batch.target_count}
+        </p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+        <ProgressValue label="已尝试" value={batch.attempted_count} />
+        <ProgressValue label="处理中" value={batch.in_progress_count} />
+        <ProgressValue label="已合格" value={batch.qualified_count} />
+        <ProgressValue label="已排期" value={batch.scheduled_count} />
+        <ProgressValue label="已淘汰" value={batch.retired_count} />
+      </div>
+      {batch.last_error_message ? (
+        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          {batch.last_error_message}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ProgressValue({ label, value }: { readonly label: string; readonly value: number }) {
+  return (
+    <div className="rounded-lg bg-surface-subtle px-3 py-2">
+      <span className="block text-ink-500">{label}</span>
+      <span className="mt-1 block text-lg font-semibold text-ink-950">{value}</span>
+    </div>
   );
 }
 

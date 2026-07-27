@@ -11,6 +11,7 @@ export const EVENT_TYPES = Object.freeze([
   'content.variant.official_site_rewrite_requested.v1',
   'publishing.job.execution_requested.v1',
   'analytics.metrics.import_requested.v1',
+  'analytics.visibility.probe_requested.v1',
   'analytics.export.requested.v1',
   'lifecycle.tenant.export_requested.v1',
 ] as const);
@@ -26,6 +27,7 @@ export const AGGREGATE_TYPES = Object.freeze([
   'publish_job',
   'import_job',
   'analytics_export_job',
+  'visibility_run',
   'tenant_export_job',
 ] as const);
 

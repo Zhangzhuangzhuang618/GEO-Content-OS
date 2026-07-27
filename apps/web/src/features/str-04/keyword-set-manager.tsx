@@ -1,13 +1,15 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
-import { listAvailableTenants } from '../auth-02/tenant-api';
+import { listAvailableTenants, TenantRequestError } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
 import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import { listActiveWorkspaces } from '../str-02/brand-profile-api';
 import {
+  createKeywordSet,
   getKeywordSet,
   listKeywordSets,
   KeywordSetRequestError,
@@ -45,11 +47,16 @@ export function KeywordSetManager() {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [sets, setSets] = useState<KeywordSet[]>([]);
   const [detail, setDetail] = useState<KeywordSetDetail | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
+  const [state, setState] = useState<
+    'loading' | 'ready' | 'error' | 'permission' | 'unauthenticated'
+  >('loading');
   const [message, setMessage] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<readonly { id: string; name: string }[]>([]);
   const [projects, setProjects] = useState<readonly ProjectChoice[]>([]);
   const [workspaceId, setWorkspaceId] = useState('');
+  const [projectId, setProjectId] = useState(filters.projectId ?? '');
+  const [showCreateSet, setShowCreateSet] = useState(false);
+  const [creatingSet, setCreatingSet] = useState(false);
 
   const load = useCallback(async (next: Filters, signal?: AbortSignal) => {
     setState('loading');
@@ -77,9 +84,16 @@ export function KeywordSetManager() {
       setState('ready');
     } catch (error) {
       if (signal?.aborted) return;
-      setState(
-        error instanceof KeywordSetRequestError && error.status === 403 ? 'permission' : 'error',
-      );
+      if (
+        (error instanceof TenantRequestError || error instanceof KeywordSetRequestError) &&
+        error.status === 401
+      ) {
+        setState('unauthenticated');
+      } else {
+        setState(
+          error instanceof KeywordSetRequestError && error.status === 403 ? 'permission' : 'error',
+        );
+      }
     }
   }, []);
 
@@ -116,7 +130,6 @@ export function KeywordSetManager() {
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    const projectId = String(data.get('project_id') ?? '').trim();
     const status = String(data.get('set_status') ?? '');
     const next: Filters = {
       ...(projectId ? { projectId } : {}),
@@ -124,6 +137,51 @@ export function KeywordSetManager() {
     };
     setFilters(next);
     writeFilters(next);
+  }
+
+  function changeWorkspace(id: string) {
+    setWorkspaceId(id);
+    setProjectId('');
+    setProjects([]);
+    setShowCreateSet(false);
+  }
+
+  async function createSet(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
+    const csrf = readCookie('geo_csrf');
+    if (!projectId) {
+      setMessage('请先选择新关键词集所属的工作区和项目。');
+      return;
+    }
+    if (!name) {
+      setMessage('请输入关键词集名称。');
+      return;
+    }
+    if (!csrf) {
+      setMessage('登录状态已失效，请重新登录。');
+      return;
+    }
+    setCreatingSet(true);
+    setMessage(null);
+    try {
+      const created = await createKeywordSet({ name, projectId }, csrf);
+      const next: Filters = { keywordSetId: created.id, projectId };
+      setShowCreateSet(false);
+      setFilters(next);
+      writeFilters(next);
+      setMessage(`关键词集“${created.name}”已创建，现在可以添加关键词。`);
+    } catch (error) {
+      if (error instanceof KeywordSetRequestError && error.status === 401) {
+        setState('unauthenticated');
+      } else if (error instanceof KeywordSetRequestError && error.status === 403) {
+        setMessage('当前账号没有创建关键词集的权限。');
+      } else {
+        setMessage('创建关键词集失败，请稍后重试。');
+      }
+    } finally {
+      setCreatingSet(false);
+    }
   }
 
   function selectSet(id: string) {
@@ -140,8 +198,27 @@ export function KeywordSetManager() {
 
   if (state === 'permission')
     return <StatePanel title="无权管理关键词集" text="当前角色不具备策略编辑权限。" />;
+  if (state === 'unauthenticated')
+    return (
+      <StatePanel
+        actionHref={`/auth-01?${new URLSearchParams({
+          reason: 'session_expired',
+          return_to: '/str-04',
+        })}`}
+        actionLabel="重新登录"
+        title="登录状态已失效"
+        text="重新登录后会返回关键词管理页面。"
+      />
+    );
   if (state === 'error')
-    return <StatePanel title="无法加载关键词集" text="请检查筛选条件或网络后重试。" />;
+    return (
+      <StatePanel
+        actionLabel="重新加载"
+        onAction={() => void load(filters)}
+        title="暂时无法加载关键词"
+        text="服务暂时不可用，请稍后重试。"
+      />
+    );
 
   return (
     <section className="mt-8">
@@ -154,7 +231,7 @@ export function KeywordSetManager() {
             工作区
             <select
               className={controlClass}
-              onChange={(event) => setWorkspaceId(event.target.value)}
+              onChange={(event) => changeWorkspace(event.target.value)}
               value={workspaceId}
             >
               <option value="">全部工作区</option>
@@ -169,9 +246,12 @@ export function KeywordSetManager() {
             项目
             <select
               className={controlClass}
-              defaultValue={filters.projectId ?? ''}
               disabled={!workspaceId}
-              name="project_id"
+              onChange={(event) => {
+                setProjectId(event.target.value);
+                setShowCreateSet(false);
+              }}
+              value={projectId}
             >
               <option value="">全部项目</option>
               {projects.map((item) => (
@@ -193,12 +273,60 @@ export function KeywordSetManager() {
             应用筛选
           </button>
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
+          <button
+            className={secondaryButton}
+            disabled={!projectId}
+            onClick={() => setShowCreateSet((current) => !current)}
+            type="button"
+          >
+            新建关键词集
+          </button>
+          <p className="text-xs text-ink-500">
+            {projectId
+              ? '关键词必须归属于一个关键词集。创建后即可逐个添加或批量导入。'
+              : '请先选择工作区和项目。'}
+          </p>
+        </div>
       </form>
+
+      {showCreateSet && projectId ? (
+        <form
+          className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel"
+          onSubmit={createSet}
+        >
+          <h2 className="font-semibold text-ink-950">新建关键词集</h2>
+          <p className="mt-1 text-sm text-ink-500">例如：官网核心关键词、搬家服务选题。</p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="flex-1 text-sm text-ink-700">
+              关键词集名称
+              <input
+                className={controlClass}
+                maxLength={120}
+                name="name"
+                placeholder="例如：官网核心关键词"
+                required
+                type="text"
+              />
+            </label>
+            <button className={primaryButton} disabled={creatingSet} type="submit">
+              {creatingSet ? '正在创建…' : '创建关键词集'}
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       {state === 'loading' && sets.length === 0 ? (
         <StatePanel title="正在加载关键词集" text="正在读取当前项目范围内的数据。" />
       ) : sets.length === 0 ? (
-        <StatePanel title="暂无关键词集" text="当前筛选条件下没有可管理的关键词集。" />
+        <StatePanel
+          title="当前项目还没有关键词集"
+          text={
+            projectId
+              ? '点击上方“新建关键词集”，创建后即可添加关键词。'
+              : '先选择工作区和项目，再创建第一个关键词集。'
+          }
+        />
       ) : (
         <>
           <label className="mt-5 block rounded-2xl border border-line bg-white p-4 text-sm text-ink-700 shadow-panel">
@@ -250,6 +378,26 @@ function KeywordWorkspace({
     }
     await save(parsed, `${parsed.length} 个关键词已导入或更新。`);
     if (parsed.length > 0) event.currentTarget.reset();
+  }
+
+  async function submitSingle(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const parsed = KeywordInputSchema.safeParse({
+      intent: data.get('intent'),
+      platform_scope: data.getAll('platform_scope'),
+      priority: Number(data.get('priority')),
+      status: 'active',
+      synonyms: [],
+      term: data.get('term'),
+    });
+    if (!parsed.success) {
+      setLocalMessage('请填写关键词、选择搜索意图，并至少选择一个适用平台。');
+      return;
+    }
+    await save([parsed.data], `关键词“${parsed.data.term}”已添加。`);
+    form.reset();
   }
 
   async function save(keywords: readonly KeywordInput[], success: string) {
@@ -340,20 +488,71 @@ function KeywordWorkspace({
       <aside className="space-y-5">
         <form
           className="rounded-2xl border border-line bg-white p-5 shadow-panel"
+          onSubmit={submitSingle}
+        >
+          <h2 className="font-semibold text-ink-950">添加关键词</h2>
+          <p className="mt-1 text-xs leading-5 text-ink-500">
+            先添加关键词，其他细节可以稍后编辑。
+          </p>
+          <TextField label="关键词" name="term" />
+          <label className="mt-4 block text-sm text-ink-700">
+            搜索意图
+            <select className={controlClass} defaultValue="commercial" name="intent">
+              <option value="commercial">比较或选择服务</option>
+              <option value="informational">了解知识或方法</option>
+              <option value="transactional">准备咨询或下单</option>
+              <option value="navigational">查找品牌或页面</option>
+            </select>
+          </label>
+          <label className="mt-4 block text-sm text-ink-700">
+            新增关键词优先级
+            <input
+              className={controlClass}
+              defaultValue="80"
+              max="100"
+              min="0"
+              name="priority"
+              type="number"
+            />
+          </label>
+          <fieldset className="mt-4">
+            <legend className="text-sm text-ink-700">适用平台</legend>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {PLATFORM_OPTIONS.map(([code, label]) => (
+                <label className="flex items-center gap-2 text-sm" key={code}>
+                  <input
+                    defaultChecked={code === 'official_site'}
+                    name="platform_scope"
+                    type="checkbox"
+                    value={code}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <button
+            className={`${primaryButton} mt-4 w-full`}
+            disabled={busy || !canWrite}
+            type="submit"
+          >
+            添加关键词
+          </button>
+        </form>
+        <form
+          className="rounded-2xl border border-line bg-white p-5 shadow-panel"
           onSubmit={submitBatch}
         >
-          <h2 className="font-semibold text-ink-950">批量导入</h2>
+          <h2 className="font-semibold text-ink-950">批量导入关键词</h2>
           <p className="mt-2 text-xs leading-5 text-ink-500">
-            每行使用 Tab 分隔：term、intent、priority、synonyms（| 分隔）、platform_scope（|
-            分隔）、status。
+            简单方式：每行输入一个关键词，默认用于官网、优先级 80。需要精细设置时，可使用 Tab
+            分隔：关键词、意图、优先级、同义词、平台、状态。
           </p>
           <textarea
             aria-label="批量关键词"
             className={`${controlClass} min-h-40 font-mono text-xs`}
             name="batch"
-            placeholder={
-              'GEO 内容\tinformational\t80\t生成式搜索|答案引擎\tofficial_site|zhihu\tactive'
-            }
+            placeholder={'广州搬家公司推荐\n广州企业搬迁注意事项\n广州搬家收费标准'}
             required
           />
           <button
@@ -492,8 +691,11 @@ function parseBatch(value: string): KeywordInput[] {
   if (rows.length > 500) throw new Error('单次最多导入 500 个关键词。');
   const terms = new Set<string>();
   return rows.map((row, index) => {
+    const columns = row.split('\t');
     const [term, intent, priority, synonyms = '', platforms = '', status = 'active', ...rest] =
-      row.split('\t');
+      columns.length === 1
+        ? [columns[0], 'commercial', '80', '', 'official_site', 'active']
+        : columns;
     if (rest.length > 0) throw new Error(`第 ${index + 1} 行字段数超过 6 个。`);
     const parsed = KeywordInputSchema.safeParse({
       intent,
@@ -572,11 +774,33 @@ function TextField({
     </label>
   );
 }
-function StatePanel({ title, text }: { readonly title: string; readonly text: string }) {
+function StatePanel({
+  actionHref,
+  actionLabel,
+  onAction,
+  text,
+  title,
+}: {
+  readonly actionHref?: string;
+  readonly actionLabel?: string;
+  readonly onAction?: () => void;
+  readonly text: string;
+  readonly title: string;
+}) {
   return (
     <div className="mt-5 rounded-2xl border border-line bg-white p-8 text-center shadow-panel">
       <h2 className="font-semibold text-ink-950">{title}</h2>
       <p className="mt-2 text-sm text-ink-500">{text}</p>
+      {actionHref && actionLabel ? (
+        <Link className={`${primaryButton} mt-5 inline-flex items-center`} href={actionHref}>
+          {actionLabel}
+        </Link>
+      ) : null}
+      {onAction && actionLabel ? (
+        <button className={`${primaryButton} mt-5`} onClick={onAction} type="button">
+          {actionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }

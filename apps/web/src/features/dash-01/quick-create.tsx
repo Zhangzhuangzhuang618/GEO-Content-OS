@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
+import { getAccountSession } from '../app-shell/account-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
 import type { BriefObjective, PlatformCode } from '../cont-01/brief-list.schema';
 import { createContentPackage, saveBrief } from '../cont-02/brief-editor-api';
@@ -20,7 +21,7 @@ import {
   upsertKeywords,
 } from '../str-04/keyword-set-api';
 import type { Keyword } from '../str-04/keyword-set.schema';
-import { listProjects } from './dashboard-api';
+import { createProject, listProjects } from './dashboard-api';
 import type { DashboardProject } from './dashboard.schema';
 
 const CREATOR_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'content_editor']);
@@ -38,6 +39,7 @@ const ALL_PLATFORMS = PLATFORMS.map(([code]) => code);
 interface QuickCreateProps {
   readonly initialProjectId: string;
   readonly initialProjects: readonly DashboardProject[];
+  readonly initialTopic: string;
   readonly initialWorkspaceId: string;
   readonly role: TenantRole;
   readonly workspaces: readonly Workspace[];
@@ -51,6 +53,7 @@ type Recovery =
 export function QuickCreate({
   initialProjectId,
   initialProjects,
+  initialTopic,
   initialWorkspaceId,
   role,
   workspaces,
@@ -58,8 +61,11 @@ export function QuickCreate({
   const initialWorkspace = workspaces.find((item) => item.id === initialWorkspaceId);
   const defaults = initialWorkspace?.settings.default_platform_codes ?? ['official_site'];
   const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId);
+  const [title, setTitle] = useState(initialTopic);
   const [projects, setProjects] = useState<readonly DashboardProject[]>(initialProjects);
   const [projectId, setProjectId] = useState(initialProjectId || initialProjects[0]?.id || '');
+  const [projectName, setProjectName] = useState('');
+  const [projectSetupBusy, setProjectSetupBusy] = useState(false);
   const [platforms, setPlatforms] = useState<readonly PlatformCode[]>(defaults);
   const [objective, setObjective] = useState<BriefObjective>('awareness');
   const [keywords, setKeywords] = useState<readonly Keyword[]>([]);
@@ -99,6 +105,10 @@ export function QuickCreate({
     return () => controller.abort();
   }, [projectId, workspaceId]);
 
+  useEffect(() => {
+    if (initialTopic) setTitle(initialTopic);
+  }, [initialTopic]);
+
   const canCreate = CREATOR_ROLES.has(role);
   const canPrepareKeywords = role === 'tenant_owner' || role === 'tenant_admin';
   const selectedAll = platforms.length === ALL_PLATFORMS.length;
@@ -132,6 +142,27 @@ export function QuickCreate({
     setPlatforms((current) =>
       current.includes(code) ? current.filter((item) => item !== code) : [...current, code],
     );
+  }
+
+  async function createFirstProject() {
+    const name = projectName.trim();
+    if (!name) return setStatus('请填写项目名称，例如“官网内容运营”。');
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) return setStatus('登录安全令牌尚未就绪，请刷新页面后重试。');
+    setProjectSetupBusy(true);
+    setStatus('正在创建项目…');
+    try {
+      const session = await getAccountSession();
+      const created = await createProject({ name, ownerId: session.user.id, workspaceId }, csrf);
+      setProjects([created]);
+      setProjectId(created.id);
+      setProjectName('');
+      setStatus('项目已创建，可以继续填写主题并生成内容。');
+    } catch {
+      setStatus('项目创建失败，请检查权限或网络后重试。');
+    } finally {
+      setProjectSetupBusy(false);
+    }
   }
 
   async function submit(form: HTMLFormElement) {
@@ -170,7 +201,7 @@ export function QuickCreate({
         setKeywords(created);
       } catch {
         setBusy(false);
-        return setStatus('无法准备核心关键词，请到“策略 → 关键词管理”完成配置后重试。');
+        return setStatus('无法准备核心关键词，请到“品牌与选题 → 关键词管理”完成配置后重试。');
       }
     }
     if (!resolvedKeyword) return setStatus('当前项目还没有可用关键词，请联系管理员添加关键词。');
@@ -223,7 +254,9 @@ export function QuickCreate({
     try {
       await ensureBrandProfile(csrf);
     } catch {
-      setStatus('内容任务已创建，但无法准备品牌策略。请到“策略 → 品牌策略”发布一份策略后重试。');
+      setStatus(
+        '内容任务已创建，但无法准备品牌策略。请到“品牌与选题 → 品牌策略”发布一份策略后重试。',
+      );
       return;
     }
     try {
@@ -295,7 +328,22 @@ export function QuickCreate({
       id="create-content"
     >
       <div className="border-b border-brand-100 bg-brand-50 px-6 py-5 sm:px-8">
-        <p className="text-sm font-semibold text-brand-700">快速创作</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-brand-700">新建内容</p>
+          <ol
+            aria-label="创建内容步骤"
+            className="flex flex-wrap items-center gap-2 text-xs font-medium text-ink-500"
+          >
+            {['填写主题', '选择平台', '补充资料', '开始生成'].map((step, index) => (
+              <li className="flex items-center gap-2" key={step}>
+                <span className="flex size-6 items-center justify-center rounded-full bg-white text-brand-700">
+                  {index + 1}
+                </span>
+                <span className="hidden sm:inline">{step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
         <h2
           className="mt-1 text-2xl font-semibold tracking-tight text-ink-950"
           id="quick-create-title"
@@ -303,7 +351,7 @@ export function QuickCreate({
           今天想创作什么？
         </h2>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          填写主题并选择平台即可开始。系统会自动创建创作任务并生成各平台版本。
+          只需填写主题并选择平台，其余内容可以交给系统，也可以按需补充。
         </p>
       </div>
       <form
@@ -314,19 +362,30 @@ export function QuickCreate({
         }}
       >
         <label className="block text-sm font-semibold text-ink-700">
-          想创作什么内容？
+          <span className="flex items-center gap-2">
+            <StepNumber value={1} />
+            想创作什么内容？
+            <span className="font-normal text-ink-500">必填</span>
+          </span>
           <textarea
             className="mt-2 min-h-28 w-full rounded-xl border border-line bg-white px-4 py-3 text-base text-ink-950 outline-none placeholder:text-ink-500 focus:border-brand-600 focus:ring-2 focus:ring-brand-100"
             maxLength={80}
             name="title"
+            onChange={(event) => setTitle(event.target.value)}
             placeholder="例如：介绍企业如何通过 GEO 提升品牌在 AI 搜索中的可见度"
             required
+            value={title}
           />
         </label>
 
         <fieldset className="mt-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <legend className="text-sm font-semibold text-ink-700">发布平台</legend>
+            <legend className="text-sm font-semibold text-ink-700">
+              <span className="flex items-center gap-2">
+                <StepNumber value={2} />
+                希望生成哪些平台的内容？
+              </span>
+            </legend>
             <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-brand-700">
               <input
                 checked={selectedAll}
@@ -358,9 +417,57 @@ export function QuickCreate({
           </div>
         </fieldset>
 
-        <details className="mt-6 rounded-xl border border-line bg-surface-subtle p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-ink-700">
-            补充内容信息（可选）
+        {projects.length === 0 ? (
+          <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-5">
+            {canPrepareKeywords ? (
+              <>
+                <h3 className="font-semibold text-ink-950">先创建第一个项目</h3>
+                <p className="mt-1 text-sm leading-6 text-ink-600">
+                  项目用于归类主题、资料和生成记录。创建后会自动选中，不会离开当前页面。
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <label className="flex-1 text-sm font-medium text-ink-700">
+                    项目名称
+                    <input
+                      className="mt-2 h-11 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-950"
+                      maxLength={160}
+                      onChange={(event) => setProjectName(event.target.value)}
+                      placeholder="例如：官网内容运营"
+                      value={projectName}
+                    />
+                  </label>
+                  <button
+                    className="self-end rounded-control bg-ink-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                    disabled={projectSetupBusy}
+                    onClick={() => void createFirstProject()}
+                    type="button"
+                  >
+                    {projectSetupBusy ? '正在创建…' : '创建项目'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="font-semibold text-ink-950">当前工作区还没有项目</h3>
+                <p className="mt-1 text-sm leading-6 text-ink-600">
+                  请联系企业管理员创建项目后再开始生成内容。
+                </p>
+              </>
+            )}
+          </div>
+        ) : null}
+
+        <details className="group mt-6 rounded-xl border border-line bg-surface-subtle p-4">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-ink-700">
+            <span className="flex items-center gap-2">
+              <StepNumber value={3} />
+              选择参考资料和补充要求
+              <span className="font-normal text-ink-500">可选</span>
+            </span>
+            <span className="text-xs font-medium text-brand-700 group-open:hidden">展开设置</span>
+            <span className="hidden text-xs font-medium text-brand-700 group-open:inline">
+              收起
+            </span>
           </summary>
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
             <Select
@@ -482,7 +589,7 @@ export function QuickCreate({
           <p className="mt-3 rounded-control bg-amber-50 p-3 text-sm text-amber-800">
             {canPrepareKeywords ? (
               <>
-                当前工作区还没有已发布品牌策略。首次生成时，系统会建立一份基础策略，你可以稍后在“策略”中完善。
+                当前工作区还没有已发布品牌策略。首次生成时，系统会建立一份基础策略，你可以稍后在“品牌与选题”中完善。
               </>
             ) : (
               <>当前工作区还没有已发布品牌策略，请联系管理员完成配置。</>
@@ -490,10 +597,18 @@ export function QuickCreate({
           </p>
         ) : null}
 
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6">
-          <p className="text-sm text-ink-500">
-            已选 {platforms.length} 个平台；系统会一次生成母稿和平台稿，未达质量标准时自动重写一次
-          </p>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-brand-100 bg-brand-50 px-4 py-4">
+          <div className="flex min-w-0 items-start gap-3">
+            <StepNumber value={4} />
+            <div>
+              <p className="text-sm font-semibold text-ink-950">
+                已选 {platforms.length} 个平台，可以开始生成
+              </p>
+              <p className="mt-1 text-xs leading-5 text-ink-500">
+                系统会生成通用初稿和各平台版本；完成后直接进入内容工作区继续检查和发布。
+              </p>
+            </div>
+          </div>
           <button
             className="min-h-12 rounded-control bg-brand-600 px-6 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={
@@ -545,6 +660,17 @@ export function QuickCreate({
         </div>
       </form>
     </section>
+  );
+}
+
+function StepNumber({ value }: { readonly value: number }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-7 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white"
+    >
+      {value}
+    </span>
   );
 }
 

@@ -19,6 +19,7 @@ const EVENT_QUEUE: Readonly<Record<EventType, OutboxQueueName>> = Object.freeze(
   'content.variant.official_site_rewrite_requested.v1': 'geo-ai',
   'publishing.job.execution_requested.v1': 'geo-publisher',
   'analytics.metrics.import_requested.v1': 'geo-analytics',
+  'analytics.visibility.probe_requested.v1': 'geo-ai',
   'analytics.export.requested.v1': 'geo-analytics',
   'lifecycle.tenant.export_requested.v1': 'geo-lifecycle',
 });

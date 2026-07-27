@@ -47,22 +47,22 @@ test('connects an API account without ever echoing its credential', async ({ pag
 
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/pub-01');
-  await expect(page.getByRole('heading', { name: '暂无平台账号' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '还没有可用账号' })).toBeVisible();
   await page.getByRole('button', { name: '连接账号' }).click();
   await page.getByLabel('工作区').last().selectOption(WORKSPACE_ID);
-  await page.getByLabel('账号名称').fill('官网生产账号');
-  await page.getByLabel('交付模式').selectOption('api');
-  await page.getByLabel('API 地址').fill('https://publisher.example.test');
-  await page.getByLabel('访问令牌').fill(SECRET);
-  await page.getByRole('button', { name: '确认连接' }).click();
+  await page.getByLabel('账号名称（自己识别用）').fill('官网生产账号');
+  await page.getByLabel('自动发布').check();
+  await page.getByLabel('官网发布 API 根地址').fill('https://publisher.example.test');
+  await page.getByLabel('发布令牌').fill(SECRET);
+  await page.getByRole('button', { name: '保存并测试连接' }).click();
 
   await expect(page.getByText('平台账号已连接；凭证已安全保存且不会回显。')).toBeVisible();
   await expect(page.getByText('官网生产账号')).toBeVisible();
-  await expect(page.getByRole('link', { name: '前往发布后台' })).toHaveAttribute(
+  await expect(page.getByRole('link', { name: '打开发布后台' })).toHaveAttribute(
     'target',
     '_blank',
   );
-  await expect(page.getByLabel('访问令牌')).toHaveCount(0);
+  await expect(page.getByLabel('发布令牌')).toHaveCount(0);
   await expect(page.getByText(SECRET, { exact: false })).toHaveCount(0);
   expect(createBody).toMatchObject({
     credential: { base_url: 'https://publisher.example.test', bearer_token: SECRET },
@@ -137,18 +137,18 @@ test('edits credentials, tests, stops, restores and deletes with optimistic vers
 
   await page.goto('/pub-01');
   const refreshResponse = page.waitForResponse((response) => response.url().endsWith('/refresh'));
-  await page.getByRole('button', { name: '刷新授权状态' }).click();
+  await page.getByRole('button', { name: '重新验证授权' }).click();
   expect((await refreshResponse).ok()).toBe(true);
-  await expect(page.getByText('授权状态已刷新。')).toBeVisible();
-  await page.getByRole('button', { name: '能力测试' }).click();
-  await expect(page.getByText('能力测试已完成。')).toBeVisible();
+  await expect(page.getByText('连接状态已重新验证。')).toBeVisible();
+  await page.getByRole('button', { name: '测试连接' }).click();
+  await expect(page.getByText('连接测试已完成。')).toBeVisible();
 
-  await page.getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('button', { name: '修改账号' }).click();
   const editForm = page.getByRole('form', { name: '编辑账号 官网生产账号' });
   await editForm.getByLabel('账号名称').fill('官网新账号');
   await editForm.getByLabel('时区').fill('Asia/Hong_Kong');
-  await editForm.getByLabel('新 API 地址').fill('https://publisher-new.example.test');
-  await editForm.getByLabel('新访问令牌').fill('rotated-secret');
+  await editForm.getByLabel('新的发布 API 根地址').fill('https://publisher-new.example.test');
+  await editForm.getByLabel('新的发布令牌').fill('rotated-secret');
   await editForm.getByRole('button', { name: '保存修改' }).click();
   await expect(
     page.getByText('账号信息已保存。新凭证已替换旧凭证，且不会在页面回显。'),
@@ -156,15 +156,15 @@ test('edits credentials, tests, stops, restores and deletes with optimistic vers
   await expect(page.getByText('官网新账号')).toBeVisible();
 
   page.once('dialog', (dialog) => dialog.accept('账号停用'));
-  await page.getByRole('button', { name: '停用' }).click();
-  await expect(page.getByText('平台账号已停用，不会再用于新发布任务。')).toBeVisible();
+  await page.getByRole('button', { name: '停止使用' }).click();
+  await expect(page.getByText('账号已停止使用，不会再用于新发布任务。')).toBeVisible();
   await page.getByRole('button', { name: '恢复使用' }).click();
-  await expect(page.getByText('平台账号已恢复使用。')).toBeVisible();
+  await expect(page.getByText('账号已恢复使用。')).toBeVisible();
 
   page.once('dialog', (dialog) => dialog.accept());
-  await page.getByRole('button', { name: '删除' }).click();
-  await expect(page.getByText('平台账号已删除。')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '暂无平台账号' })).toBeVisible();
+  await page.getByRole('button', { name: '删除账号' }).click();
+  await expect(page.getByText('账号已删除。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '还没有可用账号' })).toBeVisible();
 
   expect(writes.map(({ path }) => path)).toEqual([
     `/api/v1/platform-accounts/${ACCOUNT_ID}/refresh`,
@@ -228,11 +228,12 @@ test('persists platform, status and workspace filters in the URL', async ({ page
   });
 
   await page.goto('/pub-01');
+  await page.getByText('查找账号（可选）').click();
   const filters = page.getByRole('form', { name: '平台账号筛选' });
   await filters.getByRole('combobox', { name: '平台' }).selectOption('zhihu');
-  await filters.getByRole('combobox', { name: '授权状态' }).selectOption('reauth');
+  await filters.getByRole('combobox', { name: '连接状态' }).selectOption('reauth');
   await filters.getByRole('combobox', { name: '工作区' }).selectOption(WORKSPACE_ID);
-  await page.getByRole('button', { name: '应用筛选' }).click();
+  await page.getByRole('button', { name: '查找' }).click();
 
   await expect(page).toHaveURL(/platform_code=zhihu/u);
   await expect(page).toHaveURL(/status=reauth/u);
@@ -242,7 +243,7 @@ test('persists platform, status and workspace filters in the URL', async ({ page
   expect(listUrls.at(-1)).toContain(`workspace_id=${WORKSPACE_ID}`);
 });
 
-test('enables the fixed official-site quality and auto-publish policy for one project', async ({
+test('enables single-item publishing and the daily ten-article plan for one project', async ({
   page,
 }) => {
   let savedBody: unknown;
@@ -271,14 +272,14 @@ test('enables the fixed official-site quality and auto-publish policy for one pr
   });
 
   await page.goto('/pub-01');
-  await page.getByRole('button', { name: '自动发布设置' }).click();
+  await page.getByRole('button', { name: '官网自动发布' }).click();
   await expect(page.getByRole('heading', { name: '官网自动发布' })).toBeVisible();
   await expect(page.getByText('GEO 总分 ≥85', { exact: false })).toBeVisible();
-  await page.getByLabel('通过机器质检后立即发布到官网').check();
+  await page.getByLabel('每天自动生产并排期发布 10 篇').check();
   await page.getByRole('button', { name: '保存自动发布设置' }).click();
 
-  await expect(page.getByText('已开启：官网内容通过机器门禁后会直接发布')).toBeVisible();
-  expect(savedBody).toEqual({ enabled: true, project_id: PROJECT_ID });
+  await expect(page.getByText('已开启每日计划：系统每天准备 10 篇合格内容')).toBeVisible();
+  expect(savedBody).toEqual({ daily_enabled: true, enabled: true, project_id: PROJECT_ID });
 });
 
 test('denies non-publisher roles before requesting account data', async ({ page }) => {
@@ -348,6 +349,23 @@ function automationPolicy(enabled: boolean) {
   return {
     account_id: ACCOUNT_ID,
     brand_consistency_min: 90,
+    daily_candidate_limit: 30,
+    daily_enabled: enabled,
+    daily_generation_time: '00:00:00',
+    daily_schedule_times: [
+      '08:00:00',
+      '09:30:00',
+      '11:00:00',
+      '12:30:00',
+      '14:00:00',
+      '15:30:00',
+      '17:00:00',
+      '18:30:00',
+      '20:00:00',
+      '21:30:00',
+    ],
+    daily_target_count: 10,
+    daily_timezone: 'Asia/Shanghai',
     enabled,
     factual_accuracy_min: 90,
     geo_total_min: 85,
@@ -359,6 +377,7 @@ function automationPolicy(enabled: boolean) {
     question_coverage_min: 80,
     readability_safety_min: 85,
     tenant_id: TENANT_ID,
+    today_batch: null,
     updated_at: '2026-07-23T00:00:00.000Z',
     version: 1,
     workspace_id: WORKSPACE_ID,

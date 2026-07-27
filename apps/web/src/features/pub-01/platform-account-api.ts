@@ -159,6 +159,7 @@ export async function listOfficialSiteAutomationPolicies(
 export async function saveOfficialSiteAutomationPolicy(
   accountId: string,
   input: {
+    readonly dailyEnabled: boolean;
     readonly enabled: boolean;
     readonly expectedVersion?: number;
     readonly projectId: string;
@@ -169,6 +170,7 @@ export async function saveOfficialSiteAutomationPolicy(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/official-site-automation`,
     {
       body: JSON.stringify({
+        daily_enabled: input.dailyEnabled,
         enabled: input.enabled,
         ...(input.expectedVersion === undefined ? {} : { expected_version: input.expectedVersion }),
         project_id: input.projectId,

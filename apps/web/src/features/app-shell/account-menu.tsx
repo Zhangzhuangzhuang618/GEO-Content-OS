@@ -57,7 +57,10 @@ export function AccountMenu() {
 
   return (
     <details className="group relative shrink-0">
-      <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-control border border-line bg-white px-3 text-sm font-medium text-ink-700 hover:bg-surface-subtle">
+      <summary
+        aria-label="打开账号与企业菜单"
+        className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-control border border-line bg-white px-3 text-sm font-medium text-ink-700 hover:bg-surface-subtle"
+      >
         <span className="hidden max-w-32 truncate lg:inline">{tenant?.name ?? '当前企业'}</span>
         <span className="flex size-7 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
           {initial(session?.user.display_name)}

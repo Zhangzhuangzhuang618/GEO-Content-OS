@@ -82,6 +82,7 @@ test('keeps the content list available when a historical brief is missing', asyn
 
 test('keeps filters and cursor pagination reproducible', async ({ page }) => {
   await page.goto('/cont-03');
+  await page.getByText('查找和筛选内容').click();
   await page.getByLabel('搜索主题').fill('广州搬家');
   await page.getByLabel('当前进度').selectOption('generated');
   await page.getByRole('combobox', { name: '平台', exact: true }).selectOption('zhihu');

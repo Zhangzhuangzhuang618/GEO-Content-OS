@@ -131,6 +131,13 @@ export class OfficialSiteAutomation {
         finished_at=NULL,
         version=official_site_automation_runs.version+1
     `;
+    await transaction`
+      UPDATE official_site_daily_batch_items SET
+        status='quality_check',content_version_id=${contentVersionId}::uuid,
+        last_error_json=NULL
+      WHERE tenant_id=${event.tenantId}::uuid AND variant_id=${variantId}::uuid
+        AND status IN ('generating','rewriting','quality_check')
+    `;
     await this.enqueueQuality(transaction, {
       actorUserId: event.data.actorUserId,
       contentHash: generatedHash,
@@ -231,6 +238,9 @@ export class OfficialSiteAutomation {
     const automationRun = rows[0];
     if (!automationRun) return;
     if (gate.passed) {
+      if (await this.holdDailyQualified(transaction, event, automationRun, reportId)) {
+        return;
+      }
       await this.schedulePublication(transaction, event, policy, automationRun, reportId);
       return;
     }
@@ -246,6 +256,19 @@ export class OfficialSiteAutomation {
           finished_at=now(), version=version+1
         WHERE id=${automationRun.id}::uuid AND tenant_id=${event.tenantId}::uuid
           AND version=${automationRun.version}
+      `;
+      await transaction`
+        UPDATE official_site_daily_batch_items SET
+          status='retired',
+          last_error_json=${JSON.stringify({
+            blocking_rules: gate.blocking_rules,
+            code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+            message: '连续 3 次重写仍未通过质量门禁，系统将创建新候选补位。',
+            schema_version: 'official-site-daily-error@1',
+          })}::text::jsonb
+        WHERE tenant_id=${event.tenantId}::uuid
+          AND variant_id=${event.data.variantId}::uuid
+          AND status IN ('quality_check','rewriting')
       `;
       return;
     }
@@ -403,6 +426,12 @@ export class OfficialSiteAutomation {
       RETURNING id
     `;
     if (changed.length !== 1) throw new Error('Automation run lease was lost');
+    await transaction`
+      UPDATE official_site_daily_batch_items SET status='rewriting'
+      WHERE tenant_id=${event.tenantId}::uuid
+        AND variant_id=${event.data.variantId}::uuid
+        AND status='quality_check'
+    `;
     const rewriteEvent = createEvent(
       event.tenantId,
       'content.variant.official_site_rewrite_requested.v1',
@@ -422,6 +451,34 @@ export class OfficialSiteAutomation {
       },
     );
     await insertOutbox(transaction, rewriteEvent);
+  }
+
+  private async holdDailyQualified(
+    transaction: postgres.TransactionSql,
+    event: ValidatedQualityEvent,
+    automationRun: { readonly id: string; readonly version: number },
+    reportId: string,
+  ): Promise<boolean> {
+    const items = await transaction<{ id: string }[]>`
+      UPDATE official_site_daily_batch_items SET
+        status='qualified',content_version_id=${event.data.contentVersionId}::uuid,
+        qualified_at=now(),last_error_json=NULL
+      WHERE tenant_id=${event.tenantId}::uuid
+        AND variant_id=${event.data.variantId}::uuid
+        AND status='quality_check'
+      RETURNING id
+    `;
+    if (items.length === 0) return false;
+    const runs = await transaction<{ id: string }[]>`
+      UPDATE official_site_automation_runs SET
+        status='publish_pending',last_quality_report_id=${reportId}::uuid,
+        last_error_json=NULL,version=version+1
+      WHERE id=${automationRun.id}::uuid AND tenant_id=${event.tenantId}::uuid
+        AND status='quality_pending' AND version=${automationRun.version}
+      RETURNING id
+    `;
+    if (runs.length !== 1) throw new Error('Daily automation run lease was lost');
+    return true;
   }
 
   private async schedulePublication(
@@ -641,6 +698,14 @@ export class OfficialSiteAutomation {
         RETURNING id
       `;
       if (automations.length !== 1) throw new Error('Automation run lease was lost');
+      await transaction`
+        UPDATE official_site_daily_batch_items SET
+          status='quality_check',content_version_id=${versionId}::uuid,
+          last_error_json=NULL
+        WHERE tenant_id=${event.tenantId}::uuid
+          AND variant_id=${event.data.variantId}::uuid
+          AND status='rewriting'
+      `;
       await this.enqueueQuality(transaction, {
         actorUserId: claim.actorUserId,
         contentHash: rewrittenHash,
@@ -721,6 +786,20 @@ export class OfficialSiteAutomation {
         WHERE id=${event.data.automationRunId}::uuid AND tenant_id=${event.tenantId}::uuid
           AND status='rewriting' AND version=${claim.automationVersion}
       `;
+      if (terminal) {
+        await transaction`
+          UPDATE official_site_daily_batch_items SET
+            status='retired',
+            last_error_json=${JSON.stringify({
+              code: 'REWRITE_EXECUTION_FAILED',
+              message: safeError(error),
+              schema_version: 'official-site-daily-error@1',
+            })}::text::jsonb
+          WHERE tenant_id=${event.tenantId}::uuid
+            AND variant_id=${event.data.variantId}::uuid
+            AND status='rewriting'
+        `;
+      }
       return terminal;
     });
   }

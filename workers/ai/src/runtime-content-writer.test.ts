@@ -51,6 +51,25 @@ describe('AI Worker runtime wiring', () => {
       } as NodeJS.ProcessEnv),
     ).toThrow('forbidden in production');
   });
+
+  it('returns plain text for an AI visibility probe in Mock mode', async () => {
+    const models = createRuntimeModels('mock', {
+      CONTENT_MODEL_BALANCED_KEY: 'deepseek-v4-flash',
+      VISIBILITY_MODEL_KEY: 'deepseek-v4-flash',
+    } as NodeJS.ProcessEnv);
+    const result = await models.get('deepseek-v4-flash')!.generate({
+      maxOutputTokens: 100,
+      messages: [
+        {
+          content: JSON.stringify({ ai_visibility_query: { text: '如何选择搬家公司？' } }),
+          role: 'user',
+        },
+      ],
+      requestId: 'visibility-mock-0061',
+      responseFormat: { type: 'text' },
+    });
+    expect(result.message.content).toBe('如何选择搬家公司？');
+  });
 });
 
 function context(runId: string, variantId: string | null): ContentWriterRunContext {

@@ -61,9 +61,11 @@ type Attempt<T> =
 
 export function Dashboard() {
   const [state, setState] = useState<State>({ status: 'loading' });
+  const [initialTopic, setInitialTopic] = useState('');
 
   useEffect(() => {
     const controller = new AbortController();
+    setInitialTopic(new URLSearchParams(window.location.search).get('topic')?.slice(0, 80) ?? '');
     void bootstrap(controller.signal);
     return () => controller.abort();
   }, []);
@@ -241,182 +243,242 @@ export function Dashboard() {
   const latestFailed = [...failed].sort((left, right) =>
     right.updated_at.localeCompare(left.updated_at),
   )[0];
+  const selectedWorkspace = state.workspaces.find((item) => item.id === state.filters.workspaceId);
+  const selectedProject = state.projects.find((item) => item.id === state.filters.projectId);
 
   return (
     <div>
       <QuickCreate
         initialProjectId={state.filters.projectId}
         initialProjects={state.projects}
+        initialTopic={initialTopic}
         initialWorkspaceId={state.filters.workspaceId}
         role={state.role}
         workspaces={state.workspaces}
       />
       <section
-        aria-label="当前企业"
-        className="mt-6 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white px-5 py-4"
+        aria-label="当前创作范围"
+        className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-white px-5 py-4 shadow-panel"
       >
-        <div>
-          <p className="text-xs font-medium text-ink-500">当前企业</p>
-          <p className="mt-1 font-semibold text-ink-950">{state.tenantName}</p>
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
+          <div>
+            <p className="text-xs font-medium text-ink-500">当前企业</p>
+            <p className="mt-1 font-semibold text-ink-950">{state.tenantName}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-ink-500">默认创作位置</p>
+            <p className="mt-1 text-sm font-medium text-ink-700">
+              {selectedWorkspace?.name ?? '当前工作区'}
+              {selectedProject ? ` / ${selectedProject.name}` : ''}
+            </p>
+          </div>
         </div>
         <Link className="text-sm font-semibold text-brand-700 hover:text-brand-600" href="/auth-02">
           切换企业
         </Link>
       </section>
-      <section
-        aria-label="工作台筛选"
-        className="grid gap-4 rounded-2xl border border-line bg-white p-5 shadow-panel sm:grid-cols-2 lg:grid-cols-4"
-      >
-        <Filter label="开始日期">
-          <input
-            aria-label="开始日期"
-            className="h-10 w-full rounded-control border border-line px-3"
-            max={state.filters.to}
-            onChange={(event) => void updateFilters({ ...state.filters, from: event.target.value })}
-            type="date"
-            value={state.filters.from}
-          />
-        </Filter>
-        <Filter label="结束日期">
-          <input
-            aria-label="结束日期"
-            className="h-10 w-full rounded-control border border-line px-3"
-            min={state.filters.from}
-            onChange={(event) => void updateFilters({ ...state.filters, to: event.target.value })}
-            type="date"
-            value={state.filters.to}
-          />
-        </Filter>
-        <Filter label="工作区">
-          <select
-            aria-label="工作区"
-            className="h-10 w-full rounded-control border border-line bg-white px-3"
-            onChange={(event) =>
-              void updateFilters({
-                ...state.filters,
-                projectId: '',
-                workspaceId: event.target.value,
-              })
+
+      <section aria-labelledby="next-actions-title" className="mt-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold text-ink-950" id="next-actions-title">
+              接下来建议处理
+            </h2>
+            <p className="mt-1 text-sm text-ink-500">优先展示需要你处理的异常、审核和发布事项。</p>
+          </div>
+          <Link className="text-sm font-semibold text-brand-700" href="/cont-03">
+            查看全部内容
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <NextActionCard
+            count={failed.length}
+            description={
+              latestFailed
+                ? `${statusLabel(latestFailed.status)}，打开后可以查看原因并继续处理。`
+                : '当前没有生成或发布失败的内容。'
             }
-            value={state.filters.workspaceId}
-          >
-            {state.workspaces.map((workspace) => (
-              <option key={workspace.id} value={workspace.id}>
-                {workspace.name}
-              </option>
-            ))}
-          </select>
-        </Filter>
-        <Filter label="项目">
-          <select
-            aria-label="项目"
-            className="h-10 w-full rounded-control border border-line bg-white px-3"
-            disabled={state.issues.projects}
-            onChange={(event) =>
-              void updateFilters({ ...state.filters, projectId: event.target.value })
-            }
-            value={state.filters.projectId}
-          >
-            <option value="">{state.issues.projects ? '项目列表暂时不可用' : '全部项目'}</option>
-            {state.projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-          {state.issues.projects ? (
-            <button
-              className="mt-2 text-sm font-semibold text-brand-700"
-              onClick={() => void retrySection('projects')}
-              type="button"
-            >
-              重新加载项目
-            </button>
+            href={latestFailed ? `/cont-04?id=${latestFailed.id}` : '/cont-03'}
+            label="需要处理的异常"
+            tone={failed.length ? 'danger' : 'success'}
+          />
+          {REVIEW_ROLES.has(state.role) ? (
+            <NextActionCard
+              count={inReview.length}
+              description={
+                inReview.length
+                  ? '内容正在等待审核，可以进入待办逐项处理。'
+                  : '当前没有待审核内容。'
+              }
+              href="/rev-01"
+              label="等待审核"
+              tone={inReview.length ? 'attention' : 'neutral'}
+            />
           ) : null}
-        </Filter>
+          {PUBLISH_ROLES.has(state.role) ? (
+            <NextActionCard
+              count={publishingTodos.length}
+              description={
+                publishingTodos.length
+                  ? '包含已排期、发布中或发布失败的内容。'
+                  : '当前没有需要处理的发布任务。'
+              }
+              href="/pub-03"
+              label="发布任务"
+              tone={publishingTodos.length ? 'attention' : 'neutral'}
+            />
+          ) : null}
+          <NextActionCard
+            count={packages.length}
+            description={latest ? '继续处理最近更新的内容。' : '从上方填写一个主题开始创作。'}
+            href={latest ? `/cont-04?id=${latest.id}` : '#create-content'}
+            label="最近内容"
+            tone="brand"
+          />
+        </div>
       </section>
 
-      {state.refreshing ? (
-        <p aria-live="polite" className="mt-3 text-sm text-ink-500" role="status">
-          正在更新筛选结果…
-        </p>
-      ) : null}
+      <details className="group mt-6 overflow-hidden rounded-2xl border border-line bg-white shadow-panel">
+        <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
+          <div>
+            <p className="font-semibold text-ink-950">工作概览与筛选</p>
+            <p className="mt-1 text-sm text-ink-500">
+              查看近 30 天数据，或切换时间、工作区和项目。
+            </p>
+          </div>
+          <span className="text-sm font-semibold text-brand-700 group-open:hidden">展开</span>
+          <span className="hidden text-sm font-semibold text-brand-700 group-open:inline">
+            收起
+          </span>
+        </summary>
+        <div className="border-t border-line p-5">
+          <section aria-label="工作台筛选" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Filter label="开始日期">
+              <input
+                aria-label="开始日期"
+                className="h-10 w-full rounded-control border border-line px-3"
+                max={state.filters.to}
+                onChange={(event) =>
+                  void updateFilters({ ...state.filters, from: event.target.value })
+                }
+                type="date"
+                value={state.filters.from}
+              />
+            </Filter>
+            <Filter label="结束日期">
+              <input
+                aria-label="结束日期"
+                className="h-10 w-full rounded-control border border-line px-3"
+                min={state.filters.from}
+                onChange={(event) =>
+                  void updateFilters({ ...state.filters, to: event.target.value })
+                }
+                type="date"
+                value={state.filters.to}
+              />
+            </Filter>
+            <Filter label="工作区">
+              <select
+                aria-label="工作区"
+                className="h-10 w-full rounded-control border border-line bg-white px-3"
+                onChange={(event) =>
+                  void updateFilters({
+                    ...state.filters,
+                    projectId: '',
+                    workspaceId: event.target.value,
+                  })
+                }
+                value={state.filters.workspaceId}
+              >
+                {state.workspaces.map((workspace) => (
+                  <option key={workspace.id} value={workspace.id}>
+                    {workspace.name}
+                  </option>
+                ))}
+              </select>
+            </Filter>
+            <Filter label="项目">
+              <select
+                aria-label="项目"
+                className="h-10 w-full rounded-control border border-line bg-white px-3"
+                disabled={state.issues.projects}
+                onChange={(event) =>
+                  void updateFilters({ ...state.filters, projectId: event.target.value })
+                }
+                value={state.filters.projectId}
+              >
+                <option value="">
+                  {state.issues.projects ? '项目列表暂时不可用' : '全部项目'}
+                </option>
+                {state.projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
+              {state.issues.projects ? (
+                <button
+                  className="mt-2 text-sm font-semibold text-brand-700"
+                  onClick={() => void retrySection('projects')}
+                  type="button"
+                >
+                  重新加载项目
+                </button>
+              ) : null}
+            </Filter>
+          </section>
 
-      <section aria-label="工作台指标" className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          error={state.issues.packages}
-          label="内容产能"
-          onRetry={() => void retrySection('packages')}
-          value={state.issues.packages ? '暂时无法获取' : `${packages.length} 个内容任务`}
-        />
-        <MetricCard
-          error={state.issues.packages}
-          label="失败任务"
-          onRetry={() => void retrySection('packages')}
-          value={state.issues.packages ? '暂时无法获取' : `${failed.length} 项`}
-        />
-        {REVIEW_ROLES.has(state.role) ? (
-          <MetricCard
-            error={state.issues.packages}
-            href="/rev-01"
-            label="审核待办"
-            onRetry={() => void retrySection('packages')}
-            value={state.issues.packages ? '暂时无法获取' : `${inReview.length} 项`}
-          />
-        ) : null}
-        {PUBLISH_ROLES.has(state.role) ? (
-          <MetricCard
-            error={state.issues.packages}
-            href="/pub-03"
-            label="发布待办"
-            onRetry={() => void retrySection('packages')}
-            value={state.issues.packages ? '暂时无法获取' : `${publishingTodos.length} 项`}
-          />
-        ) : null}
-        {COST_ROLES.has(state.role) ? (
-          <MetricCard
-            error={state.issues.cost}
-            label="已结算成本"
-            onRetry={() => void retrySection('cost')}
-            value={state.issues.cost ? '暂时无法获取' : formatCost(state.data.costCents ?? 0)}
-          />
-        ) : null}
-      </section>
+          {state.refreshing ? (
+            <p aria-live="polite" className="mt-3 text-sm text-ink-500" role="status">
+              正在更新筛选结果…
+            </p>
+          ) : null}
 
-      <section className="mt-6 grid gap-4 lg:grid-cols-2" aria-label="工作台快捷入口">
-        <ActionPanel title="下一步动作">
-          {state.issues.packages ? (
-            <SectionError onRetry={() => void retrySection('packages')} />
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {REVIEW_ROLES.has(state.role) ? (
-                <ActionLink href="/rev-01">进入审核</ActionLink>
-              ) : null}
-              {PUBLISH_ROLES.has(state.role) ? (
-                <ActionLink href="/pub-03">进入发布</ActionLink>
-              ) : null}
-              {latest ? (
-                <ActionLink href={`/cont-04?id=${latest.id}`}>查看最新内容</ActionLink>
-              ) : null}
-            </div>
-          )}
-        </ActionPanel>
-        <ActionPanel title="失败任务">
-          {state.issues.packages ? (
-            <SectionError onRetry={() => void retrySection('packages')} />
-          ) : latestFailed ? (
-            <div className="flex items-center justify-between gap-4 text-sm">
-              <div>
-                <p className="font-medium text-ink-950">最近失败的内容任务</p>
-                <p className="mt-1 text-ink-500">{statusLabel(latestFailed.status)}</p>
-              </div>
-              <ActionLink href={`/cont-04?id=${latestFailed.id}`}>查看详情</ActionLink>
-            </div>
-          ) : (
-            <p className="text-sm text-ink-500">当前筛选范围内没有失败任务。</p>
-          )}
-        </ActionPanel>
-      </section>
+          <section
+            aria-label="工作台指标"
+            className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          >
+            <MetricCard
+              error={state.issues.packages}
+              label="内容任务"
+              onRetry={() => void retrySection('packages')}
+              value={state.issues.packages ? '暂时无法获取' : `${packages.length} 项`}
+            />
+            <MetricCard
+              error={state.issues.packages}
+              label="需要处理"
+              onRetry={() => void retrySection('packages')}
+              value={state.issues.packages ? '暂时无法获取' : `${failed.length} 项`}
+            />
+            {REVIEW_ROLES.has(state.role) ? (
+              <MetricCard
+                error={state.issues.packages}
+                href="/rev-01"
+                label="等待审核"
+                onRetry={() => void retrySection('packages')}
+                value={state.issues.packages ? '暂时无法获取' : `${inReview.length} 项`}
+              />
+            ) : null}
+            {PUBLISH_ROLES.has(state.role) ? (
+              <MetricCard
+                error={state.issues.packages}
+                href="/pub-03"
+                label="发布任务"
+                onRetry={() => void retrySection('packages')}
+                value={state.issues.packages ? '暂时无法获取' : `${publishingTodos.length} 项`}
+              />
+            ) : null}
+            {COST_ROLES.has(state.role) ? (
+              <MetricCard
+                error={state.issues.cost}
+                label="已结算成本"
+                onRetry={() => void retrySection('cost')}
+                value={state.issues.cost ? '暂时无法获取' : formatCost(state.data.costCents ?? 0)}
+              />
+            ) : null}
+          </section>
+        </div>
+      </details>
       <p className="mt-4 text-xs text-ink-500">内容统计基于当前可访问的最近 100 项内容任务。</p>
     </div>
   );
@@ -477,46 +539,40 @@ function MetricCard({
   );
 }
 
-function ActionPanel({
-  children,
-  title,
-}: {
-  readonly children: React.ReactNode;
-  readonly title: string;
-}) {
-  return (
-    <section className="rounded-2xl border border-line bg-white p-5 shadow-panel">
-      <h2 className="font-semibold text-ink-950">{title}</h2>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-function ActionLink({
-  children,
+function NextActionCard({
+  count,
+  description,
   href,
+  label,
+  tone,
 }: {
-  readonly children: React.ReactNode;
+  readonly count: number;
+  readonly description: string;
   readonly href: string;
+  readonly label: string;
+  readonly tone: 'attention' | 'brand' | 'danger' | 'neutral' | 'success';
 }) {
+  const toneClass = {
+    attention: 'border-amber-200 bg-amber-50/70 text-amber-800',
+    brand: 'border-brand-100 bg-brand-50 text-brand-800',
+    danger: 'border-red-200 bg-red-50 text-red-700',
+    neutral: 'border-line bg-white text-ink-700',
+    success: 'border-emerald-200 bg-emerald-50/70 text-emerald-700',
+  }[tone];
   return (
     <Link
-      className="inline-flex min-h-10 items-center rounded-control border border-brand-100 bg-brand-50 px-4 text-sm font-semibold text-brand-700"
+      className={`group rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-panel ${toneClass}`}
       href={href}
     >
-      {children}
+      <div className="flex items-start justify-between gap-3">
+        <p className="font-semibold">{label}</p>
+        <span className="text-2xl font-semibold tracking-tight">{count}</span>
+      </div>
+      <p className="mt-3 text-sm leading-6 opacity-80">{description}</p>
+      <p className="mt-4 text-sm font-semibold group-hover:underline">
+        {count > 0 ? '现在处理' : '查看'}
+      </p>
     </Link>
-  );
-}
-
-function SectionError({ onRetry }: { readonly onRetry: () => void }) {
-  return (
-    <div>
-      <p className="text-sm text-ink-500">内容数据暂时无法加载，其他功能仍可继续使用。</p>
-      <button className="mt-3 text-sm font-semibold text-brand-700" onClick={onRetry} type="button">
-        重新加载内容数据
-      </button>
-    </div>
   );
 }
 

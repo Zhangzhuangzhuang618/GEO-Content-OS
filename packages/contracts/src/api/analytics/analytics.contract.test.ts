@@ -4,6 +4,8 @@ import {
   ANALYTICS_API_CONTRACTS,
   ANALYTICS_OPENAPI_DOCUMENT,
   AnalyticsExportJobResponseSchema,
+  AiVisibilityQuerySetCreateSchema,
+  AiVisibilityRunCreateSchema,
   CostBudgetQuerySchema,
   CostReconciliationRequestSchema,
   VisibilityImportRequestSchema,
@@ -11,7 +13,7 @@ import {
 } from './index.js';
 
 describe('analytics API contract', () => {
-  it('freezes all fifteen executable analytics, import, visibility and cost endpoints', () => {
+  it('freezes all twenty executable analytics, import, visibility and cost endpoints', () => {
     expect(ANALYTICS_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'GET /analytics/overview',
       'GET /analytics/platforms',
@@ -26,6 +28,11 @@ describe('analytics API contract', () => {
       'POST /visibility-observations',
       'POST /visibility-observations/import',
       'GET /visibility-observations/trend',
+      'POST /ai-visibility/query-sets',
+      'GET /ai-visibility/query-sets',
+      'POST /ai-visibility/runs',
+      'GET /ai-visibility/runs',
+      'GET /ai-visibility/runs/{id}',
       'GET /usage/summary',
       'GET /analytics/export',
     ]);
@@ -33,7 +40,7 @@ describe('analytics API contract', () => {
     const operations = Object.values(ANALYTICS_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(15);
+    expect(operations).toHaveLength(20);
     for (const contract of ANALYTICS_API_CONTRACTS) {
       const operation = ANALYTICS_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -122,5 +129,24 @@ describe('analytics API contract', () => {
         workspace_id: '20000000-0000-4000-8000-000000000096',
       }).success,
     ).toBe(false);
+  });
+
+  it('validates versioned AI visibility query sets and run requests', () => {
+    expect(
+      AiVisibilityQuerySetCreateSchema.safeParse({
+        brand_name: '志远搬家',
+        competitor_names: ['竞品甲', '竞品乙'],
+        industry: '搬家服务',
+        name: '广州搬家基准问题集',
+        project_id: '23000000-0000-4000-8000-000000000001',
+        workspace_id: '22000000-0000-4000-8000-000000000001',
+      }).success,
+    ).toBe(true);
+    expect(
+      AiVisibilityRunCreateSchema.safeParse({
+        query_set_id: '24000000-0000-4000-8000-000000000001',
+        workspace_id: '22000000-0000-4000-8000-000000000001',
+      }).success,
+    ).toBe(true);
   });
 });

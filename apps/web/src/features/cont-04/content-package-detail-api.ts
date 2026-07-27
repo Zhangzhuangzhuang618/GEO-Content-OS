@@ -107,6 +107,24 @@ export async function requestPackageQualityChecks(variantIds: readonly string[],
   );
 }
 
+export async function regenerateVariant(
+  variantId: string,
+  version: number,
+  modelPolicy: ModelPolicy,
+  csrf: string,
+) {
+  const response = await write(`/api/v1/content-variants/${variantId}/regenerate`, csrf, {
+    body: {
+      locked_block_keys: [],
+      model_policy: modelPolicy,
+    },
+    operation: 'content-variant-regenerate',
+    version,
+  });
+  const parsed = GenerationRunResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new ContentPackageDetailRequestError(502);
+}
+
 async function request(path: string, signal?: AbortSignal) {
   const response = await fetch(`${API_ORIGIN}${path}`, {
     credentials: 'include',

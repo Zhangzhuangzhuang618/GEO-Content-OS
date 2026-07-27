@@ -33,6 +33,8 @@ const AUTOMATION_RUN_ID = 'a2000000-0000-4000-8000-000000000126';
 const QUALITY_RUN_ID = 'a3000000-0000-4000-8000-000000000126';
 const QUALITY_REPORT_ID = 'a4000000-0000-4000-8000-000000000126';
 const SOURCE_EVENT_ID = 'a5000000-0000-4000-8000-000000000126';
+const DAILY_BATCH_ID = 'a7000000-0000-4000-8000-000000000126';
+const DAILY_ITEM_ID = 'a8000000-0000-4000-8000-000000000126';
 const WRITER_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
 const QUALITY_PROMPT_ID = '25000000-0000-4000-8000-000000000007';
 
@@ -222,6 +224,82 @@ describe('official-site quality, rewrite, and publication automation', () => {
     ).toEqual([{ count: 1 }]);
   });
 
+  it('holds a qualified daily article for the ten-article scheduler instead of publishing immediately', async () => {
+    const database = requireClient(client);
+    const automation = createAutomation(database, writer);
+    const event = await seedQualityCycle(database, 'quality_passed', 0);
+    await seedDailyItem(database);
+    const policy = await automation.loadGatePolicy(database, TENANT_ID, VARIANT_ID);
+    if (!policy) throw new Error('Automation policy was not loaded');
+    const result: QualityCheckerData = {
+      decision: 'pass',
+      geo_scores: SCORES,
+      issues: [],
+      score: SCORES.total,
+    };
+
+    await database.begin((transaction) =>
+      automation.advanceAfterQuality(
+        transaction,
+        event,
+        policy,
+        QUALITY_REPORT_ID,
+        automation.calculateGate(policy, result, SCORES),
+        result,
+      ),
+    );
+
+    expect(
+      await database<{ automationStatus: string; itemStatus: string; qualifiedAt: Date | null }[]>`
+        SELECT automation.status AS "automationStatus",item.status AS "itemStatus",
+          item.qualified_at AS "qualifiedAt"
+        FROM official_site_daily_batch_items AS item
+        JOIN official_site_automation_runs AS automation
+          ON automation.variant_id=item.variant_id AND automation.tenant_id=item.tenant_id
+        WHERE item.id=${DAILY_ITEM_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'publish_pending',
+        itemStatus: 'qualified',
+        qualifiedAt: expect.any(Date),
+      },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM publish_jobs
+      `,
+    ).toEqual([{ count: 0 }]);
+  });
+
+  it('retires a daily candidate after three failed rewrites so a replacement can be generated', async () => {
+    const database = requireClient(client);
+    const automation = createAutomation(database, writer);
+    const event = await seedQualityCycle(database, 'quality_failed', 3);
+    await seedDailyItem(database);
+    const policy = await automation.loadGatePolicy(database, TENANT_ID, VARIANT_ID);
+    if (!policy) throw new Error('Automation policy was not loaded');
+    const result = failedResult();
+
+    await database.begin((transaction) =>
+      automation.advanceAfterQuality(
+        transaction,
+        event,
+        policy,
+        QUALITY_REPORT_ID,
+        automation.calculateGate(policy, result, result.geo_scores),
+        result,
+      ),
+    );
+
+    expect(
+      await database<{ code: string; status: string }[]>`
+        SELECT status,last_error_json->>'code' AS code
+        FROM official_site_daily_batch_items WHERE id=${DAILY_ITEM_ID}::uuid
+      `,
+    ).toEqual([{ code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES', status: 'retired' }]);
+  });
+
   it('resumes a manual-required automation run from the user-edited content version', async () => {
     const database = requireClient(client);
     const edited = content('User edited website article ready for another quality check');
@@ -372,6 +450,31 @@ async function seedQualityCycle(
     occurred_at: '2026-07-23T00:00:00.000Z',
     tenant: { id: TENANT_ID },
   });
+}
+
+async function seedDailyItem(database: Sql): Promise<void> {
+  await database`
+    UPDATE official_site_automation_policies SET daily_enabled=true
+    WHERE id=${POLICY_ID}::uuid
+  `;
+  await database`
+    INSERT INTO official_site_daily_batches(id,tenant_id,policy_id,business_date,status)
+    VALUES(
+      ${DAILY_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2026-07-23','running'
+    )
+  `;
+  await database`
+    INSERT INTO official_site_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,angle_key,title,
+      brief_id,package_id,variant_id,content_version_id,status
+    ) VALUES(
+      ${DAILY_ITEM_ID}::uuid,${TENANT_ID}::uuid,${DAILY_BATCH_ID}::uuid,1,
+      'selection-guide','Website automation',
+      ${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,
+      ${VERSION_ID}::uuid,'quality_check'
+    )
+  `;
 }
 
 function failedResult(): QualityCheckerData {

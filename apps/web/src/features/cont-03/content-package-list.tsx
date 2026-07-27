@@ -117,48 +117,66 @@ export function ContentPackageList() {
 
   return (
     <section className="mt-8">
-      <form
-        aria-label="内容筛选"
-        className="rounded-2xl border border-line bg-white p-5 shadow-panel"
-        key={filterFormKey(filters)}
-        onSubmit={applyFilters}
+      <details
+        className="group overflow-hidden rounded-2xl border border-line bg-white shadow-panel"
+        key={`filter-panel-${filterFormKey(filters)}`}
+        open={hasActiveFilters(filters) ? true : undefined}
       >
-        <div className="grid gap-4 md:grid-cols-[minmax(240px,1fr)_220px_220px_auto]">
-          <TextField
-            defaultValue={filters.search}
-            label="搜索主题"
-            name="search"
-            placeholder="例如：广州搬家公司怎么选"
-          />
-          <SelectField
-            label="当前进度"
-            name="status"
-            options={STATUS_OPTIONS}
-            value={filters.status}
-          />
-          <SelectField
-            label="平台"
-            name="platform_code"
-            options={PLATFORM_OPTIONS}
-            value={filters.platformCode}
-          />
-          <div className="flex items-end gap-3">
-            <button className={primaryButton} type="submit">
-              查找
-            </button>
-            <button
-              className={secondaryButton}
-              onClick={() => {
-                setFilters({});
-                writeFilters({});
-              }}
-              type="button"
-            >
-              重置
-            </button>
+        <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4">
+          <div>
+            <p className="font-semibold text-ink-950">查找和筛选内容</p>
+            <p className="mt-1 text-sm text-ink-500">
+              {hasActiveFilters(filters) ? '筛选条件已生效。' : '按主题、进度或平台缩小范围。'}
+            </p>
           </div>
-        </div>
-      </form>
+          <span className="text-sm font-semibold text-brand-700 group-open:hidden">展开</span>
+          <span className="hidden text-sm font-semibold text-brand-700 group-open:inline">
+            收起
+          </span>
+        </summary>
+        <form
+          aria-label="内容筛选"
+          className="border-t border-line p-5"
+          key={filterFormKey(filters)}
+          onSubmit={applyFilters}
+        >
+          <div className="grid gap-4 md:grid-cols-[minmax(240px,1fr)_220px_220px_auto]">
+            <TextField
+              defaultValue={filters.search}
+              label="搜索主题"
+              name="search"
+              placeholder="例如：广州搬家公司怎么选"
+            />
+            <SelectField
+              label="当前进度"
+              name="status"
+              options={STATUS_OPTIONS}
+              value={filters.status}
+            />
+            <SelectField
+              label="平台"
+              name="platform_code"
+              options={PLATFORM_OPTIONS}
+              value={filters.platformCode}
+            />
+            <div className="flex items-end gap-3">
+              <button className={primaryButton} type="submit">
+                查找
+              </button>
+              <button
+                className={secondaryButton}
+                onClick={() => {
+                  setFilters({});
+                  writeFilters({});
+                }}
+                type="button"
+              >
+                重置
+              </button>
+            </div>
+          </div>
+        </form>
+      </details>
 
       {message ? (
         <p

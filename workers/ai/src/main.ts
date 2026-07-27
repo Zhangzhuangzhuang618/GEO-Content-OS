@@ -5,12 +5,14 @@ import { readAiWorkerConfig } from './config.js';
 import { PostgresGenerationStore } from './generation.store.js';
 import { ContentGenerationWorker } from './generation.worker.js';
 import { OfficialSiteAutomation } from './official-site-automation.js';
+import { OfficialSiteDailyScheduler } from './official-site-daily-scheduler.js';
 import { AiQueueConsumer } from './queue.consumer.js';
 import { QualityCheckWorker } from './quality.worker.js';
 import { RuntimeContentWriter } from './runtime-content-writer.js';
 import { createRuntimeModels } from './runtime-model.js';
 import { RuntimeQualityChecker } from './runtime-quality-checker.js';
 import { PostgresUsageRecorder } from './usage-recorder.js';
+import { VisibilityProbeWorker } from './visibility.worker.js';
 
 async function main(): Promise<void> {
   const config = readAiWorkerConfig();
@@ -21,6 +23,10 @@ async function main(): Promise<void> {
     usage.record(context, modelUsage),
   );
   const automation = new OfficialSiteAutomation(database, writer, config.automation);
+  const dailyScheduler = new OfficialSiteDailyScheduler(database, config.automation, {
+    onError: (error) => console.error('Official-site daily scheduler error', error),
+    tickMs: config.dailySchedulerTickMs,
+  });
   const generation = new ContentGenerationWorker(
     new PostgresGenerationStore(database, 60_000, automation),
     writer,
@@ -32,7 +38,8 @@ async function main(): Promise<void> {
     ),
     automation,
   );
-  const consumer = new AiQueueConsumer(generation, quality, automation, {
+  const visibility = new VisibilityProbeWorker(database, adapters);
+  const consumer = new AiQueueConsumer(generation, quality, automation, visibility, {
     concurrency: config.queueConcurrency,
     onError: (error) => console.error('AI Worker queue error', error),
     redisUrl: config.redisUrl,
@@ -57,6 +64,7 @@ async function main(): Promise<void> {
   try {
     await database`SELECT 1`;
     await consumer.ready();
+    dailyScheduler.start();
     ready = true;
     await new Promise<void>((resolve) => {
       process.once('SIGINT', resolve);
@@ -66,6 +74,7 @@ async function main(): Promise<void> {
     ready = false;
     await Promise.all([
       consumer.close(),
+      dailyScheduler.stop(),
       database.end({ timeout: 5 }),
       new Promise<void>((resolve, reject) => {
         health.close((error) => (error ? reject(error) : resolve()));

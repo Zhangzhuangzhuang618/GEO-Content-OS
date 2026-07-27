@@ -26,21 +26,24 @@ test('renders human-readable content progress and guards actions by platform sta
 }) => {
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
   await expect(page.getByRole('heading', { name: '企业 GEO 内容母稿', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '通用初稿' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '查看通用初稿' })).toBeVisible();
   await expect(page.getByRole('heading', { name: '各平台内容' })).toBeVisible();
   await expect(page.getByText('2 个平台')).toBeVisible();
+  await page.getByText('查看版本与事实依据').first().click();
+  await page.getByText('查看版本与事实依据').nth(1).click();
   await expect(page.getByText('v1 / 共 1 版')).toHaveCount(2);
   await expect(page.getByRole('heading', { name: '处理记录' })).toBeVisible();
-  await expect(page.getByText('当前阶段：已生成')).toBeVisible();
+  await expect(page.getByText(/当前进度：已生成/u)).toBeVisible();
   await expect(page.getByText(PACKAGE_ID)).toHaveCount(0);
   await expect(page.getByText('content-writer')).toHaveCount(0);
   await expect(page.getByText('deepseek-v4-flash')).toHaveCount(0);
 
+  await page.getByText('更多设置与任务管理').click();
   await expect(page.getByRole('button', { name: '重新生成全部内容' })).toBeDisabled();
   await expect(page.getByRole('button', { name: '检查内容质量' })).toBeEnabled();
-  await expect(page.getByLabel('提交审核：官网')).toBeDisabled();
+  await expect(page.getByLabel('提交审核：官网')).toHaveCount(0);
   await expect(page.getByLabel('提交审核：知乎')).toBeChecked();
-  await expect(page.getByRole('button', { name: '提交审核' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: /提交审核/u })).toBeEnabled();
   await expect(page.getByRole('button', { name: '放弃本次创作' })).toBeDisabled();
 });
 
@@ -65,6 +68,7 @@ test('generates all required platforms with version and idempotency headers', as
     await json(route, generationRun('queued'), 202);
   });
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
+  await page.getByText('更多设置与任务管理').click();
   await page.getByLabel('生成偏好').selectOption('quality');
   await page.getByRole('button', { name: '重新生成全部内容' }).click();
   await expect(page.getByText('内容生成已开始。')).toBeVisible();
@@ -75,6 +79,43 @@ test('generates all required platforms with version and idempotency headers', as
   });
   expect(request?.headers['if-match']).toBe('"3"');
   expect(request?.headers['idempotency-key']).toMatch(/^content-package-generate-/u);
+});
+
+test('shows the failed platform reason and retries only that platform', async ({ page }) => {
+  await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
+  const detail = baseDetail('all_failed', ['generation_failed', 'generation_failed']);
+  const failedRunId = '94000000-0000-4000-8000-000000000085';
+  detail.generation_runs.unshift({
+    ...generationRun('failed'),
+    id: failedRunId,
+    variant_id: SITE_ID,
+  });
+  await mockDetail(page, detail);
+  let request: { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
+  await page.route(`**/api/v1/content-variants/${SITE_ID}/regenerate`, async (route) => {
+    request = {
+      body: route.request().postDataJSON(),
+      headers: route.request().headers(),
+    };
+    await json(route, { ...generationRun('queued'), variant_id: SITE_ID }, 202);
+  });
+
+  await page.goto(`/cont-04?id=${PACKAGE_ID}`);
+
+  await expect(page.getByRole('heading', { name: '处理生成失败的内容' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新生成失败内容' })).toBeEnabled();
+  await expect(page.getByRole('link', { name: '查看失败原因' }).first()).toHaveAttribute(
+    'href',
+    `/cont-06?id=${failedRunId}`,
+  );
+  await page.getByRole('button', { name: '重新生成官网内容' }).click();
+  await expect(page.getByText('官网内容已开始重新生成。')).toBeVisible();
+  expect(request?.body).toEqual({
+    locked_block_keys: [],
+    model_policy: 'balanced',
+  });
+  expect(request?.headers['if-match']).toBe('"2"');
+  expect(request?.headers['idempotency-key']).toMatch(/^content-variant-regenerate-/u);
 });
 
 test('starts quality checks for generated platforms and explains the next step', async ({
@@ -91,11 +132,7 @@ test('starts quality checks for generated platforms and explains the next step',
   });
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
 
-  await expect(
-    page.getByText(
-      '普通平台按顺序完成质量检查和提交审核；已开启自动发布的官网内容会自行质检、重写并发布。',
-    ),
-  ).toBeVisible();
+  await expect(page.getByText('有 1 个平台内容需要检查，检查通过后才能进入下一步。')).toBeVisible();
   await page.getByRole('button', { name: '检查内容质量' }).click();
   await expect(page.getByText('质量检查已开始，完成后页面会自动刷新。')).toBeVisible();
   expect(body).toEqual({ mode: 'full' });
@@ -115,6 +152,7 @@ test('identifies quality checks separately from content generation in history', 
   await mockDetail(page, detail);
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
 
+  await page.getByText('处理记录', { exact: true }).click();
   await expect(page.getByText('检查官网内容质量', { exact: true })).toBeVisible();
   await expect(page.getByText('生成官网内容', { exact: true })).toHaveCount(0);
 });
@@ -136,13 +174,14 @@ test('explains when official-site automation needs human recovery after three re
   });
 
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
-  await expect(page.getByRole('cell', { name: '官网自动流程' })).toBeVisible();
+  await expect(page.getByText('机器检查后自动发布')).toBeVisible();
+  await expect(page.getByText('无需人工审核')).toBeVisible();
   await expect(page.getByText('需人工处理（已重写 3/3 次）')).toBeVisible();
   await expect(page.getByRole('link', { name: '查看问题并处理' })).toHaveAttribute(
     'href',
     `/qual-01?id=${SITE_ID}`,
   );
-  await expect(page.getByLabel('提交审核：官网')).toBeDisabled();
+  await expect(page.getByLabel('提交审核：官网')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '检查内容质量' })).toBeEnabled();
 });
 
@@ -155,6 +194,7 @@ test('allows exact draft abandonment and administrator archive only', async ({ p
     await json(route, contentPackage('cancelled'), 200);
   });
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
+  await page.getByText('更多设置与任务管理').click();
   await expect(page.getByRole('button', { name: '放弃本次创作' })).toBeEnabled();
   await expect(page.getByRole('button', { name: '归档任务' })).toHaveCount(0);
   await page.getByLabel('放弃或归档原因').fill('需求已撤回');
@@ -169,6 +209,7 @@ test('allows exact draft abandonment and administrator archive only', async ({ p
     await json(route, contentPackage('archived'), 200);
   });
   await page.reload();
+  await page.getByText('更多设置与任务管理').click();
   await expect(page.getByRole('button', { name: '归档任务' })).toBeEnabled();
   await page.getByLabel('放弃或归档原因').fill('周期结束');
   await page.getByRole('button', { name: '归档任务' }).click();
@@ -239,7 +280,7 @@ function contentPackage(status: string) {
 function variant(id: string, platform: string, status: string, versionId: string) {
   return {
     created_at: '2026-07-15T00:00:00.000Z',
-    current_content_version_id: status === 'draft' ? null : versionId,
+    current_content_version_id: ['draft', 'generation_failed'].includes(status) ? null : versionId,
     id,
     is_required: true,
     package_id: PACKAGE_ID,

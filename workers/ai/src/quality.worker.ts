@@ -3,6 +3,10 @@ import type { PlatformCode } from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityGeoScores } from '@geo-content-os/contracts/skills';
 import type postgres from 'postgres';
 
+import {
+  mergeDeterministicRiskIssues,
+  scanDeterministicRisks,
+} from './deterministic-risk-scanner.js';
 import { asGenerationFailure } from './generation.errors.js';
 import type {
   OfficialSiteAutomation,
@@ -64,7 +68,7 @@ export class QualityCheckWorker {
         context.brandProfile,
         context.rules,
       );
-      const result = await this.checker.evaluate({
+      const assessment = await this.checker.evaluate({
         context,
         qualityInput: {
           brand_policy: {
@@ -94,6 +98,15 @@ export class QualityCheckWorker {
           },
         },
       });
+      const result = mergeDeterministicRiskIssues(
+        assessment,
+        scanDeterministicRisks({
+          brandProfile: context.brandProfile,
+          citations,
+          content: context.content,
+          platformCode: context.platformCode,
+        }),
+      );
       const policy = await this.automation?.loadGatePolicy(
         this.client,
         event.tenantId,

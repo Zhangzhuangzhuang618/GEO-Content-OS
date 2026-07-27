@@ -63,6 +63,23 @@ export const OfficialSiteAutomationPolicySchema = z
   .object({
     account_id: z.string().uuid(),
     brand_consistency_min: z.literal(90),
+    daily_candidate_limit: z.literal(30),
+    daily_enabled: z.boolean(),
+    daily_generation_time: z.literal('00:00:00'),
+    daily_schedule_times: z.tuple([
+      z.literal('08:00:00'),
+      z.literal('09:30:00'),
+      z.literal('11:00:00'),
+      z.literal('12:30:00'),
+      z.literal('14:00:00'),
+      z.literal('15:30:00'),
+      z.literal('17:00:00'),
+      z.literal('18:30:00'),
+      z.literal('20:00:00'),
+      z.literal('21:30:00'),
+    ]),
+    daily_target_count: z.literal(10),
+    daily_timezone: z.literal('Asia/Shanghai'),
     enabled: z.boolean(),
     factual_accuracy_min: z.literal(90),
     geo_total_min: z.literal(85),
@@ -74,6 +91,21 @@ export const OfficialSiteAutomationPolicySchema = z
     question_coverage_min: z.literal(80),
     readability_safety_min: z.literal(85),
     tenant_id: z.string().uuid(),
+    today_batch: z
+      .object({
+        attempted_count: z.number().int().min(0).max(30),
+        business_date: z.iso.date(),
+        in_progress_count: z.number().int().min(0).max(30),
+        last_error_message: z.string().nullable(),
+        published_count: z.number().int().min(0).max(10),
+        qualified_count: z.number().int().min(0).max(30),
+        retired_count: z.number().int().min(0).max(30),
+        scheduled_count: z.number().int().min(0).max(10),
+        status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
+        target_count: z.literal(10),
+      })
+      .strict()
+      .nullable(),
     updated_at: z.iso.datetime(),
     version: z.number().int().positive(),
     workspace_id: z.string().uuid(),
@@ -106,15 +138,12 @@ export const PlatformAccountFormSchema = z
       });
     }
     if (value.publish_mode !== 'api') return;
-    if (!z.url().safeParse(value.base_url.trim()).success) {
+    if (!isValidApiBaseUrl(value.base_url.trim())) {
       context.addIssue({
         code: 'custom',
-        message: 'API 模式需要有效的 HTTPS 地址。',
+        message: '请输入有效的 HTTPS API 地址；本机联调可使用 localhost。',
         path: ['base_url'],
       });
-    }
-    if (!value.base_url.trim().startsWith('https://')) {
-      context.addIssue({ code: 'custom', message: 'API 地址必须使用 HTTPS。', path: ['base_url'] });
     }
     if (!value.bearer_token.trim()) {
       context.addIssue({
@@ -145,10 +174,10 @@ export const PlatformAccountEditSchema = z
     const baseUrl = value.base_url.trim();
     const token = value.bearer_token.trim();
     if (!baseUrl && !token) return;
-    if (!z.url().safeParse(baseUrl).success || !baseUrl.startsWith('https://')) {
+    if (!isValidApiBaseUrl(baseUrl)) {
       context.addIssue({
         code: 'custom',
-        message: '更新凭证时，API 地址必须是有效的 HTTPS 地址。',
+        message: '更新连接时请输入有效的 HTTPS API 地址；本机联调可使用 localhost。',
         path: ['base_url'],
       });
     }
@@ -165,6 +194,17 @@ function isHttpUrl(value: string) {
   const parsed = z.url().safeParse(value);
   if (!parsed.success) return false;
   return ['http:', 'https:'].includes(new URL(parsed.data).protocol);
+}
+
+function isValidApiBaseUrl(value: string) {
+  const parsed = z.url().safeParse(value);
+  if (!parsed.success) return false;
+  const url = new URL(parsed.data);
+  if (url.protocol === 'https:') return true;
+  return (
+    url.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLocaleLowerCase('en-US'))
+  );
 }
 
 export type PlatformAccount = z.infer<typeof PlatformAccountSchema>;
