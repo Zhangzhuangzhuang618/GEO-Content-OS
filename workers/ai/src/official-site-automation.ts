@@ -58,6 +58,7 @@ interface RewriteClaim {
   readonly automationVersion: number;
   readonly content: GeneratedContent;
   readonly contentHash: string;
+  readonly issues: readonly string[];
   readonly masterContent: GeneratedContent;
   readonly modelKey: string;
   readonly packageId: string;
@@ -286,7 +287,7 @@ export class OfficialSiteAutomation {
       const rewritten = await this.writer.rewriteOfficialSiteVariant({
         context: rewriteContext(event, claim),
         currentContent: claim.content,
-        issues: rewriteIssues(claim.writerInput),
+        issues: claim.issues,
         masterContent: claim.masterContent,
         requestId: `official-rewrite-${event.eventId}`,
         ...(signal ? { signal } : {}),
@@ -613,7 +614,8 @@ export class OfficialSiteAutomation {
       `;
       const row = rows[0];
       if (!row) return null;
-      const writerInput = narrowWriterInput(row.writerInput, row.automationError);
+      const writerInput = buildOfficialSiteRewriteInput(row.writerInput);
+      const issues = extractOfficialSiteRewriteIssues(row.automationError);
       const generation = await transaction<{ version: number }[]>`
         UPDATE generation_runs SET status='running', started_at=COALESCE(started_at,now()),
           finished_at=NULL, error_json=NULL, version=version+1
@@ -644,6 +646,7 @@ export class OfficialSiteAutomation {
         automationVersion: automation.version,
         content: validateGeneratedContent(row.content, 'official_site'),
         contentHash: row.contentHash,
+        issues,
         masterContent: validateGeneratedContent(row.masterContent, 'master'),
         modelKey: row.modelKey,
         packageId: row.packageId,
@@ -858,12 +861,14 @@ async function insertOutbox(
   `;
 }
 
-function narrowWriterInput(value: unknown, automationError: unknown): JsonObject {
+export function buildOfficialSiteRewriteInput(value: unknown): JsonObject {
   if (!record(value)) throw new Error('Original Content Writer input is missing');
   const brief = record(value['brief']) ? value['brief'] : {};
   const rules = record(value['platform_rules_by_code']) ? value['platform_rules_by_code'] : {};
   const officialRules = rules['official_site'];
   if (!record(officialRules)) throw new Error('Official-site platform rules are missing');
+  const strategy = record(value['strategy']) ? value['strategy'] : {};
+  const citations = Array.isArray(value['citations']) ? value['citations'] : [];
   const locked = Array.isArray(value['locked_blocks'])
     ? value['locked_blocks'].filter(
         (item) =>
@@ -871,24 +876,19 @@ function narrowWriterInput(value: unknown, automationError: unknown): JsonObject
           (item['platform_code'] === 'master' || item['platform_code'] === 'official_site'),
       )
     : [];
-  const error = record(automationError) ? automationError : {};
-  const promptIssues = Array.isArray(error['prompt_issues'])
-    ? error['prompt_issues'].filter((item): item is string => typeof item === 'string')
-    : [];
   return {
-    ...(value as JsonObject),
-    automation_rewrite: { issues: promptIssues },
     brief: { ...(brief as JsonObject), platform_codes: ['official_site'] },
+    citations: citations as JsonObject[],
+    generation_mode: 'rewrite',
     locked_blocks: locked as JsonObject[],
     platform_rules_by_code: { official_site: officialRules as JsonObject },
+    strategy: strategy as JsonObject,
   };
 }
 
-function rewriteIssues(writerInput: JsonObject): readonly string[] {
-  const automation = record(writerInput['automation_rewrite'])
-    ? writerInput['automation_rewrite']
-    : undefined;
-  const issues = automation && Array.isArray(automation['issues']) ? automation['issues'] : [];
+export function extractOfficialSiteRewriteIssues(automationError: unknown): readonly string[] {
+  const error = record(automationError) ? automationError : {};
+  const issues = Array.isArray(error['prompt_issues']) ? error['prompt_issues'] : [];
   return issues.filter((value): value is string => typeof value === 'string').slice(0, 50);
 }
 

@@ -1,8 +1,16 @@
-import type { QualityCheckerData, QualityGeoScores } from '@geo-content-os/contracts/skills';
+import {
+  CONTENT_WRITER_INPUT_SCHEMA,
+  type QualityCheckerData,
+  type QualityGeoScores,
+} from '@geo-content-os/contracts/skills';
+import { CONTENT_WRITER_CONTRACT_V1 } from '@geo-content-os/skills/content-writer';
+import { SchemaGuard } from '@geo-content-os/skills/runtime';
 import { describe, expect, it } from 'vitest';
 
 import { GenerationWorkerError } from './generation.errors.js';
 import {
+  buildOfficialSiteRewriteInput,
+  extractOfficialSiteRewriteIssues,
   OfficialSiteAutomation,
   type OfficialSiteAutomationPolicy,
 } from './official-site-automation.js';
@@ -137,6 +145,38 @@ describe('official-site automation', () => {
         data: { ...EVENT.data, tenant_id: EVENT.tenant.id },
       }),
     ).toThrow('Official-site rewrite event is invalid');
+  });
+
+  it('keeps automated rewrite guidance outside the frozen Content Writer input schema', () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const xiaohongshuRule = (
+      fixture.input['platform_rules_by_code'] as Readonly<Record<string, unknown>>
+    )['xiaohongshu'];
+    const input = {
+      ...fixture.input,
+      brief: {
+        ...(fixture.input['brief'] as Readonly<Record<string, unknown>>),
+        platform_codes: ['xiaohongshu', 'official_site'],
+      },
+      platform_rules_by_code: {
+        official_site: xiaohongshuRule,
+        xiaohongshu: xiaohongshuRule,
+      },
+    };
+    const rewriteInput = buildOfficialSiteRewriteInput(input);
+    const issues = extractOfficialSiteRewriteIssues({
+      prompt_issues: ['删除无依据排名', 42, '补充问题覆盖'],
+    });
+
+    expect(new SchemaGuard().check(CONTENT_WRITER_INPUT_SCHEMA, rewriteInput)).toMatchObject({
+      valid: true,
+    });
+    expect(rewriteInput).not.toHaveProperty('automation_rewrite');
+    expect(rewriteInput['generation_mode']).toBe('rewrite');
+    expect((rewriteInput['brief'] as Readonly<Record<string, unknown>>)['platform_codes']).toEqual([
+      'official_site',
+    ]);
+    expect(issues).toEqual(['删除无依据排名', '补充问题覆盖']);
   });
 });
 
