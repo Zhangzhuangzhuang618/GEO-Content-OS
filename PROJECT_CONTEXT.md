@@ -115,6 +115,10 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 发布管理员可终止当天最新的 `running` 官网每日批次。批次进入 `cancelled`，调度器停止补题和排期；该批次尚未完成的生成、质检和重写运行通过既有终态协作退出，已在途模型请求的结果不得继续落库或发布。处理中候选转为 `retired`，已合格但尚未排期的候选转为 `reserve`，历史记录和成本保留。终止请求使用 Idempotency-Key 与批次版本；已排期或已发布内容不在此入口处理。系统不会自动恢复当日已终止批次，但发布管理员可以显式“重新发起今日批次”创建递增尝试号的新批次；次日计划仍正常创建。
 
+### 官网正文定向补写与质检语义重试（ADR-0027）
+
+官网首稿使用“结构预算 + 真实门禁后果”的正向提示，目标为 1,700–2,100 个有效字符，1,300–2,500 硬门槛不变。首稿仅长度不足时不再整篇重写，而是保留已有正文并按服务端精确缺口最多定向补写两轮；补写只允许新增段落或清单，服务端拒绝重复、越界和未知引用。其他质量问题仍先完整修复一次。Quality Checker 输出通过 JSON Schema 但违反高风险事实 BLOCK、GEO 分数或 decision 不变量时，运行时携带明确必选位置再执行一次；第二次仍不合法则失败，禁止自动放行。
+
 ## 5. 数据模型
 
 冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束。当前可执行表数为 65，迁移序号为 0040。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
@@ -378,7 +382,7 @@ ADR-0014 后，已发布 `brand_profile` 是企业授权确认的第一方来源
 
 ADR-0015 后，`knowledge-worker` 是真实 BullMQ 消费进程，负责安全扫描、网页抓取或文件读取、解析、分块和向量化。内容生成必须按 `brief_sources` 限定资料范围，经过混合检索与重排后把命中片段传入 Content Writer，并把模型实际采用的引用写入 `ai_citations`。Compose 默认使用本地 1536 维 n-gram Embedding 与 Rerank；当前无生产 OCR Provider，因此界面只开放 PDF、DOCX、TXT。自动事实抽取、Fact Checker、GEO Optimizer、Publisher、Analytics CSV/Export 和 Lifecycle 的运行时缺口以 `docs/runbooks/RUNTIME_CAPABILITY_AUDIT_2026-07-19.md` 为准，不得宣称为已完成链路。
 
-ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1` 与 `official-site-faq-draft@1` 两个内部输出契约。母稿运行先保存官网正文，官网变体运行再生成 FAQ 并由服务端组装 slug、meta description、Schema.org 与引用映射。事实证据分由声明和引用原文的支持关系决定，不按引用条数递增；敏感数字不一致时按不支持处理。该流程不新增公开端点、数据库表或配置项。
+ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1` 与 `official-site-faq-draft@1` 两个内部输出契约。母稿运行先保存官网正文，官网变体运行再生成 FAQ 并由服务端组装 slug、meta description、Schema.org 与引用映射。ADR-0027 增加 `official-site-article-expansion-draft@1`，仅在服务端计数确认正文不足时返回可追加的新段落或清单，最多两轮且不覆盖原文。事实证据分由声明和引用原文的支持关系决定，不按引用条数递增；敏感数字不一致时按不支持处理。该流程不新增公开端点、数据库表或配置项。
 
 同一平台任何时刻最多只能有一个 `published` 规则版本。发布新规则必须在同一事务中将旧版本切换为 `retired`，数据库使用部分唯一索引兜底；审核快照只冻结该平台当前唯一生效的规则版本。
 

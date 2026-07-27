@@ -7,6 +7,8 @@ export const CONTENT_WRITER_INPUT_SCHEMA_VERSION = 'content-writer-input@1' as c
 export const CONTENT_WRITER_DATA_SCHEMA_VERSION = 'content-writer-data@1' as const;
 export const CONTENT_WRITER_OUTPUT_SCHEMA_VERSION = 'content-writer-output@1' as const;
 export const OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA_VERSION = 'official-site-article-draft@1' as const;
+export const OFFICIAL_SITE_ARTICLE_EXPANSION_DRAFT_SCHEMA_VERSION =
+  'official-site-article-expansion-draft@1' as const;
 export const OFFICIAL_SITE_FAQ_DRAFT_SCHEMA_VERSION = 'official-site-faq-draft@1' as const;
 
 export const CONTENT_PLATFORM_CODES = Object.freeze([
@@ -247,6 +249,35 @@ export const OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA: JsonSchema = Object.freeze({
   type: 'object',
 });
 
+export const OFFICIAL_SITE_ARTICLE_EXPANSION_DRAFT_SCHEMA: JsonSchema = Object.freeze({
+  $id: 'https://geo.example/schemas/official-site-article-expansion-draft-1.json',
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  additionalProperties: false,
+  properties: {
+    blocks: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          block_type: { enum: ['paragraph', 'list'] },
+          citation_ids: {
+            items: UUID_SCHEMA,
+            type: 'array',
+            uniqueItems: true,
+          },
+          text: { maxLength: 500, minLength: 100, type: 'string' },
+        },
+        required: ['block_type', 'text', 'citation_ids'],
+        type: 'object',
+      },
+      maxItems: 5,
+      minItems: 2,
+      type: 'array',
+    },
+  },
+  required: ['blocks'],
+  type: 'object',
+});
+
 export const OFFICIAL_SITE_FAQ_DRAFT_SCHEMA: JsonSchema = Object.freeze({
   $id: 'https://geo.example/schemas/official-site-faq-draft-1.json',
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -306,6 +337,14 @@ export interface OfficialSiteArticleDraft {
   }[];
   readonly summary: string;
   readonly title: string;
+}
+
+export interface OfficialSiteArticleExpansionDraft {
+  readonly blocks: readonly {
+    readonly block_type: 'list' | 'paragraph';
+    readonly citation_ids: readonly string[];
+    readonly text: string;
+  }[];
 }
 
 export interface OfficialSiteFaqDraft {

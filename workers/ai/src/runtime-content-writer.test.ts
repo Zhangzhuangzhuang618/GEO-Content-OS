@@ -122,12 +122,12 @@ describe('AI Worker runtime wiring', () => {
     expect(recordUsage).toHaveBeenCalledTimes(2);
   });
 
-  it('repairs a short official-site article using a validation safety margin', async () => {
+  it('keeps a short official-site article and appends substantive expansion blocks', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const shortArticle = officialSiteArticleDraft(4);
-    const completeArticle = officialSiteArticleDraft();
+    const expansion = officialSiteExpansionDraft();
     const adapter = new LooseMockAdapter(
-      [{ text: JSON.stringify(shortArticle) }, { text: JSON.stringify(completeArticle) }],
+      [{ text: JSON.stringify(shortArticle) }, { text: JSON.stringify(expansion) }],
       'deepseek-v4-pro',
     );
     const recordUsage = vi.fn();
@@ -138,25 +138,38 @@ describe('AI Worker runtime wiring', () => {
       async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
     );
 
-    await expect(
-      writer.generateOfficialSiteMaster({
-        context: {
-          ...context(MASTER_RUN, null),
-          modelKey: 'deepseek-v4-pro',
-          modelPolicy: 'quality',
-        },
-        requestId: 'runtime-official-length-repair-0061',
-        writerInput: officialSiteWriterInput(fixture.input as JsonObject),
-      }),
-    ).resolves.toMatchObject({ platform_code: 'master', title: completeArticle.title });
+    const generated = await writer.generateOfficialSiteMaster({
+      context: {
+        ...context(MASTER_RUN, null),
+        modelKey: 'deepseek-v4-pro',
+        modelPolicy: 'quality',
+      },
+      requestId: 'runtime-official-length-repair-0061',
+      writerInput: officialSiteWriterInput(fixture.input as JsonObject),
+    });
 
+    expect(generated).toMatchObject({ platform_code: 'master', title: shortArticle.title });
+    expect(generated.blocks.slice(0, shortArticle.blocks.length)).toEqual(
+      shortArticle.blocks.map(({ block_key, block_type, text }) => ({
+        block_key,
+        block_type,
+        text,
+      })),
+    );
+    expect(
+      generated.blocks
+        .filter((block) => block.block_type !== 'heading')
+        .map((block) => block.text)
+        .join('')
+        .replace(/[\s\p{P}\p{S}]/gu, '').length,
+    ).toBeGreaterThanOrEqual(1_300);
     expect(recordUsage).toHaveBeenCalledTimes(2);
     expect(adapter.requests).toHaveLength(2);
     expect(adapter.requests[0]!.messages.map((message) => message.content).join('\n')).toContain(
-      'target 1,500-2,200 readable Chinese characters',
+      'automatically rejected as perfunctory',
     );
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
-      'expand substantive explanations',
+      'This is a continuation stage',
     );
   });
 
@@ -312,5 +325,19 @@ function officialSiteArticleDraft(repeatCount = 12) {
     ],
     summary: '文章提供选择搬家服务时可直接执行的范围、人员、车辆和异常处理核对方法。',
     title: '广州家庭搬家前如何核对服务范围与执行人员安排',
+  } as const;
+}
+
+function officialSiteExpansionDraft() {
+  const text = (label: string) =>
+    `${label}应结合实际物品、现场条件和双方约定逐项判断，说明核对方法、记录方式、责任边界与出现差异后的处理步骤。`.repeat(
+      5,
+    );
+  return {
+    blocks: [
+      { block_type: 'paragraph', citation_ids: [], text: text('补充服务边界时') },
+      { block_type: 'list', citation_ids: [], text: text('补充执行清单时') },
+      { block_type: 'paragraph', citation_ids: [], text: text('补充风险处理时') },
+    ],
   } as const;
 }

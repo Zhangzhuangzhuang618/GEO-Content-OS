@@ -12,6 +12,7 @@ import {
   CONTENT_WRITER_INPUT_SCHEMA,
   CONTENT_WRITER_OUTPUT_SCHEMA,
   OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA,
+  OFFICIAL_SITE_ARTICLE_EXPANSION_DRAFT_SCHEMA,
   OFFICIAL_SITE_FAQ_DRAFT_SCHEMA,
 } from './content-writer.schemas.js';
 
@@ -162,6 +163,26 @@ describe('content-writer contract v1.0.0', () => {
         blocks,
         summary: '文章提供选择搬家服务时可直接使用的核对步骤。',
         title: '广州家庭搬家前如何核对服务范围与执行人员安排',
+      }),
+    ).toMatchObject({ valid: true });
+    expect(
+      guard.check(OFFICIAL_SITE_ARTICLE_EXPANSION_DRAFT_SCHEMA, {
+        blocks: [
+          {
+            block_type: 'paragraph',
+            citation_ids: [],
+            text: '补充说明应围绕已有主题增加判断标准、执行步骤和风险边界，不能重复原文。'.repeat(
+              5,
+            ),
+          },
+          {
+            block_type: 'list',
+            citation_ids: [],
+            text: '补充清单应提供可直接核对的项目，并保持所有事实来自现有正文或输入资料。'.repeat(
+              5,
+            ),
+          },
+        ],
       }),
     ).toMatchObject({ valid: true });
     expect(

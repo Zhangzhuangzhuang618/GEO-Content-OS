@@ -15,6 +15,7 @@ import {
   createSkillContext,
   SchemaGuard,
   SkillRunner,
+  SkillRuntimeError,
   type SkillTool,
   ToolRegistry,
 } from '@geo-content-os/skills/runtime';
@@ -61,24 +62,35 @@ export class RuntimeQualityChecker {
     const prompt = this.promptLoader
       ? await this.promptLoader(input.context)
       : await this.getPrompt(input.context.promptVersionId);
-    const result = await skill.run({
-      context: createSkillContext({
-        inputHash: input.context.inputHash,
-        modelKey: input.context.modelKey,
-        projectId: input.context.projectId,
-        promptVersionId: input.context.promptVersionId,
-        requestId: input.context.requestId,
-        runId: input.context.runId,
-        skillName: 'quality-checker',
-        skillVersion: input.context.skillVersion,
-        tenantId: input.context.tenantId,
-        workspaceId: input.context.workspaceId,
-      }),
-      input: input.qualityInput,
-      prompt,
-      recordUsage: (usage) => this.recordUsage(input.context, usage),
-      ...(input.signal ? { signal: input.signal } : {}),
+    const context = createSkillContext({
+      inputHash: input.context.inputHash,
+      modelKey: input.context.modelKey,
+      projectId: input.context.projectId,
+      promptVersionId: input.context.promptVersionId,
+      requestId: input.context.requestId,
+      runId: input.context.runId,
+      skillName: 'quality-checker',
+      skillVersion: input.context.skillVersion,
+      tenantId: input.context.tenantId,
+      workspaceId: input.context.workspaceId,
     });
+    const run = (runPrompt: QualityCheckerPublishedPrompt) =>
+      skill.run({
+        context,
+        input: input.qualityInput,
+        prompt: runPrompt,
+        recordUsage: (usage) => this.recordUsage(input.context, usage),
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+    let result;
+    try {
+      result = await run(prompt);
+    } catch (error) {
+      if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') {
+        throw error;
+      }
+      result = await run(qualitySemanticRepairPrompt(prompt, input.qualityInput));
+    }
     if (result.output.status === 'failed') {
       throw new Error(
         result.output.blockers.map((blocker) => blocker.message).join('; ') ||
@@ -115,6 +127,40 @@ export class RuntimeQualityChecker {
 }
 
 type UsageRecorder = (context: UsageContext, usage: ModelUsage) => Promise<void>;
+
+function qualitySemanticRepairPrompt(
+  prompt: QualityCheckerPublishedPrompt,
+  input: Readonly<Record<string, unknown>>,
+): QualityCheckerPublishedPrompt {
+  const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
+  const mandatoryFactBlocks = factResults.flatMap((fact) => {
+    if (!record(fact)) return [];
+    const risk = fact['risk_level'];
+    const verdict = fact['verdict'];
+    const claimKey = fact['claim_key'];
+    return (risk === 'high' || risk === 'critical') &&
+      (verdict === 'unsupported' || verdict === 'conflicted') &&
+      typeof claimKey === 'string'
+      ? [`claim:${claimKey}`]
+      : [];
+  });
+  return Object.freeze({
+    systemPrompt: prompt.systemPrompt,
+    taskTemplate: `${prompt.taskTemplate}
+
+The previous response failed mandatory server semantic validation. Produce a fresh result and obey all of these invariants:
+1. Copy geo_scores exactly from quality_checker_input.geo_result.scores.
+2. Every high or critical fact whose verdict is unsupported or conflicted must have a BLOCK issue with category "fact" and location "claim:<claim_key>".
+3. A result containing any BLOCK issue must use decision "block"; otherwise apply max_warnings_for_pass exactly.
+4. Use only citation IDs present in fact_results.
+Mandatory fact BLOCK locations for this input: ${JSON.stringify(mandatoryFactBlocks)}.
+Return one complete quality data JSON object only.`,
+  });
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function passthrough(definition: SkillToolDefinitionContract): SkillTool {
   const execute: SkillTool['execute'] = (arguments_) => arguments_;
