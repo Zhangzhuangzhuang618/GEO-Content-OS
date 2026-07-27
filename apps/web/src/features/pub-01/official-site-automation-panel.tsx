@@ -184,7 +184,7 @@ export function OfficialSiteAutomationPanel({
     const batch = selected?.today_batch;
     if (!selected || batch?.status !== 'running' || cancelling) return;
     const confirmed = window.confirm(
-      `确认终止今日第 ${batch.attempt_no} 次任务？\n\n系统会停止补题和自动排期；正在执行的 AI 请求可能仍会产生本次调用费用，但结果不会继续进入发布流程。已合格但尚未排期的文章会保留，不会自动发布。明天仍会按每日计划重新开始。`,
+      `确认终止今日第 ${batch.attempt_no} 次任务？\n\n系统会停止补题和自动排期；正在执行的 AI 请求可能仍会产生本次调用费用，但结果不会继续进入发布流程。已合格但尚未排期的文章会保留，不会自动发布。终止后可以手动重新发起新批次，明天也仍会按每日计划重新开始。`,
     );
     if (!confirmed) return;
     const csrf = readCookie('geo_csrf');
@@ -208,7 +208,7 @@ export function OfficialSiteAutomationPanel({
         cancelled,
       ]);
       setMessage(
-        `今日第 ${batch.attempt_no} 次任务已终止。系统不会继续补题或自动排期，明天仍会按每日计划重新开始。`,
+        `今日第 ${batch.attempt_no} 次任务已终止。需要继续时，可点击“重新发起今日批次”创建新的尝试。`,
       );
     } catch {
       setMessage('终止失败。批次状态可能已变化，请关闭后重新打开再试。');
@@ -410,7 +410,9 @@ function TodayBatchStatus({
       {batch.restart_allowed ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
           <p className="text-sm leading-6 text-amber-900">
-            本次已用完 30 个候选仍未补足 10 篇。可以保留失败记录并重新开始一批。
+            {batch.status === 'cancelled'
+              ? '本次任务已终止。可以保留全部历史记录并重新开始一批。'
+              : '本次已用完 30 个候选仍未补足 10 篇。可以保留失败记录并重新开始一批。'}
           </p>
           <button
             className={secondaryButton}

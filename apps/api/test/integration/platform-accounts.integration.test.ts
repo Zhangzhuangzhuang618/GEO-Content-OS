@@ -458,6 +458,7 @@ describe('platform accounts', () => {
     expect(cancelled.today_batch).toMatchObject({
       attempt_no: 2,
       in_progress_count: 0,
+      restart_allowed: true,
       status: 'cancelled',
       version: 2,
     });
@@ -507,25 +508,36 @@ describe('platform accounts', () => {
           AND action='official_site.daily_batch.cancelled'
       `,
     ).toEqual([{ count: 1 }]);
-    await expect(
-      database.begin((transaction) =>
-        policies.restartDailyBatchInTransaction(
-          transaction,
-          SCOPE,
-          account.id,
-          {
-            expected_batch_version: 2,
-            project_id: PROJECT_ID,
-          },
-          { requestId: 'req-daily-restart-duplicate' },
-        ),
+    const restartedAfterCancel = await database.begin((transaction) =>
+      policies.restartDailyBatchInTransaction(
+        transaction,
+        SCOPE,
+        account.id,
+        {
+          expected_batch_version: 2,
+          project_id: PROJECT_ID,
+        },
+        { requestId: 'req-daily-restart-after-cancel' },
       ),
-    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_STATE_INVALID' });
+    );
+    expect(restartedAfterCancel.today_batch).toMatchObject({
+      attempt_no: 3,
+      restart_allowed: false,
+      status: 'running',
+      version: 1,
+    });
     expect(
       await database<{ count: number }[]>`
         SELECT count(*)::integer AS count
         FROM official_site_daily_batches
         WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${created.id}::uuid
+      `,
+    ).toEqual([{ count: 3 }]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND action='official_site.daily_batch.restarted'
       `,
     ).toEqual([{ count: 2 }]);
     await expect(

@@ -107,8 +107,14 @@ export class OfficialSiteAutomationPolicyService {
           COALESCE(batch.last_error_json->>'message', batch.last_error_json->>'code')
             AS last_error_message,
           (
-            batch.status='attention_required'
-            AND batch.last_error_json->>'code'='DAILY_CANDIDATE_LIMIT_REACHED'
+            (
+              batch.status='attention_required'
+              AND batch.last_error_json->>'code'='DAILY_CANDIDATE_LIMIT_REACHED'
+            )
+            OR (
+              batch.status='cancelled'
+              AND batch.last_error_json->>'code'='DAILY_BATCH_MANUALLY_CANCELLED'
+            )
           ) AS restart_allowed,
           count(item.id)::integer AS attempted_count,
           count(item.id) FILTER (
@@ -313,11 +319,14 @@ export class OfficialSiteAutomationPolicyService {
     const before = batches[0];
     if (!before) throw stateInvalid('There is no daily batch to restart today');
     if (before.version !== input.expected_batch_version) throw versionConflict();
-    if (
-      before.status !== 'attention_required' ||
-      before.errorCode !== 'DAILY_CANDIDATE_LIMIT_REACHED'
-    ) {
-      throw stateInvalid('Only a daily batch that exhausted its candidate limit can be restarted');
+    const restartable =
+      (before.status === 'attention_required' &&
+        before.errorCode === 'DAILY_CANDIDATE_LIMIT_REACHED') ||
+      (before.status === 'cancelled' && before.errorCode === 'DAILY_BATCH_MANUALLY_CANCELLED');
+    if (!restartable) {
+      throw stateInvalid(
+        'Only a candidate-limit batch or a manually cancelled batch can be restarted',
+      );
     }
     const cancelled = await transaction<{ version: number }[]>`
       UPDATE official_site_daily_batches SET
@@ -328,7 +337,7 @@ export class OfficialSiteAutomationPolicyService {
         ),
         version=version+1
       WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
-        AND status='attention_required' AND version=${before.version}
+        AND status=${before.status} AND version=${before.version}
       RETURNING version
     `;
     if (!cancelled[0]) throw versionConflict();
@@ -614,7 +623,7 @@ export class OfficialSiteAutomationPolicyService {
         batch.status AS "batchStatus",batch.version AS "batchVersion",
         COALESCE(batch.last_error_json->>'message',batch.last_error_json->>'code')
           AS "batchLastErrorMessage",
-        false AS "batchRestartAllowed",
+        true AS "batchRestartAllowed",
         count(item.id)::integer AS "attemptedCount",
         count(item.id) FILTER (
           WHERE item.status IN ('generating','quality_check','rewriting')
