@@ -1,6 +1,7 @@
 import type {
   OfficialSiteAutomationPolicyRequest,
   OfficialSiteAutomationPolicyView,
+  OfficialSiteDailyBatchCancelRequest,
   OfficialSiteDailyBatchRestartRequest,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
@@ -408,6 +409,234 @@ export class OfficialSiteAutomationPolicyService {
     `;
     const result = rows[0];
     if (!result) throw stateInvalid('The restarted daily batch could not be loaded');
+    return mapPolicy(result);
+  }
+
+  public async cancelDailyBatchInTransaction(
+    transaction: TransactionSql,
+    scope: PlatformAccountScope,
+    accountId: string,
+    input: OfficialSiteDailyBatchCancelRequest,
+    audit: PlatformAccountAudit,
+  ): Promise<OfficialSiteAutomationPolicyView> {
+    await this.requireAccount(transaction, scope, accountId, true);
+    const policies = await transaction<
+      {
+        id: string;
+        timezone: string;
+      }[]
+    >`
+      SELECT policy.id,policy.daily_timezone AS timezone
+      FROM official_site_automation_policies AS policy
+      JOIN projects AS project
+        ON project.id=policy.project_id AND project.tenant_id=policy.tenant_id
+        AND project.workspace_id=policy.workspace_id
+        AND project.status='active' AND project.deleted_at IS NULL
+      WHERE policy.tenant_id=${scope.tenantId}::uuid
+        AND policy.account_id=${accountId}::uuid
+        AND policy.project_id=${input.project_id}::uuid
+        AND has_project_scope_access(
+          policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
+        )
+      FOR UPDATE OF policy
+    `;
+    const policy = policies[0];
+    if (!policy) throw notFound();
+    const batches = await transaction<
+      {
+        attemptNo: number;
+        businessDate: Date | string;
+        id: string;
+        status: 'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled';
+        version: number;
+      }[]
+    >`
+      SELECT
+        id,attempt_no AS "attemptNo",business_date AS "businessDate",status,version
+      FROM official_site_daily_batches
+      WHERE tenant_id=${scope.tenantId}::uuid AND policy_id=${policy.id}::uuid
+        AND business_date=(now() AT TIME ZONE ${policy.timezone})::date
+      ORDER BY attempt_no DESC
+      LIMIT 1
+      FOR UPDATE
+    `;
+    const before = batches[0];
+    if (!before) throw stateInvalid('There is no daily batch to cancel today');
+    if (before.version !== input.expected_batch_version) throw versionConflict();
+    if (before.status !== 'running') {
+      throw stateInvalid('Only a running daily batch can be cancelled');
+    }
+    const cancellation = {
+      code: 'DAILY_BATCH_MANUALLY_CANCELLED',
+      message: '今日批次已由用户手动终止，不再生成新候选或自动排期。',
+      schema_version: 'official-site-daily-error@1',
+    } as const;
+    const cancelled = await transaction<{ version: number }[]>`
+      UPDATE official_site_daily_batches SET
+        status='cancelled',
+        last_error_json=${JSON.stringify(cancellation)}::text::jsonb,
+        version=version+1
+      WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND status='running' AND version=${before.version}
+      RETURNING version
+    `;
+    const cancelledVersion = cancelled[0]?.version;
+    if (!cancelledVersion) throw versionConflict();
+    await transaction`
+      UPDATE generation_runs AS run SET
+        status='cancelled',
+        started_at=COALESCE(run.started_at,now()),
+        finished_at=COALESCE(run.finished_at,now()),
+        error_json=${JSON.stringify({
+          code: 'DAILY_BATCH_CANCELLED',
+          message: cancellation.message,
+        })}::text::jsonb,
+        version=run.version+1
+      WHERE run.tenant_id=${scope.tenantId}::uuid
+        AND run.status IN ('queued','running')
+        AND EXISTS (
+          SELECT 1
+          FROM official_site_daily_batch_items AS item
+          WHERE item.tenant_id=run.tenant_id
+            AND item.batch_id=${before.id}::uuid
+            AND item.package_id=run.package_id
+        )
+    `;
+    await transaction`
+      UPDATE official_site_automation_runs AS automation SET
+        status='disabled',
+        last_error_json=${JSON.stringify(cancellation)}::text::jsonb,
+        finished_at=now(),
+        version=automation.version+1
+      WHERE automation.tenant_id=${scope.tenantId}::uuid
+        AND automation.status IN (
+          'quality_pending','rewrite_pending','rewriting','publish_pending'
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM official_site_daily_batch_items AS item
+          WHERE item.tenant_id=automation.tenant_id
+            AND item.batch_id=${before.id}::uuid
+            AND item.variant_id=automation.variant_id
+        )
+    `;
+    await transaction`
+      UPDATE content_variants AS variant SET
+        status=CASE
+          WHEN variant.status='generating' AND variant.current_content_version_id IS NULL
+            THEN 'generation_failed'
+          WHEN variant.status='generating' THEN 'quality_failed'
+          ELSE variant.status
+        END,
+        version=variant.version+1
+      FROM official_site_daily_batch_items AS item
+      WHERE item.tenant_id=${scope.tenantId}::uuid
+        AND item.batch_id=${before.id}::uuid
+        AND item.status IN ('generating','quality_check','rewriting')
+        AND variant.id=item.variant_id AND variant.tenant_id=item.tenant_id
+        AND variant.status IN ('generating','generated','quality_failed','quality_passed')
+    `;
+    await transaction`
+      UPDATE content_packages AS package SET
+        status=CASE
+          WHEN variant.status='generation_failed' THEN 'all_failed'
+          WHEN variant.status IN ('generated','quality_failed','quality_passed') THEN 'generated'
+          ELSE package.status
+        END,
+        version=package.version+1
+      FROM official_site_daily_batch_items AS item
+      JOIN content_variants AS variant
+        ON variant.id=item.variant_id AND variant.tenant_id=item.tenant_id
+      WHERE item.tenant_id=${scope.tenantId}::uuid
+        AND item.batch_id=${before.id}::uuid
+        AND package.id=item.package_id AND package.tenant_id=item.tenant_id
+        AND package.status='generating'
+        AND variant.status IN (
+          'generation_failed','generated','quality_failed','quality_passed'
+        )
+    `;
+    await transaction`
+      UPDATE official_site_daily_batch_items SET
+        status='retired',
+        last_error_json=${JSON.stringify(cancellation)}::text::jsonb
+      WHERE tenant_id=${scope.tenantId}::uuid AND batch_id=${before.id}::uuid
+        AND status IN ('generating','quality_check','rewriting')
+    `;
+    await transaction`
+      UPDATE official_site_daily_batch_items SET status='reserve'
+      WHERE tenant_id=${scope.tenantId}::uuid AND batch_id=${before.id}::uuid
+        AND status='qualified'
+    `;
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id,actor_id,action,resource_type,resource_id,
+        before_json,after_json,ip,request_id
+      ) VALUES (
+        ${scope.tenantId}::uuid,${scope.userId}::uuid,
+        'official_site.daily_batch.cancelled','official_site_daily_batch',
+        ${before.id}::uuid,
+        ${jsonbText(transaction, {
+          attempt_no: before.attemptNo,
+          batch_id: before.id,
+          status: before.status,
+          version: before.version,
+        })}::jsonb,
+        ${jsonbText(transaction, {
+          attempt_no: before.attemptNo,
+          batch_id: before.id,
+          status: 'cancelled',
+          version: cancelledVersion,
+        })}::jsonb,
+        ${audit.ip ?? null},${audit.requestId}
+      )
+    `;
+    const rows = await transaction<PolicyRow[]>`
+      SELECT
+        policy.id,policy.tenant_id AS "tenantId",policy.workspace_id AS "workspaceId",
+        policy.project_id AS "projectId",policy.account_id AS "accountId",policy.enabled,
+        policy.daily_enabled AS "dailyEnabled",
+        policy.daily_target_count AS "dailyTargetCount",
+        policy.daily_candidate_limit AS "dailyCandidateLimit",
+        policy.daily_generation_time::text AS "dailyGenerationTime",
+        policy.daily_timezone AS "dailyTimezone",
+        policy.daily_schedule_times::text[] AS "dailyScheduleTimes",
+        policy.geo_total_min AS "geoTotalMin",
+        policy.factual_accuracy_min AS "factualAccuracyMin",
+        policy.brand_consistency_min AS "brandConsistencyMin",
+        policy.readability_safety_min AS "readabilitySafetyMin",
+        policy.question_coverage_min AS "questionCoverageMin",
+        policy.platform_fit_min AS "platformFitMin",
+        policy.max_rewrites AS "maxRewrites",
+        policy.publish_attempt_limit AS "publishAttemptLimit",
+        policy.version,policy.updated_at AS "updatedAt",
+        batch.attempt_no AS "batchAttemptNo",
+        batch.business_date AS "batchBusinessDate",
+        batch.status AS "batchStatus",batch.version AS "batchVersion",
+        COALESCE(batch.last_error_json->>'message',batch.last_error_json->>'code')
+          AS "batchLastErrorMessage",
+        false AS "batchRestartAllowed",
+        count(item.id)::integer AS "attemptedCount",
+        count(item.id) FILTER (
+          WHERE item.status IN ('generating','quality_check','rewriting')
+        )::integer AS "inProgressCount",
+        count(item.id) FILTER (
+          WHERE item.status IN ('qualified','scheduled','published','publish_failed','reserve')
+        )::integer AS "qualifiedCount",
+        count(item.id) FILTER (
+          WHERE item.status IN ('scheduled','published','publish_failed')
+        )::integer AS "scheduledCount",
+        count(item.id) FILTER (WHERE item.status='published')::integer AS "publishedCount",
+        count(item.id) FILTER (WHERE item.status='retired')::integer AS "retiredCount"
+      FROM official_site_automation_policies AS policy
+      JOIN official_site_daily_batches AS batch
+        ON batch.id=${before.id}::uuid AND batch.tenant_id=policy.tenant_id
+      LEFT JOIN official_site_daily_batch_items AS item
+        ON item.batch_id=batch.id AND item.tenant_id=batch.tenant_id
+      WHERE policy.id=${policy.id}::uuid AND policy.tenant_id=${scope.tenantId}::uuid
+      GROUP BY policy.id,batch.id
+    `;
+    const result = rows[0];
+    if (!result) throw stateInvalid('The cancelled daily batch could not be loaded');
     return mapPolicy(result);
   }
 

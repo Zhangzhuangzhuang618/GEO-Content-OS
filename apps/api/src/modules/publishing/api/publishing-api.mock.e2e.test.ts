@@ -161,6 +161,16 @@ describe('publishing API mock E2E', () => {
     retryInTransaction: vi.fn(async () => job),
   };
   const automation = {
+    cancelDailyBatchInTransaction: vi.fn(async () => ({
+      ...automationPolicy,
+      today_batch: {
+        ...automationPolicy.today_batch!,
+        in_progress_count: 0,
+        last_error_message: '今日批次已由用户手动终止，不再生成新候选或自动排期。',
+        status: 'cancelled' as const,
+        version: 2,
+      },
+    })),
     restartDailyBatchInTransaction: vi.fn(async () => automationPolicy),
   };
   const idempotency = {
@@ -303,6 +313,36 @@ describe('publishing API mock E2E', () => {
           path: `/platform-accounts/${ACCOUNT_ID}/official-site-automation/daily-batch/restart`,
         }),
         idempotencyKey: 'daily-batch-restart-0001',
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('cancels a running daily batch through an idempotent account-scoped route', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'daily-batch-cancel-0001' },
+      method: 'POST',
+      payload: { expected_batch_version: 1, project_id: PROJECT_ID },
+      url: `/platform-accounts/${ACCOUNT_ID}/official-site-automation/daily-batch/cancel`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract(
+      'account.official_site_automation.daily_batch.cancel',
+    ).responseSchema.parse(response.json());
+    expect(automation.cancelDailyBatchInTransaction).toHaveBeenCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      ACCOUNT_ID,
+      { expected_batch_version: 1, project_id: PROJECT_ID },
+      expect.objectContaining({ requestId: REQUEST_ID }),
+    );
+    expect(idempotency.execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fingerprint: expect.objectContaining({
+          path: `/platform-accounts/${ACCOUNT_ID}/official-site-automation/daily-batch/cancel`,
+        }),
+        idempotencyKey: 'daily-batch-cancel-0001',
       }),
       expect.any(Function),
     );

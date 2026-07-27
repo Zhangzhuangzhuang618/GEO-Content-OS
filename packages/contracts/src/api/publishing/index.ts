@@ -26,6 +26,7 @@ import {
   OfficialSiteAutomationPolicyPageSchema,
   OfficialSiteAutomationPolicyRequestSchema,
   OfficialSiteAutomationPolicyResponseSchema,
+  OfficialSiteDailyBatchCancelRequestSchema,
   OfficialSiteDailyBatchRestartRequestSchema,
 } from './schemas.js';
 import { ReasonRequestSchema } from '../common.js';
@@ -169,6 +170,18 @@ const contracts = [
     null,
     PlatformAccountParamsSchema,
     'OfficialSiteAutomationPolicyRequest',
+    'OfficialSiteAutomationPolicyView',
+    OfficialSiteAutomationPolicyResponseSchema,
+  ),
+  contract(
+    'account.official_site_automation.daily_batch.cancel',
+    'POST',
+    '/platform-accounts/{id}/official-site-automation/daily-batch/cancel',
+    'key+body_hash',
+    OfficialSiteDailyBatchCancelRequestSchema,
+    null,
+    PlatformAccountParamsSchema,
+    'OfficialSiteDailyBatchCancelRequest',
     'OfficialSiteAutomationPolicyView',
     OfficialSiteAutomationPolicyResponseSchema,
   ),

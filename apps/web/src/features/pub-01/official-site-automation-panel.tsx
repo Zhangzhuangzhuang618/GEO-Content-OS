@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
+  cancelOfficialSiteDailyBatch,
   listOfficialSiteAutomationPolicies,
   restartOfficialSiteDailyBatch,
   saveOfficialSiteAutomationPolicy,
@@ -27,6 +28,7 @@ export function OfficialSiteAutomationPanel({
     'loading',
   );
   const [reloadVersion, setReloadVersion] = useState(0);
+  const [cancelling, setCancelling] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const selected = useMemo(
@@ -178,6 +180,43 @@ export function OfficialSiteAutomationPanel({
     }
   }
 
+  async function cancelTodayBatch() {
+    const batch = selected?.today_batch;
+    if (!selected || batch?.status !== 'running' || cancelling) return;
+    const confirmed = window.confirm(
+      `确认终止今日第 ${batch.attempt_no} 次任务？\n\n系统会停止补题和自动排期；正在执行的 AI 请求可能仍会产生本次调用费用，但结果不会继续进入发布流程。已合格但尚未排期的文章会保留，不会自动发布。明天仍会按每日计划重新开始。`,
+    );
+    if (!confirmed) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('缺少安全令牌，请刷新页面后重试。');
+      return;
+    }
+    setCancelling(true);
+    setMessage(null);
+    try {
+      const cancelled = await cancelOfficialSiteDailyBatch(
+        account.id,
+        {
+          expectedBatchVersion: batch.version,
+          projectId: selected.project_id,
+        },
+        csrf,
+      );
+      setPolicies((current) => [
+        ...current.filter((policy) => policy.project_id !== cancelled.project_id),
+        cancelled,
+      ]);
+      setMessage(
+        `今日第 ${batch.attempt_no} 次任务已终止。系统不会继续补题或自动排期，明天仍会按每日计划重新开始。`,
+      );
+    } catch {
+      setMessage('终止失败。批次状态可能已变化，请关闭后重新打开再试。');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   return (
     <form
       aria-label={`官网自动发布 ${account.display_name}`}
@@ -267,6 +306,8 @@ export function OfficialSiteAutomationPanel({
           </label>
           {selected?.today_batch ? (
             <TodayBatchStatus
+              cancelling={cancelling}
+              onCancel={() => void cancelTodayBatch()}
               onRestart={() => void restartTodayBatch()}
               policy={selected}
               restarting={restarting}
@@ -306,10 +347,14 @@ export function OfficialSiteAutomationPanel({
 }
 
 function TodayBatchStatus({
+  cancelling,
+  onCancel,
   onRestart,
   policy,
   restarting,
 }: {
+  readonly cancelling: boolean;
+  readonly onCancel: () => void;
   readonly onRestart: () => void;
   readonly policy: OfficialSiteAutomationPolicy;
   readonly restarting: boolean;
@@ -342,9 +387,25 @@ function TodayBatchStatus({
         <ProgressValue label="已淘汰" value={batch.retired_count} />
       </div>
       {batch.last_error_message ? (
-        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+        <p
+          className={`mt-4 rounded-lg px-3 py-2 text-sm ${
+            batch.status === 'cancelled'
+              ? 'bg-surface-subtle text-ink-700'
+              : 'bg-red-50 text-red-700'
+          }`}
+        >
           {batch.last_error_message}
         </p>
+      ) : null}
+      {batch.status === 'running' ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3">
+          <p className="text-sm leading-6 text-red-900">
+            如果已确认本批次异常，可以立即停止继续生成和排期。已完成的记录不会删除。
+          </p>
+          <button className={dangerButton} disabled={cancelling} onClick={onCancel} type="button">
+            {cancelling ? '正在终止…' : '终止今日任务'}
+          </button>
+        </div>
       ) : null}
       {batch.restart_allowed ? (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
@@ -389,4 +450,6 @@ const primaryButton =
   'min-h-11 rounded-xl bg-brand-600 px-5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryButton =
   'min-h-11 rounded-xl border border-line bg-white px-4 font-semibold text-ink-800 hover:border-brand-300';
+const dangerButton =
+  'min-h-11 rounded-xl border border-red-300 bg-white px-4 font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50';
 const INITIAL_LOAD_RETRY_DELAYS_MS = [500, 1_500, 3_000] as const;

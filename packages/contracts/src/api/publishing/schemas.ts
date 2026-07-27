@@ -100,6 +100,12 @@ export const OfficialSiteDailyBatchRestartRequestSchema = z
     project_id: UuidSchema,
   })
   .strict();
+export const OfficialSiteDailyBatchCancelRequestSchema = z
+  .object({
+    expected_batch_version: VersionSchema,
+    project_id: UuidSchema,
+  })
+  .strict();
 export const OfficialSiteDailyBatchSummarySchema = z
   .object({
     attempt_no: z.number().int().positive(),
@@ -179,6 +185,9 @@ export type OfficialSiteAutomationPolicyRequest = z.infer<
 >;
 export type OfficialSiteDailyBatchRestartRequest = z.infer<
   typeof OfficialSiteDailyBatchRestartRequestSchema
+>;
+export type OfficialSiteDailyBatchCancelRequest = z.infer<
+  typeof OfficialSiteDailyBatchCancelRequestSchema
 >;
 export type OfficialSiteAutomationPolicyView = z.infer<
   typeof OfficialSiteAutomationPolicyViewSchema

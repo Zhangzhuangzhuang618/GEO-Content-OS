@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CreatePlatformAccountRequestSchema,
+  OfficialSiteDailyBatchCancelRequestSchema,
   OfficialSiteDailyBatchRestartRequestSchema,
   PUBLISHING_API_CONTRACTS,
   PUBLISHING_OPENAPI_DOCUMENT,
@@ -9,11 +10,11 @@ import {
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all eighteen publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(18);
+  it('contains all nineteen publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(19);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(18);
+    ).toBe(19);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -24,7 +25,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(18);
+    expect(operations).toHaveLength(19);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -44,6 +45,20 @@ describe('Publishing API frozen contract', () => {
     ).toBe(true);
     expect(
       OfficialSiteDailyBatchRestartRequestSchema.safeParse({
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
+  });
+
+  it('requires an optimistic batch version when cancelling today', () => {
+    expect(
+      OfficialSiteDailyBatchCancelRequestSchema.safeParse({
+        expected_batch_version: 2,
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      OfficialSiteDailyBatchCancelRequestSchema.safeParse({
         project_id: crypto.randomUUID(),
       }).success,
     ).toBe(false);

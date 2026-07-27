@@ -389,6 +389,72 @@ test('restarts an exhausted daily batch while keeping the previous attempt', asy
   expect(restartRequest?.idempotencyKey).toMatch(/^official-site-daily-batch-restart-/u);
 });
 
+test('stops a running daily batch without deleting completed records', async ({ page }) => {
+  let current = automationPolicy(true, {
+    attempt_no: 2,
+    attempted_count: 30,
+    business_date: '2026-07-27',
+    in_progress_count: 3,
+    last_error_message: null,
+    published_count: 0,
+    qualified_count: 2,
+    restart_allowed: false,
+    retired_count: 25,
+    scheduled_count: 0,
+    status: 'running',
+    target_count: 10,
+    version: 7,
+  });
+  let cancelRequest:
+    { body: Record<string, unknown>; idempotencyKey: string | undefined } | undefined;
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '官网内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/official-site-automation/daily-batch/cancel')) {
+      cancelRequest = {
+        body: request.postDataJSON() as Record<string, unknown>,
+        idempotencyKey: request.headers()['idempotency-key'],
+      };
+      current = automationPolicy(true, {
+        ...current.today_batch!,
+        in_progress_count: 0,
+        last_error_message: '今日批次已由用户手动终止，不再生成新候选或自动排期。',
+        retired_count: 28,
+        status: 'cancelled',
+        version: 8,
+      });
+      await json(route, { data: current, meta: { request_id: 'daily-cancel' } });
+      return;
+    }
+    if (path.endsWith('/official-site-automation')) {
+      await json(route, { data: [current], meta: { request_id: 'automation-list' } });
+      return;
+    }
+    await json(route, { data: [account({ version: 1 })], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '官网自动发布' }).click();
+  await expect(page.getByText('今日发布进度（第 2 次尝试）')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '终止今日任务' }).click();
+
+  await expect(page.getByText('今日第 2 次任务已终止')).toBeVisible();
+  await expect(page.getByText('已取消', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '终止今日任务' })).toHaveCount(0);
+  expect(cancelRequest?.body).toEqual({
+    expected_batch_version: 7,
+    project_id: PROJECT_ID,
+  });
+  expect(cancelRequest?.idempotencyKey).toMatch(/^official-site-daily-batch-cancel-/u);
+});
+
 test('denies non-publisher roles before requesting account data', async ({ page }) => {
   let accountRequests = 0;
   await page.unroute('**/api/v1/auth/tenants');

@@ -25,6 +25,9 @@ const TENANT_ID = '21000000-0000-4000-8000-000000000123';
 const WORKSPACE_ID = '31000000-0000-4000-8000-000000000123';
 const OTHER_WORKSPACE_ID = '32000000-0000-4000-8000-000000000123';
 const PROJECT_ID = '41000000-0000-4000-8000-000000000123';
+const DAILY_BRIEF_ID = '51000000-0000-4000-8000-000000000123';
+const DAILY_PACKAGE_ID = '61000000-0000-4000-8000-000000000123';
+const DAILY_VARIANT_ID = '71000000-0000-4000-8000-000000000123';
 const SECRET = 'platform-secret-123';
 const ROTATED_SECRET = 'platform-secret-rotated-456';
 
@@ -400,11 +403,108 @@ describe('platform accounts', () => {
       { attemptNo: 1, status: 'cancelled' },
       { attemptNo: 2, status: 'running' },
     ]);
+    await database`
+      INSERT INTO briefs (
+        id,tenant_id,workspace_id,project_id,title,objective,audience,
+        platform_codes,constraints_json,created_by
+      ) VALUES (
+        ${DAILY_BRIEF_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+        ${PROJECT_ID}::uuid,'待终止的每日候选','awareness',
+        '准备在企业官网了解搬家服务的潜在客户',
+        ARRAY['official_site']::varchar[],
+        '{"schema_version":"brief-constraints@1"}'::jsonb,${USER_ID}::uuid
+      )
+    `;
+    await database`
+      INSERT INTO content_packages (
+        id,tenant_id,workspace_id,project_id,brief_id,status,created_by
+      ) VALUES (
+        ${DAILY_PACKAGE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+        ${PROJECT_ID}::uuid,${DAILY_BRIEF_ID}::uuid,'generating',${USER_ID}::uuid
+      )
+    `;
+    await database`
+      INSERT INTO content_variants (
+        id,tenant_id,package_id,platform_code,status
+      ) VALUES (
+        ${DAILY_VARIANT_ID}::uuid,${TENANT_ID}::uuid,${DAILY_PACKAGE_ID}::uuid,
+        'official_site','generating'
+      )
+    `;
+    await database`
+      INSERT INTO official_site_daily_batch_items (
+        tenant_id,batch_id,candidate_no,angle_key,title,brief_id,package_id,variant_id,status
+      )
+      SELECT
+        ${TENANT_ID}::uuid,batch.id,1,'manual-cancel-test','待终止的每日候选',
+        ${DAILY_BRIEF_ID}::uuid,${DAILY_PACKAGE_ID}::uuid,${DAILY_VARIANT_ID}::uuid,
+        'generating'
+      FROM official_site_daily_batches AS batch
+      WHERE batch.tenant_id=${TENANT_ID}::uuid AND batch.policy_id=${created.id}::uuid
+        AND batch.attempt_no=2
+    `;
+    const cancelled = await database.begin((transaction) =>
+      policies.cancelDailyBatchInTransaction(
+        transaction,
+        SCOPE,
+        account.id,
+        {
+          expected_batch_version: 1,
+          project_id: PROJECT_ID,
+        },
+        { requestId: 'req-daily-cancel' },
+      ),
+    );
+    expect(cancelled.today_batch).toMatchObject({
+      attempt_no: 2,
+      in_progress_count: 0,
+      status: 'cancelled',
+      version: 2,
+    });
+    await expect(
+      database<{ status: string }[]>`
+        SELECT status FROM official_site_daily_batch_items
+        WHERE tenant_id=${TENANT_ID}::uuid AND variant_id=${DAILY_VARIANT_ID}::uuid
+      `,
+    ).resolves.toEqual([{ status: 'retired' }]);
+    await expect(
+      database<{ status: string }[]>`
+        SELECT status FROM content_variants
+        WHERE tenant_id=${TENANT_ID}::uuid AND id=${DAILY_VARIANT_ID}::uuid
+      `,
+    ).resolves.toEqual([{ status: 'generation_failed' }]);
+    await expect(
+      database<{ status: string }[]>`
+        SELECT status FROM content_packages
+        WHERE tenant_id=${TENANT_ID}::uuid AND id=${DAILY_PACKAGE_ID}::uuid
+      `,
+    ).resolves.toEqual([{ status: 'all_failed' }]);
+    await expect(
+      database.begin((transaction) =>
+        policies.cancelDailyBatchInTransaction(
+          transaction,
+          SCOPE,
+          account.id,
+          {
+            expected_batch_version: 1,
+            project_id: PROJECT_ID,
+          },
+          { requestId: 'req-daily-cancel-stale' },
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
     expect(
       await database<{ count: number }[]>`
         SELECT count(*)::integer AS count FROM audit_events
         WHERE tenant_id=${TENANT_ID}::uuid
           AND action='official_site.daily_batch.restarted'
+      `,
+    ).toEqual([{ count: 1 }]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND action='official_site.daily_batch.cancelled'
       `,
     ).toEqual([{ count: 1 }]);
     await expect(
@@ -414,7 +514,7 @@ describe('platform accounts', () => {
           SCOPE,
           account.id,
           {
-            expected_batch_version: 1,
+            expected_batch_version: 2,
             project_id: PROJECT_ID,
           },
           { requestId: 'req-daily-restart-duplicate' },

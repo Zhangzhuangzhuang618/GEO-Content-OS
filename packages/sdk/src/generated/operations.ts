@@ -532,6 +532,13 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_official_site_automation_daily_batch_cancel: {
+    idempotency: 'key+body_hash',
+    method: 'POST',
+    path: '/platform-accounts/{id}/official-site-automation/daily-batch/cancel',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_official_site_automation_daily_batch_restart: {
     idempotency: 'key+body_hash',
     method: 'POST',

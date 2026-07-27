@@ -6,6 +6,7 @@ import {
   PlatformAccountParamsSchema,
   PlatformAccountQuerySchema,
   OfficialSiteAutomationPolicyRequestSchema,
+  OfficialSiteDailyBatchCancelRequestSchema,
   OfficialSiteDailyBatchRestartRequestSchema,
   PublishJobParamsSchema,
   PublishJobQuerySchema,
@@ -348,6 +349,44 @@ export class PlatformAccountController {
             audit(request),
           ),
         HttpStatus.CREATED,
+      );
+      await sendVersioned(reply, result.response.statusCode, result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/official-site-automation/daily-batch/cancel')
+  @RequirePermissions('publishing.manage')
+  public async cancelOfficialSiteDailyBatch(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = OfficialSiteDailyBatchCancelRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    const scope = requireScope(request);
+    try {
+      const route = `/platform-accounts/${parsedParams.data.id}/official-site-automation/daily-batch/cancel`;
+      const result = await idempotent(
+        this.idempotency,
+        request,
+        scope,
+        route,
+        parsedBody.data as JsonValue,
+        (transaction) =>
+          this.automation.cancelDailyBatchInTransaction(
+            transaction,
+            scope,
+            parsedParams.data.id,
+            parsedBody.data,
+            audit(request),
+          ),
+        HttpStatus.OK,
       );
       await sendVersioned(reply, result.response.statusCode, result.response.body);
     } catch (error) {
