@@ -81,6 +81,7 @@ export class RuntimeQualityChecker {
         prompt: runPrompt,
         recordUsage: (usage) => this.recordUsage(input.context, usage),
         ...(input.signal ? { signal: input.signal } : {}),
+        toolNames: [],
       });
     let result;
     try {

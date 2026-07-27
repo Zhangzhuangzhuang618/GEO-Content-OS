@@ -218,6 +218,44 @@ export class OfficialSiteAutomation {
     });
   }
 
+  public async failQualityExecution(
+    transaction: postgres.TransactionSql,
+    event: ValidatedQualityEvent,
+    error: unknown,
+  ): Promise<void> {
+    const message = (
+      error instanceof Error ? error.message : 'Automated quality check failed'
+    ).slice(0, 2_000);
+    await transaction`
+      UPDATE official_site_automation_runs SET
+        status='manual_required',
+        last_error_json=${JSON.stringify({
+          code: 'QUALITY_CHECK_EXECUTION_FAILED',
+          message,
+          schema_version: 'official-site-automation-error@1',
+        })}::text::jsonb,
+        finished_at=now(),
+        version=version+1
+      WHERE tenant_id=${event.tenantId}::uuid
+        AND variant_id=${event.data.variantId}::uuid
+        AND content_version_id=${event.data.contentVersionId}::uuid
+        AND status='quality_pending'
+    `;
+    await transaction`
+      UPDATE official_site_daily_batch_items SET
+        status='retired',
+        last_error_json=${JSON.stringify({
+          code: 'QUALITY_CHECK_EXECUTION_FAILED',
+          message: '机器质检连续执行失败，系统将创建新候选补位。',
+          schema_version: 'official-site-daily-error@1',
+        })}::text::jsonb
+      WHERE tenant_id=${event.tenantId}::uuid
+        AND variant_id=${event.data.variantId}::uuid
+        AND content_version_id=${event.data.contentVersionId}::uuid
+        AND status='quality_check'
+    `;
+  }
+
   public async advanceAfterQuality(
     transaction: postgres.TransactionSql,
     event: ValidatedQualityEvent,

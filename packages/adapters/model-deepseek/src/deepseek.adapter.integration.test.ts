@@ -119,6 +119,20 @@ describe('DeepSeekModelAdapter integration', () => {
     expect(attempts).toBe(2);
   });
 
+  it('retries an empty successful completion within the configured bound', async () => {
+    let attempts = 0;
+    const baseUrl = await serve((_incoming, outgoing) => {
+      attempts += 1;
+      json(outgoing, completion({ content: attempts === 1 ? '' : 'recovered' }));
+    });
+    const adapter = new DeepSeekModelAdapter(configuration(baseUrl, { maxRetries: 1 }));
+
+    await expect(adapter.generate(request)).resolves.toMatchObject({
+      message: { content: 'recovered' },
+    });
+    expect(attempts).toBe(2);
+  });
+
   it('does not retry authentication failures or expose credentials', async () => {
     let attempts = 0;
     const baseUrl = await serve((_incoming, outgoing) => {

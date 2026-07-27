@@ -27,6 +27,7 @@ export interface QualityCheckerSkillRunInput {
   readonly prompt?: QualityCheckerPublishedPrompt;
   readonly recordUsage: (usage: ModelUsage) => Promise<void> | void;
   readonly signal?: AbortSignal;
+  readonly toolNames?: readonly string[];
 }
 
 export interface QualityCheckerPublishedPrompt {
@@ -64,7 +65,7 @@ export class QualityCheckerSkill {
       recordUsage: invocation.recordUsage,
       ...(invocation.signal ? { signal: invocation.signal } : {}),
       temperature: 0,
-      toolNames: QUALITY_CHECKER_TOOL_NAMES_V1,
+      toolNames: invocation.toolNames ?? QUALITY_CHECKER_TOOL_NAMES_V1,
     });
     const output = serverOwnedOutput(invocation.context, result.output, result.usages);
     assertOutput(invocation.context, invocation.input as unknown as CheckerInput, output);

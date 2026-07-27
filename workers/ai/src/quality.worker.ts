@@ -55,6 +55,11 @@ export interface QualityFactResult {
   readonly verdict: 'conflicted' | 'outdated' | 'partially_supported' | 'supported' | 'unsupported';
 }
 
+export interface QualityExecutionAttempt {
+  readonly attempt: number;
+  readonly maxAttempts: number;
+}
+
 export class QualityCheckWorker {
   public constructor(
     private readonly client: postgres.Sql,
@@ -62,7 +67,11 @@ export class QualityCheckWorker {
     private readonly automation?: OfficialSiteAutomation,
   ) {}
 
-  public async run(raw: unknown): Promise<{ readonly disposition: 'completed' | 'processed' }> {
+  public async run(
+    raw: unknown,
+    execution: QualityExecutionAttempt = { attempt: 1, maxAttempts: 1 },
+  ): Promise<{ readonly disposition: 'completed' | 'processed' }> {
+    assertExecutionAttempt(execution);
     const event = validateQualityEvent(raw);
     const context = await this.claim(event);
     if (!context) return { disposition: 'completed' };
@@ -127,7 +136,7 @@ export class QualityCheckWorker {
       await this.persist(event, context, result, policy ?? null, gate);
       return { disposition: 'processed' };
     } catch (error) {
-      await this.fail(event, context, error);
+      await this.fail(event, context, error, execution.attempt >= execution.maxAttempts);
       throw error;
     }
   }
@@ -378,23 +387,44 @@ export class QualityCheckWorker {
     event: ValidatedQualityEvent,
     context: QualityContext,
     error: unknown,
+    terminal: boolean,
   ): Promise<void> {
     const failure = asGenerationFailure(error);
-    await this.client`
-      UPDATE generation_runs
-      SET
-        status = 'failed',
-        finished_at = now(),
-        error_json = ${JSON.stringify({
-          code: failure.code === 'GENERATION_FAILED' ? 'QUALITY_CHECK_FAILED' : failure.code,
-          message: failure.message,
-        })}::text::jsonb,
-        version = version + 1
-      WHERE id = ${event.data.generationRunId}::uuid
-        AND tenant_id = ${event.tenantId}::uuid
-        AND status = 'running'
-        AND version = ${context.leaseVersion}
-    `;
+    await this.client.begin(async (transaction) => {
+      const changed = await transaction<{ id: string }[]>`
+        UPDATE generation_runs
+        SET
+          status = ${terminal ? 'failed' : 'queued'},
+          started_at = CASE WHEN ${terminal} THEN started_at ELSE NULL END,
+          finished_at = CASE WHEN ${terminal} THEN now() ELSE NULL END,
+          error_json = ${JSON.stringify({
+            code: failure.code === 'GENERATION_FAILED' ? 'QUALITY_CHECK_FAILED' : failure.code,
+            message: failure.message,
+            retryable: !terminal,
+          })}::text::jsonb,
+          version = version + 1
+        WHERE id = ${event.data.generationRunId}::uuid
+          AND tenant_id = ${event.tenantId}::uuid
+          AND status = 'running'
+          AND version = ${context.leaseVersion}
+        RETURNING id
+      `;
+      if (terminal && changed.length === 1) {
+        await this.automation?.failQualityExecution(transaction, event, error);
+      }
+    });
+  }
+}
+
+function assertExecutionAttempt(execution: QualityExecutionAttempt): void {
+  if (
+    !Number.isSafeInteger(execution.attempt) ||
+    !Number.isSafeInteger(execution.maxAttempts) ||
+    execution.attempt < 1 ||
+    execution.maxAttempts < 1 ||
+    execution.attempt > execution.maxAttempts
+  ) {
+    throw new TypeError('Quality execution attempt is invalid');
   }
 }
 

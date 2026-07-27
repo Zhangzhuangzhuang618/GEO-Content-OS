@@ -224,6 +224,7 @@ export class OfficialSiteDailyScheduler {
       }
       if (batch.status !== 'running') return;
       await retireGenerationFailures(transaction, batch);
+      await retireQualityExecutionFailures(transaction, batch);
       const counts = await loadCounts(transaction, batch);
       if (counts.qualified >= batch.targetCount) {
         await scheduleBatch(transaction, batch, now);
@@ -318,6 +319,61 @@ async function retireGenerationFailures(
       AND item.status='generating'
       AND variant.id=item.variant_id AND variant.tenant_id=item.tenant_id
       AND variant.status='generation_failed'
+  `;
+}
+
+async function retireQualityExecutionFailures(
+  transaction: postgres.TransactionSql,
+  batch: BatchRow,
+): Promise<void> {
+  await transaction`
+    UPDATE official_site_automation_runs AS automation SET
+      status='manual_required',
+      last_error_json=jsonb_build_object(
+        'code','QUALITY_CHECK_EXECUTION_FAILED',
+        'message','机器质检执行失败，当前候选已停止。',
+        'schema_version','official-site-automation-error@1'
+      ),
+      finished_at=now(),
+      version=automation.version+1
+    WHERE automation.tenant_id=${batch.tenantId}::uuid
+      AND automation.status='quality_pending'
+      AND EXISTS (
+        SELECT 1
+        FROM official_site_daily_batch_items AS item
+        WHERE item.batch_id=${batch.id}::uuid
+          AND item.tenant_id=automation.tenant_id
+          AND item.variant_id=automation.variant_id
+          AND item.content_version_id=automation.content_version_id
+          AND item.status='quality_check'
+          AND (
+            SELECT run.status
+            FROM generation_runs AS run
+            WHERE run.tenant_id=item.tenant_id
+              AND run.variant_id=item.variant_id
+              AND run.skill_name='quality-checker'
+            ORDER BY run.created_at DESC,run.id DESC
+            LIMIT 1
+          )='failed'
+      )
+  `;
+  await transaction`
+    UPDATE official_site_daily_batch_items AS item SET
+      status='retired',
+      last_error_json=jsonb_build_object(
+        'code','QUALITY_CHECK_EXECUTION_FAILED',
+        'message','机器质检连续执行失败，系统将创建新候选补位。',
+        'schema_version','official-site-daily-error@1'
+      )
+    FROM official_site_automation_runs AS automation
+    WHERE item.batch_id=${batch.id}::uuid
+      AND item.tenant_id=${batch.tenantId}::uuid
+      AND item.status='quality_check'
+      AND automation.tenant_id=item.tenant_id
+      AND automation.variant_id=item.variant_id
+      AND automation.content_version_id=item.content_version_id
+      AND automation.status='manual_required'
+      AND automation.last_error_json->>'code'='QUALITY_CHECK_EXECUTION_FAILED'
   `;
 }
 

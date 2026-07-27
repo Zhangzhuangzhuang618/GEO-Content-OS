@@ -1,5 +1,5 @@
 import type { DomainEventEnvelope, EventType } from '@geo-content-os/contracts';
-import { Queue } from 'bullmq';
+import { Queue, type JobsOptions } from 'bullmq';
 import { BullMQOtel } from 'bullmq-otel';
 import { Redis } from 'ioredis';
 
@@ -37,13 +37,7 @@ export class BullMqEventPublisher implements EventPublisher {
 
     await withTimeout(
       queue.add(event.eventType, event.payload, {
-        ...(event.eventType.startsWith('knowledge.source.') ||
-        event.eventType === 'content.package.generation_requested.v1' ||
-        event.eventType === 'content.variant.official_site_rewrite_requested.v1'
-          ? { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } }
-          : event.eventType === 'publishing.job.execution_requested.v1'
-            ? { attempts: 4, backoff: { type: 'publisher' } }
-            : {}),
+        ...retryOptionsForEvent(event.eventType),
         jobId: event.id,
         removeOnComplete: false,
         removeOnFail: false,
@@ -95,6 +89,25 @@ export class BullMqEventPublisher implements EventPublisher {
     this.queues.set(name, queue);
     return queue;
   }
+}
+
+export function retryOptionsForEvent(
+  eventType: EventType,
+): Pick<JobsOptions, 'attempts' | 'backoff'> {
+  if (
+    eventType.startsWith('knowledge.source.') ||
+    eventType === 'content.package.generation_requested.v1' ||
+    eventType === 'content.variant.official_site_rewrite_requested.v1'
+  ) {
+    return { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } };
+  }
+  if (eventType === 'content.variant.quality_check_requested.v1') {
+    return { attempts: 3, backoff: { delay: 30_000, type: 'exponential' } };
+  }
+  if (eventType === 'publishing.job.execution_requested.v1') {
+    return { attempts: 4, backoff: { type: 'publisher' } };
+  }
+  return {};
 }
 
 async function withTimeout<T>(

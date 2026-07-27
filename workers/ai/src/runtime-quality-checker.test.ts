@@ -58,6 +58,7 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
       'Mandatory fact BLOCK locations',
     );
+    expect(adapter.requests.every((request) => request.tools === undefined)).toBe(true);
   });
 });
 

@@ -72,16 +72,30 @@ export class DeepSeekModelAdapter implements ModelAdapter {
 
   public async generate(input: ModelRequest): Promise<ModelResult> {
     this.validateRequest(input);
-    const lease = await this.openResponse(this.requestBody(input, false), input.signal);
-    try {
-      const value: unknown = await lease.response.json();
-      return this.parseCompletion(value, input, lease.startedAt);
-    } catch (error) {
-      if (error instanceof DeepSeekAdapterError) throw error;
-      throw this.transportError(error, input.signal, lease.isTimedOut());
-    } finally {
-      lease.dispose();
+    const body = this.requestBody(input, false);
+    for (let attempt = 0; attempt <= this.configuration.maxRetries; attempt += 1) {
+      const lease = await this.openResponse(body, input.signal);
+      try {
+        const value: unknown = await lease.response.json();
+        return this.parseCompletion(value, input, lease.startedAt);
+      } catch (error) {
+        const mapped =
+          error instanceof DeepSeekAdapterError
+            ? error
+            : this.transportError(error, input.signal, lease.isTimedOut());
+        if (!retryableEmptyResponse(mapped) || attempt === this.configuration.maxRetries) {
+          throw mapped;
+        }
+      } finally {
+        lease.dispose();
+      }
+      await delay(this.configuration.retryBaseDelayMs * 2 ** attempt, input.signal);
     }
+    throw new DeepSeekAdapterError(
+      'DEEPSEEK_RESPONSE_INVALID',
+      'DeepSeek response remained empty after retries',
+      false,
+    );
   }
 
   public async *stream(input: ModelRequest): AsyncIterable<ModelStreamEvent> {
@@ -348,7 +362,13 @@ export class DeepSeekModelAdapter implements ModelAdapter {
     usage: ProviderUsage,
     startedAt: number,
   ): ModelResult {
-    if (!content && toolCalls.length === 0) invalidResponse('DeepSeek response is empty');
+    if (!content && toolCalls.length === 0) {
+      throw new DeepSeekAdapterError(
+        'DEEPSEEK_RESPONSE_INVALID',
+        'DeepSeek response is empty',
+        true,
+      );
+    }
     // JSON syntax and schema validation belong to SkillRunner. Returning the provider text here
     // allows its single repair pass to correct malformed JSON instead of failing prematurely in
     // the transport adapter.
@@ -672,4 +692,8 @@ function approximateTokens(value: string): number {
 
 function invalidResponse(message: string): never {
   throw new DeepSeekAdapterError('DEEPSEEK_RESPONSE_INVALID', message, false);
+}
+
+function retryableEmptyResponse(error: DeepSeekAdapterError): boolean {
+  return error.code === 'DEEPSEEK_RESPONSE_INVALID' && error.retryable;
 }

@@ -38,7 +38,10 @@ export class AiQueueConsumer {
           return result;
         }
         if (job.name === 'content.variant.quality_check_requested.v1') {
-          return quality.run(job.data);
+          return quality.run(job.data, {
+            attempt: job.attemptsMade + 1,
+            maxAttempts: job.opts.attempts ?? 1,
+          });
         }
         if (job.name === 'content.variant.official_site_rewrite_requested.v1') {
           return automation.runRewrite(job.data);

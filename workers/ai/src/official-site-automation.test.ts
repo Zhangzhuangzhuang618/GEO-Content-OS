@@ -5,6 +5,7 @@ import {
 } from '@geo-content-os/contracts/skills';
 import { CONTENT_WRITER_CONTRACT_V1 } from '@geo-content-os/skills/content-writer';
 import { SchemaGuard } from '@geo-content-os/skills/runtime';
+import type postgres from 'postgres';
 import { describe, expect, it } from 'vitest';
 
 import { GenerationWorkerError } from './generation.errors.js';
@@ -15,6 +16,7 @@ import {
   type OfficialSiteAutomationPolicy,
 } from './official-site-automation.js';
 import { validateOfficialSiteRewriteEvent } from './official-site-rewrite.event.js';
+import { validateQualityEvent } from './quality.event.js';
 
 const VARIANT_ID = '70000000-0000-4000-8000-000000000201';
 const EVENT = {
@@ -177,6 +179,48 @@ describe('official-site automation', () => {
       'official_site',
     ]);
     expect(issues).toEqual(['删除无依据排名', '补充问题覆盖']);
+  });
+
+  it('retires a daily candidate when quality execution exhausts its retries', async () => {
+    const calls: Array<{ readonly sql: string; readonly values: readonly unknown[] }> = [];
+    const transaction = ((
+      strings: TemplateStringsArray,
+      ...values: readonly unknown[]
+    ): Promise<readonly unknown[]> => {
+      calls.push({ sql: strings.join('?'), values });
+      return Promise.resolve([]);
+    }) as unknown as postgres.TransactionSql;
+    const qualityEvent = validateQualityEvent({
+      aggregate: { id: VARIANT_ID, type: 'content_variant' },
+      data: {
+        actor_user_id: EVENT.data.actor_user_id,
+        content_hash: 'a'.repeat(64),
+        content_version_id: EVENT.data.content_version_id,
+        generation_run_id: EVENT.data.generation_run_id,
+        package_id: EVENT.data.package_id,
+        project_id: EVENT.data.project_id,
+        request_id: 'quality-exhausted-201',
+        variant_id: VARIANT_ID,
+        workspace_id: EVENT.data.workspace_id,
+      },
+      event_id: 'e0000000-0000-4000-8000-000000000201',
+      event_type: 'content.variant.quality_check_requested.v1',
+      occurred_at: '2026-07-28T00:00:00.000Z',
+      tenant: { id: EVENT.tenant.id },
+    });
+
+    await automation.failQualityExecution(
+      transaction,
+      qualityEvent,
+      new Error('quality provider failed'),
+    );
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.sql).toContain("status='manual_required'");
+    expect(calls[1]!.sql).toContain("status='retired'");
+    expect(JSON.stringify(calls.flatMap((call) => call.values))).toContain(
+      'QUALITY_CHECK_EXECUTION_FAILED',
+    );
   });
 });
 
