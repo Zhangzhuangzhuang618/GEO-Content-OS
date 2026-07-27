@@ -122,6 +122,44 @@ describe('AI Worker runtime wiring', () => {
     expect(recordUsage).toHaveBeenCalledTimes(2);
   });
 
+  it('repairs a short official-site article using a validation safety margin', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const shortArticle = officialSiteArticleDraft(4);
+    const completeArticle = officialSiteArticleDraft();
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(shortArticle) }, { text: JSON.stringify(completeArticle) }],
+      'deepseek-v4-pro',
+    );
+    const recordUsage = vi.fn();
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-pro', adapter]]),
+      recordUsage,
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      writer.generateOfficialSiteMaster({
+        context: {
+          ...context(MASTER_RUN, null),
+          modelKey: 'deepseek-v4-pro',
+          modelPolicy: 'quality',
+        },
+        requestId: 'runtime-official-length-repair-0061',
+        writerInput: officialSiteWriterInput(fixture.input as JsonObject),
+      }),
+    ).resolves.toMatchObject({ platform_code: 'master', title: completeArticle.title });
+
+    expect(recordUsage).toHaveBeenCalledTimes(2);
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[0]!.messages.map((message) => message.content).join('\n')).toContain(
+      'target 1,500-2,200 readable Chinese characters',
+    );
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      'expand substantive explanations',
+    );
+  });
+
   it('forbids the Mock model in production', () => {
     expect(() =>
       readAiWorkerConfig({
@@ -172,6 +210,7 @@ function context(runId: string, variantId: string | null): ContentWriterRunConte
 }
 
 class LooseMockAdapter extends MockModelAdapter {
+  public readonly requests: ModelRequest[] = [];
   private responseIndex = 0;
 
   public constructor(
@@ -185,6 +224,7 @@ class LooseMockAdapter extends MockModelAdapter {
   }
 
   public override async generate(input: ModelRequest): Promise<ModelResult> {
+    this.requests.push(input);
     const base = await super.generate({ ...input, responseFormat: { type: 'text' } });
     const response = this.looseResponses[this.responseIndex] ?? { text: '' };
     this.responseIndex += 1;
@@ -214,10 +254,10 @@ function officialSiteWriterInput(input: JsonObject): JsonObject {
   };
 }
 
-function officialSiteArticleDraft() {
+function officialSiteArticleDraft(repeatCount = 12) {
   const paragraph = (label: string) =>
     `${label}时，应先把服务边界、人员安排、车辆计划、报价口径和异常处理方式分别确认，并将口头说明转化为可以复核的清单。`.repeat(
-      12,
+      repeatCount,
     );
   return {
     blocks: [

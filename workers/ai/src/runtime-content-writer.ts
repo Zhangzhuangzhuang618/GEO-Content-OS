@@ -537,7 +537,7 @@ This stage creates only the article title, summary, and body blocks. FAQ, slug, 
     {
       content: `${prompt.taskTemplate}
 
-Write one complete Chinese official-site news article. The title must contain 20-60 Unicode characters. The body must contain 1,300-2,500 readable Chinese characters in at least eight visible blocks, including at least three heading blocks and one actionable list block. The first non-heading block must be a paragraph that directly answers the topic. Each section must add information rather than repeat the title or summary.
+Write one complete Chinese official-site news article. The title must contain 20-60 Unicode characters. The hard acceptance range is 1,300-2,500 readable Chinese characters after excluding whitespace, punctuation, and symbols. To leave a reliable validation margin, target 1,500-2,200 readable Chinese characters rather than stopping near the minimum. Use at least eight visible blocks, including at least three heading blocks and one actionable list block. The first non-heading block must be a paragraph that directly answers the topic. Each section must add information rather than repeat the title or summary. Do not reach the target by padding, repeating conclusions, or inventing facts.
 
 Each block must contain block_key, block_type, text, and citation_ids. citation_ids may contain only IDs supplied in content_writer_input.citations, and only when the cited quote directly supports that block's claim. Use an empty array for first-party brand facts, general advice, or unsupported external claims. Do not invent IDs or facts.
 
@@ -550,7 +550,7 @@ Return only the shallow JSON object with title, summary, and blocks. Do not retu
             content: JSON.stringify({
               article_to_rewrite: revision.candidate,
               instruction:
-                'Rewrite the complete article and resolve every listed issue. Preserve only grounded facts and return the same shallow title-summary-blocks shape.',
+                'Rewrite the complete article and resolve every listed issue. If any issue reports insufficient length, expand substantive explanations, decision criteria, steps, and risk boundaries to 1,500-2,200 readable Chinese characters after excluding whitespace, punctuation, and symbols. Do not pad, repeat, or invent facts. Preserve only grounded facts and return the same shallow title-summary-blocks shape.',
               quality_issues: revision.issues,
             }),
             role: 'user' as const,
