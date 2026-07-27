@@ -204,6 +204,11 @@ QUALITY_CHECKER_MODEL_KEY=deepseek-v4-pro
 
 PUBLISHING_CREDENTIAL_KEY_BASE64=<32字节随机值的Base64>
 PUBLISHING_CREDENTIAL_KEY_VERSION=local-v1
+
+API_BIND_ADDRESS=127.0.0.1
+TRUST_PROXY_HOPS=1
+RATE_LIMIT_MAX=300
+RATE_LIMIT_WINDOW_MS=60000
 ```
 
 PowerShell 生成 32 字节平台凭证加密密钥：
@@ -292,13 +297,16 @@ docker compose --env-file .env -p geo-content-os -f infra\compose.yaml down -v
 | 服务 | 地址 | 用途 |
 |---|---|---|
 | Web | `http://localhost:3000` | 系统页面和登录入口 |
-| API | `http://localhost:3001` | API 直连地址 |
-| API 健康检查 | `http://localhost:3001/api/v1/health/ready` | 返回 200 表示 API 就绪 |
+| API | `http://127.0.0.1:3001` | 仅限服务器本机诊断，业务页面通过 Web 同源代理访问 |
+| API 健康检查 | `http://127.0.0.1:3001/api/v1/health/ready` | 返回 200 表示 API 就绪 |
 | MinIO Console | `http://localhost:9001` | 对象存储管理 |
 | PostgreSQL | `localhost:5432` | 数据库客户端连接 |
 | Redis | `localhost:6379` | 队列与缓存 |
 
 Web 已配置同源 `/api/v1` 反向代理，浏览器访问 Web 时不需要直接调用 API 端口。
+默认只把 API 端口绑定到 `127.0.0.1`，并信任 Web 容器这一跳代理，以便按真实客户端 IP
+隔离限流。不要把 `API_BIND_ADDRESS` 改成 `0.0.0.0` 后仍保留 `TRUST_PROXY_HOPS=1`，
+否则局域网客户端可以直接伪造代理来源头。
 
 如果要从局域网另一台电脑访问：
 

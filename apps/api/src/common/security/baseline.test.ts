@@ -79,6 +79,22 @@ describe('API security baseline', () => {
     });
   });
 
+  it('uses the client IP forwarded by the single trusted Web proxy for independent limits', async () => {
+    const application = await startApplication(configuration({ max: 2, timeWindowMs: 60_000 }, 1));
+    const request = (clientIp: string) =>
+      application.inject({
+        headers: { 'x-forwarded-for': clientIp },
+        method: 'GET',
+        url: `${API_BASE_PATH}/security-rate-probe`,
+      });
+
+    expect((await request('192.168.2.10')).statusCode).toBe(200);
+    expect((await request('192.168.2.10')).statusCode).toBe(200);
+    expect((await request('192.168.2.11')).statusCode).toBe(200);
+    expect((await request('192.168.2.11')).statusCode).toBe(200);
+    expect((await request('192.168.2.10')).statusCode).toBe(429);
+  });
+
   it('blocks missing or mismatched browser CSRF tokens and permits safe or bearer requests', async () => {
     const server = Fastify({ genReqId: () => 'security-request-id' });
     await server.register(fastifyCookie);
@@ -146,12 +162,13 @@ async function startApplication(
 
 function configuration(
   rateLimit: ApiSecurityConfiguration['rateLimit'] = { max: 120, timeWindowMs: 60_000 },
+  trustProxy: ApiSecurityConfiguration['trustProxy'] = false,
 ): ApiSecurityConfiguration {
   return {
     allowedOrigins: ['https://app.example.com'],
     environment: 'production',
     production: true,
     rateLimit,
-    trustProxy: false,
+    trustProxy,
   };
 }
