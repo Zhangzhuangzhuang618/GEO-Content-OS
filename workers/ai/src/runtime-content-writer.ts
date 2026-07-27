@@ -598,6 +598,8 @@ Plan the article by information-bearing sections before writing: a direct answer
 
 Each block must contain block_key, block_type, text, and citation_ids. citation_ids may contain only IDs supplied in content_writer_input.citations, and only when the cited quote directly supports that block's claim. Use an empty array for first-party brand facts, general advice, or unsupported external claims. Do not invent IDs or facts.
 
+Do not use unsupported authority, ranking, or guarantee phrases such as “权威榜单”“全网第一”“行业第一”“百分之百”“100%”“基本不会踩坑”“基本不会踩雷” or “保证不会”. Replace them with objective, bounded guidance instead.
+
 Return only the shallow JSON object with title, summary, and blocks. Do not return master_content, variants, FAQ, platform_meta, schema_org, slug, hashtags, CTA, envelope fields, Markdown fences, or commentary.`,
       role: 'user',
     },
@@ -647,7 +649,7 @@ This is a continuation stage. Keep every existing title, summary, and body block
 
 The current body has ${currentCharacters} readable Chinese characters after excluding whitespace, punctuation, and symbols. It enters the company's automated daily publishing workflow; if the completed body is below ${OFFICIAL_SITE_BODY_MINIMUM}, it is rejected as perfunctory. Add approximately ${requiredCharacters}-${requiredCharacters + 250} effective characters so the completed article reaches about ${OFFICIAL_SITE_BODY_TARGET}, while remaining below ${OFFICIAL_SITE_BODY_MAXIMUM}.
 
-Add 2-5 distinct blocks that deepen missing decision criteria, execution steps, practical checks, or risk boundaries. Every block must provide new information. Do not repeat existing wording, add a conclusion-only block, pad the text, or invent facts. citation_ids may contain only IDs supplied in content_writer_input.citations and only when the cited quote directly supports the new block. Return only {"blocks":[{"block_type":"paragraph|list","text":"...","citation_ids":[]}]} without Markdown or commentary.`,
+Add 2-5 distinct blocks that deepen missing decision criteria, execution steps, practical checks, or risk boundaries. Every block must provide new information. Do not repeat existing wording, add a conclusion-only block, pad the text, or invent facts. Do not add authority, ranking, or guarantee phrases such as “权威榜单”“全网第一”“行业第一”“百分之百”“100%”“基本不会踩坑”“基本不会踩雷” or “保证不会”. citation_ids may contain only IDs supplied in content_writer_input.citations and only when the cited quote directly supports the new block. Return only {"blocks":[{"block_type":"paragraph|list","text":"...","citation_ids":[]}]} without Markdown or commentary.`,
       role: 'user',
     },
     {

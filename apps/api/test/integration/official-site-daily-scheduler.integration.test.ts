@@ -66,8 +66,8 @@ describe('official-site daily ten-article scheduler', () => {
     await seedBrand(database);
     await scheduler.tick();
     const initial = await itemCounts(database);
-    expect(initial).toEqual({ generating: 10, retired: 0, total: 10 });
-    expect(await generationEventCount(database)).toBe(10);
+    expect(initial).toEqual({ generating: 3, retired: 0, total: 3 });
+    expect(await generationEventCount(database)).toBe(3);
 
     const failed = await database<{ variantId: string }[]>`
       SELECT variant_id AS "variantId"
@@ -82,21 +82,26 @@ describe('official-site daily ten-article scheduler', () => {
     `;
 
     await scheduler.tick();
-    expect(await itemCounts(database)).toEqual({ generating: 10, retired: 1, total: 11 });
-    expect(await generationEventCount(database)).toBe(11);
+    expect(await itemCounts(database)).toEqual({ generating: 3, retired: 1, total: 4 });
+    expect(await generationEventCount(database)).toBe(4);
 
-    const candidates = await database<
-      { packageId: string; variantId: string; candidateNo: number }[]
-    >`
-      SELECT package_id AS "packageId",variant_id AS "variantId",
-        candidate_no AS "candidateNo"
-      FROM official_site_daily_batch_items
-      WHERE tenant_id=${TENANT_ID}::uuid AND status='generating'
-      ORDER BY candidate_no
-    `;
-    expect(candidates).toHaveLength(10);
-    for (const candidate of candidates) {
-      await qualify(database, candidate);
+    while (true) {
+      const candidates = await database<
+        { packageId: string; variantId: string; candidateNo: number }[]
+      >`
+        SELECT package_id AS "packageId",variant_id AS "variantId",
+          candidate_no AS "candidateNo"
+        FROM official_site_daily_batch_items
+        WHERE tenant_id=${TENANT_ID}::uuid AND status='generating'
+        ORDER BY candidate_no
+      `;
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(candidates.length).toBeLessThanOrEqual(3);
+      for (const candidate of candidates) {
+        await qualify(database, candidate);
+      }
+      if ((await qualifiedCount(database)) >= 10) break;
+      await scheduler.tick();
     }
 
     const batches = await database<{ businessDate: string }[]>`
@@ -105,7 +110,6 @@ describe('official-site daily ten-article scheduler', () => {
       WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
     `;
     const businessDate = required(batches[0]?.businessDate);
-    await scheduler.tick(new Date(`${businessDate}T00:00:00+08:00`));
     await scheduler.tick(new Date(`${businessDate}T00:00:00+08:00`));
 
     const jobs = await database<{ idempotencyKey: string; scheduledAt: Date; status: string }[]>`
@@ -202,6 +206,15 @@ async function itemCounts(database: Sql) {
     FROM official_site_daily_batch_items WHERE tenant_id=${TENANT_ID}::uuid
   `;
   return rows[0];
+}
+
+async function qualifiedCount(database: Sql): Promise<number> {
+  const rows = await database<{ count: number }[]>`
+    SELECT count(*)::integer AS count
+    FROM official_site_daily_batch_items
+    WHERE tenant_id=${TENANT_ID}::uuid AND status='qualified'
+  `;
+  return rows[0]?.count ?? 0;
 }
 
 async function generationEventCount(database: Sql): Promise<number> {

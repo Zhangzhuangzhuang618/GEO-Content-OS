@@ -43,7 +43,11 @@ describe('Content Writer semantic quality gate', () => {
         { master_content: unsafe, variants: [complete('xiaohongshu', 75)] },
         'quality',
       ).issues,
-    ).toContain('master:包含高风险权威或绝对化表述，必须有直接证据或删除');
+    ).toEqual([
+      expect.stringContaining(
+        'master:包含高风险权威或绝对化表述（基本不会踩坑），必须删除或改为有事实边界的客观表达',
+      ),
+    ]);
   });
 
   it('rejects an official-site title outside the publish contract', () => {

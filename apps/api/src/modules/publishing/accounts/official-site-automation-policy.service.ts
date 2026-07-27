@@ -48,10 +48,12 @@ interface PolicyRow {
   readonly projectId: string;
   readonly publishedCount: number | null;
   readonly publishAttemptLimit: 3;
+  readonly queuedCount: number | null;
   readonly qualifiedCount: number | null;
   readonly questionCoverageMin: 80;
   readonly readabilitySafetyMin: 85;
   readonly retiredCount: number | null;
+  readonly runningCount: number | null;
   readonly scheduledCount: number | null;
   readonly tenantId: string;
   readonly updatedAt: Date | string;
@@ -96,6 +98,8 @@ export class OfficialSiteAutomationPolicyService {
         today.restart_allowed AS "batchRestartAllowed",
         today.attempted_count AS "attemptedCount",
         today.in_progress_count AS "inProgressCount",
+        today.queued_count AS "queuedCount",
+        today.running_count AS "runningCount",
         today.qualified_count AS "qualifiedCount",
         today.scheduled_count AS "scheduledCount",
         today.published_count AS "publishedCount",
@@ -120,6 +124,24 @@ export class OfficialSiteAutomationPolicyService {
           count(item.id) FILTER (
             WHERE item.status IN ('generating','quality_check','rewriting')
           )::integer AS in_progress_count,
+          count(item.id) FILTER (
+            WHERE item.status IN ('generating','quality_check','rewriting')
+              AND NOT EXISTS (
+                SELECT 1 FROM generation_runs AS run
+                WHERE run.tenant_id=item.tenant_id
+                  AND run.package_id=item.package_id
+                  AND run.status='running'
+              )
+          )::integer AS queued_count,
+          count(item.id) FILTER (
+            WHERE item.status IN ('generating','quality_check','rewriting')
+              AND EXISTS (
+                SELECT 1 FROM generation_runs AS run
+                WHERE run.tenant_id=item.tenant_id
+                  AND run.package_id=item.package_id
+                  AND run.status='running'
+              )
+          )::integer AS running_count,
           count(item.id) FILTER (
             WHERE item.status IN ('qualified','scheduled','published','publish_failed','reserve')
           )::integer AS qualified_count,
@@ -189,7 +211,8 @@ export class OfficialSiteAutomationPolicyService {
           NULL::text AS "batchStatus", NULL::integer AS "batchVersion",
           NULL::text AS "batchLastErrorMessage", NULL::integer AS "attemptedCount",
           NULL::boolean AS "batchRestartAllowed",
-          NULL::integer AS "inProgressCount", NULL::integer AS "qualifiedCount",
+          NULL::integer AS "inProgressCount", NULL::integer AS "queuedCount",
+          NULL::integer AS "runningCount", NULL::integer AS "qualifiedCount",
           NULL::integer AS "scheduledCount", NULL::integer AS "publishedCount",
           NULL::integer AS "retiredCount"
         FROM official_site_automation_policies
@@ -232,7 +255,8 @@ export class OfficialSiteAutomationPolicyService {
           NULL::text AS "batchStatus", NULL::integer AS "batchVersion",
           NULL::text AS "batchLastErrorMessage", NULL::integer AS "attemptedCount",
           NULL::boolean AS "batchRestartAllowed",
-          NULL::integer AS "inProgressCount", NULL::integer AS "qualifiedCount",
+          NULL::integer AS "inProgressCount", NULL::integer AS "queuedCount",
+          NULL::integer AS "runningCount", NULL::integer AS "qualifiedCount",
           NULL::integer AS "scheduledCount", NULL::integer AS "publishedCount",
           NULL::integer AS "retiredCount"
       `;
@@ -409,6 +433,7 @@ export class OfficialSiteAutomationPolicyService {
         NULL::text AS "batchLastErrorMessage",
         false AS "batchRestartAllowed",
         0::integer AS "attemptedCount",0::integer AS "inProgressCount",
+        0::integer AS "queuedCount",0::integer AS "runningCount",
         0::integer AS "qualifiedCount",0::integer AS "scheduledCount",
         0::integer AS "publishedCount",0::integer AS "retiredCount"
       FROM official_site_automation_policies AS policy
@@ -629,6 +654,24 @@ export class OfficialSiteAutomationPolicyService {
           WHERE item.status IN ('generating','quality_check','rewriting')
         )::integer AS "inProgressCount",
         count(item.id) FILTER (
+          WHERE item.status IN ('generating','quality_check','rewriting')
+            AND NOT EXISTS (
+              SELECT 1 FROM generation_runs AS run
+              WHERE run.tenant_id=item.tenant_id
+                AND run.package_id=item.package_id
+                AND run.status='running'
+            )
+        )::integer AS "queuedCount",
+        count(item.id) FILTER (
+          WHERE item.status IN ('generating','quality_check','rewriting')
+            AND EXISTS (
+              SELECT 1 FROM generation_runs AS run
+              WHERE run.tenant_id=item.tenant_id
+                AND run.package_id=item.package_id
+                AND run.status='running'
+            )
+        )::integer AS "runningCount",
+        count(item.id) FILTER (
           WHERE item.status IN ('qualified','scheduled','published','publish_failed','reserve')
         )::integer AS "qualifiedCount",
         count(item.id) FILTER (
@@ -709,9 +752,11 @@ function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
             in_progress_count: row.inProgressCount ?? 0,
             last_error_message: row.batchLastErrorMessage,
             published_count: row.publishedCount ?? 0,
+            queued_count: row.queuedCount ?? 0,
             qualified_count: row.qualifiedCount ?? 0,
             restart_allowed: row.batchRestartAllowed ?? false,
             retired_count: row.retiredCount ?? 0,
+            running_count: row.runningCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,
             status: row.batchStatus,
             target_count: row.dailyTargetCount,

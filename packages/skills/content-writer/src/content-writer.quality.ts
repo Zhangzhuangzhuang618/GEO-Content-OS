@@ -112,8 +112,16 @@ function assessContent(
   ) {
     issues.push(`${content.platform_code}:正文仍包含占位式表达`);
   }
-  if (UNSUPPORTED_AUTHORITY_PATTERNS.some((pattern) => pattern.test(text))) {
-    issues.push(`${content.platform_code}:包含高风险权威或绝对化表述，必须有直接证据或删除`);
+  const unsupportedAuthorityTerms = UNSUPPORTED_AUTHORITY_PATTERNS.flatMap((pattern) => {
+    const matched = pattern.exec(text)?.[0];
+    return matched ? [matched] : [];
+  });
+  if (unsupportedAuthorityTerms.length > 0) {
+    issues.push(
+      `${content.platform_code}:包含高风险权威或绝对化表述（${[
+        ...new Set(unsupportedAuthorityTerms),
+      ].join('、')}），必须删除或改为有事实边界的客观表达`,
+    );
   }
   if (content.summary.trim() === content.blocks[0]?.text.trim()) {
     issues.push(`${content.platform_code}:摘要与正文首段完全重复`);

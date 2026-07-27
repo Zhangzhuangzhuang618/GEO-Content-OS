@@ -38,6 +38,7 @@ export class BullMqEventPublisher implements EventPublisher {
     await withTimeout(
       queue.add(event.eventType, event.payload, {
         ...retryOptionsForEvent(event.eventType),
+        ...queuePriorityForEvent(event.eventType),
         jobId: event.id,
         removeOnComplete: false,
         removeOnFail: false,
@@ -106,6 +107,19 @@ export function retryOptionsForEvent(
   }
   if (eventType === 'publishing.job.execution_requested.v1') {
     return { attempts: 4, backoff: { type: 'publisher' } };
+  }
+  return {};
+}
+
+export function queuePriorityForEvent(eventType: EventType): Pick<JobsOptions, 'priority'> {
+  if (eventType === 'content.variant.quality_check_requested.v1') {
+    return { priority: 1 };
+  }
+  if (eventType === 'content.variant.official_site_rewrite_requested.v1') {
+    return { priority: 2 };
+  }
+  if (eventType === 'content.package.generation_requested.v1') {
+    return { priority: 3 };
   }
   return {};
 }

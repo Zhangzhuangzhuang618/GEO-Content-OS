@@ -379,13 +379,19 @@ function TodayBatchStatus({
           已发布 {batch.published_count}/{batch.target_count}
         </p>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-5">
+      <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
         <ProgressValue label="已尝试" value={batch.attempted_count} />
-        <ProgressValue label="处理中" value={batch.in_progress_count} />
+        <ProgressValue label="等待处理" value={batch.queued_count} />
+        <ProgressValue label="AI 正在处理" value={batch.running_count} />
         <ProgressValue label="已合格" value={batch.qualified_count} />
         <ProgressValue label="已排期" value={batch.scheduled_count} />
         <ProgressValue label="已淘汰" value={batch.retired_count} />
       </div>
+      {batch.in_progress_count > 0 ? (
+        <p className="mt-3 text-xs leading-5 text-ink-500">
+          新建和补位时最多保持 3 篇候选在生成、质检或重写流程中；系统会优先完成已有内容。
+        </p>
+      ) : null}
       {batch.last_error_message ? (
         <p
           className={`mt-4 rounded-lg px-3 py-2 text-sm ${

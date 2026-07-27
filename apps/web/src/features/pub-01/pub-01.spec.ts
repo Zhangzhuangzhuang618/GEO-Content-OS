@@ -325,9 +325,11 @@ test('restarts an exhausted daily batch while keeping the previous attempt', asy
     in_progress_count: 0,
     last_error_message: '已尝试 30 篇，仍未补足 10 篇合格内容。',
     published_count: 0,
+    queued_count: 0,
     qualified_count: 3,
     restart_allowed: true,
     retired_count: 27,
+    running_count: 0,
     scheduled_count: 0,
     status: 'attention_required',
     target_count: 10,
@@ -356,9 +358,11 @@ test('restarts an exhausted daily batch while keeping the previous attempt', asy
         in_progress_count: 0,
         last_error_message: null,
         published_count: 0,
+        queued_count: 0,
         qualified_count: 0,
         restart_allowed: false,
         retired_count: 0,
+        running_count: 0,
         scheduled_count: 0,
         status: 'running',
         target_count: 10,
@@ -397,9 +401,11 @@ test('stops a running daily batch without deleting completed records', async ({ 
     in_progress_count: 3,
     last_error_message: null,
     published_count: 0,
+    queued_count: 2,
     qualified_count: 2,
     restart_allowed: false,
     retired_count: 25,
+    running_count: 1,
     scheduled_count: 0,
     status: 'running',
     target_count: 10,
@@ -427,8 +433,10 @@ test('stops a running daily batch without deleting completed records', async ({ 
         ...current.today_batch!,
         in_progress_count: 0,
         last_error_message: '今日批次已由用户手动终止，不再生成新候选或自动排期。',
+        queued_count: 0,
         restart_allowed: true,
         retired_count: 28,
+        running_count: 0,
         status: 'cancelled',
         version: 8,
       });
@@ -447,9 +455,11 @@ test('stops a running daily batch without deleting completed records', async ({ 
         in_progress_count: 0,
         last_error_message: null,
         published_count: 0,
+        queued_count: 0,
         qualified_count: 0,
         restart_allowed: false,
         retired_count: 0,
+        running_count: 0,
         scheduled_count: 0,
         status: 'running',
         target_count: 10,
@@ -468,6 +478,9 @@ test('stops a running daily batch without deleting completed records', async ({ 
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '官网自动发布' }).click();
   await expect(page.getByText('今日发布进度（第 2 次尝试）')).toBeVisible();
+  await expect(page.getByText('等待处理', { exact: true })).toBeVisible();
+  await expect(page.getByText('AI 正在处理', { exact: true })).toBeVisible();
+  await expect(page.getByText(/新建和补位时最多保持 3 篇候选/u)).toBeVisible();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '终止今日任务' }).click();
 

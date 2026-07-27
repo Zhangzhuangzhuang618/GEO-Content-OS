@@ -6,6 +6,7 @@ import type { OfficialSiteAutomationConfig } from './config.js';
 import type { JsonObject } from './generation.types.js';
 
 const DAILY_TARGET = 10;
+const MAX_ACTIVE_CANDIDATES = 3;
 const SHANGHAI_OFFSET = '+08:00';
 const ACTIVE_ITEM_STATUSES = ['generating', 'quality_check', 'rewriting'] as const;
 const QUALIFIED_ITEM_STATUSES = ['qualified', 'scheduled', 'published', 'reserve'] as const;
@@ -242,6 +243,7 @@ export class OfficialSiteDailyScheduler {
       const required = Math.min(
         batch.targetCount - counts.qualified - counts.inProgress,
         batch.candidateLimit - counts.attempted,
+        MAX_ACTIVE_CANDIDATES - counts.inProgress,
       );
       if (required <= 0) return;
       const seed = await loadCandidateSeed(transaction, batch);

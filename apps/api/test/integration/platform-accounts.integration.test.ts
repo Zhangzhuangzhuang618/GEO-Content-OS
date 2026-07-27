@@ -28,6 +28,7 @@ const PROJECT_ID = '41000000-0000-4000-8000-000000000123';
 const DAILY_BRIEF_ID = '51000000-0000-4000-8000-000000000123';
 const DAILY_PACKAGE_ID = '61000000-0000-4000-8000-000000000123';
 const DAILY_VARIANT_ID = '71000000-0000-4000-8000-000000000123';
+const WRITER_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
 const SECRET = 'platform-secret-123';
 const ROTATED_SECRET = 'platform-secret-rotated-456';
 
@@ -443,6 +444,30 @@ describe('platform accounts', () => {
       WHERE batch.tenant_id=${TENANT_ID}::uuid AND batch.policy_id=${created.id}::uuid
         AND batch.attempt_no=2
     `;
+    expect((await policies.list(SCOPE, account.id))[0]?.today_batch).toMatchObject({
+      in_progress_count: 1,
+      queued_count: 1,
+      running_count: 0,
+      status: 'running',
+    });
+    await database`
+      INSERT INTO generation_runs (
+        tenant_id,workspace_id,project_id,package_id,variant_id,
+        skill_name,skill_version,prompt_version_id,model_key,input_hash,request_id,
+        status,started_at
+      ) VALUES (
+        ${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+        ${DAILY_PACKAGE_ID}::uuid,${DAILY_VARIANT_ID}::uuid,
+        'content-writer','1.0.0',${WRITER_PROMPT_ID}::uuid,'deepseek-v4-pro',
+        ${'a'.repeat(64)},'daily-progress-running','running',now()
+      )
+    `;
+    expect((await policies.list(SCOPE, account.id))[0]?.today_batch).toMatchObject({
+      in_progress_count: 1,
+      queued_count: 0,
+      running_count: 1,
+      status: 'running',
+    });
     const cancelled = await database.begin((transaction) =>
       policies.cancelDailyBatchInTransaction(
         transaction,
@@ -458,7 +483,9 @@ describe('platform accounts', () => {
     expect(cancelled.today_batch).toMatchObject({
       attempt_no: 2,
       in_progress_count: 0,
+      queued_count: 0,
       restart_allowed: true,
+      running_count: 0,
       status: 'cancelled',
       version: 2,
     });
