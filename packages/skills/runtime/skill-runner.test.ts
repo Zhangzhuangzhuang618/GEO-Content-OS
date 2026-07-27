@@ -2,6 +2,7 @@ import {
   MockModelAdapter,
   type JsonObject,
   type JsonValue,
+  type ModelFinishReason,
   type ModelRequest,
   type ModelResult,
   type ModelToolCall,
@@ -187,6 +188,39 @@ describe('SkillRunner', () => {
     expect(result.usages).toHaveLength(2);
   });
 
+  it('accepts a schema-valid JSON object wrapped in a Markdown fence', async () => {
+    const adapter = new LooseRecordingMockAdapter([
+      { text: '```json\n{"answer":"grounded"}\n```' },
+    ]);
+    const schemas = new SchemaGuard();
+    const runner = new SkillRunner(adapter, schemas, new ToolRegistry([], schemas));
+
+    await expect(runner.run(runInput())).resolves.toMatchObject({
+      output: { answer: 'grounded' },
+      schemaRepairAttempts: 0,
+    });
+  });
+
+  it('regenerates malformed JSON without echoing the broken response', async () => {
+    const adapter = new LooseRecordingMockAdapter([
+      { text: '{"answer":' },
+      { text: '{"answer":"repaired"}' },
+    ]);
+    const schemas = new SchemaGuard();
+    const runner = new SkillRunner(adapter, schemas, new ToolRegistry([], schemas));
+
+    await expect(runner.run(runInput())).resolves.toMatchObject({
+      output: { answer: 'repaired' },
+      schemaRepairAttempts: 1,
+    });
+    expect(adapter.requests[1]?.messages.some((message) => message.role === 'assistant')).toBe(
+      false,
+    );
+    expect(adapter.requests[1]?.messages.at(-1)?.content).toContain(
+      '"failure_kind":"invalid_json"',
+    );
+  });
+
   it('fails after the single schema repair is still invalid', async () => {
     const runner = createRunner([{ text: '{}' }, { text: '{}' }]);
     const recordUsage = vi.fn();
@@ -196,6 +230,23 @@ describe('SkillRunner', () => {
       paths: ['/answer'],
     });
     expect(recordUsage).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports safe diagnostics when truncated JSON remains invalid', async () => {
+    const adapter = new LooseRecordingMockAdapter([
+      { finishReason: 'length', text: '{"answer":' },
+      { finishReason: 'length', text: '{"answer":' },
+    ]);
+    const schemas = new SchemaGuard();
+    const runner = new SkillRunner(adapter, schemas, new ToolRegistry([], schemas));
+
+    await expect(runner.run(runInput())).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining(
+        'failure_kind=invalid_json, finish_reason=length, content_chars=10',
+      ),
+      paths: ['$'],
+    });
   });
 
   it('executes an allowed tool and returns the subsequent structured result', async () => {
@@ -408,5 +459,35 @@ class RecordingMockAdapter extends MockModelAdapter {
   public override generate(input: ModelRequest): Promise<ModelResult> {
     this.requests.push(input);
     return super.generate(input);
+  }
+}
+
+class LooseRecordingMockAdapter extends MockModelAdapter {
+  public readonly requests: ModelRequest[] = [];
+  private responseIndex = 0;
+
+  public constructor(
+    private readonly looseResponses: readonly {
+      readonly finishReason?: ModelFinishReason;
+      readonly text: string;
+    }[],
+    modelKey = 'flash',
+  ) {
+    super({ modelKey });
+  }
+
+  public override async generate(input: ModelRequest): Promise<ModelResult> {
+    this.requests.push(input);
+    const base = await super.generate({ ...input, responseFormat: { type: 'text' } });
+    const response = this.looseResponses[this.responseIndex] ?? { text: '' };
+    this.responseIndex += 1;
+    return Object.freeze({
+      ...base,
+      finishReason: response.finishReason ?? 'stop',
+      message: Object.freeze({
+        ...(response.text ? { content: response.text } : {}),
+        role: 'assistant' as const,
+      }),
+    });
   }
 }

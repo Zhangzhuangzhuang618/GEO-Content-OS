@@ -16,6 +16,7 @@ import {
   createSkillContext,
   SchemaGuard,
   SkillRunner,
+  SkillRuntimeError,
   type SkillTool,
   ToolRegistry,
 } from '@geo-content-os/skills/runtime';
@@ -193,7 +194,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       ...(input.signal ? { signal: input.signal } : {}),
       temperature: input.context.modelPolicy === 'quality' ? 0.25 : 0.35,
     } as const;
-    let result = await skill.run(invocation);
+    let result = await runWithStructuredOutputRetry(skill, invocation);
     if (result.output.status === 'failed') {
       throw new GenerationWorkerError(
         'CONTENT_WRITER_FAILED',
@@ -204,7 +205,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     const firstAssessment = assessContentWriterData(result.output.data, input.context.modelPolicy);
     if (firstAssessment.passed || input.context.modelPolicy === 'fast') return result.output;
 
-    result = await skill.run({
+    result = await runWithStructuredOutputRetry(skill, {
       ...invocation,
       revision: { candidate: result.output.data, issues: firstAssessment.issues },
     });
@@ -301,6 +302,21 @@ export class RuntimeContentWriter implements ContentWriterPort {
       return { rules: jsonObject(supplied['rules']) ?? {}, version_id: versionId };
     }
     throw new Error('Published platform rules were not found');
+  }
+}
+
+async function runWithStructuredOutputRetry(
+  skill: ContentWriterSkill,
+  invocation: Parameters<ContentWriterSkill['run']>[0],
+) {
+  try {
+    return await skill.run(invocation);
+  } catch (error) {
+    if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') throw error;
+    return skill.run({
+      ...invocation,
+      temperature: Math.min(invocation.temperature ?? 0.25, 0.15),
+    });
   }
 }
 

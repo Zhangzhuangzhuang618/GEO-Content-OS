@@ -1,3 +1,9 @@
+import {
+  MockModelAdapter,
+  type ModelFinishReason,
+  type ModelRequest,
+  type ModelResult,
+} from '@geo-content-os/adapter-model';
 import { CONTENT_WRITER_CONTRACT_V1 } from '@geo-content-os/skills/content-writer';
 import type postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
@@ -39,6 +45,34 @@ describe('AI Worker runtime wiring', () => {
     expect(master.platform_code).toBe('master');
     expect(variant.platform_code).toBe('xiaohongshu');
     expect(recordUsage).toHaveBeenCalledOnce();
+  });
+
+  it('makes one fresh low-temperature attempt after structured output repair fails', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const recordUsage = vi.fn();
+    const adapter = new LooseMockAdapter(
+      [
+        { text: '{"master_content":' },
+        { text: '{"master_content":' },
+        { text: JSON.stringify(fixture.output.data) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      recordUsage,
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: 'runtime-content-structured-retry-0061',
+        writerInput: fixture.input as JsonObject,
+      }),
+    ).resolves.toMatchObject({ platform_code: 'master' });
+    expect(recordUsage).toHaveBeenCalledTimes(3);
   });
 
   it('forbids the Mock model in production', () => {
@@ -88,4 +122,32 @@ function context(runId: string, variantId: string | null): ContentWriterRunConte
     variantId,
     workspaceId: '91000000-0000-4000-8000-000000000061',
   });
+}
+
+class LooseMockAdapter extends MockModelAdapter {
+  private responseIndex = 0;
+
+  public constructor(
+    private readonly looseResponses: readonly {
+      readonly finishReason?: ModelFinishReason;
+      readonly text: string;
+    }[],
+    modelKey: string,
+  ) {
+    super({ modelKey });
+  }
+
+  public override async generate(input: ModelRequest): Promise<ModelResult> {
+    const base = await super.generate({ ...input, responseFormat: { type: 'text' } });
+    const response = this.looseResponses[this.responseIndex] ?? { text: '' };
+    this.responseIndex += 1;
+    return Object.freeze({
+      ...base,
+      finishReason: response.finishReason ?? 'stop',
+      message: Object.freeze({
+        ...(response.text ? { content: response.text } : {}),
+        role: 'assistant' as const,
+      }),
+    });
+  }
 }

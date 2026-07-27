@@ -165,12 +165,14 @@ export class SkillRunner {
 
     const repairMessages: ModelMessage[] = [
       ...messages,
-      first.message,
+      ...(firstCheck.kind === 'schema' ? [first.message] : []),
       {
         content: JSON.stringify({
-          instruction:
-            'Return corrected JSON only. Fix every invalid path without inventing facts, identifiers, citations, or missing values. Remove unsupported optional entries when that is the only schema-valid correction.',
+          failure_kind: firstCheck.kind,
+          finish_reason: first.finishReason,
+          instruction: repairInstruction(firstCheck.kind, first.finishReason),
           invalid_paths: firstCheck.paths,
+          required_root_fields: requiredRootFields(input.outputSchema),
         }),
         role: 'user',
       },
@@ -189,7 +191,7 @@ export class SkillRunner {
     if (!repairedCheck.valid) {
       throw new SkillRuntimeError(
         'SKILL_OUTPUT_INVALID',
-        'Skill output failed schema validation after one repair',
+        invalidOutputMessage(repairedCheck, repaired),
         repairedCheck.paths,
       );
     }
@@ -198,7 +200,11 @@ export class SkillRunner {
 }
 
 type Parsed<T> =
-  | { readonly paths: readonly string[]; readonly valid: false }
+  | {
+      readonly kind: 'empty' | 'invalid_json' | 'schema';
+      readonly paths: readonly string[];
+      readonly valid: false;
+    }
   | { readonly valid: true; readonly value: T };
 
 function parseAndCheck<T>(
@@ -207,17 +213,97 @@ function parseAndCheck<T>(
   result: ModelResult,
 ): Parsed<T> {
   const content = result.message.content;
-  if (!content) return { paths: Object.freeze(['$']), valid: false };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return { paths: Object.freeze(['$']), valid: false };
+  if (!content) return { kind: 'empty', paths: Object.freeze(['$']), valid: false };
+  const candidate = parseModelJson(content);
+  if (!candidate.valid) {
+    return { kind: 'invalid_json', paths: Object.freeze(['$']), valid: false };
   }
+  const parsed = candidate.value;
   const check = schemas.check<T>(schema, parsed);
   return check.valid
     ? { valid: true, value: check.value as T }
-    : { paths: check.paths, valid: false };
+    : { kind: 'schema', paths: check.paths, valid: false };
+}
+
+type ParsedJson = { readonly valid: false } | { readonly valid: true; readonly value: unknown };
+
+function parseModelJson(content: string): ParsedJson {
+  const trimmed = content.trim();
+  const candidates = [trimmed];
+  const unfenced = stripJsonFence(trimmed);
+  if (unfenced !== trimmed) candidates.push(unfenced);
+  const extracted = extractFirstJsonObject(unfenced);
+  if (extracted && !candidates.includes(extracted)) candidates.push(extracted);
+
+  for (const candidate of candidates) {
+    try {
+      return { valid: true, value: JSON.parse(candidate) as unknown };
+    } catch {
+      // Try the next deterministic representation.
+    }
+  }
+  return { valid: false };
+}
+
+function stripJsonFence(value: string): string {
+  const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(value);
+  return match?.[1]?.trim() ?? value;
+}
+
+function extractFirstJsonObject(value: string): string | undefined {
+  const start = value.indexOf('{');
+  if (start < 0 || value.trimStart().startsWith('[')) return undefined;
+  let depth = 0;
+  let escaped = false;
+  let inString = false;
+  for (let index = start; index < value.length; index += 1) {
+    const character = value[index]!;
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{') {
+      depth += 1;
+    } else if (character === '}') {
+      depth -= 1;
+      if (depth === 0) return value.slice(start, index + 1);
+    }
+  }
+  return undefined;
+}
+
+function repairInstruction(
+  kind: Extract<Parsed<never>, { readonly valid: false }>['kind'],
+  finishReason: ModelResult['finishReason'],
+): string {
+  if (finishReason === 'length') {
+    return 'The previous response was truncated. Regenerate one shorter but complete JSON object. Preserve required article substance, use concise metadata, and do not invent facts, identifiers, citations, or missing values.';
+  }
+  if (kind === 'empty' || kind === 'invalid_json') {
+    return 'The previous response was empty or malformed. Regenerate one complete JSON object only. Return no Markdown or commentary, and do not invent facts, identifiers, citations, or missing values.';
+  }
+  return 'Return corrected JSON only. Fix every invalid path without inventing facts, identifiers, citations, or missing values. Remove unsupported optional entries when that is the only schema-valid correction.';
+}
+
+function requiredRootFields(schema: JsonObject): readonly string[] {
+  return Array.isArray(schema['required'])
+    ? schema['required'].filter((value): value is string => typeof value === 'string')
+    : [];
+}
+
+function invalidOutputMessage(
+  check: Extract<Parsed<never>, { readonly valid: false }>,
+  result: ModelResult,
+): string {
+  return `Skill output failed schema validation after one repair (failure_kind=${check.kind}, finish_reason=${result.finishReason}, content_chars=${result.message.content?.length ?? 0})`;
 }
 
 function result<T>(
