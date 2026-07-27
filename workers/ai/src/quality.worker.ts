@@ -39,10 +39,20 @@ interface QualityContext extends UsageContext {
   readonly variantVersion: number;
 }
 
-interface CitationRow {
+export interface CitationRow {
   readonly claimKey: string;
   readonly claimText: string;
   readonly id: string;
+  readonly quoteText: string;
+}
+
+export interface QualityFactResult {
+  readonly citation_ids: readonly string[];
+  readonly claim_key: string;
+  readonly claim_text: string;
+  readonly confidence: number;
+  readonly risk_level: 'critical' | 'high' | 'low' | 'medium';
+  readonly verdict: 'conflicted' | 'outdated' | 'partially_supported' | 'supported' | 'unsupported';
 }
 
 export class QualityCheckWorker {
@@ -61,9 +71,10 @@ export class QualityCheckWorker {
         this.loadCitations(event),
         this.loadDuplicates(event),
       ]);
+      const factResults = groupCitations(citations);
       const geoScores = calculateGeoScores(
         context.content,
-        citations,
+        factResults,
         context.platformCode,
         context.brandProfile,
         context.rules,
@@ -83,7 +94,7 @@ export class QualityCheckWorker {
             variant_id: event.data.variantId,
           },
           duplicate_matches: duplicates,
-          fact_results: groupCitations(citations),
+          fact_results: factResults,
           geo_result: { scores: geoScores },
           platform_rules: {
             platform_code: context.platformCode,
@@ -241,7 +252,9 @@ export class QualityCheckWorker {
 
   private async loadCitations(event: ValidatedQualityEvent): Promise<readonly CitationRow[]> {
     return this.client<CitationRow[]>`
-      SELECT id, claim_key AS "claimKey", claim_text AS "claimText"
+      SELECT
+        id, claim_key AS "claimKey", claim_text AS "claimText",
+        quote_text AS "quoteText"
       FROM ai_citations
       WHERE tenant_id = ${event.tenantId}::uuid
         AND content_version_id = ${event.data.contentVersionId}::uuid
@@ -387,26 +400,35 @@ export class QualityCheckWorker {
 
 export type QualityUsageRecorder = (context: UsageContext, usage: ModelUsage) => Promise<void>;
 
-function groupCitations(citations: readonly CitationRow[]) {
+export function groupCitations(citations: readonly CitationRow[]): readonly QualityFactResult[] {
   const groups = new Map<string, CitationRow[]>();
   for (const citation of citations) {
     const group = groups.get(citation.claimKey) ?? [];
     group.push(citation);
     groups.set(citation.claimKey, group);
   }
-  return [...groups.entries()].map(([claimKey, group]) => ({
-    citation_ids: group.map((citation) => citation.id),
-    claim_key: claimKey,
-    claim_text: group[0]!.claimText,
-    confidence: 0.7,
-    risk_level: 'medium',
-    verdict: 'partially_supported',
-  }));
+  return Object.freeze(
+    [...groups.entries()].map(([claimKey, group]) => {
+      const claimText = group[0]!.claimText;
+      const support = assessEvidenceSupport(
+        claimText,
+        group.map((citation) => citation.quoteText),
+      );
+      return Object.freeze({
+        citation_ids: Object.freeze(group.map((citation) => citation.id)),
+        claim_key: claimKey,
+        claim_text: claimText,
+        confidence: support.confidence,
+        risk_level: factRiskLevel(claimText),
+        verdict: support.verdict,
+      });
+    }),
+  );
 }
 
-function calculateGeoScores(
+export function calculateGeoScores(
   content: Readonly<Record<string, unknown>>,
-  citations: readonly CitationRow[],
+  factResults: readonly QualityFactResult[],
   platformCode: PlatformCode,
   brandProfile: Readonly<Record<string, unknown>>,
   rules: Readonly<Record<string, unknown>>,
@@ -431,12 +453,7 @@ function calculateGeoScores(
     platformCode === 'official_site' &&
     rules['accepted_first_party_source'] === 'published_brand_profile' &&
     Object.keys(brandProfile).length > 0;
-  const evidence =
-    citations.length > 0
-      ? Math.min(95, 65 + citations.length * 5)
-      : acceptsFirstPartyFacts
-        ? 95
-        : 55;
+  const evidence = calculateEvidenceScore(factResults, acceptsFirstPartyFacts);
   const titleLimits: Readonly<Record<PlatformCode, number>> = {
     baijiahao: 40,
     douyin: 80,
@@ -468,6 +485,101 @@ function calculateGeoScores(
     readability_safety: readabilitySafety,
     total,
   });
+}
+
+function calculateEvidenceScore(
+  factResults: readonly QualityFactResult[],
+  acceptsFirstPartyFacts: boolean,
+): number {
+  if (factResults.length === 0) return acceptsFirstPartyFacts ? 95 : 55;
+  let weightedScore = 0;
+  let totalWeight = 0;
+  for (const result of factResults) {
+    const weight = factRiskWeight(result.risk_level);
+    weightedScore += factVerdictScore(result.verdict) * weight;
+    totalWeight += weight;
+  }
+  return round(weightedScore / Math.max(1, totalWeight));
+}
+
+function assessEvidenceSupport(
+  claimText: string,
+  quotes: readonly string[],
+): {
+  readonly confidence: number;
+  readonly verdict: 'partially_supported' | 'supported' | 'unsupported';
+} {
+  const claim = normalizeEvidenceText(claimText);
+  const evidence = normalizeEvidenceText(quotes.join('\n'));
+  if (!claim || !evidence) return { confidence: 0.1, verdict: 'unsupported' };
+  const sensitiveTokens = extractSensitiveTokens(claimText);
+  if (
+    sensitiveTokens.length > 0 &&
+    sensitiveTokens.some((token) => !evidence.includes(normalizeEvidenceText(token)))
+  ) {
+    return { confidence: 0.15, verdict: 'unsupported' };
+  }
+  if (evidence.includes(claim) || (evidence.length >= 12 && claim.includes(evidence))) {
+    return { confidence: 0.98, verdict: 'supported' };
+  }
+  const coverage = ngramCoverage(claim, evidence, 2);
+  if (coverage >= 0.12) return { confidence: 0.92, verdict: 'supported' };
+  if (coverage >= 0.04) return { confidence: 0.65, verdict: 'partially_supported' };
+  return { confidence: 0.2, verdict: 'unsupported' };
+}
+
+function factRiskLevel(claimText: string): QualityFactResult['risk_level'] {
+  if (
+    /(?:价格|费用|收费|元|电话|手机|地址|资质|许可证|认证|排名|第一|最多|最大|唯一|保证|承诺|正式员工|社保|车辆|客户|案例|成交|效果)/u.test(
+      claimText,
+    ) ||
+    extractSensitiveTokens(claimText).length > 0
+  ) {
+    return 'high';
+  }
+  return /(?:公司|企业|品牌|服务范围|服务区域|能力|经验)/u.test(claimText) ? 'medium' : 'low';
+}
+
+function factRiskWeight(risk: QualityFactResult['risk_level']): number {
+  return { critical: 4, high: 3, low: 1, medium: 2 }[risk];
+}
+
+function factVerdictScore(verdict: QualityFactResult['verdict']): number {
+  return {
+    conflicted: 0,
+    outdated: 55,
+    partially_supported: 78,
+    supported: 95,
+    unsupported: 25,
+  }[verdict];
+}
+
+function extractSensitiveTokens(value: string): readonly string[] {
+  return Object.freeze([
+    ...(value.match(/\d+(?:[.,]\d+)?(?:万|千|百|余|多|台|人|名|家|个|年|月|日|次|%|％|\+)?/gu) ??
+      []),
+    ...(value.match(/(?:¥|￥|人民币)\s*\d+(?:[.,]\d+)?/gu) ?? []),
+    ...(value.match(/1[3-9]\d{9}/gu) ?? []),
+  ]);
+}
+
+function normalizeEvidenceText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLocaleLowerCase('zh-CN')
+    .replace(/[\s\p{P}\p{S}]/gu, '');
+}
+
+function ngramCoverage(claim: string, evidence: string, size: number): number {
+  const characters = [...claim];
+  if (characters.length < size) return evidence.includes(claim) ? 1 : 0;
+  const grams = new Set<string>();
+  for (let index = 0; index <= characters.length - size; index += 1) {
+    grams.add(characters.slice(index, index + size).join(''));
+  }
+  if (grams.size === 0) return 0;
+  const matched = [...grams].filter((gram) => evidence.includes(gram)).length;
+  return matched / grams.size;
 }
 
 function round(value: number): number {

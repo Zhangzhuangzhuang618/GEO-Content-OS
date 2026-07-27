@@ -6,6 +6,8 @@ export const CONTENT_WRITER_SKILL_VERSION = '1.0.0' as const;
 export const CONTENT_WRITER_INPUT_SCHEMA_VERSION = 'content-writer-input@1' as const;
 export const CONTENT_WRITER_DATA_SCHEMA_VERSION = 'content-writer-data@1' as const;
 export const CONTENT_WRITER_OUTPUT_SCHEMA_VERSION = 'content-writer-output@1' as const;
+export const OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA_VERSION = 'official-site-article-draft@1' as const;
+export const OFFICIAL_SITE_FAQ_DRAFT_SCHEMA_VERSION = 'official-site-faq-draft@1' as const;
 
 export const CONTENT_PLATFORM_CODES = Object.freeze([
   'official_site',
@@ -214,6 +216,61 @@ export const CONTENT_WRITER_OUTPUT_SCHEMA = createSkillResultSchema(
   'https://geo.example/schemas/content-writer-output-1.json',
 );
 
+export const OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA: JsonSchema = Object.freeze({
+  $id: 'https://geo.example/schemas/official-site-article-draft-1.json',
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  additionalProperties: false,
+  properties: {
+    blocks: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          block_key: { pattern: '^[a-z0-9_-]{1,80}$', type: 'string' },
+          block_type: { enum: ['heading', 'paragraph', 'list', 'quote', 'cta'] },
+          citation_ids: {
+            items: UUID_SCHEMA,
+            type: 'array',
+            uniqueItems: true,
+          },
+          text: { minLength: 1, type: 'string' },
+        },
+        required: ['block_key', 'block_type', 'text', 'citation_ids'],
+        type: 'object',
+      },
+      minItems: 8,
+      type: 'array',
+    },
+    summary: { maxLength: 240, minLength: 1, type: 'string' },
+    title: { maxLength: 60, minLength: 20, type: 'string' },
+  },
+  required: ['title', 'summary', 'blocks'],
+  type: 'object',
+});
+
+export const OFFICIAL_SITE_FAQ_DRAFT_SCHEMA: JsonSchema = Object.freeze({
+  $id: 'https://geo.example/schemas/official-site-faq-draft-1.json',
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  additionalProperties: false,
+  properties: {
+    faq: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          answer: { minLength: 1, type: 'string' },
+          question: { minLength: 1, type: 'string' },
+        },
+        required: ['question', 'answer'],
+        type: 'object',
+      },
+      maxItems: 6,
+      minItems: 4,
+      type: 'array',
+    },
+  },
+  required: ['faq'],
+  type: 'object',
+});
+
 export interface ContentWriterBlock {
   readonly block_key: string;
   readonly block_type: 'cta' | 'heading' | 'list' | 'media' | 'paragraph' | 'quote';
@@ -238,6 +295,24 @@ export interface ContentWriterContent {
 export interface ContentWriterData {
   readonly master_content: ContentWriterContent;
   readonly variants: readonly ContentWriterContent[];
+}
+
+export interface OfficialSiteArticleDraft {
+  readonly blocks: readonly {
+    readonly block_key: string;
+    readonly block_type: 'cta' | 'heading' | 'list' | 'paragraph' | 'quote';
+    readonly citation_ids: readonly string[];
+    readonly text: string;
+  }[];
+  readonly summary: string;
+  readonly title: string;
+}
+
+export interface OfficialSiteFaqDraft {
+  readonly faq: readonly {
+    readonly answer: string;
+    readonly question: string;
+  }[];
 }
 
 export type ContentWriterOutput = SkillResult<ContentWriterData, 'content-writer'>;

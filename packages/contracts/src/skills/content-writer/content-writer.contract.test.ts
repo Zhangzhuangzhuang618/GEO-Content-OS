@@ -11,6 +11,8 @@ import {
   CONTENT_WRITER_DATA_SCHEMA,
   CONTENT_WRITER_INPUT_SCHEMA,
   CONTENT_WRITER_OUTPUT_SCHEMA,
+  OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA,
+  OFFICIAL_SITE_FAQ_DRAFT_SCHEMA,
 } from './content-writer.schemas.js';
 
 const guard = new SchemaGuard();
@@ -137,6 +139,46 @@ describe('content-writer contract v1.0.0', () => {
     ]);
     expect(
       guard.check(CONTENT_WRITER_OUTPUT_SCHEMA, { ...injection.output, explanation: 'extra' }),
+    ).toMatchObject({ valid: false });
+  });
+
+  it('keeps official-site article and FAQ stages shallow and independently valid', () => {
+    const blocks = [
+      {
+        block_key: 'direct-answer',
+        block_type: 'paragraph',
+        citation_ids: [],
+        text: '先确认服务范围、人员归属和车辆安排，再比较报价口径与异常处理方式。',
+      },
+      ...Array.from({ length: 7 }, (_, index) => ({
+        block_key: `section-${index + 1}`,
+        block_type: index % 2 === 0 ? 'heading' : 'paragraph',
+        citation_ids: [],
+        text: `第 ${index + 1} 部分提供独立且可核验的判断信息。`,
+      })),
+    ];
+    expect(
+      guard.check(OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA, {
+        blocks,
+        summary: '文章提供选择搬家服务时可直接使用的核对步骤。',
+        title: '广州家庭搬家前如何核对服务范围与执行人员安排',
+      }),
+    ).toMatchObject({ valid: true });
+    expect(
+      guard.check(OFFICIAL_SITE_FAQ_DRAFT_SCHEMA, {
+        faq: Array.from({ length: 4 }, (_, index) => ({
+          answer: `按照正文第 ${index + 1} 项进行核对。`,
+          question: `第 ${index + 1} 项应该怎样确认？`,
+        })),
+      }),
+    ).toMatchObject({ valid: true });
+    expect(
+      guard.check(OFFICIAL_SITE_ARTICLE_DRAFT_SCHEMA, {
+        blocks,
+        faq: [],
+        summary: '摘要',
+        title: '过短标题',
+      }),
     ).toMatchObject({ valid: false });
   });
 });

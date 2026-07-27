@@ -107,6 +107,10 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 当日批次因 30 篇候选耗尽仍未补足 10 篇而进入 `attention_required` 后，发布管理员可正式发起下一次当日尝试。旧批次和候选完整保留并标记 `cancelled`，新批次使用递增 `attempt_no`，每次仍固定最多 30 篇候选且不降低 ADR-0021 门禁。同一策略和日期同时最多一个活动批次；操作使用 Idempotency-Key、批次版本和审计日志防止重复或并发误操作。其他失败原因、其他日期和其他平台不可使用该入口。
 
+### 官网分阶段生成与证据计分（ADR-0025）
+
+只含 `official_site` 的生成任务分为“正文”和“FAQ/发布字段”两个阶段：模型先返回浅层标题、摘要和正文块，正文成功后立即保存；随后模型只根据正文生成 4–6 个 FAQ，slug、meta description、Schema.org 和引用映射由服务端确定性组装。FAQ 结构失败最多独立尝试 3 次，不重新生成已保存正文。官网证据分按声明与引用原文的实际支持质量和风险权重计算，不再按引用条数加分；高风险数字必须在证据中精确出现。ADR-0014 第一方资料规则、ADR-0021 门禁和其他六个平台流程不变。
+
 ## 5. 数据模型
 
 冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束。当前可执行表数为 65，迁移序号为 0040。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
@@ -357,7 +361,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 
 HTTP 幂等保存 scope+key+request_hash；相同 hash 返回原结果，不同 hash 返回 IDEMPOTENCY_CONFLICT。发布任务冻结 content_version_id/payload_hash；外部未知态不盲重试。
 
-ADR-0010 后，`ai-worker` 是真实 BullMQ 消费进程，不再使用通用 health 占位。内容生成通过 Content Writer Skill 一次返回母稿和全部平台变体；平台变体运行记录继续作为状态与追溯记录。Compose 默认要求每个目标平台恰好一个 active 平台账号，并将账号 ID 固化到 `content_variants.platform_account_id`。模型 Key 只从环境变量注入，平台账号凭证继续加密存储且不得进入 Prompt。
+ADR-0010 后，`ai-worker` 是真实 BullMQ 消费进程，不再使用通用 health 占位。除 ADR-0025 的官网专用分阶段流程外，内容生成通过 Content Writer Skill 一次返回母稿和全部平台变体；平台变体运行记录继续作为状态与追溯记录。Compose 默认要求每个目标平台恰好一个 active 平台账号，并将账号 ID 固化到 `content_variants.platform_account_id`。模型 Key 只从环境变量注入，平台账号凭证继续加密存储且不得进入 Prompt。
 
 ADR-0011 后，Content Writer 使用发布级 Prompt 1.1.1（ID `25000000-0000-4000-8000-000000000003`），并按事件中的 `model_policy` 选择模型：fast/balanced 使用 DeepSeek V4 Flash，quality 使用 V4 Pro。AI Worker 必须加载 `prompt_versions` 中被运行记录引用的已发布提示词；balanced/quality 首稿未达到平台篇幅、结构、重复度和事实边界门禁时最多完整重写一次，仍不达标则以 `CONTENT_QUALITY_INSUFFICIENT` 失败，不得把短占位稿持久化为可发布内容。旧事件缺少 `model_policy` 时按 balanced 处理。企业内部确认事实只能作为明确的第一方口径，不得伪装成公开独立证据，也不得仅凭自有车辆、正式员工或社保属性推断培训、服务质量、法律结果或竞争优势。
 
@@ -368,6 +372,8 @@ ADR-0013 后，`content.variant.quality_check_requested.v1` 由 AI Worker 实际
 ADR-0014 后，已发布 `brand_profile` 是企业授权确认的第一方来源。官网稿中与该档案一致的经营事实（例如自有资源、服务范围和正式用工信息）无需再提供互联网公开链接，也不得仅因 `citation_map` 为空要求重复“官方确认”；系统仍保留品牌档案版本、内容版本和审核记录作为内部溯源。资质、认证、荣誉、监管口径、第三方统计、竞品比较、客户结果以及超出品牌档案的陈述继续要求相应证据。第一方事实不得伪装成独立第三方证据。质量检查运行必须加载数据库中被 `generation_runs.prompt_version_id` 引用的已发布 Prompt 1.1.0（ID `25000000-0000-4000-8000-000000000006`），不得仅记录 Prompt ID 而执行静态旧提示词。
 
 ADR-0015 后，`knowledge-worker` 是真实 BullMQ 消费进程，负责安全扫描、网页抓取或文件读取、解析、分块和向量化。内容生成必须按 `brief_sources` 限定资料范围，经过混合检索与重排后把命中片段传入 Content Writer，并把模型实际采用的引用写入 `ai_citations`。Compose 默认使用本地 1536 维 n-gram Embedding 与 Rerank；当前无生产 OCR Provider，因此界面只开放 PDF、DOCX、TXT。自动事实抽取、Fact Checker、GEO Optimizer、Publisher、Analytics CSV/Export 和 Lifecycle 的运行时缺口以 `docs/runbooks/RUNTIME_CAPABILITY_AUDIT_2026-07-19.md` 为准，不得宣称为已完成链路。
+
+ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1` 与 `official-site-faq-draft@1` 两个内部输出契约。母稿运行先保存官网正文，官网变体运行再生成 FAQ 并由服务端组装 slug、meta description、Schema.org 与引用映射。事实证据分由声明和引用原文的支持关系决定，不按引用条数递增；敏感数字不一致时按不支持处理。该流程不新增公开端点、数据库表或配置项。
 
 同一平台任何时刻最多只能有一个 `published` 规则版本。发布新规则必须在同一事务中将旧版本切换为 `retired`，数据库使用部分唯一索引兜底；审核快照只冻结该平台当前唯一生效的规则版本。
 

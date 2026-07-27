@@ -83,13 +83,19 @@ export class ContentGenerationWorker {
       event,
       event.data.masterRunId,
       claim.leaseVersion,
-      () =>
-        this.writer.generateMaster({
+      () => {
+        const generate =
+          usesOfficialSiteDirectFlow(event.data.writerInput) &&
+          this.writer.generateOfficialSiteMaster
+            ? this.writer.generateOfficialSiteMaster.bind(this.writer)
+            : this.writer.generateMaster.bind(this.writer);
+        return generate({
           context: writerContext(event, event.data.masterRunId, null),
           requestId: `generation-${event.eventId}-master`,
           ...(signal ? { signal } : {}),
           writerInput: event.data.writerInput,
-        }),
+        });
+      },
     );
     await this.store.saveMaster(event, claim.leaseVersion, content);
     return content;
@@ -104,16 +110,30 @@ export class ContentGenerationWorker {
     const claimed = await this.store.claimVariant(event, run);
     if (claimed.kind !== 'claimed') return { disposition: claimed.kind };
     try {
-      const content = await this.withHeartbeat(event, run.runId, claimed.value.leaseVersion, () =>
-        this.writer.generateVariant({
+      const content = await this.withHeartbeat(event, run.runId, claimed.value.leaseVersion, () => {
+        const direct =
+          run.platformCode === 'official_site' &&
+          usesOfficialSiteDirectFlow(event.data.writerInput) &&
+          this.writer.generateOfficialSiteVariant;
+        if (direct) {
+          return direct.call(this.writer, {
+            context: writerContext(event, run.runId, run.variantId),
+            masterContent,
+            platformCode: 'official_site',
+            requestId: `generation-${event.eventId}-${run.platformCode}`,
+            ...(signal ? { signal } : {}),
+            writerInput: event.data.writerInput,
+          });
+        }
+        return this.writer.generateVariant({
           context: writerContext(event, run.runId, run.variantId),
           masterContent,
           platformCode: run.platformCode,
           requestId: `generation-${event.eventId}-${run.platformCode}`,
           ...(signal ? { signal } : {}),
           writerInput: event.data.writerInput,
-        }),
-      );
+        });
+      });
       await this.store.saveVariant(event, claimed.value, content);
       return { disposition: 'succeeded' };
     } catch (error) {
@@ -147,6 +167,19 @@ export class ContentGenerationWorker {
       clearInterval(timer);
     }
   }
+}
+
+function usesOfficialSiteDirectFlow(writerInput: ValidatedGenerationEvent['data']['writerInput']) {
+  const brief = writerInput['brief'];
+  if (!isRecord(brief)) return false;
+  const constraints = brief['constraints'];
+  if (isRecord(constraints) && constraints['official_site_direct'] === true) return true;
+  const platforms = brief['platform_codes'];
+  return Array.isArray(platforms) && platforms.length === 1 && platforms[0] === 'official_site';
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function writerContext(event: ValidatedGenerationEvent, runId: string, variantId: string | null) {

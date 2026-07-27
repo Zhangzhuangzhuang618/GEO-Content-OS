@@ -454,6 +454,7 @@ async function createCandidate(
       '不得编造价格、地址、电话、资质、客户数量、行业排名或无法核验的承诺。',
     ].join(''),
     cta: null,
+    official_site_direct: true,
     schema_version: 'brief-constraints@1',
     target_accounts_by_code: {
       official_site: {

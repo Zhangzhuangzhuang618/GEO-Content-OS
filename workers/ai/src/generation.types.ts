@@ -64,6 +64,20 @@ export interface ContentWriterPort {
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent>;
+  generateOfficialSiteMaster?(input: {
+    readonly context: ContentWriterRunContext;
+    readonly requestId: string;
+    readonly signal?: AbortSignal;
+    readonly writerInput: JsonObject;
+  }): Promise<GeneratedContent>;
+  generateOfficialSiteVariant?(input: {
+    readonly context: ContentWriterRunContext;
+    readonly masterContent: GeneratedContent;
+    readonly platformCode: 'official_site';
+    readonly requestId: string;
+    readonly signal?: AbortSignal;
+    readonly writerInput: JsonObject;
+  }): Promise<GeneratedContent>;
 }
 
 export interface ContentWriterRunContext {
