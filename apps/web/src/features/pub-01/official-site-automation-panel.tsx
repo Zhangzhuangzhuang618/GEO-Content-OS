@@ -23,7 +23,10 @@ export function OfficialSiteAutomationPanel({
   const [projectId, setProjectId] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [dailyEnabled, setDailyEnabled] = useState(false);
-  const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'retrying' | 'ready' | 'saving' | 'error'>(
+    'loading',
+  );
+  const [reloadVersion, setReloadVersion] = useState(0);
   const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const selected = useMemo(
@@ -34,39 +37,57 @@ export function OfficialSiteAutomationPanel({
   useEffect(() => {
     const controller = new AbortController();
     let refreshTimer: ReturnType<typeof setInterval> | null = null;
-    void Promise.all([
-      listProjects(account.workspace_id, controller.signal),
-      listOfficialSiteAutomationPolicies(account.id, controller.signal),
-    ])
-      .then(([nextProjects, nextPolicies]) => {
-        if (controller.signal.aborted) return;
-        setProjects(nextProjects);
-        setPolicies(nextPolicies);
-        const firstProjectId = nextPolicies[0]?.project_id ?? nextProjects[0]?.id ?? '';
-        setProjectId(firstProjectId);
-        setEnabled(
-          nextPolicies.find((item) => item.project_id === firstProjectId)?.enabled ?? false,
-        );
-        setDailyEnabled(
-          nextPolicies.find((item) => item.project_id === firstProjectId)?.daily_enabled ?? false,
-        );
-        setState('ready');
-        refreshTimer = setInterval(() => {
-          void listOfficialSiteAutomationPolicies(account.id, controller.signal)
-            .then((latestPolicies) => {
-              if (!controller.signal.aborted) setPolicies(latestPolicies);
-            })
-            .catch(() => undefined);
-        }, 15_000);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setState('error');
-      });
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let failureCount = 0;
+    setState('loading');
+    setMessage(null);
+
+    const load = () => {
+      void Promise.all([
+        listProjects(account.workspace_id, controller.signal),
+        listOfficialSiteAutomationPolicies(account.id, controller.signal),
+      ])
+        .then(([nextProjects, nextPolicies]) => {
+          if (controller.signal.aborted) return;
+          setProjects(nextProjects);
+          setPolicies(nextPolicies);
+          const firstProjectId = nextPolicies[0]?.project_id ?? nextProjects[0]?.id ?? '';
+          setProjectId(firstProjectId);
+          setEnabled(
+            nextPolicies.find((item) => item.project_id === firstProjectId)?.enabled ?? false,
+          );
+          setDailyEnabled(
+            nextPolicies.find((item) => item.project_id === firstProjectId)?.daily_enabled ?? false,
+          );
+          setState('ready');
+          refreshTimer = setInterval(() => {
+            void listOfficialSiteAutomationPolicies(account.id, controller.signal)
+              .then((latestPolicies) => {
+                if (!controller.signal.aborted) setPolicies(latestPolicies);
+              })
+              .catch(() => undefined);
+          }, 15_000);
+        })
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          const delay = INITIAL_LOAD_RETRY_DELAYS_MS[failureCount];
+          if (delay === undefined) {
+            setState('error');
+            return;
+          }
+          failureCount += 1;
+          setState('retrying');
+          retryTimer = setTimeout(load, delay);
+        });
+    };
+
+    load();
     return () => {
       controller.abort();
       if (refreshTimer) clearInterval(refreshTimer);
+      if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [account.id, account.workspace_id]);
+  }, [account.id, account.workspace_id, reloadVersion]);
 
   function changeProject(nextProjectId: string) {
     setProjectId(nextProjectId);
@@ -176,10 +197,22 @@ export function OfficialSiteAutomationPanel({
       </div>
 
       {state === 'loading' ? <p className="mt-5 text-sm text-ink-500">正在读取项目策略…</p> : null}
-      {state === 'error' ? (
-        <p className="mt-5 text-sm text-red-700">无法加载自动发布策略。</p>
+      {state === 'retrying' ? (
+        <p className="mt-5 text-sm text-ink-500">服务刚刚不可用，正在自动重新连接…</p>
       ) : null}
-      {state !== 'loading' && state !== 'error' ? (
+      {state === 'error' ? (
+        <div className="mt-5 flex flex-wrap items-center gap-3">
+          <p className="text-sm text-red-700">暂时无法连接服务，请确认服务已启动后重试。</p>
+          <button
+            className={secondaryButton}
+            onClick={() => setReloadVersion((current) => current + 1)}
+            type="button"
+          >
+            重新加载
+          </button>
+        </div>
+      ) : null}
+      {state !== 'loading' && state !== 'retrying' && state !== 'error' ? (
         <>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <label className="text-sm text-ink-700">
@@ -356,3 +389,4 @@ const primaryButton =
   'min-h-11 rounded-xl bg-brand-600 px-5 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryButton =
   'min-h-11 rounded-xl border border-line bg-white px-4 font-semibold text-ink-800 hover:border-brand-300';
+const INITIAL_LOAD_RETRY_DELAYS_MS = [500, 1_500, 3_000] as const;

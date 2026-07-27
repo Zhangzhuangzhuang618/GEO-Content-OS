@@ -282,6 +282,41 @@ test('enables single-item publishing and the daily ten-article plan for one proj
   expect(savedBody).toEqual({ daily_enabled: true, enabled: true, project_id: PROJECT_ID });
 });
 
+test('recovers when the automation service is briefly unavailable during deployment', async ({
+  page,
+}) => {
+  let automationRequests = 0;
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '官网内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/official-site-automation')) {
+      automationRequests += 1;
+      if (automationRequests === 1) {
+        await route.fulfill({ body: 'Service unavailable', status: 503 });
+        return;
+      }
+      await json(route, {
+        data: [automationPolicy(true)],
+        meta: { request_id: 'automation-recovered' },
+      });
+      return;
+    }
+    await json(route, { data: [account({ version: 1 })], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '官网自动发布' }).click();
+
+  await expect(page.getByText('服务刚刚不可用，正在自动重新连接…')).toBeVisible();
+  await expect(page.getByLabel('每天自动生产并排期发布 10 篇')).toBeVisible();
+  expect(automationRequests).toBe(2);
+});
+
 test('restarts an exhausted daily batch while keeping the previous attempt', async ({ page }) => {
   let current = automationPolicy(true, {
     attempt_no: 1,
