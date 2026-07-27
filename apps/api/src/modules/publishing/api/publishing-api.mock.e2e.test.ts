@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import {
   findPublishingApiContract,
+  type OfficialSiteAutomationPolicyView,
   type PublishAttemptView,
   type PublishJobDetail,
   type PublishJobView,
@@ -28,6 +29,8 @@ const ACCOUNT_ID = '10000000-0000-4000-8000-000000000006';
 const ATTEMPT_ID = '10000000-0000-4000-8000-000000000007';
 const ARTIFACT_ID = '10000000-0000-4000-8000-000000000008';
 const REQUEST_ID = '10000000-0000-4000-8000-000000000009';
+const PROJECT_ID = '10000000-0000-4000-8000-000000000010';
+const POLICY_ID = '10000000-0000-4000-8000-000000000011';
 const NOW = '2026-07-16T08:00:00.000Z';
 
 const job: PublishJobView = {
@@ -92,6 +95,57 @@ const download: SignedDownloadView = {
   url: 'https://storage.example.test/signed/export.zip',
 };
 
+const automationPolicy: OfficialSiteAutomationPolicyView = {
+  account_id: ACCOUNT_ID,
+  brand_consistency_min: 90,
+  daily_candidate_limit: 30,
+  daily_enabled: true,
+  daily_generation_time: '00:00:00',
+  daily_schedule_times: [
+    '08:00:00',
+    '09:30:00',
+    '11:00:00',
+    '12:30:00',
+    '14:00:00',
+    '15:30:00',
+    '17:00:00',
+    '18:30:00',
+    '20:00:00',
+    '21:30:00',
+  ],
+  daily_target_count: 10,
+  daily_timezone: 'Asia/Shanghai',
+  enabled: true,
+  factual_accuracy_min: 90,
+  geo_total_min: 85,
+  id: POLICY_ID,
+  max_rewrites: 3,
+  platform_fit_min: 80,
+  project_id: PROJECT_ID,
+  publish_attempt_limit: 3,
+  question_coverage_min: 80,
+  readability_safety_min: 85,
+  tenant_id: TENANT_ID,
+  today_batch: {
+    attempt_no: 2,
+    attempted_count: 0,
+    business_date: '2026-07-27',
+    in_progress_count: 0,
+    last_error_message: null,
+    published_count: 0,
+    qualified_count: 0,
+    restart_allowed: false,
+    retired_count: 0,
+    scheduled_count: 0,
+    status: 'running',
+    target_count: 10,
+    version: 1,
+  },
+  updated_at: NOW,
+  version: 1,
+  workspace_id: '10000000-0000-4000-8000-000000000012',
+};
+
 describe('publishing API mock E2E', () => {
   let application: NestFastifyApplication;
   const listJobs = vi.fn(async () => ({ items: [job], nextCursor: 'next-page' }));
@@ -105,6 +159,9 @@ describe('publishing API mock E2E', () => {
     cancel: vi.fn(async () => ({ ...job, status: 'cancelled' as const, version: 4 })),
     createInTransaction: vi.fn(async () => job),
     retryInTransaction: vi.fn(async () => job),
+  };
+  const automation = {
+    restartDailyBatchInTransaction: vi.fn(async () => automationPolicy),
   };
   const idempotency = {
     execute: vi.fn(
@@ -120,7 +177,7 @@ describe('publishing API mock E2E', () => {
       controllers: [PlatformAccountController, PublishJobController],
       providers: [
         { provide: IdempotencyService, useValue: idempotency },
-        { provide: OfficialSiteAutomationPolicyService, useValue: {} },
+        { provide: OfficialSiteAutomationPolicyService, useValue: automation },
         { provide: PlatformAccountService, useValue: {} },
         { provide: PublishJobService, useValue: jobs },
         { provide: PublishingApiService, useValue: api },
@@ -218,6 +275,36 @@ describe('publishing API mock E2E', () => {
       JOB_ID,
       3,
       'Editorial calendar changed',
+    );
+  });
+
+  it('restarts an exhausted daily batch through an idempotent account-scoped route', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'daily-batch-restart-0001' },
+      method: 'POST',
+      payload: { expected_batch_version: 4, project_id: PROJECT_ID },
+      url: `/platform-accounts/${ACCOUNT_ID}/official-site-automation/daily-batch/restart`,
+    });
+
+    expect(response.statusCode).toBe(201);
+    findPublishingApiContract(
+      'account.official_site_automation.daily_batch.restart',
+    ).responseSchema.parse(response.json());
+    expect(automation.restartDailyBatchInTransaction).toHaveBeenCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      ACCOUNT_ID,
+      { expected_batch_version: 4, project_id: PROJECT_ID },
+      expect.objectContaining({ requestId: REQUEST_ID }),
+    );
+    expect(idempotency.execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fingerprint: expect.objectContaining({
+          path: `/platform-accounts/${ACCOUNT_ID}/official-site-automation/daily-batch/restart`,
+        }),
+        idempotencyKey: 'daily-batch-restart-0001',
+      }),
+      expect.any(Function),
     );
   });
 });

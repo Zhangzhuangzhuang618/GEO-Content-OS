@@ -282,6 +282,78 @@ test('enables single-item publishing and the daily ten-article plan for one proj
   expect(savedBody).toEqual({ daily_enabled: true, enabled: true, project_id: PROJECT_ID });
 });
 
+test('restarts an exhausted daily batch while keeping the previous attempt', async ({ page }) => {
+  let current = automationPolicy(true, {
+    attempt_no: 1,
+    attempted_count: 30,
+    business_date: '2026-07-27',
+    in_progress_count: 0,
+    last_error_message: '已尝试 30 篇，仍未补足 10 篇合格内容。',
+    published_count: 0,
+    qualified_count: 3,
+    restart_allowed: true,
+    retired_count: 27,
+    scheduled_count: 0,
+    status: 'attention_required',
+    target_count: 10,
+    version: 4,
+  });
+  let restartRequest:
+    { body: Record<string, unknown>; idempotencyKey: string | undefined } | undefined;
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '官网内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/official-site-automation/daily-batch/restart')) {
+      restartRequest = {
+        body: request.postDataJSON() as Record<string, unknown>,
+        idempotencyKey: request.headers()['idempotency-key'],
+      };
+      current = automationPolicy(true, {
+        attempt_no: 2,
+        attempted_count: 0,
+        business_date: '2026-07-27',
+        in_progress_count: 0,
+        last_error_message: null,
+        published_count: 0,
+        qualified_count: 0,
+        restart_allowed: false,
+        retired_count: 0,
+        scheduled_count: 0,
+        status: 'running',
+        target_count: 10,
+        version: 1,
+      });
+      await json(route, { data: current, meta: { request_id: 'daily-restart' } }, 201);
+      return;
+    }
+    if (path.endsWith('/official-site-automation')) {
+      await json(route, { data: [current], meta: { request_id: 'automation-list' } });
+      return;
+    }
+    await json(route, { data: [account({ version: 1 })], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '官网自动发布' }).click();
+  await expect(page.getByText('今日发布进度（第 1 次尝试）')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '重新发起今日批次' }).click();
+
+  await expect(page.getByText('已重新发起今日第 2 次尝试')).toBeVisible();
+  await expect(page.getByText('今日发布进度（第 2 次尝试）')).toBeVisible();
+  expect(restartRequest?.body).toEqual({
+    expected_batch_version: 4,
+    project_id: PROJECT_ID,
+  });
+  expect(restartRequest?.idempotencyKey).toMatch(/^official-site-daily-batch-restart-/u);
+});
+
 test('denies non-publisher roles before requesting account data', async ({ page }) => {
   let accountRequests = 0;
   await page.unroute('**/api/v1/auth/tenants');
@@ -345,7 +417,7 @@ function workspace() {
   };
 }
 
-function automationPolicy(enabled: boolean) {
+function automationPolicy(enabled: boolean, todayBatch: Record<string, unknown> | null = null) {
   return {
     account_id: ACCOUNT_ID,
     brand_consistency_min: 90,
@@ -377,7 +449,7 @@ function automationPolicy(enabled: boolean) {
     question_coverage_min: 80,
     readability_safety_min: 85,
     tenant_id: TENANT_ID,
-    today_batch: null,
+    today_batch: todayBatch,
     updated_at: '2026-07-23T00:00:00.000Z',
     version: 1,
     workspace_id: WORKSPACE_ID,

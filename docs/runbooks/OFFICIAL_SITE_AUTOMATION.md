@@ -2,7 +2,7 @@
 
 ## 前置条件
 
-- PostgreSQL 已执行至迁移 0039；
+- PostgreSQL 已执行至迁移 0040；
 - API、Outbox Relay、AI Worker、Publisher Worker、Redis 正常；
 - AI Worker 配置 DeepSeek，质量检查和重写使用 `deepseek-v4-pro`；
 - 官网项目已部署 `/api/geo/v1`，使用数据库副本完成过验证；
@@ -46,6 +46,8 @@ OFFICIAL_SITE_DAILY_TICK_MS=30000
 
 如果 10 篇内容在部分固定时段之后才准备完成，系统把已错过的时段顺延到当天剩余时间，且不会创建过去时间或跨日补发任务。
 
+当今日批次已尝试 30 篇仍未补足 10 篇时，页面显示“重新发起今日批次”。确认后旧批次和候选记录保留，新建下一尝试编号的批次；新批次仍最多尝试 30 篇且质量阈值不变。前置资料缺失、当天已结束、运行中、已排期或已完成的批次不提供该按钮。
+
 ## 状态解释
 
 | 自动化状态 | 含义 | 操作 |
@@ -88,7 +90,7 @@ FROM publish_attempts
 ORDER BY created_at DESC
 LIMIT 50;
 
-SELECT batch.business_date, batch.status, batch.last_error_json,
+SELECT batch.business_date, batch.attempt_no, batch.status, batch.last_error_json,
        count(item.id) AS attempted,
        count(item.id) FILTER (WHERE item.status='published') AS published,
        count(item.id) FILTER (WHERE item.status='retired') AS retired
@@ -96,7 +98,7 @@ FROM official_site_daily_batches AS batch
 LEFT JOIN official_site_daily_batch_items AS item
   ON item.batch_id=batch.id AND item.tenant_id=batch.tenant_id
 GROUP BY batch.id
-ORDER BY batch.business_date DESC;
+ORDER BY batch.business_date DESC, batch.attempt_no DESC;
 ```
 
 不得把凭证密文、Bearer Token 或 DeepSeek Key 输出到工单和日志。

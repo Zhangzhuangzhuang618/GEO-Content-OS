@@ -93,16 +93,19 @@ export const OfficialSiteAutomationPolicySchema = z
     tenant_id: z.string().uuid(),
     today_batch: z
       .object({
+        attempt_no: z.number().int().positive(),
         attempted_count: z.number().int().min(0).max(30),
         business_date: z.iso.date(),
         in_progress_count: z.number().int().min(0).max(30),
         last_error_message: z.string().nullable(),
         published_count: z.number().int().min(0).max(10),
         qualified_count: z.number().int().min(0).max(30),
+        restart_allowed: z.boolean(),
         retired_count: z.number().int().min(0).max(30),
         scheduled_count: z.number().int().min(0).max(10),
         status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
         target_count: z.literal(10),
+        version: z.number().int().positive(),
       })
       .strict()
       .nullable(),

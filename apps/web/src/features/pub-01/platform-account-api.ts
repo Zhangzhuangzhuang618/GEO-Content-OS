@@ -186,6 +186,32 @@ export async function saveOfficialSiteAutomationPolicy(
   return parsed.data.data;
 }
 
+export async function restartOfficialSiteDailyBatch(
+  accountId: string,
+  input: {
+    readonly expectedBatchVersion: number;
+    readonly projectId: string;
+  },
+  csrf: string,
+): Promise<OfficialSiteAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/official-site-automation/daily-batch/restart`,
+    {
+      body: JSON.stringify({
+        expected_batch_version: input.expectedBatchVersion,
+        project_id: input.projectId,
+      }),
+      credentials: 'include',
+      headers: jsonWriteHeaders(csrf, undefined, 'official-site-daily-batch-restart'),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = OfficialSiteAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
 export class PlatformAccountRequestError extends Error {
   public constructor(public readonly status: number) {
     super('Platform account request failed');

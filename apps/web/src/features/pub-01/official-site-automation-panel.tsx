@@ -6,6 +6,7 @@ import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
   listOfficialSiteAutomationPolicies,
+  restartOfficialSiteDailyBatch,
   saveOfficialSiteAutomationPolicy,
 } from './platform-account-api';
 import type { OfficialSiteAutomationPolicy, PlatformAccount } from './platform-account.schema';
@@ -23,6 +24,7 @@ export function OfficialSiteAutomationPanel({
   const [enabled, setEnabled] = useState(false);
   const [dailyEnabled, setDailyEnabled] = useState(false);
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
+  const [restarting, setRestarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const selected = useMemo(
     () => policies.find((policy) => policy.project_id === projectId),
@@ -116,6 +118,45 @@ export function OfficialSiteAutomationPanel({
     }
   }
 
+  async function restartTodayBatch() {
+    const batch = selected?.today_batch;
+    if (!selected || !batch?.restart_allowed || restarting) return;
+    const confirmed = window.confirm(
+      `将保留今日第 ${batch.attempt_no} 次尝试的全部记录，并立即创建第 ${
+        batch.attempt_no + 1
+      } 次尝试。新批次最多再生成 30 篇候选，会产生新的 AI 调用成本。是否继续？`,
+    );
+    if (!confirmed) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('缺少安全令牌，请刷新页面后重试。');
+      return;
+    }
+    setRestarting(true);
+    setMessage(null);
+    try {
+      const restarted = await restartOfficialSiteDailyBatch(
+        account.id,
+        {
+          expectedBatchVersion: batch.version,
+          projectId: selected.project_id,
+        },
+        csrf,
+      );
+      setPolicies((current) => [
+        ...current.filter((policy) => policy.project_id !== restarted.project_id),
+        restarted,
+      ]);
+      setMessage(
+        `已重新发起今日第 ${restarted.today_batch?.attempt_no ?? batch.attempt_no + 1} 次尝试。系统正在按原质量标准补足 10 篇。`,
+      );
+    } catch {
+      setMessage('重新发起失败。批次状态可能已变化，请关闭后重新打开再试。');
+    } finally {
+      setRestarting(false);
+    }
+  }
+
   return (
     <form
       aria-label={`官网自动发布 ${account.display_name}`}
@@ -191,7 +232,13 @@ export function OfficialSiteAutomationPanel({
               </span>
             </span>
           </label>
-          {selected?.today_batch ? <TodayBatchStatus policy={selected} /> : null}
+          {selected?.today_batch ? (
+            <TodayBatchStatus
+              onRestart={() => void restartTodayBatch()}
+              policy={selected}
+              restarting={restarting}
+            />
+          ) : null}
           <div className="mt-5 rounded-xl bg-surface-subtle p-4 text-sm leading-6 text-ink-700">
             <p className="font-semibold text-ink-950">固定安全门禁</p>
             <p className="mt-1">
@@ -225,7 +272,15 @@ export function OfficialSiteAutomationPanel({
   );
 }
 
-function TodayBatchStatus({ policy }: { readonly policy: OfficialSiteAutomationPolicy }) {
+function TodayBatchStatus({
+  onRestart,
+  policy,
+  restarting,
+}: {
+  readonly onRestart: () => void;
+  readonly policy: OfficialSiteAutomationPolicy;
+  readonly restarting: boolean;
+}) {
   const batch = policy.today_batch;
   if (!batch) return null;
   const statusText = {
@@ -239,7 +294,7 @@ function TodayBatchStatus({ policy }: { readonly policy: OfficialSiteAutomationP
     <section aria-label="今日发布进度" className="mt-5 rounded-xl border border-line bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <p className="font-semibold text-ink-950">今日发布进度</p>
+          <p className="font-semibold text-ink-950">今日发布进度（第 {batch.attempt_no} 次尝试）</p>
           <p className="mt-1 text-sm text-ink-600">{statusText}</p>
         </div>
         <p className="text-sm font-semibold text-brand-700">
@@ -257,6 +312,21 @@ function TodayBatchStatus({ policy }: { readonly policy: OfficialSiteAutomationP
         <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           {batch.last_error_message}
         </p>
+      ) : null}
+      {batch.restart_allowed ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
+          <p className="text-sm leading-6 text-amber-900">
+            本次已用完 30 个候选仍未补足 10 篇。可以保留失败记录并重新开始一批。
+          </p>
+          <button
+            className={secondaryButton}
+            disabled={restarting}
+            onClick={onRestart}
+            type="button"
+          >
+            {restarting ? '正在重新发起…' : '重新发起今日批次'}
+          </button>
+        </div>
       ) : null}
     </section>
   );

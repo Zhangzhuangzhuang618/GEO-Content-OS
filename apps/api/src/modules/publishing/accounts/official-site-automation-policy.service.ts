@@ -1,6 +1,7 @@
 import type {
   OfficialSiteAutomationPolicyRequest,
   OfficialSiteAutomationPolicyView,
+  OfficialSiteDailyBatchRestartRequest,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
@@ -10,11 +11,14 @@ import type { PlatformAccountAudit, PlatformAccountScope } from './platform-acco
 
 interface PolicyRow {
   readonly accountId: string;
+  readonly batchAttemptNo: number | null;
   readonly attemptedCount: number | null;
   readonly batchBusinessDate: Date | string | null;
   readonly batchLastErrorMessage: string | null;
+  readonly batchRestartAllowed: boolean | null;
   readonly batchStatus:
     'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled' | null;
+  readonly batchVersion: number | null;
   readonly brandConsistencyMin: 90;
   readonly dailyCandidateLimit: 30;
   readonly dailyEnabled: boolean;
@@ -84,8 +88,11 @@ export class OfficialSiteAutomationPolicyService {
         policy.platform_fit_min AS "platformFitMin", policy.max_rewrites AS "maxRewrites",
         policy.publish_attempt_limit AS "publishAttemptLimit", policy.version,
         policy.updated_at AS "updatedAt",
+        today.attempt_no AS "batchAttemptNo",
         today.business_date AS "batchBusinessDate", today.status AS "batchStatus",
+        today.version AS "batchVersion",
         today.last_error_message AS "batchLastErrorMessage",
+        today.restart_allowed AS "batchRestartAllowed",
         today.attempted_count AS "attemptedCount",
         today.in_progress_count AS "inProgressCount",
         today.qualified_count AS "qualifiedCount",
@@ -95,9 +102,13 @@ export class OfficialSiteAutomationPolicyService {
       FROM official_site_automation_policies AS policy
       LEFT JOIN LATERAL (
         SELECT
-          batch.business_date, batch.status,
+          batch.attempt_no, batch.business_date, batch.status, batch.version,
           COALESCE(batch.last_error_json->>'message', batch.last_error_json->>'code')
             AS last_error_message,
+          (
+            batch.status='attention_required'
+            AND batch.last_error_json->>'code'='DAILY_CANDIDATE_LIMIT_REACHED'
+          ) AS restart_allowed,
           count(item.id)::integer AS attempted_count,
           count(item.id) FILTER (
             WHERE item.status IN ('generating','quality_check','rewriting')
@@ -116,6 +127,7 @@ export class OfficialSiteAutomationPolicyService {
         WHERE batch.tenant_id=policy.tenant_id AND batch.policy_id=policy.id
           AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
         GROUP BY batch.id
+        ORDER BY batch.attempt_no DESC
         LIMIT 1
       ) AS today ON true
       WHERE policy.tenant_id=${scope.tenantId}::uuid AND policy.account_id=${accountId}::uuid
@@ -166,8 +178,10 @@ export class OfficialSiteAutomationPolicyService {
           question_coverage_min AS "questionCoverageMin", platform_fit_min AS "platformFitMin",
           max_rewrites AS "maxRewrites", publish_attempt_limit AS "publishAttemptLimit",
           version, updated_at AS "updatedAt",
-          NULL::date AS "batchBusinessDate", NULL::text AS "batchStatus",
+          NULL::smallint AS "batchAttemptNo", NULL::date AS "batchBusinessDate",
+          NULL::text AS "batchStatus", NULL::integer AS "batchVersion",
           NULL::text AS "batchLastErrorMessage", NULL::integer AS "attemptedCount",
+          NULL::boolean AS "batchRestartAllowed",
           NULL::integer AS "inProgressCount", NULL::integer AS "qualifiedCount",
           NULL::integer AS "scheduledCount", NULL::integer AS "publishedCount",
           NULL::integer AS "retiredCount"
@@ -207,8 +221,10 @@ export class OfficialSiteAutomationPolicyService {
           question_coverage_min AS "questionCoverageMin",platform_fit_min AS "platformFitMin",
           max_rewrites AS "maxRewrites",publish_attempt_limit AS "publishAttemptLimit",
           version,updated_at AS "updatedAt",
-          NULL::date AS "batchBusinessDate", NULL::text AS "batchStatus",
+          NULL::smallint AS "batchAttemptNo", NULL::date AS "batchBusinessDate",
+          NULL::text AS "batchStatus", NULL::integer AS "batchVersion",
           NULL::text AS "batchLastErrorMessage", NULL::integer AS "attemptedCount",
+          NULL::boolean AS "batchRestartAllowed",
           NULL::integer AS "inProgressCount", NULL::integer AS "qualifiedCount",
           NULL::integer AS "scheduledCount", NULL::integer AS "publishedCount",
           NULL::integer AS "retiredCount"
@@ -230,6 +246,169 @@ export class OfficialSiteAutomationPolicyService {
       `;
       return mapPolicy(after);
     });
+  }
+
+  public async restartDailyBatchInTransaction(
+    transaction: TransactionSql,
+    scope: PlatformAccountScope,
+    accountId: string,
+    input: OfficialSiteDailyBatchRestartRequest,
+    audit: PlatformAccountAudit,
+  ): Promise<OfficialSiteAutomationPolicyView> {
+    const account = await this.requireAccount(transaction, scope, accountId, true);
+    if (account.status !== 'active' || account.publishMode !== 'api') {
+      throw stateInvalid('Only an active official-site API account can restart a daily batch');
+    }
+    const policies = await transaction<
+      {
+        dailyEnabled: boolean;
+        enabled: boolean;
+        id: string;
+        timezone: string;
+        workspaceId: string;
+      }[]
+    >`
+      SELECT
+        policy.id,policy.workspace_id AS "workspaceId",policy.enabled,
+        policy.daily_enabled AS "dailyEnabled",policy.daily_timezone AS timezone
+      FROM official_site_automation_policies AS policy
+      JOIN projects AS project
+        ON project.id=policy.project_id AND project.tenant_id=policy.tenant_id
+        AND project.workspace_id=policy.workspace_id
+        AND project.status='active' AND project.deleted_at IS NULL
+      WHERE policy.tenant_id=${scope.tenantId}::uuid
+        AND policy.account_id=${accountId}::uuid
+        AND policy.project_id=${input.project_id}::uuid
+        AND has_project_scope_access(
+          policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
+        )
+      FOR UPDATE OF policy
+    `;
+    const policy = policies[0];
+    if (!policy) throw notFound();
+    if (!policy.enabled || !policy.dailyEnabled) {
+      throw stateInvalid('The daily official-site plan is not enabled');
+    }
+    const batches = await transaction<
+      {
+        attemptNo: number;
+        businessDate: Date | string;
+        errorCode: string | null;
+        id: string;
+        status: 'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled';
+        version: number;
+      }[]
+    >`
+      SELECT
+        id,attempt_no AS "attemptNo",business_date AS "businessDate",status,version,
+        last_error_json->>'code' AS "errorCode"
+      FROM official_site_daily_batches
+      WHERE tenant_id=${scope.tenantId}::uuid AND policy_id=${policy.id}::uuid
+        AND business_date=(now() AT TIME ZONE ${policy.timezone})::date
+      ORDER BY attempt_no DESC
+      LIMIT 1
+      FOR UPDATE
+    `;
+    const before = batches[0];
+    if (!before) throw stateInvalid('There is no daily batch to restart today');
+    if (before.version !== input.expected_batch_version) throw versionConflict();
+    if (
+      before.status !== 'attention_required' ||
+      before.errorCode !== 'DAILY_CANDIDATE_LIMIT_REACHED'
+    ) {
+      throw stateInvalid('Only a daily batch that exhausted its candidate limit can be restarted');
+    }
+    const cancelled = await transaction<{ version: number }[]>`
+      UPDATE official_site_daily_batches SET
+        status='cancelled',
+        last_error_json=COALESCE(last_error_json,'{}'::jsonb) || jsonb_build_object(
+          'restarted_at',now(),
+          'restarted_by',${scope.userId}::uuid
+        ),
+        version=version+1
+      WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND status='attention_required' AND version=${before.version}
+      RETURNING version
+    `;
+    if (!cancelled[0]) throw versionConflict();
+    const created = await transaction<
+      {
+        attemptNo: number;
+        businessDate: Date | string;
+        id: string;
+        version: number;
+      }[]
+    >`
+      INSERT INTO official_site_daily_batches (
+        tenant_id,policy_id,business_date,attempt_no,status
+      ) VALUES (
+        ${scope.tenantId}::uuid,${policy.id}::uuid,${dateOnly(before.businessDate)}::date,
+        ${before.attemptNo + 1},'running'
+      )
+      RETURNING
+        id,attempt_no AS "attemptNo",business_date AS "businessDate",version
+    `;
+    const next = created[0];
+    if (!next) throw stateInvalid('The new daily batch was not created');
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id,actor_id,action,resource_type,resource_id,
+        before_json,after_json,ip,request_id
+      ) VALUES (
+        ${scope.tenantId}::uuid,${scope.userId}::uuid,
+        'official_site.daily_batch.restarted','official_site_daily_batch',
+        ${next.id}::uuid,
+        ${jsonbText(transaction, {
+          attempt_no: before.attemptNo,
+          batch_id: before.id,
+          status: before.status,
+          version: before.version,
+        })}::jsonb,
+        ${jsonbText(transaction, {
+          attempt_no: next.attemptNo,
+          batch_id: next.id,
+          restarted_from_batch_id: before.id,
+          status: 'running',
+          version: next.version,
+        })}::jsonb,
+        ${audit.ip ?? null},${audit.requestId}
+      )
+    `;
+    const rows = await transaction<PolicyRow[]>`
+      SELECT
+        policy.id,policy.tenant_id AS "tenantId",policy.workspace_id AS "workspaceId",
+        policy.project_id AS "projectId",policy.account_id AS "accountId",policy.enabled,
+        policy.daily_enabled AS "dailyEnabled",
+        policy.daily_target_count AS "dailyTargetCount",
+        policy.daily_candidate_limit AS "dailyCandidateLimit",
+        policy.daily_generation_time::text AS "dailyGenerationTime",
+        policy.daily_timezone AS "dailyTimezone",
+        policy.daily_schedule_times::text[] AS "dailyScheduleTimes",
+        policy.geo_total_min AS "geoTotalMin",
+        policy.factual_accuracy_min AS "factualAccuracyMin",
+        policy.brand_consistency_min AS "brandConsistencyMin",
+        policy.readability_safety_min AS "readabilitySafetyMin",
+        policy.question_coverage_min AS "questionCoverageMin",
+        policy.platform_fit_min AS "platformFitMin",
+        policy.max_rewrites AS "maxRewrites",
+        policy.publish_attempt_limit AS "publishAttemptLimit",
+        policy.version,policy.updated_at AS "updatedAt",
+        batch.attempt_no AS "batchAttemptNo",
+        batch.business_date AS "batchBusinessDate",
+        batch.status AS "batchStatus",batch.version AS "batchVersion",
+        NULL::text AS "batchLastErrorMessage",
+        false AS "batchRestartAllowed",
+        0::integer AS "attemptedCount",0::integer AS "inProgressCount",
+        0::integer AS "qualifiedCount",0::integer AS "scheduledCount",
+        0::integer AS "publishedCount",0::integer AS "retiredCount"
+      FROM official_site_automation_policies AS policy
+      JOIN official_site_daily_batches AS batch
+        ON batch.id=${next.id}::uuid AND batch.tenant_id=policy.tenant_id
+      WHERE policy.id=${policy.id}::uuid AND policy.tenant_id=${scope.tenantId}::uuid
+    `;
+    const result = rows[0];
+    if (!result) throw stateInvalid('The restarted daily batch could not be loaded');
+    return mapPolicy(result);
   }
 
   private async requireAccount(
@@ -286,16 +465,19 @@ function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
     today_batch:
       row.batchBusinessDate && row.batchStatus
         ? {
+            attempt_no: row.batchAttemptNo ?? 1,
             attempted_count: row.attemptedCount ?? 0,
             business_date: dateOnly(row.batchBusinessDate),
             in_progress_count: row.inProgressCount ?? 0,
             last_error_message: row.batchLastErrorMessage,
             published_count: row.publishedCount ?? 0,
             qualified_count: row.qualifiedCount ?? 0,
+            restart_allowed: row.batchRestartAllowed ?? false,
             retired_count: row.retiredCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,
             status: row.batchStatus,
             target_count: row.dailyTargetCount,
+            version: row.batchVersion ?? 1,
           }
         : null,
     updated_at: new Date(row.updatedAt).toISOString(),

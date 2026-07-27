@@ -94,18 +94,27 @@ export const OfficialSiteAutomationPolicyRequestSchema = z
     project_id: UuidSchema,
   })
   .strict();
+export const OfficialSiteDailyBatchRestartRequestSchema = z
+  .object({
+    expected_batch_version: VersionSchema,
+    project_id: UuidSchema,
+  })
+  .strict();
 export const OfficialSiteDailyBatchSummarySchema = z
   .object({
+    attempt_no: z.number().int().positive(),
     attempted_count: z.number().int().min(0).max(30),
     business_date: z.iso.date(),
     in_progress_count: z.number().int().min(0).max(30),
     last_error_message: z.string().nullable(),
     published_count: z.number().int().min(0).max(10),
     qualified_count: z.number().int().min(0).max(30),
+    restart_allowed: z.boolean(),
     retired_count: z.number().int().min(0).max(30),
     scheduled_count: z.number().int().min(0).max(10),
     status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
     target_count: z.literal(10),
+    version: VersionSchema,
   })
   .strict();
 export const OfficialSiteAutomationPolicyViewSchema = z
@@ -167,6 +176,9 @@ export type UpdatePlatformAccountRequest = z.infer<typeof UpdatePlatformAccountR
 export type PlatformAccountView = z.infer<typeof PlatformAccountViewSchema>;
 export type OfficialSiteAutomationPolicyRequest = z.infer<
   typeof OfficialSiteAutomationPolicyRequestSchema
+>;
+export type OfficialSiteDailyBatchRestartRequest = z.infer<
+  typeof OfficialSiteDailyBatchRestartRequestSchema
 >;
 export type OfficialSiteAutomationPolicyView = z.infer<
   typeof OfficialSiteAutomationPolicyViewSchema

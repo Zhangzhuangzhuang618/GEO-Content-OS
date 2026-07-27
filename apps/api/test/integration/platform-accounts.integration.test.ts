@@ -354,6 +354,80 @@ describe('platform accounts', () => {
       version: 1,
     });
     await expect(policies.list(SCOPE, account.id)).resolves.toEqual([created]);
+    await database`
+      INSERT INTO official_site_daily_batches(
+        tenant_id,policy_id,business_date,status,last_error_json
+      ) VALUES(
+        ${TENANT_ID}::uuid,${created.id}::uuid,
+        (now() AT TIME ZONE 'Asia/Shanghai')::date,'attention_required',
+        '{"code":"DAILY_CANDIDATE_LIMIT_REACHED","message":"已尝试 30 篇，仍未补足 10 篇合格内容。"}'::jsonb
+      )
+    `;
+    const failedBatch = (await policies.list(SCOPE, account.id))[0]?.today_batch;
+    expect(failedBatch).toMatchObject({
+      attempt_no: 1,
+      restart_allowed: true,
+      status: 'attention_required',
+      version: 1,
+    });
+    const restarted = await database.begin((transaction) =>
+      policies.restartDailyBatchInTransaction(
+        transaction,
+        SCOPE,
+        account.id,
+        {
+          expected_batch_version: 1,
+          project_id: PROJECT_ID,
+        },
+        { requestId: 'req-daily-restart' },
+      ),
+    );
+    expect(restarted.today_batch).toMatchObject({
+      attempt_no: 2,
+      attempted_count: 0,
+      restart_allowed: false,
+      status: 'running',
+      version: 1,
+    });
+    expect(
+      await database<{ attemptNo: number; status: string }[]>`
+        SELECT attempt_no AS "attemptNo",status
+        FROM official_site_daily_batches
+        WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${created.id}::uuid
+        ORDER BY attempt_no
+      `,
+    ).toEqual([
+      { attemptNo: 1, status: 'cancelled' },
+      { attemptNo: 2, status: 'running' },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND action='official_site.daily_batch.restarted'
+      `,
+    ).toEqual([{ count: 1 }]);
+    await expect(
+      database.begin((transaction) =>
+        policies.restartDailyBatchInTransaction(
+          transaction,
+          SCOPE,
+          account.id,
+          {
+            expected_batch_version: 1,
+            project_id: PROJECT_ID,
+          },
+          { requestId: 'req-daily-restart-duplicate' },
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_STATE_INVALID' });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM official_site_daily_batches
+        WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${created.id}::uuid
+      `,
+    ).toEqual([{ count: 2 }]);
     await expect(
       policies.update(
         SCOPE,

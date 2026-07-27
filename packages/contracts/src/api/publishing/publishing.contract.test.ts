@@ -2,17 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CreatePlatformAccountRequestSchema,
+  OfficialSiteDailyBatchRestartRequestSchema,
   PUBLISHING_API_CONTRACTS,
   PUBLISHING_OPENAPI_DOCUMENT,
   PublishJobQuerySchema,
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all seventeen publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(17);
+  it('contains all eighteen publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(18);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(17);
+    ).toBe(18);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -23,7 +24,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(17);
+    expect(operations).toHaveLength(18);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -32,6 +33,20 @@ describe('Publishing API frozen contract', () => {
       expect(operation['x-permission']).toBe(contract.permission);
       expect(operation['x-policy']).toBe(contract.policy);
     }
+  });
+
+  it('requires an optimistic batch version when restarting today', () => {
+    expect(
+      OfficialSiteDailyBatchRestartRequestSchema.safeParse({
+        expected_batch_version: 2,
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      OfficialSiteDailyBatchRestartRequestSchema.safeParse({
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
   });
 
   it('keeps tenant context and credentials out of queries and responses', () => {

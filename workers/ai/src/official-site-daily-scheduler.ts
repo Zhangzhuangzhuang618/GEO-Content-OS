@@ -179,7 +179,13 @@ export class OfficialSiteDailyScheduler {
         AND project.status='active' AND project.deleted_at IS NULL
       WHERE policy.enabled AND policy.daily_enabled
         AND (now() AT TIME ZONE policy.daily_timezone)::time >= policy.daily_generation_time
-      ON CONFLICT (tenant_id,policy_id,business_date) DO NOTHING
+        AND NOT EXISTS (
+          SELECT 1 FROM official_site_daily_batches AS existing
+          WHERE existing.tenant_id=policy.tenant_id
+            AND existing.policy_id=policy.id
+            AND existing.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
+        )
+      ON CONFLICT DO NOTHING
     `;
   }
 

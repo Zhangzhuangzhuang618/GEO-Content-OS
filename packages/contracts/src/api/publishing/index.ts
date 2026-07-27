@@ -26,6 +26,7 @@ import {
   OfficialSiteAutomationPolicyPageSchema,
   OfficialSiteAutomationPolicyRequestSchema,
   OfficialSiteAutomationPolicyResponseSchema,
+  OfficialSiteDailyBatchRestartRequestSchema,
 } from './schemas.js';
 import { ReasonRequestSchema } from '../common.js';
 
@@ -170,6 +171,19 @@ const contracts = [
     'OfficialSiteAutomationPolicyRequest',
     'OfficialSiteAutomationPolicyView',
     OfficialSiteAutomationPolicyResponseSchema,
+  ),
+  contract(
+    'account.official_site_automation.daily_batch.restart',
+    'POST',
+    '/platform-accounts/{id}/official-site-automation/daily-batch/restart',
+    'key+body_hash',
+    OfficialSiteDailyBatchRestartRequestSchema,
+    null,
+    PlatformAccountParamsSchema,
+    'OfficialSiteDailyBatchRestartRequest',
+    'OfficialSiteAutomationPolicyView',
+    OfficialSiteAutomationPolicyResponseSchema,
+    201,
   ),
   contract(
     'job.create',

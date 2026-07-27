@@ -103,9 +103,13 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 只对启用每日计划的 `official_site` 项目生效。系统每天 00:00（Asia/Shanghai）幂等创建一个批次，目标固定 10 篇、候选上限固定 30 篇。每个候选继续执行 ADR-0021 机器门禁和最多 3 次重写；仍不通过则淘汰并自动创建新候选补位，不得降低质量阈值。凑足 10 篇后按 08:00、09:30、11:00、12:30、14:00、15:30、17:00、18:30、20:00、21:30 排入当天官网发布计划。重复巡检和消息重放不得重复创建批次、内容或发布任务；跨日仍未完成的批次停止并要求处理。普通单篇官网内容仍在质检通过后立即发布，其他六个平台不变。
 
+### 官网当日批次重发（ADR-0024）
+
+当日批次因 30 篇候选耗尽仍未补足 10 篇而进入 `attention_required` 后，发布管理员可正式发起下一次当日尝试。旧批次和候选完整保留并标记 `cancelled`，新批次使用递增 `attempt_no`，每次仍固定最多 30 篇候选且不降低 ADR-0021 门禁。同一策略和日期同时最多一个活动批次；操作使用 Idempotency-Key、批次版本和审计日志防止重复或并发误操作。其他失败原因、其他日期和其他平台不可使用该入口。
+
 ## 5. 数据模型
 
-冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表。当前可执行表数为 65，迁移序号为 0039。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束。当前可执行表数为 65，迁移序号为 0040。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -195,7 +199,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，当前可执行端点数为 132。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，当前可执行端点数为 133。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -300,6 +304,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 发布 | DELETE | `/platform-accounts/{id}` | publisher_or_admin | - | PlatformAccountView | resource+version |
 | 发布 | GET | `/platform-accounts/{id}/official-site-automation` | publisher_or_admin | - | OfficialSiteAutomationPolicyPage | - |
 | 发布 | PUT | `/platform-accounts/{id}/official-site-automation` | publisher_or_admin | OfficialSiteAutomationPolicyRequest | OfficialSiteAutomationPolicyView | expected_version |
+| 发布 | POST | `/platform-accounts/{id}/official-site-automation/daily-batch/restart` | publisher_or_admin | OfficialSiteDailyBatchRestartRequest | OfficialSiteAutomationPolicyView | key+body_hash |
 | 发布 | POST | `/publish-jobs` | publisher_or_admin | CreatePublishJobRequest | PublishJobView | key+body_hash |
 | 发布 | GET | `/publish-jobs` | publisher_or_admin | PublishJobQuery | PublishJobPage | - |
 | 发布 | GET | `/publish-jobs/{id}` | publisher_or_admin | - | PublishJobDetail | - |
