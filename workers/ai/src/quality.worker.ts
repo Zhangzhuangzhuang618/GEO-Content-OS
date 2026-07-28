@@ -122,7 +122,10 @@ export class QualityCheckWorker {
         assessment,
         scanDeterministicRisks({
           brandProfile: context.brandProfile,
-          citations,
+          citations: citations.map((citation) => ({
+            id: citation.id,
+            quoteText: citation.quoteText,
+          })),
           content: context.content,
           platformCode: context.platformCode,
         }),

@@ -22,6 +22,61 @@ describe('deterministic pre-publish risk scanner', () => {
     expect(issues).toEqual([]);
   });
 
+  it('checks each sensitive claim instead of requiring every number in the surrounding block', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand({
+        differentiators: ['自有大型车辆30+台，自有搬家师傅数十人，均为正式员工。'],
+      }),
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'intro',
+            '志远搬家自有大型车辆30余台，自有搬家师傅数十人。建议客户提前3天整理物品，并按2个区域制作清单。',
+          ),
+        ],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues).toEqual([]);
+  });
+
+  it('blocks only the unsupported scale claim when a block also contains an approved claim', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand({
+        differentiators: ['自有大型车辆30+台。'],
+      }),
+      citations: [],
+      content: content({
+        blocks: [block('intro', '公司自有大型车辆30余台，同时拥有80名专职客服。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({
+      rule_id: 'deterministic.fact.unsupported_scale',
+    });
+    expect(issues[0]?.message).toContain('拥有80名');
+    expect(issues[0]?.message).not.toContain('30余台');
+  });
+
+  it('does not treat a numbered fee explanation as a concrete unsupported price', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [block('price', '搬家费用通常包含3个部分，具体报价以现场需求评估为准。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.fact.unsupported_price',
+    );
+  });
+
   it('blocks unsupported price, phone, scale, credentials, promises, secrets and brand bans', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand({ banned: ['零风险'] }),
@@ -67,8 +122,8 @@ describe('deterministic pre-publish risk scanner', () => {
         ...input,
         citations: [
           {
-            claimText: '公司已获得AAA认证。',
             id: '10000000-0000-4000-8000-000000000001',
+            quoteText: '公司已获得AAA认证。',
           },
         ],
       }).map((item) => item.rule_id),

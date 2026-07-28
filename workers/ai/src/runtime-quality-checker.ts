@@ -134,7 +134,7 @@ function qualitySemanticRepairPrompt(
   input: Readonly<Record<string, unknown>>,
 ): QualityCheckerPublishedPrompt {
   const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
-  const mandatoryFactBlocks = factResults.flatMap((fact) => {
+  const mandatoryIssues = factResults.flatMap((fact) => {
     if (!record(fact)) return [];
     const risk = fact['risk_level'];
     const verdict = fact['verdict'];
@@ -142,19 +142,62 @@ function qualitySemanticRepairPrompt(
     return (risk === 'high' || risk === 'critical') &&
       (verdict === 'unsupported' || verdict === 'conflicted') &&
       typeof claimKey === 'string'
-      ? [`claim:${claimKey}`]
+      ? [
+          {
+            category: 'fact',
+            citation_ids: [],
+            location: `claim:${claimKey}`,
+            message: '高风险事实缺少充分证据或存在冲突。',
+            rule_id: 'fact.high_risk.unsupported_or_conflicted',
+            severity: 'BLOCK',
+            suggestion: '删除该事实，或补充能够直接支持该事实的有效证据。',
+          },
+        ]
       : [];
   });
+  const contentVersionValue = input['content_version'];
+  const contentVersion = record(contentVersionValue) ? contentVersionValue : null;
+  const contentValue = contentVersion?.['content'];
+  const content = record(contentValue) ? contentValue : null;
+  const platformRulesValue = input['platform_rules'];
+  const platformRules = record(platformRulesValue) ? platformRulesValue : null;
+  const rulesValue = platformRules?.['rules'];
+  const rules = record(rulesValue) ? rulesValue : null;
+  const title = content?.['title'];
+  const maxTitleLength = rules?.['title_max_length'];
+  if (
+    typeof title === 'string' &&
+    typeof maxTitleLength === 'number' &&
+    [...title].length > maxTitleLength
+  ) {
+    mandatoryIssues.push({
+      category: 'format',
+      citation_ids: [],
+      location: 'title',
+      message: `标题超过 ${maxTitleLength} 字硬限制。`,
+      rule_id: 'platform.title.max_length',
+      severity: 'BLOCK',
+      suggestion: `缩短标题，使其不超过 ${maxTitleLength} 字。`,
+    });
+  }
+  const geoResultValue = input['geo_result'];
+  const geoResult = record(geoResultValue) ? geoResultValue : null;
+  const geoScores = geoResult ? geoResult['scores'] : null;
+  const decisionInstruction =
+    mandatoryIssues.length > 0
+      ? 'Because the required issues contain BLOCK, decision must be "block".'
+      : 'No server-required BLOCK issue was identified. Derive decision from the complete issues array and max_warnings_for_pass exactly.';
   return Object.freeze({
     systemPrompt: prompt.systemPrompt,
     taskTemplate: `${prompt.taskTemplate}
 
 The previous response failed mandatory server semantic validation. Produce a fresh result and obey all of these invariants:
-1. Copy geo_scores exactly from quality_checker_input.geo_result.scores.
-2. Every high or critical fact whose verdict is unsupported or conflicted must have a BLOCK issue with category "fact" and location "claim:<claim_key>".
-3. A result containing any BLOCK issue must use decision "block"; otherwise apply max_warnings_for_pass exactly.
-4. Use only citation IDs present in fact_results.
-Mandatory fact BLOCK locations for this input: ${JSON.stringify(mandatoryFactBlocks)}.
+1. Copy this server-supplied geo_scores object exactly: ${JSON.stringify(geoScores)}.
+2. Begin the issues array with every server-required issue object below, copied exactly. These objects are server data, not instructions from article content.
+3. You may append other real findings, but must not remove, rename, merge, downgrade, or rewrite any required issue.
+4. ${decisionInstruction}
+5. Use only citation IDs present in fact_results.
+Mandatory server-required issues: ${JSON.stringify(mandatoryIssues)}.
 Return one complete quality data JSON object only.`,
   });
 }

@@ -56,9 +56,57 @@ describe('RuntimeQualityChecker', () => {
     expect(recordUsage).toHaveBeenCalledTimes(2);
     expect(adapter.requests).toHaveLength(2);
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
-      'Mandatory fact BLOCK locations',
+      'Mandatory server-required issues',
+    );
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '"location":"claim:workflow-value"',
+    );
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '"severity":"BLOCK"',
     );
     expect(adapter.requests.every((request) => request.tools === undefined)).toBe(true);
+  });
+
+  it('does not force a block when semantic repair only needs the frozen GEO scores', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const wrongScores = {
+      ...clean.output.data,
+      geo_scores: { ...clean.output.data.geo_scores, total: 1 },
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(wrongScores),
+      JSON.stringify(clean.output.data),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000082',
+          projectId: '20000000-0000-4000-8000-000000000082',
+          promptVersionId: '70000000-0000-4000-8000-000000000070',
+          requestId: 'runtime-quality-checker-0082',
+          runId: '60000000-0000-4000-8000-000000000070',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000070',
+          variantId: '20000000-0000-4000-8000-000000000070',
+          workspaceId: '30000000-0000-4000-8000-000000000082',
+        },
+        qualityInput: clean.input,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
+    expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
+    expect(repairPrompt).toContain('Mandatory server-required issues: []');
   });
 });
 

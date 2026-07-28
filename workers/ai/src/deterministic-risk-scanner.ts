@@ -2,8 +2,8 @@ import type { PlatformCode } from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
 
 export interface DeterministicRiskCitation {
-  readonly claimText: string;
   readonly id: string;
+  readonly quoteText: string;
 }
 
 export interface DeterministicRiskScanInput {
@@ -67,7 +67,8 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
   {
     category: 'fact',
     message: '内容包含未在企业档案或证据中核验的价格、报价或收费数字。',
-    pattern: /(?:¥|￥)\s*\d|\d+(?:\.\d+)?\s*元|(?:价格|报价|收费|费用).{0,16}\d/u,
+    pattern:
+      /(?:¥|￥)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*(?:元|块|万元)|(?:价格|报价|收费|费用)[^。；;\n]{0,16}\d+(?:\.\d+)?\s*(?:元|块|万元)/u,
     ruleId: 'deterministic.fact.unsupported_price',
     suggestion: '删除具体价格，或先把有效价格依据加入企业档案或知识证据。',
     support: 'brand_or_citation',
@@ -92,7 +93,7 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
     category: 'fact',
     message: '内容包含未在企业档案或证据中核验的企业规模或经营数量。',
     pattern:
-      /(?:自有|拥有|配备|现有|累计|服务|员工|师傅|车辆|车队|客户).{0,24}(?:\d+(?:\.\d+)?(?:\+|余|多|以上)?|数十|近百|上百|数百)\s*(?:台|辆|人|名|家|个|单|次|年)/u,
+      /(?:(?:自有|拥有|配备|现有|累计)[^。；;\n]{0,24}?|(?:员工|师傅|车辆|车队|客户)(?:数量|规模|总数|累计)?(?:达到|超过|约|近|共|为|达|有)?\s*)(?:\d+(?:\.\d+)?(?:\+|余|多|以上)?|数十|近百|上百|数百)\s*(?:台|辆|人|名|家|个|单|次|年)/u,
     ruleId: 'deterministic.fact.unsupported_scale',
     suggestion: '删除数量，或使表述与已发布企业档案、知识证据精确一致。',
     support: 'brand_or_citation',
@@ -111,7 +112,7 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
 export function scanDeterministicRisks(input: DeterministicRiskScanInput): readonly QualityIssue[] {
   const issues: QualityIssue[] = [];
   const brandEvidence = canonicalize(flattenStrings(input.brandProfile).join('\n'));
-  const citationEvidence = canonicalize(input.citations.map((item) => item.claimText).join('\n'));
+  const citationEvidence = canonicalize(input.citations.map((item) => item.quoteText).join('\n'));
 
   addFormatIssues(issues, input);
   addBrandIssues(issues, input);
@@ -119,17 +120,24 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
 
   for (const section of contentSections(input.content)) {
     for (const rule of RISK_RULES) {
-      if (!rule.pattern.test(section.text)) continue;
       const evidence =
         rule.support === 'citation'
           ? citationEvidence
           : rule.support === 'brand_or_citation'
             ? `${brandEvidence}\n${citationEvidence}`
             : '';
-      if (rule.support !== 'never' && hasMatchingEvidence(section.text, evidence)) continue;
-      issues.push(
-        issue(rule.ruleId, rule.category, section.location, rule.message, rule.suggestion),
-      );
+      for (const matchedText of matchingClaims(section.text, rule.pattern)) {
+        if (rule.support !== 'never' && hasMatchingEvidence(matchedText, evidence)) continue;
+        issues.push(
+          issue(
+            rule.ruleId,
+            rule.category,
+            section.location,
+            `${rule.message} 命中表述：“${summarizeMatch(matchedText)}”`,
+            rule.suggestion,
+          ),
+        );
+      }
     }
   }
   return Object.freeze(deduplicate(issues));
@@ -274,9 +282,23 @@ function addOfficialSiteTechnicalIssues(
 function hasMatchingEvidence(value: string, evidence: string): boolean {
   if (!evidence) return false;
   const normalized = canonicalize(value);
-  if (normalized.length >= 8 && evidence.includes(normalized)) return true;
+  if (normalized.length >= 4 && evidence.includes(normalized)) return true;
   const tokens = sensitiveValueTokens(value);
   return tokens.length > 0 && tokens.every((token) => evidence.includes(token));
+}
+
+function matchingClaims(value: string, pattern: RegExp): readonly string[] {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  return Object.freeze(
+    [...value.matchAll(new RegExp(pattern.source, flags))]
+      .map((match) => match[0].trim())
+      .filter(Boolean),
+  );
+}
+
+function summarizeMatch(value: string): string {
+  const normalized = value.replace(/\s+/gu, ' ').trim();
+  return [...normalized].slice(0, 80).join('');
 }
 
 function sensitiveValueTokens(value: string): readonly string[] {
