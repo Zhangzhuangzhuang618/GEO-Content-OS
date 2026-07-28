@@ -593,8 +593,163 @@ function PlatformContentCard({
           </details>
         ) : null}
       </div>
+      <FailureDiagnostics item={item} />
     </article>
   );
+}
+
+function FailureDiagnostics({ item }: { readonly item: VariantDetail }) {
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const failed =
+    item.currentContent !== null &&
+    (item.automationRun?.status === 'manual_required' ||
+      ['generation_failed', 'quality_failed', 'review_rejected'].includes(item.variant.status));
+  if (!failed) return null;
+
+  async function copyDiagnostics() {
+    const payload = {
+      automation_run: item.automationRun,
+      citations: item.citations,
+      current_content_version_id: item.currentContent?.id ?? null,
+      platform_code: item.variant.platform_code,
+      quality_reports: item.qualityReports,
+      variant_id: item.variant.id,
+      variant_status: item.variant.status,
+      versions: item.versions.map((version) => ({
+        content_hash: version.content_hash,
+        content_json: version.content_json,
+        created_at: version.created_at,
+        id: version.id,
+        source_run_id: version.source_run_id,
+        version_no: version.version_no,
+      })),
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCopyMessage('诊断信息已复制。');
+    } catch {
+      setCopyMessage('复制失败，请检查浏览器剪贴板权限。');
+    }
+  }
+
+  return (
+    <details className="group mt-4 overflow-hidden rounded-xl border border-red-200 bg-red-50/40">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+        <div>
+          <p className="font-semibold text-red-800">查看失败全文与诊断</p>
+          <p className="mt-1 text-xs text-red-700">
+            包含最后一版全文、每次重写版本及对应质量问题。
+          </p>
+        </div>
+        <span className="text-sm font-semibold text-red-700 group-open:hidden">展开</span>
+        <span className="hidden text-sm font-semibold text-red-700 group-open:inline">收起</span>
+      </summary>
+      <div className="space-y-4 border-t border-red-200 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-ink-600">
+            共 {item.versions.length} 个正文版本、{item.qualityReports.length} 份质量报告
+          </p>
+          <button className={secondaryButton} onClick={() => void copyDiagnostics()} type="button">
+            复制诊断信息
+          </button>
+        </div>
+        {copyMessage ? (
+          <p aria-live="polite" className="text-sm text-ink-600">
+            {copyMessage}
+          </p>
+        ) : null}
+        {item.automationRun?.last_error ? (
+          <div className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+            <p className="font-semibold">最终失败原因</p>
+            <p className="mt-1">{automationErrorSummary(item.automationRun.last_error)}</p>
+          </div>
+        ) : null}
+        <div className="space-y-3">
+          {item.versions.map((version) => {
+            const reports = item.qualityReports.filter(
+              (report) => report.content_version_id === version.id,
+            );
+            const current = version.id === item.currentContent?.id;
+            return (
+              <details
+                className="rounded-lg border border-line bg-surface-subtle"
+                key={version.id}
+                open={current}
+              >
+                <summary className="cursor-pointer px-4 py-3 font-medium text-ink-900">
+                  第 {version.version_no} 版{current ? '（最后一版）' : ''} ·{' '}
+                  {reports.length ? `${reports.length} 份质量报告` : '未产生质量报告'}
+                </summary>
+                <div className="space-y-4 border-t border-line bg-white p-4">
+                  <div>
+                    <p className="font-semibold text-ink-950">{version.content_json.title}</p>
+                    <p className="mt-2 text-sm leading-6 text-ink-600">
+                      {version.content_json.summary}
+                    </p>
+                    <div className="mt-4 whitespace-pre-wrap text-sm leading-7 text-ink-800">
+                      {contentVersionFullText(version)}
+                    </div>
+                  </div>
+                  {reports.map((report) => (
+                    <div className="rounded-lg border border-line p-3" key={report.id}>
+                      <p className="text-sm font-semibold text-ink-900">
+                        质量报告：{Math.round(report.score)} 分 · {decisionLabel(report.decision)}
+                      </p>
+                      {qualityGateRuleSummary(report.automation_gate) ? (
+                        <p className="mt-2 text-sm text-red-700">
+                          门禁阻断规则：{qualityGateRuleSummary(report.automation_gate)}
+                        </p>
+                      ) : null}
+                      {report.issues.length ? (
+                        <ul className="mt-3 space-y-2 text-sm text-ink-700">
+                          {report.issues.map((issue, index) => (
+                            <li key={`${issue.rule_id}-${issue.location ?? ''}-${index}`}>
+                              <span className="font-medium">{issue.rule_id}</span>：{issue.message}
+                              {issue.suggestion ? `；建议：${issue.suggestion}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-sm text-ink-500">该报告没有问题明细。</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      </div>
+    </details>
+  );
+}
+
+function contentVersionFullText(version: VariantDetail['versions'][number]): string {
+  return version.content_json.blocks
+    .flatMap((value) => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+      const text = (value as Readonly<Record<string, unknown>>)['text'];
+      return typeof text === 'string' && text.trim() ? [text.trim()] : [];
+    })
+    .join('\n\n');
+}
+
+function automationErrorSummary(value: Readonly<Record<string, unknown>>): string {
+  const code = typeof value['code'] === 'string' ? value['code'] : 'UNKNOWN';
+  const rules = Array.isArray(value['blocking_rules'])
+    ? value['blocking_rules'].filter((item): item is string => typeof item === 'string')
+    : [];
+  const message = typeof value['message'] === 'string' ? value['message'] : '';
+  return [code, rules.length ? `阻断规则：${rules.join('、')}` : '', message]
+    .filter(Boolean)
+    .join('；');
+}
+
+function qualityGateRuleSummary(value: Readonly<Record<string, unknown>> | null): string {
+  if (!value || !Array.isArray(value['blocking_rules'])) return '';
+  return value['blocking_rules']
+    .filter((item): item is string => typeof item === 'string')
+    .join('、');
 }
 
 function variantNextStep(item: VariantDetail): string {

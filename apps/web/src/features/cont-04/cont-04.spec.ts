@@ -157,21 +157,98 @@ test('identifies quality checks separately from content generation in history', 
   await expect(page.getByText('生成官网内容', { exact: true })).toHaveCount(0);
 });
 
-test('explains when official-site automation needs human recovery after three rewrites', async ({
+test('shows failed full versions, matching quality reports and copies diagnostics', async ({
+  context,
   page,
 }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+    origin: 'http://127.0.0.1:34114',
+  });
   await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
   const detail = baseDetail('generated', ['quality_failed', 'quality_passed']);
-  await mockDetail(page, detail, {
+  const oldVersion = {
+    ...contentVersion('80000000-0000-4000-8000-000000000086', SITE_ID),
+    content_json: {
+      ...contentVersion(SITE_VERSION_ID, SITE_ID).content_json,
+      blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '第一版失败正文全文' }],
+      title: '第一版官网文章',
+    },
+  };
+  const currentVersion = {
+    ...contentVersion(SITE_VERSION_ID, SITE_ID),
+    content_json: {
+      ...contentVersion(SITE_VERSION_ID, SITE_ID).content_json,
+      blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '最后一版失败正文全文' }],
+      title: '最后一版官网文章',
+    },
+    version_no: 2,
+  };
+  const report = {
+    automation_gate: {
+      blocking_rules: ['frozen.geo_total'],
+      passed: false,
+      schema_version: 'official-site-quality-gate@1',
+    },
     content_version_id: SITE_VERSION_ID,
-    finished_at: '2026-07-15T08:00:00.000Z',
-    id: '93000000-0000-4000-8000-000000000085',
-    last_error: { code: 'QUALITY_GATE_FAILED' },
-    publish_job_id: null,
-    rewrite_count: 3,
-    status: 'manual_required',
-    updated_at: '2026-07-15T08:00:00.000Z',
-  });
+    decision: 'block',
+    id: 'b2000000-0000-4000-8000-000000000086',
+    issues: [
+      {
+        citation_ids: [],
+        location: 'blocks.intro',
+        message: '报价金额缺少精确证据',
+        rule_id: 'deterministic.fact.unsupported_price',
+        severity: 'BLOCK',
+        suggestion: '关联真实报价单。',
+      },
+    ],
+    score: 72,
+    variant_id: SITE_ID,
+  };
+  const oldReport = {
+    ...report,
+    automation_gate: {
+      blocking_rules: ['frozen.factual_accuracy'],
+      passed: false,
+      schema_version: 'official-site-quality-gate@1',
+    },
+    content_version_id: oldVersion.id,
+    id: 'b2000000-0000-4000-8000-000000000087',
+    issues: [
+      {
+        citation_ids: [],
+        location: 'blocks.intro',
+        message: '第一版正文需要重写',
+        rule_id: 'quality.rewrite.required',
+        severity: 'BLOCK',
+        suggestion: '根据质量报告重写。',
+      },
+    ],
+    score: 65,
+  };
+  await mockDetail(
+    page,
+    detail,
+    {
+      content_version_id: SITE_VERSION_ID,
+      finished_at: '2026-07-15T08:00:00.000Z',
+      id: '93000000-0000-4000-8000-000000000085',
+      last_error: {
+        blocking_rules: ['deterministic.fact.unsupported_price'],
+        code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+      },
+      publish_job_id: null,
+      rewrite_count: 3,
+      status: 'manual_required',
+      updated_at: '2026-07-15T08:00:00.000Z',
+    },
+    {
+      current_content: currentVersion,
+      quality_report: report,
+      quality_reports: [report, oldReport],
+      versions: [currentVersion, oldVersion],
+    },
+  );
 
   await page.goto(`/cont-04?id=${PACKAGE_ID}`);
   await expect(page.getByText('机器检查后自动发布')).toBeVisible();
@@ -181,6 +258,22 @@ test('explains when official-site automation needs human recovery after three re
     'href',
     `/qual-01?id=${SITE_ID}`,
   );
+  await page.getByText('查看失败全文与诊断').click();
+  await expect(page.getByText('最后一版失败正文全文')).toBeVisible();
+  await page.getByText('第 1 版 · 1 份质量报告').click();
+  await expect(page.getByText('第一版官网文章')).toBeVisible();
+  await expect(page.getByText('quality.rewrite.required')).toBeVisible();
+  await expect(page.getByText('门禁阻断规则：frozen.factual_accuracy')).toBeVisible();
+  await expect(
+    page.getByText('deterministic.fact.unsupported_price', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText('门禁阻断规则：frozen.geo_total')).toBeVisible();
+  await page.getByRole('button', { name: '复制诊断信息' }).click();
+  await expect(page.getByText('诊断信息已复制。')).toBeVisible();
+  const copied = JSON.parse(await page.evaluate(() => navigator.clipboard.readText()));
+  expect(copied.versions).toHaveLength(2);
+  expect(copied.quality_reports).toHaveLength(2);
+  expect(copied.quality_reports[0].issues[0].rule_id).toBe('deterministic.fact.unsupported_price');
   await expect(page.getByLabel('提交审核：官网')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '检查内容质量' })).toBeEnabled();
 });
@@ -236,11 +329,13 @@ async function mockDetail(
   page: Page,
   detail: ReturnType<typeof baseDetail>,
   siteAutomationRun: Record<string, unknown> | null = null,
+  siteOverrides: Record<string, unknown> = {},
 ) {
   await page.route(`**/api/v1/content-packages/${PACKAGE_ID}`, (route) => json(route, detail));
   await page.route(`**/api/v1/content-variants/${SITE_ID}`, (route) =>
     json(route, {
       ...variantDetail(detail.variants[0]!, SITE_VERSION_ID, false),
+      ...siteOverrides,
       automation_run: siteAutomationRun,
     }),
   );
@@ -299,6 +394,15 @@ function variantDetail(
   reviewable: boolean,
 ) {
   const current = summary.current_content_version_id ? contentVersion(versionId, summary.id) : null;
+  const qualityReport = reviewable
+    ? {
+        content_version_id: versionId,
+        decision: 'pass' as const,
+        id: 'b2000000-0000-4000-8000-000000000085',
+        score: 92,
+        variant_id: summary.id,
+      }
+    : null;
   return {
     automation_run: null,
     citations: reviewable
@@ -318,15 +422,8 @@ function variantDetail(
       : [],
     current_content: current,
     locks: [],
-    quality_report: reviewable
-      ? {
-          content_version_id: versionId,
-          decision: 'pass',
-          id: 'b2000000-0000-4000-8000-000000000085',
-          score: 92,
-          variant_id: summary.id,
-        }
-      : null,
+    quality_report: qualityReport,
+    quality_reports: qualityReport ? [qualityReport] : [],
     variant: summary,
     versions: current ? [current] : [],
   };

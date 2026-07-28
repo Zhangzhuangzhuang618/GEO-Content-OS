@@ -29,6 +29,7 @@ export async function getContentPackageDetail(
         citations: detail.data.data.citations,
         currentContent: detail.data.data.current_content,
         qualityReport: detail.data.data.quality_report,
+        qualityReports: detail.data.data.quality_reports,
         variant: detail.data.data.variant,
         versions: detail.data.data.versions,
       };

@@ -62,6 +62,7 @@ interface PackageCursor {
 }
 
 interface QualityReportRow {
+  readonly automationGateJson: Record<string, unknown> | null;
   readonly checkerVersion: string;
   readonly contentVersionId: string;
   readonly createdAt: Date | string;
@@ -849,7 +850,8 @@ export class ContentApiService {
       versions.find((version) => version.id === variant.currentContentVersionId) ?? null;
     const locks = await selectLocks(client, scope, variantId);
     const citations = current ? await selectCitations(client, scope, current.id) : [];
-    const report = await selectLatestQualityReport(client, scope, variantId);
+    const reports = await selectQualityReports(client, scope, variantId);
+    const report = reports.find((candidate) => candidate.contentVersionId === current?.id) ?? null;
     const automation = await selectOfficialSiteAutomationRun(client, scope, variantId);
     return {
       automation_run: automation ? snake(automation) : null,
@@ -857,6 +859,7 @@ export class ContentApiService {
       current_content: current ? versionView(current) : null,
       locks: locks.map(snake),
       quality_report: report ? qualityReportView(report) : null,
+      quality_reports: reports.map(qualityReportView),
       variant: variantView(variant),
       versions: versions.map(versionView),
     };
@@ -1714,27 +1717,23 @@ async function selectCitations(client: SqlClient, scope: ContentScope, versionId
   return repository.listCitations(scope, versionId);
 }
 
-async function selectLatestQualityReport(
-  client: SqlClient,
-  scope: ContentScope,
-  variantId: string,
-) {
+async function selectQualityReports(client: SqlClient, scope: ContentScope, variantId: string) {
   const rows = await client<QualityReportRow[]>`
     SELECT report.id, report.tenant_id AS "tenantId", report.variant_id AS "variantId",
       report.content_version_id AS "contentVersionId", report.generation_run_id AS "generationRunId",
       report.checker_version AS "checkerVersion", report.score::text AS score, report.decision,
       report.issues_json AS "issuesJson", report.geo_scores_json AS "geoScoresJson",
+      report.automation_gate_json AS "automationGateJson",
       report.created_at AS "createdAt"
     FROM quality_reports AS report
     JOIN content_variants AS variant ON variant.id = report.variant_id AND variant.tenant_id = report.tenant_id
     JOIN content_packages AS package ON package.id = variant.package_id AND package.tenant_id = variant.tenant_id
     WHERE report.tenant_id = ${scope.tenantId}::uuid AND report.variant_id = ${variantId}::uuid
-      AND report.content_version_id = variant.current_content_version_id
       AND package.workspace_id = ${scope.workspaceId}::uuid AND package.project_id = ${scope.projectId}::uuid
       AND has_project_scope_access(package.tenant_id, package.workspace_id, package.project_id, ${scope.userId}::uuid)
-    ORDER BY report.created_at DESC, report.id DESC LIMIT 1
+    ORDER BY report.created_at DESC, report.id DESC
   `;
-  return rows[0];
+  return rows;
 }
 
 async function requireContentVersion(client: SqlClient, tenantId: string, id: string) {
@@ -1800,6 +1799,7 @@ function qualityReportView(value: QualityReportRow): JsonValue {
     Object.entries(value.geoScoresJson).filter(([key]) => key !== 'schema_version'),
   );
   return {
+    automation_gate: (value.automationGateJson ?? null) as JsonValue,
     checker_version: value.checkerVersion,
     content_version_id: value.contentVersionId,
     created_at: isoDate(value.createdAt),

@@ -264,6 +264,7 @@ const GeoScoresSchema = z
 
 export const QualityReportViewSchema = z
   .object({
+    automation_gate: z.record(z.string(), z.unknown()).nullable(),
     checker_version: z.string().min(1).max(32),
     content_version_id: UuidSchema,
     created_at: IsoDateTimeSchema,
@@ -293,6 +294,7 @@ export const ContentVariantDetailSchema = z
     current_content: ContentVersionViewSchema.nullable(),
     locks: z.array(BlockLockViewSchema.omit({ variant_version: true })),
     quality_report: QualityReportViewSchema.nullable(),
+    quality_reports: z.array(QualityReportViewSchema),
     variant: ContentVariantViewSchema,
     versions: z.array(ContentVersionViewSchema),
   })

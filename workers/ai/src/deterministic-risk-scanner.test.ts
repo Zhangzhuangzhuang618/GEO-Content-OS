@@ -77,6 +77,66 @@ describe('deterministic pre-publish risk scanner', () => {
     );
   });
 
+  it('accepts an exact price from a cited grouped company quotation', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [
+        {
+          id: '10000000-0000-4000-8000-000000000001',
+          quoteText: '纸箱小中大：12/15/20 元一个；气泡膜3元一米。',
+        },
+      ],
+      content: content({
+        blocks: [block('price', '报价单列明小号纸箱12元、中号纸箱15元。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.fact.unsupported_price',
+    );
+  });
+
+  it('keeps blocking a derived or mistyped amount that is absent from the quotation', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [
+        {
+          id: '10000000-0000-4000-8000-000000000001',
+          quoteText: '纸箱小中大：12/15/20 元一个；家庭立式钢琴3500元；车辆起步费¥4500。',
+        },
+      ],
+      content: content({
+        blocks: [block('price', '一次搬运测算总价为1634元，钢琴搬运价格为35元，车辆起步费¥450。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(
+      issues.filter((item) => item.rule_id === 'deterministic.fact.unsupported_price'),
+    ).toHaveLength(3);
+  });
+
+  it('treats yuan and colloquial kuai as the same quoted currency unit', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [
+        {
+          id: '10000000-0000-4000-8000-000000000001',
+          quoteText: '超出10公里部分按照7块钱1公里收费。',
+        },
+      ],
+      content: content({
+        blocks: [block('price', '超出约定里程后按报价单所列7元/公里计费。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.fact.unsupported_price',
+    );
+  });
+
   it('blocks unsupported price, phone, scale, credentials, promises, secrets and brand bans', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand({ banned: ['零风险'] }),

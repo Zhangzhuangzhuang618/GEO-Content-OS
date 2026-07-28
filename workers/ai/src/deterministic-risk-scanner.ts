@@ -111,8 +111,8 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
 
 export function scanDeterministicRisks(input: DeterministicRiskScanInput): readonly QualityIssue[] {
   const issues: QualityIssue[] = [];
-  const brandEvidence = canonicalize(flattenStrings(input.brandProfile).join('\n'));
-  const citationEvidence = canonicalize(input.citations.map((item) => item.quoteText).join('\n'));
+  const brandEvidence = flattenStrings(input.brandProfile).join('\n');
+  const citationEvidence = input.citations.map((item) => item.quoteText).join('\n');
 
   addFormatIssues(issues, input);
   addBrandIssues(issues, input);
@@ -281,10 +281,13 @@ function addOfficialSiteTechnicalIssues(
 
 function hasMatchingEvidence(value: string, evidence: string): boolean {
   if (!evidence) return false;
-  const normalized = canonicalize(value);
-  if (normalized.length >= 4 && evidence.includes(normalized)) return true;
   const tokens = sensitiveValueTokens(value);
-  return tokens.length > 0 && tokens.every((token) => evidence.includes(token));
+  if (tokens.length > 0) {
+    const evidenceTokens = new Set(sensitiveValueTokens(evidence));
+    return tokens.every((token) => evidenceTokens.has(token));
+  }
+  const normalized = canonicalize(value);
+  return normalized.length >= 4 && canonicalize(evidence).includes(normalized);
 }
 
 function matchingClaims(value: string, pattern: RegExp): readonly string[] {
@@ -304,12 +307,39 @@ function summarizeMatch(value: string): string {
 function sensitiveValueTokens(value: string): readonly string[] {
   const matches = [
     ...value.matchAll(/(?:\+?86[-\s]?)?1[3-9]\d{9}|0\d{2,3}[-\s]?\d{7,8}/gu),
-    ...value.matchAll(/(?:¥|￥)\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*元/gu),
     ...value.matchAll(
       /(?:\d+(?:\.\d+)?(?:\+|余|多|以上)?|数十|近百|上百|数百)\s*(?:台|辆|人|名|家|个|单|次|年)/gu,
     ),
   ];
-  return [...new Set(matches.map((match) => canonicalize(match[0])))];
+  return [
+    ...new Set([...matches.map((match) => canonicalize(match[0])), ...monetaryValueTokens(value)]),
+  ];
+}
+
+function monetaryValueTokens(value: string): readonly string[] {
+  const tokens: string[] = [];
+  for (const match of value.matchAll(
+    /(?:¥|￥)\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(万元|元|块钱|块)/gu,
+  )) {
+    const amount = match[1] ?? match[2];
+    const unit = match[3] ?? '元';
+    if (amount) tokens.push(monetaryToken(amount, unit));
+  }
+  for (const match of value.matchAll(
+    /(\d+(?:\.\d+)?(?:\s*[/／、]\s*\d+(?:\.\d+)?)+)\s*(万元|元|块钱|块)/gu,
+  )) {
+    const amounts = match[1];
+    const unit = match[2];
+    if (!amounts || !unit) continue;
+    for (const amount of amounts.split(/\s*[/／、]\s*/u)) {
+      tokens.push(monetaryToken(amount, unit));
+    }
+  }
+  return [...new Set(tokens)];
+}
+
+function monetaryToken(amount: string, unit: string): string {
+  return `money:${unit === '万元' ? '万元' : '元'}:${Number(amount)}`;
 }
 
 function contentSections(content: Readonly<Record<string, unknown>>): readonly LocatedText[] {

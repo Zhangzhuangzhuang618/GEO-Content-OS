@@ -97,10 +97,12 @@ export const BlockLockSchema = z
 
 export const VariantDetailSchema = z
   .object({
+    automation_run: z.unknown().nullable().optional(),
     citations: z.array(CitationSchema),
     current_content: ContentVersionSchema.nullable(),
     locks: z.array(BlockLockSchema),
     quality_report: QualityReportSchema.nullable(),
+    quality_reports: z.array(QualityReportSchema).default([]),
     variant: ContentVariantSchema,
     versions: z.array(ContentVersionSchema),
   })

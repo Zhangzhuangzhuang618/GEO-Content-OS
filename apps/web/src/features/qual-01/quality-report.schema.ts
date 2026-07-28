@@ -38,6 +38,7 @@ export const GeoScoresSchema = z
 
 export const QualityReportSchema = z
   .object({
+    automation_gate: z.record(z.string(), z.unknown()).nullable().default(null),
     checker_version: z.string().min(1),
     content_version_id: z.string().uuid(),
     created_at: z.iso.datetime(),
@@ -56,10 +57,12 @@ export const QualityVariantDetailResponseSchema = z
   .object({
     data: z
       .object({
+        automation_run: z.unknown().nullable().optional(),
         citations: z.array(CitationSchema),
         current_content: ContentVersionSchema.nullable(),
         locks: z.array(z.unknown()),
         quality_report: QualityReportSchema.nullable(),
+        quality_reports: z.array(QualityReportSchema).default([]),
         variant: ContentVariantSchema,
         versions: z.array(z.unknown()),
       })

@@ -178,6 +178,13 @@ test.describe('content production lifecycle', () => {
       decision: 'pass',
       score: 92,
     });
+    expect(passedDetail.quality_reports).toEqual([
+      expect.objectContaining({
+        content_version_id: passedDetail.current_content?.id,
+        decision: 'pass',
+        score: 92,
+      }),
+    ]);
     const blockedDetail = await readVariant(actor, blocked.id);
     expect(blockedDetail.variant).toMatchObject({ quality_score: 40, status: 'quality_failed' });
     expect(blockedDetail.quality_report).toMatchObject({
@@ -188,6 +195,13 @@ test.describe('content production lifecycle', () => {
       ]),
       score: 40,
     });
+    expect(blockedDetail.quality_reports).toEqual([
+      expect.objectContaining({
+        content_version_id: blockedDetail.current_content?.id,
+        decision: 'block',
+        score: 40,
+      }),
+    ]);
     await actor.api.dispose();
   });
 });
@@ -743,5 +757,11 @@ interface VariantDetail {
     readonly issues: readonly unknown[];
     readonly score: number;
   } | null;
+  readonly quality_reports: readonly {
+    readonly content_version_id: string;
+    readonly decision: string;
+    readonly issues: readonly unknown[];
+    readonly score: number;
+  }[];
   readonly variant: { readonly quality_score: number | null; readonly status: string };
 }

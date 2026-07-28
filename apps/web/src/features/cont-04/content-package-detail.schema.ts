@@ -72,10 +72,30 @@ export const CitationSchema = z
 
 export const QualityReportSchema = z
   .object({
+    automation_gate: z.record(z.string(), z.unknown()).nullable().default(null),
+    checker_version: z.string().min(1).optional(),
     content_version_id: z.string().uuid(),
+    created_at: z.iso.datetime().optional(),
     decision: z.enum(['pass', 'revise', 'block']),
+    generation_run_id: z.string().uuid().optional(),
+    geo_scores: z.record(z.string(), z.number()).optional(),
     id: z.string().uuid(),
+    issues: z
+      .array(
+        z
+          .object({
+            citation_ids: z.array(z.string().uuid()),
+            location: z.string().nullable(),
+            message: z.string().min(1),
+            rule_id: z.string().min(1),
+            severity: z.enum(['BLOCK', 'WARN', 'INFO']),
+            suggestion: z.string().nullable(),
+          })
+          .passthrough(),
+      )
+      .default([]),
     score: z.number().min(0).max(100),
+    tenant_id: z.string().uuid().optional(),
     variant_id: z.string().uuid(),
   })
   .passthrough();
@@ -126,6 +146,7 @@ export const ContentVariantDetailResponseSchema = z
         current_content: ContentVersionSchema.nullable(),
         locks: z.array(z.unknown()),
         quality_report: QualityReportSchema.nullable(),
+        quality_reports: z.array(QualityReportSchema).default([]),
         variant: ContentVariantSchema,
         versions: z.array(ContentVersionSchema),
       })
@@ -159,6 +180,7 @@ export interface VariantDetail {
   readonly citations: readonly Citation[];
   readonly currentContent: ContentVersion | null;
   readonly qualityReport: QualityReport | null;
+  readonly qualityReports: readonly QualityReport[];
   readonly variant: ContentVariant;
   readonly versions: readonly ContentVersion[];
 }
