@@ -173,6 +173,67 @@ describe('AI Worker runtime wiring', () => {
     );
   });
 
+  it('keeps the final direct-flow instruction in rewrite mode', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const article = officialSiteArticleDraft();
+    const faq = {
+      faq: Array.from({ length: 4 }, (_, index) => ({
+        answer: `按照正文中的第 ${index + 1} 项核对方法执行，并保留双方确认记录。`,
+        question: `第 ${index + 1} 项应该如何核对？`,
+      })),
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(article) },
+        { text: JSON.stringify(faq) },
+        { text: JSON.stringify(article) },
+        { text: JSON.stringify(faq) },
+      ],
+      'deepseek-v4-pro',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-pro', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = officialSiteWriterInput(fixture.input as JsonObject);
+    const rewriteContext = {
+      ...context(VARIANT_RUN, '72000000-0000-4000-8000-000000000061'),
+      modelKey: 'deepseek-v4-pro',
+      modelPolicy: 'quality' as const,
+    };
+    const master = await writer.generateOfficialSiteMaster({
+      context: rewriteContext,
+      requestId: 'runtime-official-rewrite-master-0061',
+      writerInput,
+    });
+    const variant = await writer.generateOfficialSiteVariant({
+      context: rewriteContext,
+      masterContent: master,
+      platformCode: 'official_site',
+      requestId: 'runtime-official-rewrite-variant-0061',
+      writerInput,
+    });
+
+    await writer.rewriteOfficialSiteVariant({
+      context: rewriteContext,
+      currentContent: variant,
+      issues: [
+        '质量问题 BLOCK fact.high_risk.unsupported；位置：claim:scope-detail；修改建议：删除无证据事实',
+      ],
+      masterContent: master,
+      requestId: 'runtime-official-rewrite-0061',
+      writerInput,
+    });
+
+    const finalMessage = adapter.requests[2]!.messages.at(-1);
+    expect(finalMessage?.content).toContain(
+      'Rewrite the supplied official-site article completely',
+    );
+    expect(finalMessage?.content).toContain('specified block location');
+  });
+
   it('forbids the Mock model in production', () => {
     expect(() =>
       readAiWorkerConfig({

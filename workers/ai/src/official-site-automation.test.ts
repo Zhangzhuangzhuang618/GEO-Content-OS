@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { GenerationWorkerError } from './generation.errors.js';
 import {
+  buildOfficialSiteRewriteDiagnostics,
   buildOfficialSiteRewriteInput,
   extractOfficialSiteRewriteIssues,
   OfficialSiteAutomation,
@@ -179,6 +180,43 @@ describe('official-site automation', () => {
       'official_site',
     ]);
     expect(issues).toEqual(['删除无依据排名', '补充问题覆盖']);
+  });
+
+  it('preserves actionable issue locations and explains frozen gate repairs', () => {
+    const diagnostics = buildOfficialSiteRewriteDiagnostics(
+      POLICY,
+      {
+        ...automation.calculateGate(POLICY, qualityResult('pass', []), SCORES),
+        blocking_rules: ['gate.factual_accuracy', 'gate.question_coverage', 'gate.geo_total'],
+        factual_accuracy: 55,
+        geo_total: 72,
+        passed: false,
+        question_coverage: 72,
+      },
+      [
+        {
+          category: 'fact',
+          citation_ids: [],
+          location: 'claim:service-scope',
+          message: '高风险事实缺少充分证据或存在冲突。',
+          rule_id: 'fact.high_risk.unsupported_or_conflicted',
+          severity: 'BLOCK',
+          suggestion: '删除该事实，或补充能够直接支持该事实的有效证据。',
+        },
+      ],
+    );
+
+    expect(diagnostics[0]).toContain('位置：claim:service-scope');
+    expect(diagnostics[0]).toContain('修改建议：删除该事实');
+    expect(diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('当前 55，最低要求 90'),
+        expect.stringContaining('一个带引用的正文块只保留该引用能够直接支持的声明'),
+        expect.stringContaining('当前 72，最低要求 80'),
+        expect.stringContaining('如何、怎么、为什么、哪些、是否、指南、方法'),
+        expect.stringContaining('不得通过重复、填充或虚构事实提高总分'),
+      ]),
+    );
   });
 
   it('retires a daily candidate when quality execution exhausts its retries', async () => {

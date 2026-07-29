@@ -311,7 +311,15 @@ export class OfficialSiteAutomation {
       `;
       return;
     }
-    await this.enqueueRewrite(transaction, event, automationRun, reportId, gate, result.issues);
+    await this.enqueueRewrite(
+      transaction,
+      event,
+      automationRun,
+      reportId,
+      policy,
+      gate,
+      result.issues,
+    );
   }
 
   public async runRewrite(
@@ -419,14 +427,12 @@ export class OfficialSiteAutomation {
     event: ValidatedQualityEvent,
     automationRun: { readonly id: string; readonly rewriteCount: number; readonly version: number },
     reportId: string,
+    policy: OfficialSiteAutomationPolicy,
     gate: OfficialSiteQualityGate,
     issues: readonly QualityIssue[],
   ): Promise<void> {
     const attempt = automationRun.rewriteCount + 1;
-    const promptIssueText = [
-      ...gate.blocking_rules.map((rule) => `门禁未通过：${rule}`),
-      ...issues.map((issue) => `${issue.severity} ${issue.rule_id}: ${issue.message}`),
-    ].slice(0, 50);
+    const promptIssueText = buildOfficialSiteRewriteDiagnostics(policy, gate, issues);
     const inputHash = sha256(
       JSON.stringify({
         attempt,
@@ -928,6 +934,56 @@ export function extractOfficialSiteRewriteIssues(automationError: unknown): read
   const error = record(automationError) ? automationError : {};
   const issues = Array.isArray(error['prompt_issues']) ? error['prompt_issues'] : [];
   return issues.filter((value): value is string => typeof value === 'string').slice(0, 50);
+}
+
+export function buildOfficialSiteRewriteDiagnostics(
+  policy: OfficialSiteAutomationPolicy,
+  gate: OfficialSiteQualityGate,
+  issues: readonly QualityIssue[],
+): readonly string[] {
+  const issueDiagnostics = issues.map((issue) =>
+    [
+      `质量问题 ${issue.severity} ${issue.rule_id}`,
+      `位置：${issue.location ?? '未指定'}`,
+      `问题：${issue.message}`,
+      issue.suggestion ? `修改建议：${issue.suggestion}` : '',
+    ]
+      .filter(Boolean)
+      .join('；'),
+  );
+  const gateDiagnostics = gate.blocking_rules.map((rule) =>
+    officialSiteGateRewriteDiagnostic(rule, policy, gate),
+  );
+  return Object.freeze([...issueDiagnostics, ...gateDiagnostics].slice(0, 50));
+}
+
+function officialSiteGateRewriteDiagnostic(
+  rule: string,
+  policy: OfficialSiteAutomationPolicy,
+  gate: OfficialSiteQualityGate,
+): string {
+  if (rule === 'gate.factual_accuracy') {
+    return `门禁 gate.factual_accuracy：当前 ${gate.factual_accuracy}，最低要求 ${policy.factualAccuracyMin}。定位质量问题指定的 block_key，删除引用不能直接支持的事实；一个带引用的正文块只保留该引用能够直接支持的声明，通用建议应拆成不带引用的独立段落。`;
+  }
+  if (rule === 'gate.question_coverage') {
+    return `门禁 gate.question_coverage：当前 ${gate.question_coverage}，最低要求 ${policy.questionCoverageMin}。把标题改为能够直接回答用户问题的表达，并用“如何、怎么、为什么、哪些、是否、指南、方法”或问号明确真实问题意图。`;
+  }
+  if (rule === 'gate.geo_total') {
+    return `门禁 gate.geo_total：当前 ${gate.geo_total}，最低要求 ${policy.geoTotalMin}。先解决本次列出的事实准确性、问题覆盖、平台适配和可读性问题；不得通过重复、填充或虚构事实提高总分。`;
+  }
+  if (rule === 'gate.brand_consistency') {
+    return `门禁 gate.brand_consistency：当前 ${gate.brand_consistency}，最低要求 ${policy.brandConsistencyMin}。删除与已发布品牌资料冲突或无法由品牌资料支持的企业陈述。`;
+  }
+  if (rule === 'gate.readability_safety') {
+    return `门禁 gate.readability_safety：当前 ${gate.readability_safety}，最低要求 ${policy.readabilitySafetyMin}。补充有实质信息的正文结构和步骤，删除危险承诺，不得堆字或重复。`;
+  }
+  if (rule === 'gate.platform_fit') {
+    return `门禁 gate.platform_fit：当前 ${gate.platform_fit}，最低要求 ${policy.platformFitMin}。确保官网标题为 20–60 个 Unicode 字符；当前阶段只重写标题、摘要和正文，FAQ 与发布技术字段由后续阶段生成。`;
+  }
+  if (rule.startsWith('quality.decision.')) {
+    return `门禁 ${rule}：必须逐项解决所有 BLOCK/WARN 质量问题，使最终问题数组满足冻结决策规则；不得只修改表面措辞。`;
+  }
+  return `门禁未通过：${rule}。结合本次同名质量问题的位置和建议完成实质修改，不得删除有效引用或编造新事实。`;
 }
 
 function rewriteContext(
