@@ -145,7 +145,9 @@ export interface PackageFilters {
 
 export interface PackageListItem {
   readonly briefTitle: string;
-  readonly costs: readonly { readonly costCents: number; readonly currency: string }[] | null;
+  readonly costs:
+    readonly { readonly costCents: number; readonly currency: string }[] | null | undefined;
+  readonly detailState: 'loading' | 'ready' | 'unavailable';
   readonly package: ContentPackage;
   readonly variants: readonly ContentVariant[];
 }

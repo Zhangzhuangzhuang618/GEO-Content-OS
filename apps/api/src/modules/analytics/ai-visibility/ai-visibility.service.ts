@@ -22,7 +22,7 @@ interface QuerySetRow {
   readonly brandAliases: unknown;
   readonly brandName: string;
   readonly competitorNames: unknown;
-  readonly createdAt: Date;
+  readonly createdAt: Date | string;
   readonly createdBy: string;
   readonly id: string;
   readonly industry: string;
@@ -35,13 +35,13 @@ interface QuerySetRow {
   readonly revision: number;
   readonly seriesId: string;
   readonly status: 'active' | 'archived';
-  readonly updatedAt: Date;
+  readonly updatedAt: Date | string;
   readonly workspaceId: string;
 }
 
 interface QueryRow {
   readonly commercialValue: 'high' | 'low' | 'medium';
-  readonly createdAt: Date;
+  readonly createdAt: Date | string;
   readonly id: string;
   readonly intentCode:
     | 'brand_recognition'
@@ -60,11 +60,11 @@ interface RunRow {
   readonly baselineRunId: string | null;
   readonly completedCount: number;
   readonly competitors: unknown;
-  readonly createdAt: Date;
+  readonly createdAt: Date | string;
   readonly engineCode: AiVisibilityRunSummary['engine_code'];
   readonly error: Readonly<Record<string, unknown>> | null;
   readonly failedCount: number;
-  readonly finishedAt: Date | null;
+  readonly finishedAt: Date | string | null;
   readonly id: string;
   readonly methodologyVersion: string;
   readonly metrics: unknown;
@@ -78,9 +78,9 @@ interface RunRow {
   readonly score: string | number | null;
   readonly scoringVersion: string;
   readonly sources: unknown;
-  readonly startedAt: Date | null;
+  readonly startedAt: Date | string | null;
   readonly status: AiVisibilityRunSummary['status'];
-  readonly updatedAt: Date;
+  readonly updatedAt: Date | string;
   readonly version: number;
   readonly workspaceId: string;
 }
@@ -91,7 +91,7 @@ interface ResponseRow {
   readonly competitors: unknown;
   readonly error: Readonly<Record<string, unknown>> | null;
   readonly id: string;
-  readonly observedAt: Date;
+  readonly observedAt: Date | string;
   readonly providerRequestId: string | null;
   readonly queryId: string;
   readonly recommended: boolean;
@@ -411,7 +411,7 @@ export class AiVisibilityService {
             competitors_mentioned: stringArray(response.competitors),
             error_json: response.error,
             id: response.id,
-            observed_at: response.observedAt.toISOString(),
+            observed_at: toIso(response.observedAt),
             provider_request_id: response.providerRequestId,
             query,
             recommended: response.recommended,
@@ -693,7 +693,7 @@ function toQuerySetView(row: QuerySetRow, queries: readonly QueryRow[]): AiVisib
     brand_aliases: stringArray(row.brandAliases),
     brand_name: row.brandName,
     competitor_names: stringArray(row.competitorNames),
-    created_at: row.createdAt.toISOString(),
+    created_at: toIso(row.createdAt),
     created_by: row.createdBy,
     id: row.id,
     industry: row.industry,
@@ -708,7 +708,7 @@ function toQuerySetView(row: QuerySetRow, queries: readonly QueryRow[]): AiVisib
     revision: row.revision,
     series_id: row.seriesId,
     status: row.status,
-    updated_at: row.updatedAt.toISOString(),
+    updated_at: toIso(row.updatedAt),
     workspace_id: row.workspaceId,
   });
 }
@@ -716,7 +716,7 @@ function toQuerySetView(row: QuerySetRow, queries: readonly QueryRow[]): AiVisib
 function toQueryView(row: QueryRow) {
   return Object.freeze({
     commercial_value: row.commercialValue,
-    created_at: row.createdAt.toISOString(),
+    created_at: toIso(row.createdAt),
     id: row.id,
     intent_code: row.intentCode,
     query_hash: row.queryHash,
@@ -733,11 +733,11 @@ function toRunSummary(row: RunRow): AiVisibilityRunSummary {
     baseline_run_id: row.baselineRunId,
     completed_count: row.completedCount,
     competitors: jsonArray<AiVisibilityRunSummary['competitors'][number]>(row.competitors),
-    created_at: row.createdAt.toISOString(),
+    created_at: toIso(row.createdAt),
     engine_code: row.engineCode,
     error_json: row.error,
     failed_count: row.failedCount,
-    finished_at: row.finishedAt?.toISOString() ?? null,
+    finished_at: row.finishedAt ? toIso(row.finishedAt) : null,
     id: row.id,
     methodology_version: row.methodologyVersion,
     metrics: score === null ? null : (metrics as AiVisibilityRunSummary['metrics']),
@@ -751,9 +751,9 @@ function toRunSummary(row: RunRow): AiVisibilityRunSummary {
     score,
     scoring_version: row.scoringVersion,
     sources: jsonArray<AiVisibilityRunSummary['sources'][number]>(row.sources),
-    started_at: row.startedAt?.toISOString() ?? null,
+    started_at: row.startedAt ? toIso(row.startedAt) : null,
     status: row.status,
-    updated_at: row.updatedAt.toISOString(),
+    updated_at: toIso(row.updatedAt),
     version: row.version,
     workspace_id: row.workspaceId,
   });
@@ -799,6 +799,10 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
     : [];
+}
+
+function toIso(value: Date | string): string {
+  return (value instanceof Date ? value : new Date(value)).toISOString();
 }
 
 function normalizeText(value: string): string {

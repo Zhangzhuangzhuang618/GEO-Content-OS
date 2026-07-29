@@ -9,6 +9,7 @@ import {
   ContentPackageListRequestError,
   copyContentPackage,
   listContentPackages,
+  loadContentPackageListItem,
   loadCurrentUserId,
 } from './content-package-list-api';
 import {
@@ -29,7 +30,10 @@ export function ContentPackageList() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [canCopy, setCanCopy] = useState(false);
   const [currentUserId, setCurrentUserId] = useState('');
-  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission' | 'rate_limited'>(
+    'loading',
+  );
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ readonly id?: string; readonly text: string } | null>(
     null,
@@ -37,6 +41,7 @@ export function ContentPackageList() {
 
   const load = useCallback(async (next: PackageFilters, signal?: AbortSignal) => {
     setState('loading');
+    setRetryAfterSeconds(null);
     try {
       const tenants = await listAvailableTenants(signal);
       const role = tenants.find((tenant) => tenant.is_active)?.role_code;
@@ -54,8 +59,20 @@ export function ContentPackageList() {
       setItems(page.items);
       setNextCursor(page.nextCursor);
       setState('ready');
+      await enrichItems(page.items, signal, (item) => {
+        setItems((current) =>
+          current.map((candidate) => (candidate.package.id === item.package.id ? item : candidate)),
+        );
+      });
     } catch (error) {
       if (signal?.aborted) return;
+      if (errorStatus(error) === 429) {
+        setRetryAfterSeconds(
+          error instanceof ContentPackageListRequestError ? error.retryAfterSeconds : null,
+        );
+        setState('rate_limited');
+        return;
+      }
       setState(isAccessError(error) ? 'permission' : 'error');
     }
   }, []);
@@ -108,6 +125,17 @@ export function ContentPackageList() {
 
   if (state === 'permission')
     return <StatePanel title="无权查看当前内容" text="当前企业或工作空间未授权访问。" />;
+  if (state === 'rate_limited')
+    return (
+      <StatePanel
+        title="请求过于频繁"
+        text={
+          retryAfterSeconds === null
+            ? '请稍后刷新页面。'
+            : `请等待约 ${retryAfterSeconds} 秒后刷新页面。`
+        }
+      />
+    );
   if (state === 'error')
     return <StatePanel title="暂时无法加载内容" text="请刷新页面或稍后再试。" />;
 
@@ -246,7 +274,8 @@ function ContentCard({
     variant.quality_score === null ? [] : [variant.quality_score],
   );
   const produced = item.variants.filter((variant) => !UNPRODUCED.has(variant.status)).length;
-  const progress = Math.round((produced / item.variants.length) * 100);
+  const progress =
+    item.variants.length === 0 ? 0 : Math.round((produced / item.variants.length) * 100);
   return (
     <article className="rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -272,7 +301,11 @@ function ContentCard({
             <div className="flex items-center justify-between gap-4 text-sm">
               <span className="font-medium text-ink-700">平台内容进度</span>
               <span className="text-ink-500">
-                已生成 {produced}/{item.variants.length}
+                {item.detailState === 'ready'
+                  ? `已生成 ${produced}/${item.variants.length}`
+                  : item.detailState === 'loading'
+                    ? '正在读取'
+                    : '暂不可用'}
               </span>
             </div>
             <div
@@ -374,9 +407,32 @@ function average(values: readonly number[]) {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 function formatCosts(costs: PackageListItem['costs']) {
+  if (costs === undefined) return '暂不可用';
   if (costs === null) return '仅管理员可见';
   if (costs.length === 0) return '暂无';
   return costs.map((cost) => `${cost.currency} ${(cost.costCents / 100).toFixed(2)}`).join(' / ');
+}
+
+async function enrichItems(
+  items: readonly PackageListItem[],
+  signal: AbortSignal | undefined,
+  update: (item: PackageListItem) => void,
+): Promise<void> {
+  const concurrency = 2;
+  for (let index = 0; index < items.length; index += concurrency) {
+    const batch = items.slice(index, index + concurrency);
+    await Promise.all(
+      batch.map(async (item) => {
+        try {
+          const enriched = await loadContentPackageListItem(item, signal);
+          if (!signal?.aborted) update(enriched);
+        } catch {
+          if (!signal?.aborted) update({ ...item, detailState: 'unavailable' });
+        }
+      }),
+    );
+    if (signal?.aborted) return;
+  }
 }
 function platformLabel(code: PlatformCode) {
   return PLATFORM_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
@@ -457,11 +513,13 @@ function filterFormKey(filters: PackageFilters) {
   return [filters.search ?? '', filters.status ?? '', filters.platformCode ?? ''].join('|');
 }
 function isAccessError(error: unknown) {
-  if (error instanceof ContentPackageListRequestError)
-    return [401, 403, 404].includes(error.status);
-  if (!error || typeof error !== 'object') return false;
+  const status = errorStatus(error);
+  return status !== null && [401, 403, 404].includes(status);
+}
+function errorStatus(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null;
   const status = (error as { readonly status?: unknown }).status;
-  return typeof status === 'number' && [401, 403, 404].includes(status);
+  return typeof status === 'number' ? status : null;
 }
 function readFilters(): PackageFilters {
   if (typeof window === 'undefined') return {};

@@ -19,7 +19,7 @@ export async function listContentPackages(
   canReadCosts: boolean,
   signal?: AbortSignal,
 ): Promise<{ readonly items: PackageListItem[]; readonly nextCursor: string | null }> {
-  const query = new URLSearchParams({ limit: '20' });
+  const query = new URLSearchParams({ limit: '10' });
   if (filters.createdBy) query.set('created_by', filters.createdBy);
   if (filters.cursor) query.set('cursor', filters.cursor);
   if (filters.platformCode) query.set('platform_code', filters.platformCode);
@@ -34,38 +34,61 @@ export async function listContentPackages(
     return { items: [], nextCursor: page.data.meta.next_cursor };
   }
 
-  const [details, costs] = await Promise.all([
-    Promise.all(
-      page.data.data.map(async (item) => {
-        const [response, briefTitle] = await Promise.all([
-          request(`/api/v1/content-packages/${item.id}`, signal),
-          loadBriefTitle(item.brief_id, signal),
-        ]);
-        const parsed = ContentPackageDetailResponseSchema.safeParse(await response.json());
-        if (!parsed.success) throw new ContentPackageListRequestError(502);
-        return {
-          detail: parsed.data.data,
-          title: briefTitle ?? fallbackTitle(item.updated_at),
-        };
-      }),
-    ),
-    canReadCosts ? loadSettledCosts(signal) : Promise.resolve(null),
-  ]);
+  const costs = canReadCosts ? await loadOptionalCosts(signal) : null;
 
   return {
-    items: details.map(({ detail, title }) => ({
-      briefTitle: title,
+    items: page.data.data.map((item) => ({
+      briefTitle: fallbackTitle(item.updated_at),
       costs:
         costs === null
           ? null
           : costs
-              .filter((cost) => cost.package_id === detail.package.id)
-              .map((cost) => ({ costCents: cost.cost_cents, currency: cost.currency })),
-      package: detail.package,
-      variants: detail.variants,
+              ?.filter((cost) => cost.package_id === item.id)
+              .map((cost) => ({
+                costCents: cost.cost_cents,
+                currency: cost.currency,
+              })),
+      detailState: 'loading' as const,
+      package: item,
+      variants: [],
     })),
     nextCursor: page.data.meta.next_cursor,
   };
+}
+
+export async function loadContentPackageListItem(
+  item: PackageListItem,
+  signal?: AbortSignal,
+): Promise<PackageListItem> {
+  const response = await request(`/api/v1/content-packages/${item.package.id}`, signal);
+  const parsed = ContentPackageDetailResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new ContentPackageListRequestError(502);
+  const briefTitle = await loadOptionalBriefTitle(item.package.brief_id, signal);
+  return {
+    ...item,
+    briefTitle: briefTitle ?? fallbackTitle(item.package.updated_at),
+    detailState: 'ready',
+    package: parsed.data.data.package,
+    variants: parsed.data.data.variants,
+  };
+}
+
+async function loadOptionalBriefTitle(id: string, signal?: AbortSignal) {
+  try {
+    return await loadBriefTitle(id, signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return null;
+  }
+}
+
+async function loadOptionalCosts(signal?: AbortSignal) {
+  try {
+    return await loadSettledCosts(signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return undefined;
+  }
 }
 
 async function loadBriefTitle(id: string, signal?: AbortSignal): Promise<string | null> {
@@ -128,13 +151,27 @@ async function request(path: string, signal?: AbortSignal) {
     method: 'GET',
     ...(signal ? { signal } : {}),
   });
-  if (!response.ok) throw new ContentPackageListRequestError(response.status);
+  if (!response.ok) {
+    throw new ContentPackageListRequestError(
+      response.status,
+      parseRetryAfter(response.headers.get('Retry-After')),
+    );
+  }
   return response;
 }
 
 export class ContentPackageListRequestError extends Error {
-  public constructor(public readonly status: number) {
+  public constructor(
+    public readonly status: number,
+    public readonly retryAfterSeconds: number | null = null,
+  ) {
     super('Content package list request failed');
     this.name = 'ContentPackageListRequestError';
   }
+}
+
+function parseRetryAfter(value: string | null): number | null {
+  if (value === null) return null;
+  const seconds = Number(value);
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : null;
 }

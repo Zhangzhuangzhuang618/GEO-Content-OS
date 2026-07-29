@@ -72,6 +72,54 @@ test('shows a human-readable topic, progress and next action without UUIDs', asy
   );
 });
 
+test('keeps each page within the rate-limit-safe package count', async ({ page }) => {
+  const packageRequest = page.waitForRequest('**/api/v1/content-packages?*');
+  await page.goto('/cont-03');
+  const request = await packageRequest;
+  expect(new URL(request.url()).searchParams.get('limit')).toBe('10');
+});
+
+test('shows the server retry window when the API rate limit is reached', async ({ page }) => {
+  await page.unroute('**/api/v1/content-packages?*');
+  await page.route('**/api/v1/content-packages?*', (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many requests',
+          request_id: 'rate-limited',
+        },
+      }),
+      contentType: 'application/json',
+      headers: { 'Retry-After': '23' },
+      status: 429,
+    }),
+  );
+  await page.goto('/cont-03');
+  await expect(page.getByRole('heading', { name: '请求过于频繁' })).toBeVisible();
+  await expect(page.getByText('请等待约 23 秒后刷新页面。')).toBeVisible();
+});
+
+test('recognizes rate limiting while loading the active tenant', async ({ page }) => {
+  await page.unroute('**/api/v1/auth/tenants');
+  await page.route('**/api/v1/auth/tenants', (route) => route.fulfill({ status: 429 }));
+  await page.goto('/cont-03');
+  await expect(page.getByRole('heading', { name: '请求过于频繁' })).toBeVisible();
+  await expect(page.getByText('请稍后刷新页面。')).toBeVisible();
+});
+
+test('keeps the package list usable when an item detail is rate limited', async ({ page }) => {
+  await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
+  await page.route(`**/api/v1/content-packages/${PACKAGE_ID}`, (route) =>
+    route.fulfill({ headers: { 'Retry-After': '20' }, status: 429 }),
+  );
+  await page.goto('/cont-03');
+  await expect(page.getByRole('heading', { name: '历史内容 · 2026/7/15' })).toBeVisible();
+  await expect(page.getByText('暂不可用').first()).toBeVisible();
+  await expect(page.getByRole('link', { name: '继续完善内容' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '暂时无法加载内容' })).toHaveCount(0);
+});
+
 test('keeps the content list available when a historical brief is missing', async ({ page }) => {
   await page.unroute(`**/api/v1/briefs/${BRIEF_ID}`);
   await page.route(`**/api/v1/briefs/${BRIEF_ID}`, (route) => route.fulfill({ status: 404 }));
