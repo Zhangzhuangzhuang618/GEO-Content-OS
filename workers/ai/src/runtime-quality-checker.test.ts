@@ -64,6 +64,9 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
       '"severity":"BLOCK"',
     );
+    expect(adapter.requests[0]!.messages.map((message) => message.content).join('\n')).toContain(
+      '广州志远搬家服务有限公司',
+    );
     expect(adapter.requests.every((request) => request.tools === undefined)).toBe(true);
   });
 

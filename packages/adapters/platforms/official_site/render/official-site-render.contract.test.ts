@@ -184,6 +184,30 @@ describe('official_site render contract', () => {
     expect(result.payload.citation_links).toEqual([]);
     expect(result.payload.body_html).not.toContain('参考资料');
   });
+
+  it('blocks other company names but permits the owner and anonymous companies', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      content: { blocks: { block_type: string; text: string }[] };
+    };
+    const paragraph = input.content.blocks.find((block) => block.block_type === 'paragraph');
+    if (!paragraph) throw new Error('Golden fixture is missing a paragraph');
+    paragraph.text +=
+      '广州志远搬家服务有限公司会核对服务记录，某公司和某搬家公司也可采用匿名方式说明。';
+    expect(renderOfficialSite(input).ok).toBe(true);
+    paragraph.text += '广州家盛搬家有限公司不得公开出现。';
+
+    const result = renderOfficialSite(input);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'OTHER_COMPANY_NAME_FORBIDDEN',
+          message: expect.stringContaining('广州家盛搬家有限公司'),
+        }),
+      ]),
+    );
+  });
 });
 
 function validator(schema: object) {

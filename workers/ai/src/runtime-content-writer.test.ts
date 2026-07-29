@@ -120,6 +120,50 @@ describe('AI Worker runtime wiring', () => {
     });
     expect((variant['platform_meta'] as { slug: string }).slug).toMatch(/^news-[a-f0-9]{16}$/u);
     expect(recordUsage).toHaveBeenCalledTimes(2);
+    const articlePrompt = adapter.requests[0]!.messages.map((message) => message.content).join(
+      '\n',
+    );
+    expect(articlePrompt).toContain('广州志远搬家服务有限公司');
+    expect(articlePrompt).toContain('某公司');
+  });
+
+  it('rewrites an official-site draft that names another company', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const cleanArticle = officialSiteArticleDraft();
+    const forbiddenArticle = {
+      ...cleanArticle,
+      blocks: cleanArticle.blocks.map((block, index) =>
+        index === 0
+          ? { ...block, text: `广州家盛搬家有限公司可作为比较对象。${block.text}` }
+          : block,
+      ),
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(forbiddenArticle) }, { text: JSON.stringify(cleanArticle) }],
+      'deepseek-v4-pro',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-pro', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const generated = await writer.generateOfficialSiteMaster({
+      context: {
+        ...context(MASTER_RUN, null),
+        modelKey: 'deepseek-v4-pro',
+        modelPolicy: 'quality',
+      },
+      requestId: 'runtime-official-company-policy-0061',
+      writerInput: officialSiteWriterInput(fixture.input as JsonObject),
+    });
+
+    expect(JSON.stringify(generated)).not.toContain('广州家盛搬家有限公司');
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '禁止出现其他企业或品牌名称',
+    );
   });
 
   it('keeps a short official-site article and appends substantive expansion blocks', async () => {

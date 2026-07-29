@@ -1,4 +1,8 @@
-import type { PlatformCode } from '@geo-content-os/contracts';
+import {
+  ALLOWED_COMPANY_NAME,
+  findDisallowedCompanyNames,
+  type PlatformCode,
+} from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
 
 export interface DeterministicRiskCitation {
@@ -116,6 +120,7 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
 
   addFormatIssues(issues, input);
   addBrandIssues(issues, input);
+  addCompanyNameIssues(issues, input);
   addOfficialSiteTechnicalIssues(issues, input);
 
   for (const section of contentSections(input.content)) {
@@ -154,6 +159,22 @@ export function mergeDeterministicRiskIssues(
     decision: issues.some((item) => item.severity === 'BLOCK') ? 'block' : assessment.decision,
     issues: Object.freeze(issues),
   });
+}
+
+function addCompanyNameIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
+  for (const section of contentSections(input.content)) {
+    for (const companyName of findDisallowedCompanyNames(section.text)) {
+      issues.push(
+        issue(
+          'deterministic.brand.other_company_name',
+          'brand',
+          section.location,
+          `内容包含不允许公开的其他企业或品牌名称：“${companyName}”。`,
+          `删除该名称，或改为“某公司”“某搬家公司”“其他服务商”等匿名表述；只允许出现“${ALLOWED_COMPANY_NAME}”。`,
+        ),
+      );
+    }
+  }
 }
 
 function addFormatIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {

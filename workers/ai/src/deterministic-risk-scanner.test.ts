@@ -97,6 +97,32 @@ describe('deterministic pre-publish risk scanner', () => {
     );
   });
 
+  it('blocks identifiable company names while allowing the owner and anonymous companies', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'comparison',
+            '广州志远搬家服务有限公司建议先核对合同。某公司、某搬家公司或其他服务商也应采用相同核对标准。广州家盛搬家有限公司、广州四通搬家有限公司和企查查不得直接出现在文章中。',
+          ),
+        ],
+      }),
+      platformCode: 'official_site',
+    });
+
+    const companyIssues = issues.filter(
+      (item) => item.rule_id === 'deterministic.brand.other_company_name',
+    );
+    expect(companyIssues).toHaveLength(3);
+    expect(companyIssues.map((item) => item.message).join('\n')).toContain('广州家盛搬家有限公司');
+    expect(companyIssues.map((item) => item.message).join('\n')).toContain('广州四通搬家有限公司');
+    expect(companyIssues.map((item) => item.message).join('\n')).toContain('企查查');
+    expect(companyIssues.map((item) => item.message).join('\n')).not.toContain('某公司');
+    expect(companyIssues.every((item) => item.severity === 'BLOCK')).toBe(true);
+  });
+
   it('keeps blocking a derived or mistyped amount that is absent from the quotation', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),

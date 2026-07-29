@@ -1,4 +1,5 @@
 import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
+import { COMPANY_NAME_POLICY_INSTRUCTION } from '@geo-content-os/contracts';
 import {
   CREATE_QUALITY_ISSUE_TOOL,
   GET_PLATFORM_RULES_TOOL,
@@ -59,9 +60,11 @@ export class RuntimeQualityChecker {
       schemas,
     );
     const skill = new QualityCheckerSkill(new SkillRunner(adapter, schemas, tools));
-    const prompt = this.promptLoader
-      ? await this.promptLoader(input.context)
-      : await this.getPrompt(input.context.promptVersionId);
+    const prompt = withCompanyNamePolicy(
+      this.promptLoader
+        ? await this.promptLoader(input.context)
+        : await this.getPrompt(input.context.promptVersionId),
+    );
     const context = createSkillContext({
       inputHash: input.context.inputHash,
       modelKey: input.context.modelKey,
@@ -128,6 +131,17 @@ export class RuntimeQualityChecker {
 }
 
 type UsageRecorder = (context: UsageContext, usage: ModelUsage) => Promise<void>;
+
+function withCompanyNamePolicy(
+  prompt: QualityCheckerPublishedPrompt,
+): QualityCheckerPublishedPrompt {
+  return Object.freeze({
+    systemPrompt: `${prompt.systemPrompt}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
+    taskTemplate: `${prompt.taskTemplate}
+
+For this rule, report every prohibited identifiable name as a brand-category BLOCK issue with rule_id "brand.other_company_name". Generic anonymous phrases such as “某公司” are not violations.`,
+  });
+}
 
 function qualitySemanticRepairPrompt(
   prompt: QualityCheckerPublishedPrompt,

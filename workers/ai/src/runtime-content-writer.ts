@@ -1,5 +1,10 @@
 import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
+  ALLOWED_COMPANY_NAME,
+  COMPANY_NAME_POLICY_INSTRUCTION,
+  findDisallowedCompanyNames,
+} from '@geo-content-os/contracts';
+import {
   CONTENT_WRITER_INPUT_SCHEMA,
   GET_PLATFORM_RULES_TOOL,
   GET_STRATEGY_VERSION_TOOL,
@@ -130,7 +135,9 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
     const faq = await this.executeOfficialSiteFaq(input, input.masterContent);
-    return officialSiteVariant(input.masterContent, faq, input.writerInput);
+    const variant = officialSiteVariant(input.masterContent, faq, input.writerInput);
+    assertCompanyNamePolicy(variant, 'official_site');
+    return variant;
   }
 
   public async rewriteOfficialSiteVariant(input: {
@@ -149,7 +156,9 @@ export class RuntimeContentWriter implements ContentWriterPort {
       });
       const content = officialSiteArticleContent(article, 'master', input.writerInput);
       const faq = await this.executeOfficialSiteFaq(input, content);
-      return officialSiteVariant(content, faq, input.writerInput);
+      const variant = officialSiteVariant(content, faq, input.writerInput);
+      assertCompanyNamePolicy(variant, 'official_site');
+      return variant;
     }
     const revision: ContentWriterRevision = Object.freeze({
       candidate: Object.freeze({
@@ -186,9 +195,11 @@ export class RuntimeContentWriter implements ContentWriterPort {
     },
   ): Promise<OfficialSiteArticleDraft> {
     const runner = this.directRunner(input.context);
-    const prompt = this.promptLoader
-      ? await this.promptLoader(input.context)
-      : await this.getPrompt(input.context);
+    const prompt = withCompanyNamePolicy(
+      this.promptLoader
+        ? await this.promptLoader(input.context)
+        : await this.getPrompt(input.context),
+    );
     const invocation = directInvocation({
       context: input.context,
       input: input.writerInput,
@@ -288,9 +299,11 @@ export class RuntimeContentWriter implements ContentWriterPort {
     article: GeneratedContent,
   ): Promise<OfficialSiteFaqDraft> {
     const runner = this.directRunner(input.context);
-    const prompt = this.promptLoader
-      ? await this.promptLoader(input.context)
-      : await this.getPrompt(input.context);
+    const prompt = withCompanyNamePolicy(
+      this.promptLoader
+        ? await this.promptLoader(input.context)
+        : await this.getPrompt(input.context),
+    );
     return (
       await runDirectWithStructuredOutputRetry<OfficialSiteFaqDraft>(
         runner,
@@ -363,9 +376,11 @@ export class RuntimeContentWriter implements ContentWriterPort {
     revision?: ContentWriterRevision,
   ): Promise<ContentWriterOutput> {
     const adapter = this.adapters.get(input.context.modelKey)!;
-    const prompt = this.promptLoader
-      ? await this.promptLoader(input.context)
-      : await this.getPrompt(input.context);
+    const prompt = withCompanyNamePolicy(
+      this.promptLoader
+        ? await this.promptLoader(input.context)
+        : await this.getPrompt(input.context),
+    );
     const schemas = new SchemaGuard();
     const tools = new ToolRegistry(
       [
@@ -409,17 +424,27 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
     const firstAssessment = assessContentWriterData(result.output.data, input.context.modelPolicy);
-    if (firstAssessment.passed || input.context.modelPolicy === 'fast') return result.output;
+    const firstCompanyIssues = companyNamePolicyIssues(result.output.data, 'content-writer');
+    if (
+      firstCompanyIssues.length === 0 &&
+      (firstAssessment.passed || input.context.modelPolicy === 'fast')
+    ) {
+      return result.output;
+    }
 
     result = await runWithStructuredOutputRetry(skill, {
       ...invocation,
-      revision: { candidate: result.output.data, issues: firstAssessment.issues },
+      revision: {
+        candidate: result.output.data,
+        issues: Object.freeze([...firstAssessment.issues, ...firstCompanyIssues]),
+      },
     });
     const finalAssessment = assessContentWriterData(result.output.data, input.context.modelPolicy);
-    if (!finalAssessment.passed) {
+    const finalCompanyIssues = companyNamePolicyIssues(result.output.data, 'content-writer');
+    if (!finalAssessment.passed || finalCompanyIssues.length > 0) {
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
-        finalAssessment.issues.join('; '),
+        [...finalAssessment.issues, ...finalCompanyIssues].join('; '),
       );
     }
     return result.output;
@@ -733,6 +758,7 @@ function assessOfficialSiteArticle(
   if (unknown.length > 0) {
     issues.push(`official_site:使用了 ${unknown.length} 个未提供的引用 ID，必须删除或改用输入证据`);
   }
+  issues.push(...companyNamePolicyIssues(article, 'official_site'));
   return Object.freeze(issues);
 }
 
@@ -902,6 +928,37 @@ function truncateUnicode(value: string, maximum: number): string {
 
 function readableCharacterCount(value: string): number {
   return value.replace(/[\s\p{P}\p{S}]/gu, '').length;
+}
+
+function withCompanyNamePolicy(prompt: ContentWriterPublishedPrompt): ContentWriterPublishedPrompt {
+  return Object.freeze({
+    systemPrompt: `${prompt.systemPrompt}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
+    taskTemplate: `${prompt.taskTemplate}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
+  });
+}
+
+function assertCompanyNamePolicy(value: unknown, scope: string): void {
+  const issues = companyNamePolicyIssues(value, scope);
+  if (issues.length > 0) {
+    throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', issues.join('; '));
+  }
+}
+
+function companyNamePolicyIssues(value: unknown, scope: string): readonly string[] {
+  const names = new Set(stringValues(value).flatMap(findDisallowedCompanyNames));
+  return Object.freeze(
+    [...names].map(
+      (name) =>
+        `${scope}:禁止出现其他企业或品牌名称“${name}”，请改为“某公司”“某搬家公司”或“其他服务商”；只允许出现“${ALLOWED_COMPANY_NAME}”`,
+    ),
+  );
+}
+
+function stringValues(value: unknown): readonly string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringValues);
+  if (!value || typeof value !== 'object') return [];
+  return Object.values(value).flatMap(stringValues);
 }
 
 function normalizeContentText(value: string): string {

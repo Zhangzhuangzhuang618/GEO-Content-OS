@@ -1,3 +1,5 @@
+import { ALLOWED_COMPANY_NAME, findDisallowedCompanyNames } from '@geo-content-os/contracts';
+
 import { OfficialSiteRenderInputSchema } from './schema.js';
 import { OFFICIAL_SITE_RENDER_RULES_V1 } from './rules.js';
 import type {
@@ -84,6 +86,17 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
         'SCHEMA_ORG_REQUIRED',
         'schema_org 必须包含 @context 和 @type。',
         'content.platform_meta.schema_org',
+      ),
+    );
+  }
+
+  const disallowedCompanyNames = findDisallowedCompanyNames(JSON.stringify(value));
+  if (disallowedCompanyNames.length > 0) {
+    issues.push(
+      blocker(
+        'OTHER_COMPANY_NAME_FORBIDDEN',
+        `官网内容不得出现其他企业或品牌名称：${disallowedCompanyNames.join('、')}。请改为“某公司”等匿名表述；只允许出现“${ALLOWED_COMPANY_NAME}”。`,
+        'content',
       ),
     );
   }
