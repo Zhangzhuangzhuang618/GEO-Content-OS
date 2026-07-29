@@ -39,6 +39,10 @@ export interface SourceDocumentView {
   readonly workspaceId: string;
 }
 
+export interface SourceDocumentListView extends SourceDocumentView {
+  readonly parsedAt: Date | null;
+}
+
 export interface IngestJobView {
   readonly attemptCount: number;
   readonly createdAt: Date;
@@ -152,8 +156,10 @@ export class KnowledgeRepository {
     return rows[0];
   }
 
-  public async listSourceDocuments(scope: KnowledgeScope): Promise<readonly SourceDocumentView[]> {
-    return this.client<SourceDocumentView[]>`
+  public async listSourceDocuments(
+    scope: KnowledgeScope,
+  ): Promise<readonly SourceDocumentListView[]> {
+    return this.client<SourceDocumentListView[]>`
       SELECT
         source.id,
         source.tenant_id AS "tenantId",
@@ -172,7 +178,13 @@ export class KnowledgeRepository {
         source.created_by AS "createdBy",
         source.created_at AS "createdAt",
         source.updated_at AS "updatedAt",
-        source.deleted_at AS "deletedAt"
+        source.deleted_at AS "deletedAt",
+        (
+          SELECT max(job.finished_at)
+          FROM ingest_jobs AS job
+          WHERE job.tenant_id = source.tenant_id
+            AND job.source_document_id = source.id
+        ) AS "parsedAt"
       FROM source_documents AS source
       JOIN workspaces AS workspace
         ON workspace.id = source.workspace_id

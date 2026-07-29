@@ -55,34 +55,15 @@ test.beforeEach(async ({ page }) => {
       status: 200,
     }),
   );
-  await page.route('**/api/v1/sources/*', async (route) => {
-    if (route.request().method() !== 'GET') {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      body: JSON.stringify({
-        data: {
-          chunks: [],
-          citation_count: 0,
-          facts: [],
-          ingest_jobs: [{ finished_at: '2026-07-15T02:00:00.000Z', status: 'succeeded' }],
-          source: source(
-            route.request().url().includes(EXPIRED_ID) ? EXPIRED_ID : ACTIVE_ID,
-            'active',
-            'detail',
-            route.request().url().includes(EXPIRED_ID) ? projectId : null,
-          ),
-        },
-        meta: { request_id: 'detail' },
-      }),
-      contentType: 'application/json',
-      status: 200,
-    });
-  });
 });
 
 test('marks expired sources and prevents them from re-entering indexing', async ({ page }) => {
+  const detailRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.method() === 'GET' && request.url().includes('/api/v1/sources/')) {
+      detailRequests.push(request.url());
+    }
+  });
   await page.goto(scopeUrl);
   const expiredRow = page.getByRole('listitem').filter({ hasText: '旧版价格表' });
   await expect(expiredRow.getByText('已失效资料不会进入新的检索。')).toBeVisible();
@@ -94,6 +75,7 @@ test('marks expired sources and prevents them from re-entering indexing', async 
     'href',
     `/know-03?id=${ACTIVE_ID}&workspace_id=${workspaceId}&project_id=${projectId}`,
   );
+  expect(detailRequests).toEqual([]);
 });
 
 test('submits exact source hash for reindex and revision for expiry', async ({ page }) => {
@@ -167,6 +149,7 @@ function source(
     id,
     language: 'zh-CN',
     mime_type: 'application/pdf',
+    parsed_at: '2026-07-15T02:00:00.000Z',
     project_id: sourceProjectId,
     source_type: 'pdf',
     status,

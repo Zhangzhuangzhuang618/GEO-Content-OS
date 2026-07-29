@@ -198,7 +198,7 @@ describe('source upload', () => {
     const listed = await authenticatedRequest(application, viewer).get(`${API_PATH}?${scopeQuery}`);
     expect(listed.status, JSON.stringify(listed.body)).toBe(200);
     expect(listed.body).toMatchObject({
-      data: [{ id: sourceId, title: 'Enterprise source' }],
+      data: [{ id: sourceId, parsed_at: null, title: 'Enterprise source' }],
       meta: { next_cursor: null, request_id: expect.any(String) },
     });
 

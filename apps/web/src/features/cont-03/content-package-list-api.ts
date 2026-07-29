@@ -1,7 +1,7 @@
+import { apiGet } from '@/lib/api-fetch';
 import { createRequestUuid } from '@/lib/request-uuid';
 
 import {
-  ContentPackageDetailResponseSchema,
   ContentPackagePageSchema,
   ContentPackageResponseSchema,
   CostBreakdownResponseSchema,
@@ -9,8 +9,7 @@ import {
   type PackageFilters,
   type PackageListItem,
 } from './content-package-list.schema';
-import { BriefEditorRequestError, getBrief } from '../cont-02/brief-editor-api';
-import { SessionResponseSchema } from '../plat-01/platform-tenant.schema';
+import { getAccountSession } from '../app-shell/account-api';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 
@@ -37,49 +36,26 @@ export async function listContentPackages(
   const costs = canReadCosts ? await loadOptionalCosts(signal) : null;
 
   return {
-    items: page.data.data.map((item) => ({
-      briefTitle: fallbackTitle(item.updated_at),
-      costs:
-        costs === null
-          ? null
-          : costs
-              ?.filter((cost) => cost.package_id === item.id)
-              .map((cost) => ({
-                costCents: cost.cost_cents,
-                currency: cost.currency,
-              })),
-      detailState: 'loading' as const,
-      package: item,
-      variants: [],
-    })),
+    items: page.data.data.map((item) => {
+      const { brief_title: briefTitle, variants, ...contentPackage } = item;
+      return {
+        briefTitle,
+        costs:
+          costs === null
+            ? null
+            : costs
+                ?.filter((cost) => cost.package_id === item.id)
+                .map((cost) => ({
+                  costCents: cost.cost_cents,
+                  currency: cost.currency,
+                })),
+        detailState: 'ready' as const,
+        package: contentPackage,
+        variants,
+      };
+    }),
     nextCursor: page.data.meta.next_cursor,
   };
-}
-
-export async function loadContentPackageListItem(
-  item: PackageListItem,
-  signal?: AbortSignal,
-): Promise<PackageListItem> {
-  const response = await request(`/api/v1/content-packages/${item.package.id}`, signal);
-  const parsed = ContentPackageDetailResponseSchema.safeParse(await response.json());
-  if (!parsed.success) throw new ContentPackageListRequestError(502);
-  const briefTitle = await loadOptionalBriefTitle(item.package.brief_id, signal);
-  return {
-    ...item,
-    briefTitle: briefTitle ?? fallbackTitle(item.package.updated_at),
-    detailState: 'ready',
-    package: parsed.data.data.package,
-    variants: parsed.data.data.variants,
-  };
-}
-
-async function loadOptionalBriefTitle(id: string, signal?: AbortSignal) {
-  try {
-    return await loadBriefTitle(id, signal);
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    return null;
-  }
 }
 
 async function loadOptionalCosts(signal?: AbortSignal) {
@@ -91,26 +67,8 @@ async function loadOptionalCosts(signal?: AbortSignal) {
   }
 }
 
-async function loadBriefTitle(id: string, signal?: AbortSignal): Promise<string | null> {
-  try {
-    return (await getBrief(id, signal)).title;
-  } catch (error) {
-    if (error instanceof BriefEditorRequestError && error.status === 404) return null;
-    throw error;
-  }
-}
-
-function fallbackTitle(updatedAt: string) {
-  const date = new Date(updatedAt);
-  if (Number.isNaN(date.getTime())) return '历史内容';
-  return `历史内容 · ${date.toLocaleDateString('zh-CN')}`;
-}
-
 export async function loadCurrentUserId(signal?: AbortSignal): Promise<string> {
-  const response = await request('/api/v1/auth/session', signal);
-  const parsed = SessionResponseSchema.safeParse(await response.json());
-  if (!parsed.success) throw new ContentPackageListRequestError(502);
-  return parsed.data.data.user.id;
+  return (await getAccountSession(signal)).user.id;
 }
 
 export async function copyContentPackage(item: ContentPackage, csrf: string) {
@@ -146,11 +104,7 @@ async function loadSettledCosts(signal?: AbortSignal) {
 }
 
 async function request(path: string, signal?: AbortSignal) {
-  const response = await fetch(`${API_ORIGIN}${path}`, {
-    credentials: 'include',
-    method: 'GET',
-    ...(signal ? { signal } : {}),
-  });
+  const response = await apiGet(`${API_ORIGIN}${path}`, { signal });
   if (!response.ok) {
     throw new ContentPackageListRequestError(
       response.status,

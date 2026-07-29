@@ -77,9 +77,14 @@ export const ContentVariantSchema = z
   })
   .strict();
 
+export const ContentPackageListItemSchema = ContentPackageSchema.extend({
+  brief_title: z.string().trim().min(1).max(240),
+  variants: z.array(ContentVariantSchema).max(7),
+}).strict();
+
 export const ContentPackagePageSchema = z
   .object({
-    data: z.array(ContentPackageSchema),
+    data: z.array(ContentPackageListItemSchema),
     meta: z.object({ next_cursor: z.string().nullable(), request_id: z.string().min(1) }).strict(),
   })
   .strict();

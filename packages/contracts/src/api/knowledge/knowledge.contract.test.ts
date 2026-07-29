@@ -119,7 +119,9 @@ describe('knowledge API contract', () => {
     expect(
       SourceUploadResponseSchema.safeParse(response({ ingest_job: job, source })).success,
     ).toBe(true);
-    expect(SourcePageSchema.safeParse(page([source])).success).toBe(true);
+    expect(SourcePageSchema.safeParse(page([{ ...source, parsed_at: timestamp }])).success).toBe(
+      true,
+    );
     expect(
       SourceDetailResponseSchema.safeParse(
         response({ chunks: [], citation_count: 1, facts: [fact], ingest_jobs: [job], source }),

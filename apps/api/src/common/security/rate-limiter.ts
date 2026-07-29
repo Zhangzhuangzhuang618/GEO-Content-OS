@@ -20,6 +20,13 @@ interface RateLimitResult {
   readonly retryAfterSeconds: number;
 }
 
+type RateLimitBucket = 'auth' | 'read' | 'write';
+
+interface RateLimitPolicy {
+  readonly bucket: RateLimitBucket;
+  readonly limit: number;
+}
+
 interface RateLimitStore {
   consume(key: string, windowMs: number): Promise<RateLimitResult>;
 }
@@ -36,14 +43,15 @@ export function registerRateLimitHook(
     const path = request.url.split('?', 1)[0] ?? '';
     if (path.startsWith(HEALTH_PATH_PREFIX)) return;
 
+    const policy = selectRateLimitPolicy(path, request.method, max);
     const bucket = Math.floor(Date.now() / timeWindowMs);
-    const key = `geo:rate-limit:${bucket}:${hashKey(request.ip)}`;
+    const key = `geo:rate-limit:${policy.bucket}:${bucket}:${hashKey(request.ip)}`;
     const windowEndsAt = (bucket + 1) * timeWindowMs;
     const result = await store.consume(key, Math.max(1, windowEndsAt - Date.now()));
-    const remaining = Math.max(0, max - result.count);
-    reply.header('X-RateLimit-Limit', String(max));
+    const remaining = Math.max(0, policy.limit - result.count);
+    reply.header('X-RateLimit-Limit', String(policy.limit));
     reply.header('X-RateLimit-Remaining', String(remaining));
-    if (result.count <= max) return;
+    if (result.count <= policy.limit) return;
 
     reply.header('Retry-After', String(result.retryAfterSeconds));
     await reply.code(ERROR_DEFINITIONS.RATE_LIMITED.httpStatus).send({
@@ -54,6 +62,17 @@ export function registerRateLimitHook(
       },
     });
   });
+}
+
+function selectRateLimitPolicy(path: string, method: string, max: number): RateLimitPolicy {
+  const safeMethod = method.toUpperCase();
+  if (path.startsWith(`${API_BASE_PATH}/auth/`) && safeMethod !== 'GET') {
+    return { bucket: 'auth', limit: Math.min(max, 30) };
+  }
+  if (safeMethod === 'GET' || safeMethod === 'HEAD' || safeMethod === 'OPTIONS') {
+    return { bucket: 'read', limit: max };
+  }
+  return { bucket: 'write', limit: Math.min(max, 120) };
 }
 
 class RedisRateLimitStore implements RateLimitStore {

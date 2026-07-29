@@ -171,6 +171,11 @@ export const ContentVariantViewSchema = z
   })
   .strict();
 
+export const ContentPackageListItemSchema = ContentPackageViewSchema.extend({
+  brief_title: z.string().trim().min(1).max(240),
+  variants: z.array(ContentVariantViewSchema).max(7),
+}).strict();
+
 export const ContentBlockViewSchema = z
   .object({
     block_key: z.string().regex(/^[a-z0-9_-]{1,80}$/u),
@@ -345,7 +350,7 @@ export const ContentPackageDetailResponseSchema = createDataResponseSchema(
   ContentPackageDetailSchema,
 );
 export const ContentPackagePageSchema = z
-  .object({ data: z.array(ContentPackageViewSchema), meta: CursorPageMetaSchema })
+  .object({ data: z.array(ContentPackageListItemSchema), meta: CursorPageMetaSchema })
   .strict();
 export const ContentVersionResponseSchema = createDataResponseSchema(ContentVersionViewSchema);
 export const ContentDiffResponseSchema = createDataResponseSchema(ContentDiffViewSchema);
@@ -365,6 +370,7 @@ export {
 };
 
 export type CreateContentPackageRequest = z.infer<typeof CreateContentPackageRequestSchema>;
+export type ContentPackageListItem = z.infer<typeof ContentPackageListItemSchema>;
 export type ContentPackageQuery = z.infer<typeof ContentPackageQuerySchema>;
 export type GenerateContentRequest = z.infer<typeof GenerateContentRequestSchema>;
 export type ReopenVariantsRequest = z.infer<typeof ReopenVariantsRequestSchema>;

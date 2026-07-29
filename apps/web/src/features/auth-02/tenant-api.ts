@@ -1,3 +1,4 @@
+import { apiGet, invalidateApiGetCache } from '@/lib/api-fetch';
 import { createRequestUuid } from '@/lib/request-uuid';
 
 import { TenantChoicesResponseSchema, type TenantChoice } from './tenant.schema';
@@ -5,10 +6,9 @@ import { TenantChoicesResponseSchema, type TenantChoice } from './tenant.schema'
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 
 export async function listAvailableTenants(signal?: AbortSignal): Promise<TenantChoice[]> {
-  const response = await fetch(`${API_ORIGIN}/api/v1/auth/tenants`, {
-    credentials: 'include',
-    method: 'GET',
-    ...(signal ? { signal } : {}),
+  const response = await apiGet(`${API_ORIGIN}/api/v1/auth/tenants`, {
+    cacheTtlMs: 30_000,
+    signal,
   });
   if (!response.ok) throw new TenantRequestError(response.status);
 
@@ -29,6 +29,7 @@ export async function switchTenant(tenantId: string, csrf: string): Promise<void
     method: 'POST',
   });
   if (!response.ok) throw new TenantRequestError(response.status);
+  invalidateApiGetCache();
 }
 
 export class TenantRequestError extends Error {

@@ -93,7 +93,7 @@ describe('security baseline', () => {
   });
 
   it('parses bounded positive rate-limit settings', () => {
-    expect(readRateLimitConfiguration({})).toEqual({ max: 120, timeWindowMs: 60_000 });
+    expect(readRateLimitConfiguration({})).toEqual({ max: 300, timeWindowMs: 60_000 });
     expect(
       readRateLimitConfiguration({ RATE_LIMIT_MAX: '3', RATE_LIMIT_WINDOW_MS: '1000' }),
     ).toEqual({ max: 3, timeWindowMs: 1_000 });

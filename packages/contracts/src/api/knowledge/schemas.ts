@@ -142,6 +142,10 @@ export const SourceViewSchema = z
   })
   .strict();
 
+export const SourceListItemSchema = SourceViewSchema.extend({
+  parsed_at: IsoDateTimeSchema.nullable(),
+}).strict();
+
 export const IngestJobViewSchema = z
   .object({
     attempt_count: z.number().int().nonnegative(),
@@ -245,7 +249,7 @@ export const SourceUploadResponseSchema = z
   .strict();
 
 export const SourcePageSchema = z
-  .object({ data: z.array(SourceViewSchema), meta: CursorPageMetaSchema })
+  .object({ data: z.array(SourceListItemSchema), meta: CursorPageMetaSchema })
   .strict();
 
 export const SourceResponseSchema = z
@@ -288,6 +292,7 @@ export type FactQuery = z.infer<typeof FactQuerySchema>;
 export type ReindexRequest = z.infer<typeof ReindexRequestSchema>;
 export type VerifyFactRequest = z.infer<typeof VerifyFactRequestSchema>;
 export type SourceView = z.infer<typeof SourceViewSchema>;
+export type SourceListItem = z.infer<typeof SourceListItemSchema>;
 export type IngestJobView = z.infer<typeof IngestJobViewSchema>;
 export type SourceChunkView = z.infer<typeof SourceChunkViewSchema>;
 export type FactView = z.infer<typeof FactViewSchema>;

@@ -1,3 +1,4 @@
+import { apiGet } from '@/lib/api-fetch';
 import { createRequestUuid } from '@/lib/request-uuid';
 
 import {
@@ -20,10 +21,9 @@ export async function getBrandProfile(id: string, signal?: AbortSignal): Promise
 }
 
 export async function listActiveWorkspaces(signal?: AbortSignal): Promise<WorkspaceChoice[]> {
-  const response = await fetch(`${API_ORIGIN}/api/v1/workspaces?limit=100&status=active`, {
-    credentials: 'include',
-    method: 'GET',
-    ...(signal ? { signal } : {}),
+  const response = await apiGet(`${API_ORIGIN}/api/v1/workspaces?limit=100&status=active`, {
+    cacheTtlMs: 30_000,
+    signal,
   });
   if (!response.ok) throw new BrandProfileRequestError(response.status);
   const parsed = WorkspacePageSchema.safeParse(await response.json());

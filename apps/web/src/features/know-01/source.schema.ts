@@ -21,9 +21,13 @@ export const SourceViewSchema = z
   })
   .strict();
 
+export const SourceListItemSchema = SourceViewSchema.extend({
+  parsed_at: z.iso.datetime().nullable(),
+}).strict();
+
 export const SourcePageSchema = z
   .object({
-    data: z.array(SourceViewSchema),
+    data: z.array(SourceListItemSchema),
     meta: z.object({ next_cursor: z.string().nullable(), request_id: z.string().min(1) }).strict(),
   })
   .strict();
@@ -51,6 +55,4 @@ export type SourceView = z.infer<typeof SourceViewSchema>;
 export type SourceStatus = SourceView['status'];
 export type SourceType = SourceView['source_type'];
 export type TrustLevel = SourceView['trust_level'];
-export interface SourceListItem extends SourceView {
-  readonly parsed_at: string | null;
-}
+export type SourceListItem = z.infer<typeof SourceListItemSchema>;

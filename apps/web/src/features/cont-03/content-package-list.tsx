@@ -9,7 +9,6 @@ import {
   ContentPackageListRequestError,
   copyContentPackage,
   listContentPackages,
-  loadContentPackageListItem,
   loadCurrentUserId,
 } from './content-package-list-api';
 import {
@@ -59,11 +58,6 @@ export function ContentPackageList() {
       setItems(page.items);
       setNextCursor(page.nextCursor);
       setState('ready');
-      await enrichItems(page.items, signal, (item) => {
-        setItems((current) =>
-          current.map((candidate) => (candidate.package.id === item.package.id ? item : candidate)),
-        );
-      });
     } catch (error) {
       if (signal?.aborted) return;
       if (errorStatus(error) === 429) {
@@ -413,27 +407,6 @@ function formatCosts(costs: PackageListItem['costs']) {
   return costs.map((cost) => `${cost.currency} ${(cost.costCents / 100).toFixed(2)}`).join(' / ');
 }
 
-async function enrichItems(
-  items: readonly PackageListItem[],
-  signal: AbortSignal | undefined,
-  update: (item: PackageListItem) => void,
-): Promise<void> {
-  const concurrency = 2;
-  for (let index = 0; index < items.length; index += concurrency) {
-    const batch = items.slice(index, index + concurrency);
-    await Promise.all(
-      batch.map(async (item) => {
-        try {
-          const enriched = await loadContentPackageListItem(item, signal);
-          if (!signal?.aborted) update(enriched);
-        } catch {
-          if (!signal?.aborted) update({ ...item, detailState: 'unavailable' });
-        }
-      }),
-    );
-    if (signal?.aborted) return;
-  }
-}
 function platformLabel(code: PlatformCode) {
   return PLATFORM_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
 }

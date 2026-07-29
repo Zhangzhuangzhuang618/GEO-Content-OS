@@ -5,6 +5,7 @@ import type {
   ReindexRequest,
   ReasonRequest,
   SourceChunkView,
+  SourceListItem,
   SourceListQuery,
   SourceScopeQuery,
   SourceView,
@@ -24,6 +25,7 @@ import {
   type IngestJobView as RepositoryIngestJobView,
   KnowledgeRepository,
   type SourceChunkView as RepositorySourceChunkView,
+  type SourceDocumentListView,
   type SourceDocumentView,
 } from './repositories/knowledge.repository.js';
 import {
@@ -78,7 +80,7 @@ export class KnowledgeApiService {
     tenantId: string,
     userId: string,
     query: SourceListQuery,
-  ): Promise<CursorPage<SourceView>> {
+  ): Promise<CursorPage<SourceListItem>> {
     const repository = new KnowledgeRepository(this.database.client);
     const rows = await repository.listSourceDocuments(scope(tenantId, userId, query));
     const filtered = rows.filter((row) => {
@@ -89,7 +91,7 @@ export class KnowledgeApiService {
         !query.search || row.title.toLocaleLowerCase().includes(query.search.toLocaleLowerCase())
       );
     });
-    return paginate(filtered, query.limit, query.cursor, toSourceView);
+    return paginate(filtered, query.limit, query.cursor, toSourceListItem);
   }
 
   public async sourceDetail(
@@ -592,6 +594,13 @@ function toSourceView(row: SourceDocumentView): SourceView {
     trust_level: row.trustLevel,
     updated_at: toIso(row.updatedAt),
     workspace_id: row.workspaceId,
+  };
+}
+
+function toSourceListItem(row: SourceDocumentListView): SourceListItem {
+  return {
+    ...toSourceView(row),
+    parsed_at: row.parsedAt ? toIso(row.parsedAt) : null,
   };
 }
 

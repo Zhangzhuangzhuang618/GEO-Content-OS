@@ -30,16 +30,10 @@ test.beforeEach(async ({ context, page }) => {
     ),
   );
   await page.route('**/api/v1/content-packages?*', (route) =>
-    json(route, [contentPackage(PACKAGE_ID)], {
+    json(route, [contentPackageListItem(PACKAGE_ID)], {
       next_cursor: NEXT_CURSOR,
       request_id: 'packages',
     }),
-  );
-  await page.route(`**/api/v1/content-packages/${PACKAGE_ID}`, (route) =>
-    json(route, packageDetail(PACKAGE_ID), { request_id: 'detail' }),
-  );
-  await page.route(`**/api/v1/briefs/${BRIEF_ID}`, (route) =>
-    json(route, brief(), { request_id: 'brief' }),
   );
   await page.route('**/api/v1/analytics/costs?*', (route) =>
     json(
@@ -108,24 +102,19 @@ test('recognizes rate limiting while loading the active tenant', async ({ page }
   await expect(page.getByText('请稍后刷新页面。')).toBeVisible();
 });
 
-test('keeps the package list usable when an item detail is rate limited', async ({ page }) => {
-  await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
-  await page.route(`**/api/v1/content-packages/${PACKAGE_ID}`, (route) =>
-    route.fulfill({ headers: { 'Retry-After': '20' }, status: 429 }),
-  );
+test('loads list summaries without per-package or per-brief requests', async ({ page }) => {
+  const itemRequests: string[] = [];
+  page.on('request', (request) => {
+    if (
+      request.url().includes(`/content-packages/${PACKAGE_ID}`) ||
+      request.url().includes(`/briefs/${BRIEF_ID}`)
+    ) {
+      itemRequests.push(request.url());
+    }
+  });
   await page.goto('/cont-03');
-  await expect(page.getByRole('heading', { name: '历史内容 · 2026/7/15' })).toBeVisible();
-  await expect(page.getByText('暂不可用').first()).toBeVisible();
-  await expect(page.getByRole('link', { name: '继续完善内容' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '暂时无法加载内容' })).toHaveCount(0);
-});
-
-test('keeps the content list available when a historical brief is missing', async ({ page }) => {
-  await page.unroute(`**/api/v1/briefs/${BRIEF_ID}`);
-  await page.route(`**/api/v1/briefs/${BRIEF_ID}`, (route) => route.fulfill({ status: 404 }));
-  await page.goto('/cont-03');
-  await expect(page.getByRole('heading', { name: '历史内容 · 2026/7/15' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '无权查看当前内容' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '广州搬家公司怎么选' })).toBeVisible();
+  expect(itemRequests).toEqual([]);
 });
 
 test('keeps filters and cursor pagination reproducible', async ({ page }) => {
@@ -199,43 +188,15 @@ function contentPackage(id: string) {
   };
 }
 
-function packageDetail(id: string) {
+function contentPackageListItem(id: string) {
   return {
-    generation_runs: [],
-    master_content: null,
-    package: contentPackage(id),
+    ...contentPackage(id),
+    brief_title: '广州搬家公司怎么选',
     variants: [
       variant(id, 'official_site', 'generated', 80, '81000000-0000-4000-8000-000000000084'),
       variant(id, 'zhihu', 'quality_passed', 90, '82000000-0000-4000-8000-000000000084'),
       variant(id, 'douyin', 'generating', null, '83000000-0000-4000-8000-000000000084'),
     ],
-  };
-}
-
-function brief() {
-  return {
-    audience: '需要搬家服务的广州企业和家庭用户',
-    constraints: {
-      additional_instructions: null,
-      cta: null,
-      schema_version: 'brief-constraints@1',
-    },
-    created_at: '2026-07-15T00:00:00.000Z',
-    created_by: OWNER_ID,
-    due_at: null,
-    id: BRIEF_ID,
-    keyword_ids: ['71000000-0000-4000-8000-000000000084'],
-    objective: 'education',
-    platform_codes: ['official_site', 'zhihu', 'douyin'],
-    primary_keyword_id: '71000000-0000-4000-8000-000000000084',
-    project_id: PROJECT_ID,
-    source_ids: [],
-    source_topic_candidate_id: null,
-    tenant_id: TENANT_ID,
-    title: '广州搬家公司怎么选',
-    updated_at: '2026-07-15T08:00:00.000Z',
-    version: 1,
-    workspace_id: WORKSPACE_ID,
   };
 }
 

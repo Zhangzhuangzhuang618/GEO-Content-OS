@@ -95,6 +95,24 @@ describe('API security baseline', () => {
     expect((await request('192.168.2.10')).statusCode).toBe(429);
   });
 
+  it('isolates read, write, and authentication limits without weakening sensitive operations', async () => {
+    const application = await startApplication(configuration({ max: 300, timeWindowMs: 60_000 }));
+    const read = () =>
+      application.inject({ method: 'GET', url: `${API_BASE_PATH}/security-rate-probe` });
+    const write = () =>
+      application.inject({ method: 'POST', url: `${API_BASE_PATH}/security-write-probe` });
+    const auth = () =>
+      application.inject({ method: 'POST', url: `${API_BASE_PATH}/auth/security-auth-probe` });
+
+    for (let index = 0; index < 30; index += 1) expect((await auth()).statusCode).not.toBe(429);
+    expect((await auth()).statusCode).toBe(429);
+    expect((await read()).statusCode).not.toBe(429);
+
+    for (let index = 0; index < 120; index += 1) expect((await write()).statusCode).not.toBe(429);
+    expect((await write()).statusCode).toBe(429);
+    expect((await read()).statusCode).not.toBe(429);
+  });
+
   it('blocks missing or mismatched browser CSRF tokens and permits safe or bearer requests', async () => {
     const server = Fastify({ genReqId: () => 'security-request-id' });
     await server.register(fastifyCookie);

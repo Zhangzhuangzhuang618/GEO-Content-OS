@@ -7,7 +7,7 @@ export function readRateLimitConfiguration(
   environment: Readonly<Record<string, string | undefined>>,
 ): RateLimitConfiguration {
   return Object.freeze({
-    max: readPositiveInteger(environment['RATE_LIMIT_MAX'], 120, 'RATE_LIMIT_MAX'),
+    max: readPositiveInteger(environment['RATE_LIMIT_MAX'], 300, 'RATE_LIMIT_MAX'),
     timeWindowMs: readPositiveInteger(
       environment['RATE_LIMIT_WINDOW_MS'],
       60_000,

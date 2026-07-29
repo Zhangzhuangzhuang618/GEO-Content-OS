@@ -30,13 +30,17 @@ export function SourceList() {
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [role, setRole] = useState<TenantRole | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission' | 'rate_limited'>(
+    'loading',
+  );
+  const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(
     async (nextFilters: SourceFilters, append = false, signal?: AbortSignal) => {
       setState('loading');
+      setRetryAfterSeconds(null);
       try {
         const tenants = await listAvailableTenants(signal);
         if (signal?.aborted) return;
@@ -54,6 +58,11 @@ export function SourceList() {
         setState('ready');
       } catch (error) {
         if (signal?.aborted) return;
+        if (error instanceof SourceRequestError && error.status === 429) {
+          setRetryAfterSeconds(error.retryAfterSeconds);
+          setState('rate_limited');
+          return;
+        }
         setState(
           error instanceof SourceRequestError && error.status === 403 ? 'permission' : 'error',
         );
@@ -141,6 +150,15 @@ export function SourceList() {
 
   if (state === 'permission')
     return <StatePanel title="无权查看资料" text="当前工作区权限不允许访问知识库。" />;
+  if (state === 'rate_limited')
+    return (
+      <StatePanel
+        title="请求过于频繁"
+        text={
+          retryAfterSeconds === null ? '请稍后再试。' : `请等待约 ${retryAfterSeconds} 秒后再试。`
+        }
+      />
+    );
   if (state === 'error') return <StatePanel title="无法加载资料" text="请检查网络后刷新页面。" />;
 
   const canManage = role !== null && MANAGER_ROLES.has(role);

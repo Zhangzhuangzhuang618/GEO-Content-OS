@@ -1,3 +1,4 @@
+import { ContentPackagePageSchema } from '@geo-content-os/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { IdentityAuthDatabase } from '../../identity/auth/auth.database.js';
@@ -12,6 +13,7 @@ describe('content package API serialization', () => {
   it('normalizes PostgreSQL timestamp strings in items and pagination cursors', async () => {
     const row = {
       briefId: '10000000-0000-4000-8000-000000000002',
+      briefTitle: '广州搬家指南',
       createdAt: CREATED_AT,
       createdBy: '10000000-0000-4000-8000-000000000003',
       deletedAt: null,
@@ -24,7 +26,23 @@ describe('content package API serialization', () => {
       version: 1,
       workspaceId: '10000000-0000-4000-8000-000000000006',
     };
-    const client = vi.fn(async () => [row, { ...row, id: '10000000-0000-4000-8000-000000000007' }]);
+    const variant = {
+      createdAt: CREATED_AT,
+      currentContentVersionId: null,
+      id: '10000000-0000-4000-8000-000000000008',
+      isRequired: true,
+      packageId: PACKAGE_ID,
+      platformCode: 'official_site',
+      qualityScore: '86',
+      status: 'quality_passed',
+      tenantId: row.tenantId,
+      updatedAt: UPDATED_AT,
+      version: 1,
+    };
+    const client = vi
+      .fn()
+      .mockResolvedValueOnce([row, { ...row, id: '10000000-0000-4000-8000-000000000007' }])
+      .mockResolvedValueOnce([variant]);
     const service = new ContentApiService(
       { client } as unknown as IdentityAuthDatabase,
       {} as OutboxWriter,
@@ -33,9 +51,23 @@ describe('content package API serialization', () => {
     const result = await service.listPackages(row.tenantId, row.createdBy, { limit: 1 });
 
     expect(result.items[0]).toMatchObject({
+      brief_title: '广州搬家指南',
       created_at: '2026-07-16T15:12:34.565Z',
       updated_at: '2026-07-16T15:12:34.697Z',
+      variants: [
+        {
+          id: variant.id,
+          quality_score: 86,
+          status: 'quality_passed',
+        },
+      ],
     });
+    expect(
+      ContentPackagePageSchema.safeParse({
+        data: result.items,
+        meta: { next_cursor: result.nextCursor, request_id: 'serialization-test' },
+      }).success,
+    ).toBe(true);
     expect(result.nextCursor).not.toBeNull();
     expect(decodeCursor(result.nextCursor!)).toEqual({
       id: PACKAGE_ID,

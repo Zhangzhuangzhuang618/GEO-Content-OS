@@ -61,6 +61,10 @@ interface PackageCursor {
   readonly updatedAt: string;
 }
 
+interface ContentPackageListRow extends ContentPackageView {
+  readonly briefTitle: string;
+}
+
 interface QualityReportRow {
   readonly automationGateJson: Record<string, unknown> | null;
   readonly checkerVersion: string;
@@ -135,7 +139,7 @@ export class ContentApiService {
     query: ContentPackageQuery,
   ): Promise<{ readonly items: readonly JsonValue[]; readonly nextCursor: string | null }> {
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
-    const rows = await this.database.client<ContentPackageView[]>`
+    const rows = await this.database.client<ContentPackageListRow[]>`
       SELECT
         package.id,
         package.tenant_id AS "tenantId",
@@ -148,8 +152,12 @@ export class ContentApiService {
         package.created_by AS "createdBy",
         package.created_at AS "createdAt",
         package.updated_at AS "updatedAt",
-        package.deleted_at AS "deletedAt"
+        package.deleted_at AS "deletedAt",
+        coalesce(brief.title, '历史内容') AS "briefTitle"
       FROM content_packages AS package
+      LEFT JOIN briefs AS brief
+        ON brief.id = package.brief_id
+        AND brief.tenant_id = package.tenant_id
       WHERE package.tenant_id = ${tenantId}::uuid
         AND package.deleted_at IS NULL
         AND has_project_scope_access(
@@ -178,8 +186,35 @@ export class ContentApiService {
     const hasMore = rows.length > query.limit;
     const page = rows.slice(0, query.limit);
     const tail = page.at(-1);
+    const variants =
+      page.length === 0
+        ? []
+        : await this.database.client<ContentVariantView[]>`
+            SELECT
+              variant.id,
+              variant.tenant_id AS "tenantId",
+              variant.package_id AS "packageId",
+              variant.platform_code AS "platformCode",
+              variant.status,
+              variant.is_required AS "isRequired",
+              variant.current_content_version_id AS "currentContentVersionId",
+              variant.quality_score::text AS "qualityScore",
+              variant.version,
+              variant.created_at AS "createdAt",
+              variant.updated_at AS "updatedAt"
+            FROM content_variants AS variant
+            WHERE variant.tenant_id = ${tenantId}::uuid
+              AND variant.package_id = ANY(${page.map((item) => item.id)}::uuid[])
+            ORDER BY variant.package_id, variant.platform_code
+          `;
+    const variantsByPackage = new Map<string, ContentVariantView[]>();
+    for (const variant of variants) {
+      const packageVariants = variantsByPackage.get(variant.packageId) ?? [];
+      packageVariants.push(variant);
+      variantsByPackage.set(variant.packageId, packageVariants);
+    }
     return {
-      items: page.map(packageView),
+      items: page.map((item) => packageListItemView(item, variantsByPackage.get(item.id) ?? [])),
       nextCursor:
         hasMore && tail ? encodeCursor({ id: tail.id, updatedAt: isoDate(tail.updatedAt) }) : null,
     };
@@ -1776,6 +1811,21 @@ function packageView(value: ContentPackageView): JsonValue {
     ...value,
     createdAt: isoDate(value.createdAt),
     updatedAt: isoDate(value.updatedAt),
+  });
+}
+
+function packageListItemView(
+  value: ContentPackageListRow,
+  variants: readonly ContentVariantView[],
+): JsonValue {
+  return snake({
+    ...value,
+    createdAt: isoDate(value.createdAt),
+    updatedAt: isoDate(value.updatedAt),
+    variants: variants.map((variant) => ({
+      ...variant,
+      qualityScore: variant.qualityScore === null ? null : Number(variant.qualityScore),
+    })),
   });
 }
 

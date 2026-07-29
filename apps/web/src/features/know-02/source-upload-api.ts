@@ -1,3 +1,4 @@
+import { apiGet } from '@/lib/api-fetch';
 import { createRequestUuid } from '@/lib/request-uuid';
 
 import {
@@ -15,10 +16,9 @@ export async function listProjects(
   signal?: AbortSignal,
 ): Promise<ProjectChoice[]> {
   const query = new URLSearchParams({ limit: '100', status: 'active', workspace_id: workspaceId });
-  const response = await fetch(`${API_ORIGIN}/api/v1/projects?${query}`, {
-    credentials: 'include',
-    method: 'GET',
-    ...(signal ? { signal } : {}),
+  const response = await apiGet(`${API_ORIGIN}/api/v1/projects?${query}`, {
+    cacheTtlMs: 30_000,
+    signal,
   });
   if (!response.ok) throw createUploadRequestError(response);
   const parsed = ProjectPageSchema.safeParse(await response.json());

@@ -8483,6 +8483,109 @@
                             "type": "string",
                             "format": "uuid",
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "brief_title": { "type": "string", "minLength": 1, "maxLength": 240 },
+                          "variants": {
+                            "maxItems": 7,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "created_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "current_content_version_id": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    },
+                                    { "type": "null" }
+                                  ]
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "is_required": { "type": "boolean" },
+                                "package_id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "platform_code": {
+                                  "type": "string",
+                                  "enum": [
+                                    "official_site",
+                                    "baijiahao",
+                                    "toutiao",
+                                    "zhihu",
+                                    "xiaohongshu",
+                                    "wechat_mp",
+                                    "douyin"
+                                  ]
+                                },
+                                "quality_score": {
+                                  "anyOf": [
+                                    { "type": "number", "minimum": 0, "maximum": 100 },
+                                    { "type": "null" }
+                                  ]
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "draft",
+                                    "generating",
+                                    "generation_failed",
+                                    "generated",
+                                    "quality_failed",
+                                    "quality_passed",
+                                    "in_review",
+                                    "review_approved",
+                                    "review_rejected",
+                                    "approved",
+                                    "scheduled",
+                                    "publishing",
+                                    "published",
+                                    "publish_failed",
+                                    "cancelled"
+                                  ]
+                                },
+                                "tenant_id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "updated_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "version": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991
+                                }
+                              },
+                              "required": [
+                                "created_at",
+                                "current_content_version_id",
+                                "id",
+                                "is_required",
+                                "package_id",
+                                "platform_code",
+                                "quality_score",
+                                "status",
+                                "tenant_id",
+                                "updated_at",
+                                "version"
+                              ],
+                              "additionalProperties": false
+                            }
                           }
                         },
                         "required": [
@@ -8496,7 +8599,9 @@
                           "tenant_id",
                           "updated_at",
                           "version",
-                          "workspace_id"
+                          "workspace_id",
+                          "brief_title",
+                          "variants"
                         ],
                         "additionalProperties": false
                       }
@@ -11957,6 +12062,16 @@
                             {
                               "type": "object",
                               "properties": {
+                                "automation_gate": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "propertyNames": { "type": "string" },
+                                      "additionalProperties": {}
+                                    },
+                                    { "type": "null" }
+                                  ]
+                                },
                                 "checker_version": {
                                   "type": "string",
                                   "minLength": 1,
@@ -12083,6 +12198,7 @@
                                 }
                               },
                               "required": [
+                                "automation_gate",
                                 "checker_version",
                                 "content_version_id",
                                 "created_at",
@@ -12099,6 +12215,160 @@
                             },
                             { "type": "null" }
                           ]
+                        },
+                        "quality_reports": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "automation_gate": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "propertyNames": { "type": "string" },
+                                    "additionalProperties": {}
+                                  },
+                                  { "type": "null" }
+                                ]
+                              },
+                              "checker_version": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 32
+                              },
+                              "content_version_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "created_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                              },
+                              "decision": { "type": "string", "enum": ["pass", "revise", "block"] },
+                              "generation_run_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "geo_scores": {
+                                "type": "object",
+                                "properties": {
+                                  "answerability": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "entity": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "evidence": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "platform_fit": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "question": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "readability_safety": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "total": { "type": "number", "minimum": 0, "maximum": 100 }
+                                },
+                                "required": [
+                                  "answerability",
+                                  "entity",
+                                  "evidence",
+                                  "platform_fit",
+                                  "question",
+                                  "readability_safety",
+                                  "total"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "issues": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "category": {
+                                      "type": "string",
+                                      "enum": [
+                                        "fact",
+                                        "brand",
+                                        "compliance",
+                                        "format",
+                                        "duplicate",
+                                        "readability",
+                                        "security"
+                                      ]
+                                    },
+                                    "citation_ids": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "location": {
+                                      "anyOf": [{ "type": "string" }, { "type": "null" }]
+                                    },
+                                    "message": { "type": "string", "minLength": 1 },
+                                    "rule_id": { "type": "string", "minLength": 1 },
+                                    "severity": {
+                                      "type": "string",
+                                      "enum": ["BLOCK", "WARN", "INFO"]
+                                    },
+                                    "suggestion": {
+                                      "anyOf": [{ "type": "string" }, { "type": "null" }]
+                                    }
+                                  },
+                                  "required": [
+                                    "category",
+                                    "citation_ids",
+                                    "location",
+                                    "message",
+                                    "rule_id",
+                                    "severity",
+                                    "suggestion"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+                              "tenant_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "variant_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            "required": [
+                              "automation_gate",
+                              "checker_version",
+                              "content_version_id",
+                              "created_at",
+                              "decision",
+                              "generation_run_id",
+                              "geo_scores",
+                              "id",
+                              "issues",
+                              "score",
+                              "tenant_id",
+                              "variant_id"
+                            ],
+                            "additionalProperties": false
+                          }
                         },
                         "variant": {
                           "type": "object",
@@ -12451,6 +12721,7 @@
                         "current_content",
                         "locks",
                         "quality_report",
+                        "quality_reports",
                         "variant",
                         "versions"
                       ],
@@ -13048,6 +13319,16 @@
                             {
                               "type": "object",
                               "properties": {
+                                "automation_gate": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "propertyNames": { "type": "string" },
+                                      "additionalProperties": {}
+                                    },
+                                    { "type": "null" }
+                                  ]
+                                },
                                 "checker_version": {
                                   "type": "string",
                                   "minLength": 1,
@@ -13174,6 +13455,7 @@
                                 }
                               },
                               "required": [
+                                "automation_gate",
                                 "checker_version",
                                 "content_version_id",
                                 "created_at",
@@ -13190,6 +13472,160 @@
                             },
                             { "type": "null" }
                           ]
+                        },
+                        "quality_reports": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "automation_gate": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "propertyNames": { "type": "string" },
+                                    "additionalProperties": {}
+                                  },
+                                  { "type": "null" }
+                                ]
+                              },
+                              "checker_version": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 32
+                              },
+                              "content_version_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "created_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                              },
+                              "decision": { "type": "string", "enum": ["pass", "revise", "block"] },
+                              "generation_run_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "geo_scores": {
+                                "type": "object",
+                                "properties": {
+                                  "answerability": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "entity": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "evidence": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "platform_fit": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "question": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "readability_safety": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "total": { "type": "number", "minimum": 0, "maximum": 100 }
+                                },
+                                "required": [
+                                  "answerability",
+                                  "entity",
+                                  "evidence",
+                                  "platform_fit",
+                                  "question",
+                                  "readability_safety",
+                                  "total"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "issues": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "category": {
+                                      "type": "string",
+                                      "enum": [
+                                        "fact",
+                                        "brand",
+                                        "compliance",
+                                        "format",
+                                        "duplicate",
+                                        "readability",
+                                        "security"
+                                      ]
+                                    },
+                                    "citation_ids": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "location": {
+                                      "anyOf": [{ "type": "string" }, { "type": "null" }]
+                                    },
+                                    "message": { "type": "string", "minLength": 1 },
+                                    "rule_id": { "type": "string", "minLength": 1 },
+                                    "severity": {
+                                      "type": "string",
+                                      "enum": ["BLOCK", "WARN", "INFO"]
+                                    },
+                                    "suggestion": {
+                                      "anyOf": [{ "type": "string" }, { "type": "null" }]
+                                    }
+                                  },
+                                  "required": [
+                                    "category",
+                                    "citation_ids",
+                                    "location",
+                                    "message",
+                                    "rule_id",
+                                    "severity",
+                                    "suggestion"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+                              "tenant_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "variant_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            "required": [
+                              "automation_gate",
+                              "checker_version",
+                              "content_version_id",
+                              "created_at",
+                              "decision",
+                              "generation_run_id",
+                              "geo_scores",
+                              "id",
+                              "issues",
+                              "score",
+                              "tenant_id",
+                              "variant_id"
+                            ],
+                            "additionalProperties": false
+                          }
                         },
                         "variant": {
                           "type": "object",
@@ -13542,6 +13978,7 @@
                         "current_content",
                         "locks",
                         "quality_report",
+                        "quality_reports",
                         "variant",
                         "versions"
                       ],
@@ -14364,6 +14801,16 @@
                             {
                               "type": "object",
                               "properties": {
+                                "automation_gate": {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "propertyNames": { "type": "string" },
+                                      "additionalProperties": {}
+                                    },
+                                    { "type": "null" }
+                                  ]
+                                },
                                 "checker_version": {
                                   "type": "string",
                                   "minLength": 1,
@@ -14490,6 +14937,7 @@
                                 }
                               },
                               "required": [
+                                "automation_gate",
                                 "checker_version",
                                 "content_version_id",
                                 "created_at",
@@ -14506,6 +14954,160 @@
                             },
                             { "type": "null" }
                           ]
+                        },
+                        "quality_reports": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "automation_gate": {
+                                "anyOf": [
+                                  {
+                                    "type": "object",
+                                    "propertyNames": { "type": "string" },
+                                    "additionalProperties": {}
+                                  },
+                                  { "type": "null" }
+                                ]
+                              },
+                              "checker_version": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 32
+                              },
+                              "content_version_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "created_at": {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                              },
+                              "decision": { "type": "string", "enum": ["pass", "revise", "block"] },
+                              "generation_run_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "geo_scores": {
+                                "type": "object",
+                                "properties": {
+                                  "answerability": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "entity": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "evidence": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "platform_fit": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "question": { "type": "number", "minimum": 0, "maximum": 100 },
+                                  "readability_safety": {
+                                    "type": "number",
+                                    "minimum": 0,
+                                    "maximum": 100
+                                  },
+                                  "total": { "type": "number", "minimum": 0, "maximum": 100 }
+                                },
+                                "required": [
+                                  "answerability",
+                                  "entity",
+                                  "evidence",
+                                  "platform_fit",
+                                  "question",
+                                  "readability_safety",
+                                  "total"
+                                ],
+                                "additionalProperties": false
+                              },
+                              "id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "issues": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "properties": {
+                                    "category": {
+                                      "type": "string",
+                                      "enum": [
+                                        "fact",
+                                        "brand",
+                                        "compliance",
+                                        "format",
+                                        "duplicate",
+                                        "readability",
+                                        "security"
+                                      ]
+                                    },
+                                    "citation_ids": {
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      }
+                                    },
+                                    "location": {
+                                      "anyOf": [{ "type": "string" }, { "type": "null" }]
+                                    },
+                                    "message": { "type": "string", "minLength": 1 },
+                                    "rule_id": { "type": "string", "minLength": 1 },
+                                    "severity": {
+                                      "type": "string",
+                                      "enum": ["BLOCK", "WARN", "INFO"]
+                                    },
+                                    "suggestion": {
+                                      "anyOf": [{ "type": "string" }, { "type": "null" }]
+                                    }
+                                  },
+                                  "required": [
+                                    "category",
+                                    "citation_ids",
+                                    "location",
+                                    "message",
+                                    "rule_id",
+                                    "severity",
+                                    "suggestion"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "score": { "type": "number", "minimum": 0, "maximum": 100 },
+                              "tenant_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "variant_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            "required": [
+                              "automation_gate",
+                              "checker_version",
+                              "content_version_id",
+                              "created_at",
+                              "decision",
+                              "generation_run_id",
+                              "geo_scores",
+                              "id",
+                              "issues",
+                              "score",
+                              "tenant_id",
+                              "variant_id"
+                            ],
+                            "additionalProperties": false
+                          }
                         },
                         "variant": {
                           "type": "object",
@@ -14858,6 +15460,7 @@
                         "current_content",
                         "locks",
                         "quality_report",
+                        "quality_reports",
                         "variant",
                         "versions"
                       ],
@@ -22586,6 +23189,11 @@
                                     "minimum": 0,
                                     "maximum": 10
                                   },
+                                  "queued_count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 30
+                                  },
                                   "qualified_count": {
                                     "type": "integer",
                                     "minimum": 0,
@@ -22593,6 +23201,11 @@
                                   },
                                   "restart_allowed": { "type": "boolean" },
                                   "retired_count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 30
+                                  },
+                                  "running_count": {
                                     "type": "integer",
                                     "minimum": 0,
                                     "maximum": 30
@@ -22626,9 +23239,11 @@
                                   "in_progress_count",
                                   "last_error_message",
                                   "published_count",
+                                  "queued_count",
                                   "qualified_count",
                                   "restart_allowed",
                                   "retired_count",
+                                  "running_count",
                                   "scheduled_count",
                                   "status",
                                   "target_count",
@@ -22896,6 +23511,7 @@
                                   "minimum": 0,
                                   "maximum": 10
                                 },
+                                "queued_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "qualified_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -22903,6 +23519,7 @@
                                 },
                                 "restart_allowed": { "type": "boolean" },
                                 "retired_count": { "type": "integer", "minimum": 0, "maximum": 30 },
+                                "running_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "scheduled_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -22932,9 +23549,11 @@
                                 "in_progress_count",
                                 "last_error_message",
                                 "published_count",
+                                "queued_count",
                                 "qualified_count",
                                 "restart_allowed",
                                 "retired_count",
+                                "running_count",
                                 "scheduled_count",
                                 "status",
                                 "target_count",
@@ -23224,6 +23843,7 @@
                                   "minimum": 0,
                                   "maximum": 10
                                 },
+                                "queued_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "qualified_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -23231,6 +23851,7 @@
                                 },
                                 "restart_allowed": { "type": "boolean" },
                                 "retired_count": { "type": "integer", "minimum": 0, "maximum": 30 },
+                                "running_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "scheduled_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -23260,9 +23881,11 @@
                                 "in_progress_count",
                                 "last_error_message",
                                 "published_count",
+                                "queued_count",
                                 "qualified_count",
                                 "restart_allowed",
                                 "retired_count",
+                                "running_count",
                                 "scheduled_count",
                                 "status",
                                 "target_count",
@@ -23552,6 +24175,7 @@
                                   "minimum": 0,
                                   "maximum": 10
                                 },
+                                "queued_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "qualified_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -23559,6 +24183,7 @@
                                 },
                                 "restart_allowed": { "type": "boolean" },
                                 "retired_count": { "type": "integer", "minimum": 0, "maximum": 30 },
+                                "running_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "scheduled_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -23588,9 +24213,11 @@
                                 "in_progress_count",
                                 "last_error_message",
                                 "published_count",
+                                "queued_count",
                                 "qualified_count",
                                 "restart_allowed",
                                 "retired_count",
+                                "running_count",
                                 "scheduled_count",
                                 "status",
                                 "target_count",
@@ -33786,6 +34413,16 @@
                             "type": "string",
                             "format": "uuid",
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "parsed_at": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "format": "date-time",
+                                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                              },
+                              { "type": "null" }
+                            ]
                           }
                         },
                         "required": [
@@ -33804,7 +34441,8 @@
                           "title",
                           "trust_level",
                           "updated_at",
-                          "workspace_id"
+                          "workspace_id",
+                          "parsed_at"
                         ],
                         "additionalProperties": false
                       }
