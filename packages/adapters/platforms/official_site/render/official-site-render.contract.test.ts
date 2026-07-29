@@ -99,6 +99,23 @@ describe('official_site render contract', () => {
     expect(result.issues.map((issue) => issue.code)).toContain('BODY_LENGTH_OUT_OF_RANGE');
   });
 
+  it('uses the same effective-character body count as official-site generation', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      content: { blocks: { block_type: string; text: string }[] };
+    };
+    const body = input.content.blocks
+      .filter((block) => block.block_type !== 'heading' && block.block_type !== 'media')
+      .map((block) => block.text)
+      .join('');
+    const effectiveLength = body.replace(/[\s\p{P}\p{S}]/gu, '').length;
+    const paragraph = input.content.blocks.find((block) => block.block_type === 'paragraph');
+    if (!paragraph) throw new Error('Golden fixture is missing a paragraph');
+    paragraph.text += `${'超'.repeat(2_500 - effectiveLength)}${'，'.repeat(300)}`;
+
+    const result = renderOfficialSite(input);
+    expect(result.ok).toBe(true);
+  });
+
   it('does not count an empty heading as the required H2', async () => {
     const input = (await readJson('official-site.valid.input.json')) as {
       content: { blocks: { block_type: string; text: string }[] };
@@ -145,6 +162,21 @@ describe('official_site render contract', () => {
     };
     input.citations = [];
     input.content.citation_map = [];
+
+    const result = renderOfficialSite(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.citation_links).toEqual([]);
+    expect(result.payload.body_html).not.toContain('参考资料');
+  });
+
+  it('keeps internal documentary evidence private while rendering public links only', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      citations: unknown[];
+      content: { citation_map: unknown[] };
+    };
+    expect(input.content.citation_map).not.toEqual([]);
+    input.citations = [];
 
     const result = renderOfficialSite(input);
     expect(result.ok).toBe(true);

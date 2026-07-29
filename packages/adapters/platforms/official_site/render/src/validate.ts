@@ -36,7 +36,7 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
 
   const bodyLength = value.content.blocks
     .filter((block) => block.block_type !== 'heading' && block.block_type !== 'media')
-    .reduce((total, block) => total + characterLength(block.text.trim()), 0);
+    .reduce((total, block) => total + effectiveCharacterLength(block.text), 0);
   if (
     bodyLength < OFFICIAL_SITE_RENDER_RULES_V1.body.minimumCharacters ||
     bodyLength > OFFICIAL_SITE_RENDER_RULES_V1.body.maximumCharacters
@@ -88,20 +88,8 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
     );
   }
 
-  const availableCitationIds = new Set(value.citations.map((citation) => citation.citation_id));
-  const referencedCitationIds = new Set(
-    value.content.citation_map.flatMap((claim) => claim.citation_ids),
-  );
-  if ([...referencedCitationIds].some((citationId) => !availableCitationIds.has(citationId))) {
-    issues.push(
-      blocker(
-        'CITATION_LINK_MISSING',
-        '每个引用 ID 都必须映射到可输出的 HTTP(S) 引用链接。',
-        'citations',
-      ),
-    );
-  }
-
+  // citation_map retains internal audit evidence; citations contains only links safe for publication.
+  // Documentary evidence without a public URL remains valid and is intentionally omitted by render.
   return issues.length === 0
     ? { issues: [], ok: true, value }
     : { issues: Object.freeze(issues), ok: false };
@@ -117,6 +105,10 @@ function blocker(
 
 function characterLength(value: string): number {
   return [...value].length;
+}
+
+function effectiveCharacterLength(value: string): number {
+  return value.replace(/[\s\p{P}\p{S}]/gu, '').length;
 }
 
 function pathOf(path: readonly PropertyKey[]): string {
