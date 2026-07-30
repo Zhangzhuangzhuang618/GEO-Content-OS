@@ -1,10 +1,11 @@
-import type {
-  BriefConstraints,
-  BriefListQuery,
-  BriefView,
-  CreateBriefRequest,
-  PlatformCode,
-  UpdateBriefRequest,
+import {
+  BriefConstraintsSchema,
+  type BriefConstraints,
+  type BriefListQuery,
+  type BriefView,
+  type CreateBriefRequest,
+  type PlatformCode,
+  type UpdateBriefRequest,
 } from '@geo-content-os/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransactionSql } from 'postgres';
@@ -20,7 +21,7 @@ import {
 
 interface BriefRow {
   readonly audience: string;
-  readonly constraints: BriefConstraints;
+  readonly constraints: Readonly<Record<string, unknown>>;
   readonly createdAt: Date | string;
   readonly createdBy: string;
   readonly dueAt: Date | string | null;
@@ -229,6 +230,8 @@ export class BriefService {
     const sourceIds = input.source_ids ?? before.sourceIds;
     const objective = input.objective ?? before.objective;
     const platformCodes = input.platform_codes ?? before.platformCodes;
+    const constraints =
+      input.constraints === undefined ? undefined : { ...before.constraints, ...input.constraints };
     validateBriefRules(objective, keywordIds, primaryKeywordId, sourceIds);
     await assertKeywords(transaction, tenantId, before.projectId, keywordIds, platformCodes);
     await assertSources(transaction, tenantId, before.workspaceId, before.projectId, sourceIds);
@@ -241,8 +244,8 @@ export class BriefService {
         audience = COALESCE(${input.audience ?? null}, audience),
         platform_codes = COALESCE(${input.platform_codes ?? null}, platform_codes),
         constraints_json = CASE
-          WHEN ${input.constraints !== undefined}::boolean
-          THEN ${input.constraints === undefined ? null : JSON.stringify(input.constraints)}::text::jsonb
+          WHEN ${constraints !== undefined}::boolean
+          THEN ${constraints === undefined ? null : JSON.stringify(constraints)}::text::jsonb
           ELSE constraints_json
         END,
         due_at = CASE
@@ -666,7 +669,7 @@ function toBriefView(row: BriefRow): BriefView {
   if (!row.primaryKeywordId) throw new BriefStateError('Brief has no primary keyword');
   return {
     audience: row.audience,
-    constraints: row.constraints,
+    constraints: publicBriefConstraints(row.constraints),
     created_at: toIso(row.createdAt),
     created_by: row.createdBy,
     due_at: row.dueAt ? toIso(row.dueAt) : null,
@@ -684,6 +687,14 @@ function toBriefView(row: BriefRow): BriefView {
     version: row.version,
     workspace_id: row.workspaceId,
   };
+}
+
+function publicBriefConstraints(value: BriefRow['constraints']): BriefConstraints {
+  return BriefConstraintsSchema.parse({
+    additional_instructions: value['additional_instructions'],
+    cta: value['cta'],
+    schema_version: value['schema_version'],
+  });
 }
 
 function encodeCursor(cursor: BriefCursor): string {
