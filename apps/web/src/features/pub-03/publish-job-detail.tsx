@@ -30,7 +30,7 @@ export function PublishJobDetailView() {
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error' | 'permission'>(
     'loading',
   );
-  const [busy, setBusy] = useState<'retry' | 'cancel' | 'download' | null>(null);
+  const [busy, setBusy] = useState<'retry' | 'reschedule' | 'cancel' | 'download' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [download, setDownload] = useState<SignedDownload | null>(null);
 
@@ -66,7 +66,7 @@ export function PublishJobDetailView() {
     return () => controller.abort();
   }, [jobId, load]);
 
-  async function runAction(action: 'retry' | 'cancel') {
+  async function runAction(action: 'retry' | 'reschedule' | 'cancel') {
     if (!detail) return;
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
@@ -74,16 +74,37 @@ export function PublishJobDetailView() {
       return;
     }
     let reason = '';
+    let scheduledAt: string | null = null;
     if (action === 'cancel') {
       reason = window.prompt('请输入取消原因。')?.trim() ?? '';
       if (!reason) return;
+    }
+    if (action === 'reschedule') {
+      const fallback = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+      const existing =
+        Date.parse(detail.job.scheduled_at) > Date.now() ? detail.job.scheduled_at : fallback;
+      const value = window.prompt('请输入新的排期时间。', toLocalDateTime(existing));
+      if (value === null) return;
+      scheduledAt = toIso(value);
+      if (!scheduledAt) {
+        setMessage('重新排期失败：请输入有效时间。');
+        return;
+      }
     }
     setBusy(action);
     setMessage(null);
     try {
       if (action === 'retry') await retryPublishJob(detail.job, csrf);
+      if (action === 'reschedule')
+        await retryPublishJob(detail.job, csrf, scheduledAt ?? undefined);
       if (action === 'cancel') await cancelUnexecutedPublishJob(detail.job, reason, csrf);
-      setMessage(action === 'retry' ? '发布重试已排队。' : '未执行任务已取消。');
+      setMessage(
+        action === 'retry'
+          ? '发布重试已排队。'
+          : action === 'reschedule'
+            ? '发布任务已重新排期。'
+            : '未执行任务已取消。',
+      );
       await load(detail.job.id);
     } catch {
       setMessage('操作失败；任务版本、状态或外部结果可能已变化，请刷新后重试。');
@@ -165,14 +186,15 @@ function DetailContent({
   onAction,
   onDownload,
 }: {
-  readonly busy: 'retry' | 'cancel' | 'download' | null;
+  readonly busy: 'retry' | 'reschedule' | 'cancel' | 'download' | null;
   readonly detail: PublishJobDetail;
-  readonly onAction: (action: 'retry' | 'cancel') => Promise<void>;
+  readonly onAction: (action: 'retry' | 'reschedule' | 'cancel') => Promise<void>;
   readonly onDownload: () => Promise<void>;
 }) {
   const { job } = detail;
   const externalUrl = safeHttpUrl(job.external_url);
-  const retryLimitReached = job.origin === 'official_site_automation' && job.attempt_count >= 3;
+  const retryLimitReached =
+    job.attempt_count >= (job.origin === 'official_site_automation' ? 3 : 20);
   return (
     <>
       <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
@@ -191,6 +213,16 @@ function DetailContent({
                 type="button"
               >
                 {busy === 'retry' ? '正在重试…' : '重试'}
+              </button>
+            ) : null}
+            {job.status === 'cancelled' && !retryLimitReached ? (
+              <button
+                className={primaryButton}
+                disabled={busy !== null}
+                onClick={() => void onAction('reschedule')}
+                type="button"
+              >
+                {busy === 'reschedule' ? '正在重新排期…' : '重新排期'}
               </button>
             ) : null}
             {job.status === 'scheduled' ? (
@@ -417,6 +449,19 @@ function safeHttpUrl(value: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function toIso(value: string | null): string | null {
+  if (!value?.trim()) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function toLocalDateTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
 function formatError(value: Readonly<Record<string, unknown>> | null) {

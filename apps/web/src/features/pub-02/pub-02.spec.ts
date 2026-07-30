@@ -161,7 +161,6 @@ test('blocks non-approved variants and creates an immediate job only after appro
 test('reschedules, publishes now and cancels scheduled jobs through frozen APIs', async ({
   page,
 }) => {
-  let sequence = 0;
   let current: Record<string, unknown>[] = [
     job({ id: JOB_IDS[0], scheduledAt: '2026-07-18T02:00:00.000Z' }),
   ];
@@ -179,12 +178,7 @@ test('reschedules, publishes now and cancels scheduled jobs through frozen APIs'
     const body = request.postData() ? (request.postDataJSON() as unknown) : null;
     writes.push({ body, headers: request.headers(), path });
     if (path.endsWith('/cancel')) {
-      const before =
-        current[0] ??
-        job({
-          id: JOB_IDS[sequence] ?? JOB_IDS[2],
-          scheduledAt: '2026-07-18T02:00:00.000Z',
-        });
+      const before = current[0] ?? job({ id: JOB_IDS[0], scheduledAt: '2026-07-18T02:00:00.000Z' });
       current = [];
       await json(route, {
         data: { ...before, status: 'cancelled', version: Number(before['version']) + 1 },
@@ -192,14 +186,15 @@ test('reschedules, publishes now and cancels scheduled jobs through frozen APIs'
       });
       return;
     }
-    sequence += 1;
     const requestBody = body as { scheduled_at: string };
-    const created = job({
-      id: JOB_IDS[sequence] ?? JOB_IDS[2],
-      scheduledAt: requestBody.scheduled_at,
-    });
-    current = [created];
-    await json(route, { data: created, meta: { request_id: 'calendar-create' } }, 201);
+    const before = current[0] ?? job({ id: JOB_IDS[0], scheduledAt: '2026-07-18T02:00:00.000Z' });
+    const rescheduled = {
+      ...before,
+      scheduled_at: requestBody.scheduled_at,
+      version: Number(before['version']) + 1,
+    };
+    current = [rescheduled];
+    await json(route, { data: rescheduled, meta: { request_id: 'calendar-reschedule' } });
   });
 
   await page.goto('/pub-02');
@@ -207,39 +202,43 @@ test('reschedules, publishes now and cancels scheduled jobs through frozen APIs'
   await page.getByRole('button', { name: '改期' }).click();
   await expect(page.getByText('发布任务已改期。')).toBeVisible();
 
-  const currentRow = page.getByRole('row').filter({ hasText: '已审核内容' });
+  const currentRow = page.getByRole('link', { name: '查看详情' }).locator('xpath=ancestor::tr');
   await currentRow.getByRole('button', { name: '立即发布' }).click();
   await expect(page.getByText('任务已调整为立即发布。')).toBeVisible();
 
   page.once('dialog', (dialog) => dialog.accept('运营取消'));
   await page
-    .getByRole('row')
-    .filter({ hasText: '已审核内容' })
-    .getByRole('button', { name: '取消' })
+    .getByRole('link', { name: '查看详情' })
+    .locator('xpath=ancestor::tr')
+    .getByRole('button', {
+      name: '取消',
+    })
     .click();
   await expect(page.getByText('发布任务已取消。')).toBeVisible();
   await expect(page.getByRole('heading', { name: '暂无发布任务' })).toBeVisible();
 
   expect(writes.map(({ path }) => path)).toEqual([
+    `/api/v1/publish-jobs/${JOB_IDS[0]}/retry`,
+    `/api/v1/publish-jobs/${JOB_IDS[0]}/retry`,
     `/api/v1/publish-jobs/${JOB_IDS[0]}/cancel`,
-    '/api/v1/publish-jobs',
-    `/api/v1/publish-jobs/${JOB_IDS[1]}/cancel`,
-    '/api/v1/publish-jobs',
-    `/api/v1/publish-jobs/${JOB_IDS[2]}/cancel`,
   ]);
-  expect(
-    writes.filter(({ path }) => path.endsWith('/cancel')).map(({ headers }) => headers['if-match']),
-  ).toEqual(['"1"', '"1"', '"1"']);
+  expect(writes.map(({ headers }) => headers['if-match'])).toEqual(['"1"', '"2"', '"3"']);
   expect(
     writes
-      .filter(({ path }) => path === '/api/v1/publish-jobs')
+      .filter(({ path }) => path.endsWith('/retry'))
       .every(({ headers }) =>
-        /^publish-calendar-[0-9a-f-]{36}$/u.test(headers['idempotency-key'] ?? ''),
+        new RegExp(`^publish-reschedule-${JOB_IDS[0]}-[0-9a-f-]{36}$`, 'u').test(
+          headers['idempotency-key'] ?? '',
+        ),
       ),
   ).toBe(true);
-  expect((writes[0]?.body as { reason: string }).reason).toBe('发布日历改期');
-  expect((writes[2]?.body as { reason: string }).reason).toBe('发布日历立即发布');
-  expect((writes[4]?.body as { reason: string }).reason).toBe('运营取消');
+  expect((writes[0]?.body as { scheduled_at: string }).scheduled_at).toBe(
+    '2026-07-20T02:00:00.000Z',
+  );
+  expect(
+    Number.isFinite(Date.parse((writes[1]?.body as { scheduled_at: string }).scheduled_at)),
+  ).toBe(true);
+  expect((writes[2]?.body as { reason: string }).reason).toBe('运营取消');
 });
 
 test('persists calendar filters in the URL and forwards them to the list API', async ({ page }) => {

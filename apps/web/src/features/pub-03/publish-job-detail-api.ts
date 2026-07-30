@@ -26,9 +26,13 @@ export async function getPublishJobDetail(
   return parsed.data.data;
 }
 
-export async function retryPublishJob(job: PublishJob, csrf: string): Promise<PublishJob> {
+export async function retryPublishJob(
+  job: PublishJob,
+  csrf: string,
+  scheduledAt?: string,
+): Promise<PublishJob> {
   const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/retry`, {
-    body: '{}',
+    body: JSON.stringify(scheduledAt ? { scheduled_at: scheduledAt } : {}),
     credentials: 'include',
     headers: writeHeaders(csrf, job.version, `publish-retry-${job.id}`),
     method: 'POST',

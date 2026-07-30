@@ -82,10 +82,47 @@ test('cancels only an unexecuted scheduled task with optimistic versioning', asy
   await expect(page.getByText('未执行任务已取消。')).toBeVisible();
   await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
   await expect(page.getByRole('button', { name: '取消未执行任务' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '重新排期' })).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]?.body).toEqual({ reason: '排期撤销' });
   expect(writes[0]?.headers['if-match']).toBe('"4"');
   expect(writes[0]?.headers['idempotency-key']).toBeUndefined();
+});
+
+test('restores a cancelled task by rescheduling the same publish job', async ({ page }) => {
+  let currentJob = job({ attemptCount: 0, status: 'cancelled', version: 5 });
+  const writes: { body: unknown; headers: Record<string, string>; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(route, detail(currentJob, []));
+      return;
+    }
+    const body = request.postDataJSON() as { scheduled_at: string };
+    writes.push({ body, headers: request.headers(), path });
+    currentJob = {
+      ...currentJob,
+      scheduled_at: body.scheduled_at,
+      status: 'scheduled',
+      version: 6,
+    };
+    await json(route, { data: currentJob, meta: { request_id: 'publish-reschedule' } });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  page.once('dialog', (dialog) => dialog.accept('2026-07-21T10:30'));
+  await page.getByRole('button', { name: '重新排期' }).click();
+
+  await expect(page.getByText('发布任务已重新排期。')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '已排期' })).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.path).toBe(`/api/v1/publish-jobs/${JOB_ID}/retry`);
+  expect(writes[0]?.body).toEqual({ scheduled_at: '2026-07-21T02:30:00.000Z' });
+  expect(writes[0]?.headers['if-match']).toBe('"5"');
+  expect(writes[0]?.headers['idempotency-key']).toMatch(
+    new RegExp(`^publish-retry-${JOB_ID}-[0-9a-f-]{36}$`, 'u'),
+  );
 });
 
 test('shows post result and obtains a short-lived signed export URL', async ({ page }) => {

@@ -21,6 +21,7 @@ import {
   listApprovedContent,
   listPublishJobs,
   PublishingCalendarRequestError,
+  reschedulePublishJob,
 } from './publishing-calendar-api';
 import {
   PublishJobStatusSchema,
@@ -161,27 +162,14 @@ export function PublishingCalendar() {
       }
     }
     if (action === 'now') scheduledAt = new Date().toISOString();
-    const reason =
-      action === 'cancel'
-        ? (window.prompt('请输入取消原因。')?.trim() ?? '')
-        : action === 'reschedule'
-          ? '发布日历改期'
-          : '发布日历立即发布';
-    if (!reason) return;
+    const reason = action === 'cancel' ? (window.prompt('请输入取消原因。')?.trim() ?? '') : '';
+    if (action === 'cancel' && !reason) return;
 
     setBusyId(job.id);
     setMessage(null);
     try {
-      await cancelPublishJob(job, reason, csrf);
-      if (scheduledAt) {
-        try {
-          await createPublishJob(job.account_id, job.variant_id, scheduledAt, csrf);
-        } catch {
-          setMessage('原任务已取消，但新任务创建失败；请从审核通过的内容重新安排。');
-          await load(filters);
-          return;
-        }
-      }
+      if (action === 'cancel') await cancelPublishJob(job, reason, csrf);
+      if (scheduledAt) await reschedulePublishJob(job, scheduledAt, csrf);
       setMessage(
         action === 'cancel'
           ? '发布任务已取消。'

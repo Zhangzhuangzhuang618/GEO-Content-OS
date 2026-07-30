@@ -239,7 +239,7 @@ describe('publish jobs', () => {
     expect(state).toEqual([{ status: 'failed', version: 2 }]);
   });
 
-  it('cancels a queued website automation and returns the article to quality-passed', async () => {
+  it('cancels and restores a queued website automation without replacing its job', async () => {
     const database = requireClient(client);
     await seedAutomationJob(database, 'scheduled', 0);
     const service = new PublishJobService(database);
@@ -256,6 +256,26 @@ describe('publish jobs', () => {
       automationStatus: 'disabled',
       jobStatus: 'cancelled',
       variantStatus: 'quality_passed',
+    });
+
+    const rescheduled = await service.retry(
+      { ...SCOPE, requestId: 'req-auto-reschedule-124' },
+      AUTO_JOB_ID,
+      cancelled.version,
+      { scheduled_at: SCHEDULED_AT },
+    );
+
+    expect(rescheduled).toMatchObject({
+      id: AUTO_JOB_ID,
+      origin: 'official_site_automation',
+      scheduled_at: SCHEDULED_AT,
+      status: 'scheduled',
+      version: 3,
+    });
+    await expect(automationState(database)).resolves.toMatchObject({
+      automationStatus: 'publishing',
+      jobStatus: 'scheduled',
+      variantStatus: 'scheduled',
     });
   });
 

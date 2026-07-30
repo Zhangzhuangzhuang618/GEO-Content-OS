@@ -136,6 +136,25 @@ export async function cancelPublishJob(
   return parseJob(response);
 }
 
+export async function reschedulePublishJob(
+  job: PublishJob,
+  scheduledAt: string,
+  csrf: string,
+): Promise<PublishJob> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/retry`, {
+    body: JSON.stringify({ scheduled_at: scheduledAt }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `publish-reschedule-${job.id}-${createRequestUuid()}`,
+      'if-match': `"${job.version}"`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  return parseJob(response);
+}
+
 export class PublishingCalendarRequestError extends Error {
   public constructor(public readonly status: number) {
     super('Publishing calendar request failed');

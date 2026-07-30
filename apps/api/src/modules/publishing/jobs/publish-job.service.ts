@@ -284,8 +284,26 @@ export class PublishJobService {
     assertVersion(expectedVersion);
     const before = await loadJob(transaction, scope, jobId);
     if (before.version !== expectedVersion) throw versionConflict();
-    if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
-      throw stateInvalid('Only a failed publish job with a failed variant can be retried');
+    if (!input.scheduled_at && before.status !== 'failed') {
+      throw stateInvalid('A new schedule is required for this publish job');
+    }
+    if (before.status === 'scheduled' && before.variantStatus !== 'scheduled') {
+      throw stateInvalid('Publish job and content variant states are inconsistent');
+    }
+    const restoredStatus =
+      before.origin === 'official_site_automation' ? 'quality_passed' : 'approved';
+    if (before.status === 'cancelled' && before.variantStatus !== restoredStatus) {
+      throw stateInvalid('Cancelled publish job and content variant states are inconsistent');
+    }
+    if (before.status === 'failed' && before.variantStatus !== 'publish_failed') {
+      throw stateInvalid('Failed publish job and content variant states are inconsistent');
+    }
+    if (
+      before.status !== 'scheduled' &&
+      before.status !== 'cancelled' &&
+      before.status !== 'failed'
+    ) {
+      throw stateInvalid('Publish job cannot be rescheduled from its current state');
     }
     if (before.packageStatus === 'archived' || before.packageStatus === 'cancelled') {
       throw stateInvalid('Terminal content package cannot be retried');
@@ -295,9 +313,12 @@ export class PublishJobService {
       throw stateInvalid('Publish job attempt limit was reached');
     }
     if (before.variantCurrentContentVersionId !== before.contentVersionId) {
-      throw stateInvalid('The failed publish job no longer points to the current content version');
+      throw stateInvalid('The publish job no longer points to the current content version');
     }
-    if (await latestAttemptIsUnknown(transaction, scope.tenantId, before.id)) {
+    if (
+      before.status !== 'scheduled' &&
+      (await latestAttemptIsUnknown(transaction, scope.tenantId, before.id))
+    ) {
       throw stateInvalid('Unknown external publish state requires manual resolution');
     }
     assertAccountReady(before);
@@ -307,7 +328,7 @@ export class PublishJobService {
           status='scheduled', scheduled_at=${scheduledAtIso}::timestamptz,
           last_error_json=NULL, version=version+1
         WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
-          AND version=${expectedVersion} AND status='failed'
+          AND version=${expectedVersion} AND status=${before.status}
         RETURNING
           id, tenant_id AS "tenantId", variant_id AS "variantId",
           content_version_id AS "contentVersionId", account_id AS "accountId",
@@ -319,50 +340,61 @@ export class PublishJobService {
           created_at AS "createdAt", updated_at AS "updatedAt"
       `;
     const after = requireChangedJob(rows, before);
-    const restoredStatus =
-      before.origin === 'official_site_automation' ? 'quality_passed' : 'approved';
-    const transitionCause =
-      before.origin === 'official_site_automation' ? 'official_site_automation' : 'normal';
-    assertContentVariantTransition({
-      cause: transitionCause,
-      from: 'publish_failed',
-      to: restoredStatus,
-    });
-    await updateVariant(
-      transaction,
-      scope.tenantId,
-      before.variantId,
-      before.variantVersion,
-      'publish_failed',
-      restoredStatus,
-    );
-    assertContentVariantTransition({
-      cause: transitionCause,
-      from: restoredStatus,
-      to: 'scheduled',
-    });
-    await updateVariant(
-      transaction,
-      scope.tenantId,
-      before.variantId,
-      before.variantVersion + 1,
-      restoredStatus,
-      'scheduled',
-    );
-    if (before.origin === 'official_site_automation') {
-      await restartAutomationRun(transaction, scope.tenantId, before.id);
+    if (before.status !== 'scheduled') {
+      const transitionCause =
+        before.origin === 'official_site_automation' ? 'official_site_automation' : 'normal';
+      if (before.status === 'failed') {
+        assertContentVariantTransition({
+          cause: transitionCause,
+          from: 'publish_failed',
+          to: restoredStatus,
+        });
+        await updateVariant(
+          transaction,
+          scope.tenantId,
+          before.variantId,
+          before.variantVersion,
+          'publish_failed',
+          restoredStatus,
+        );
+      }
+      assertContentVariantTransition({
+        cause: transitionCause,
+        from: restoredStatus,
+        to: 'scheduled',
+      });
+      await updateVariant(
+        transaction,
+        scope.tenantId,
+        before.variantId,
+        before.status === 'failed' ? before.variantVersion + 1 : before.variantVersion,
+        restoredStatus,
+        'scheduled',
+      );
+      if (before.origin === 'official_site_automation') {
+        await restartAutomationRun(
+          transaction,
+          scope.tenantId,
+          before.id,
+          before.status === 'failed' ? 'publish_failed' : 'disabled',
+        );
+        await syncDailyBatchSchedule(transaction, scope.tenantId, before.id, scheduledAtIso);
+      }
+      await projectPackage(
+        transaction,
+        this.projector,
+        scope.tenantId,
+        before.packageId,
+        before.packageStatus,
+        before.packageVersion,
+      );
+    } else if (before.origin === 'official_site_automation') {
+      await syncDailyBatchSchedule(transaction, scope.tenantId, before.id, scheduledAtIso);
     }
-    await projectPackage(
-      transaction,
-      this.projector,
-      scope.tenantId,
-      before.packageId,
-      before.packageStatus,
-      before.packageVersion,
-    );
+    await supersedePendingExecution(transaction, scope.tenantId, before.id);
     await enqueueExecution(transaction, this.outbox, scope, after, scheduledAt);
     await this.audit.record(transaction, {
-      action: 'publish_job.retried',
+      action: before.status === 'failed' ? 'publish_job.retried' : 'publish_job.rescheduled',
       actorId: scope.userId,
       after: safeJob(after),
       before: safeJob(before),
@@ -607,15 +639,44 @@ async function restartAutomationRun(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
+  expectedStatus: 'disabled' | 'publish_failed',
 ): Promise<void> {
   const rows = await transaction<{ id: string }[]>`
     UPDATE official_site_automation_runs SET
       status='publishing', last_error_json=NULL, finished_at=NULL, version=version+1
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-      AND status='publish_failed'
+      AND status=${expectedStatus}
     RETURNING id
   `;
   if (rows.length !== 1) throw stateInvalid('Official-site automation run is inconsistent');
+}
+
+async function syncDailyBatchSchedule(
+  transaction: TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  scheduledAtIso: string,
+): Promise<void> {
+  await transaction`
+    UPDATE official_site_daily_batch_items SET
+      status='scheduled', scheduled_at=${scheduledAtIso}::timestamptz, last_error_json=NULL
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publish_failed')
+  `;
+}
+
+async function supersedePendingExecution(
+  transaction: TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+): Promise<void> {
+  await transaction`
+    UPDATE outbox_events SET
+      status='failed', last_error='Superseded by publish job reschedule'
+    WHERE tenant_id=${tenantId}::uuid
+      AND aggregate_type='publish_job' AND aggregate_id=${publishJobId}::uuid
+      AND event_type='publishing.job.execution_requested.v1' AND status='pending'
+  `;
 }
 
 function requireInsertedJob(rows: JobRow[], target: PublishTarget): JobRow {
