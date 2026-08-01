@@ -83,8 +83,17 @@ export class DeepSeekModelAdapter implements ModelAdapter {
           error instanceof DeepSeekAdapterError
             ? error
             : this.transportError(error, input.signal, lease.isTimedOut());
-        if (!retryableEmptyResponse(mapped) || attempt === this.configuration.maxRetries) {
+        if (!retryableEmptyResponse(mapped)) {
           throw mapped;
+        }
+        if (attempt === this.configuration.maxRetries) {
+          throw new DeepSeekAdapterError(
+            'DEEPSEEK_RESPONSE_INVALID',
+            `DeepSeek response remained empty after ${attempt + 1} attempt(s); ${mapped.message}`,
+            false,
+            mapped.httpStatus,
+            { cause: mapped },
+          );
         }
       } finally {
         lease.dispose();
@@ -93,7 +102,7 @@ export class DeepSeekModelAdapter implements ModelAdapter {
     }
     throw new DeepSeekAdapterError(
       'DEEPSEEK_RESPONSE_INVALID',
-      'DeepSeek response remained empty after retries',
+      'DeepSeek response is empty',
       false,
     );
   }
@@ -365,7 +374,7 @@ export class DeepSeekModelAdapter implements ModelAdapter {
     if (!content && toolCalls.length === 0) {
       throw new DeepSeekAdapterError(
         'DEEPSEEK_RESPONSE_INVALID',
-        'DeepSeek response is empty',
+        `DeepSeek response is empty (finish_reason=${finishReason}, output_tokens=${usage.completion_tokens})`,
         true,
       );
     }

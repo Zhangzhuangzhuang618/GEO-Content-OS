@@ -2,6 +2,7 @@ import type { QualityCheckerData, QualityGeoScores } from '@geo-content-os/contr
 import {
   contentHash,
   OfficialSiteAutomation,
+  QualityCheckWorker,
   type GeneratedContent,
   validateQualityEvent,
 } from '@geo-content-os/worker-ai';
@@ -29,6 +30,8 @@ const MANUAL_VERSION_ID = '81100000-0000-4000-8000-000000000126';
 const MASTER_VERSION_ID = '82000000-0000-4000-8000-000000000126';
 const ACCOUNT_ID = '91000000-0000-4000-8000-000000000126';
 const POLICY_ID = 'a1000000-0000-4000-8000-000000000126';
+const BRAND_PROFILE_ID = 'a1100000-0000-4000-8000-000000000126';
+const RULE_ID = 'a1200000-0000-4000-8000-000000000126';
 const AUTOMATION_RUN_ID = 'a2000000-0000-4000-8000-000000000126';
 const QUALITY_RUN_ID = 'a3000000-0000-4000-8000-000000000126';
 const QUALITY_REPORT_ID = 'a4000000-0000-4000-8000-000000000126';
@@ -300,6 +303,78 @@ describe('official-site quality, rewrite, and publication automation', () => {
     ).toEqual([{ code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES', status: 'retired' }]);
   });
 
+  it('discards an obsolete quality result after a rewrite without failing the queue job', async () => {
+    const database = requireClient(client);
+    await seedQualityCycle(database, 'quality_failed', 0, 'queued');
+    const edited = content('Concurrent rewrite replaced the checked content');
+    let replaced = false;
+    const checker = {
+      evaluate: async () => {
+        if (!replaced) {
+          replaced = true;
+          await database`
+            INSERT INTO content_versions(
+              id,tenant_id,package_id,variant_id,version_no,schema_version,
+              content_json,content_hash,created_by
+            ) VALUES(
+              ${MANUAL_VERSION_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,
+              ${VARIANT_ID}::uuid,2,${edited.schema_version},${database.json(edited)},
+              ${contentHash(edited)},${USER_ID}::uuid
+            )
+          `;
+          await database`
+            UPDATE content_variants SET
+              current_content_version_id=${MANUAL_VERSION_ID}::uuid,
+              status='generated',version=version+1
+            WHERE id=${VARIANT_ID}::uuid
+          `;
+        }
+        return {
+          decision: 'pass' as const,
+          geo_scores: SCORES,
+          issues: [],
+          score: SCORES.total,
+        };
+      },
+    };
+    const worker = new QualityCheckWorker(database, checker as never);
+
+    await expect(worker.run(qualityEvent())).resolves.toEqual({ disposition: 'completed' });
+
+    expect(
+      await database<
+        {
+          code: string;
+          currentContentVersionId: string;
+          runStatus: string;
+          variantStatus: string;
+        }[]
+      >`
+        SELECT
+          run.status AS "runStatus",run.error_json->>'code' AS code,
+          variant.current_content_version_id AS "currentContentVersionId",
+          variant.status AS "variantStatus"
+        FROM generation_runs AS run
+        JOIN content_variants AS variant
+          ON variant.id=run.variant_id AND variant.tenant_id=run.tenant_id
+        WHERE run.id=${QUALITY_RUN_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        code: 'QUALITY_RESULT_STALE',
+        currentContentVersionId: MANUAL_VERSION_ID,
+        runStatus: 'cancelled',
+        variantStatus: 'generated',
+      },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM quality_reports
+        WHERE generation_run_id=${QUALITY_RUN_ID}::uuid
+      `,
+    ).toEqual([{ count: 0 }]);
+  });
+
   it('resumes a manual-required automation run from the user-edited content version', async () => {
     const database = requireClient(client);
     const edited = content('User edited website article ready for another quality check');
@@ -398,6 +473,7 @@ async function seedQualityCycle(
   database: Sql,
   variantStatus: 'quality_failed' | 'quality_passed',
   rewriteCount: number,
+  runStatus: 'queued' | 'succeeded' = 'succeeded',
 ) {
   await database`
     UPDATE content_variants SET status=${variantStatus} WHERE id=${VARIANT_ID}::uuid
@@ -409,21 +485,23 @@ async function seedQualityCycle(
     ) VALUES(
       ${QUALITY_RUN_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
       ${PROJECT_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,'quality-checker',
-      '1.0.0',${QUALITY_PROMPT_ID}::uuid,'deepseek-v4-pro','succeeded',
+      '1.0.0',${QUALITY_PROMPT_ID}::uuid,'deepseek-v4-pro',${runStatus},
       ${contentHash(INITIAL)},'auto-quality-126'
     )
   `;
-  await database`
-    INSERT INTO quality_reports(
-      id,tenant_id,variant_id,content_version_id,generation_run_id,checker_version,
-      score,decision,issues_json,geo_scores_json
-    ) VALUES(
-      ${QUALITY_REPORT_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,
-      ${VERSION_ID}::uuid,${QUALITY_RUN_ID}::uuid,'1.0.0',84,'block',
-      ${JSON.stringify({ issues: failedResult().issues, schema_version: 'quality-checker-data@1' })}::text::jsonb,
-      ${database.json({ ...SCORES, schema_version: 'geo-scores@1' })}
-    )
-  `;
+  if (runStatus === 'succeeded') {
+    await database`
+      INSERT INTO quality_reports(
+        id,tenant_id,variant_id,content_version_id,generation_run_id,checker_version,
+        score,decision,issues_json,geo_scores_json
+      ) VALUES(
+        ${QUALITY_REPORT_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,
+        ${VERSION_ID}::uuid,${QUALITY_RUN_ID}::uuid,'1.0.0',84,'block',
+        ${JSON.stringify({ issues: failedResult().issues, schema_version: 'quality-checker-data@1' })}::text::jsonb,
+        ${database.json({ ...SCORES, schema_version: 'geo-scores@1' })}
+      )
+    `;
+  }
   await database`
     INSERT INTO official_site_automation_runs(
       id,tenant_id,policy_id,variant_id,content_version_id,status,rewrite_count
@@ -432,7 +510,11 @@ async function seedQualityCycle(
       ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,'quality_pending',${rewriteCount}
     )
   `;
-  return validateQualityEvent({
+  return validateQualityEvent(qualityEvent());
+}
+
+function qualityEvent() {
+  return {
     aggregate: { id: VARIANT_ID, type: 'content_variant' },
     data: {
       actor_user_id: USER_ID,
@@ -449,7 +531,7 @@ async function seedQualityCycle(
     event_type: 'content.variant.quality_check_requested.v1',
     occurred_at: '2026-07-23T00:00:00.000Z',
     tenant: { id: TENANT_ID },
-  });
+  } as const;
 }
 
 async function seedDailyItem(database: Sql): Promise<void> {
@@ -520,6 +602,39 @@ async function seed(database: Sql): Promise<void> {
   await database`
     INSERT INTO projects(id,tenant_id,workspace_id,name,owner_id,status)
     VALUES(${PROJECT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'Project',${USER_ID}::uuid,'active')
+  `;
+  await database`
+    INSERT INTO brand_profiles(
+      id,tenant_id,workspace_id,version,status,schema_version,
+      profile_json,created_by,published_at
+    ) VALUES(
+      ${BRAND_PROFILE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,1,'published',
+      'brand-profile@1',
+      ${database.json({
+        audience: ['Website readers'],
+        banned: ['Unverified prices and rankings'],
+        compliance: ['Use verified facts'],
+        cta: 'Contact the company for a verified service plan',
+        differentiators: ['Traceable first-party evidence'],
+        positioning: 'Evidence-led moving services',
+        tone: 'Professional and direct',
+      })},
+      ${USER_ID}::uuid,now()
+    )
+  `;
+  await database`
+    INSERT INTO platform_rule_versions(
+      id,platform_code,version,rules_json,content_hash,status,created_by,published_at
+    ) VALUES(
+      ${RULE_ID}::uuid,'official_site','1.0.0',
+      ${database.json({
+        accepted_first_party_source: 'published_brand_profile',
+        require_citations: true,
+        schema_version: 'platform-rules@1',
+        title_max: 80,
+      })},
+      ${'b'.repeat(64)},'published',${USER_ID}::uuid,now()
+    )
   `;
   await database`
     INSERT INTO briefs(

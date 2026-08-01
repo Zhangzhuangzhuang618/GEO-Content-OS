@@ -136,8 +136,8 @@ export class QualityCheckWorker {
         event.data.variantId,
       );
       const gate = policy ? this.automation?.calculateGate(policy, result, geoScores) : undefined;
-      await this.persist(event, context, result, policy ?? null, gate);
-      return { disposition: 'processed' };
+      const persisted = await this.persist(event, context, result, policy ?? null, gate);
+      return { disposition: persisted === 'stale' ? 'completed' : 'processed' };
     } catch (error) {
       await this.fail(event, context, error, execution.attempt >= execution.maxAttempts);
       throw error;
@@ -302,8 +302,36 @@ export class QualityCheckWorker {
     result: QualityCheckerData,
     policy: OfficialSiteAutomationPolicy | null,
     gate: OfficialSiteQualityGate | undefined,
-  ): Promise<void> {
+  ): Promise<'persisted' | 'stale'> {
     return this.client.begin(async (transaction) => {
+      const currentVariants = await transaction<{ currentContentVersionId: string }[]>`
+        SELECT current_content_version_id AS "currentContentVersionId"
+        FROM content_variants
+        WHERE id=${event.data.variantId}::uuid AND tenant_id=${event.tenantId}::uuid
+        FOR UPDATE
+      `;
+      const currentVariant = currentVariants[0];
+      if (!currentVariant) throw new Error('Quality run scope is invalid');
+      if (currentVariant.currentContentVersionId !== event.data.contentVersionId) {
+        const cancelled = await transaction<{ id: string }[]>`
+          UPDATE generation_runs SET
+            status='cancelled',
+            finished_at=now(),
+            error_json=${JSON.stringify({
+              code: 'QUALITY_RESULT_STALE',
+              message: 'Quality result was discarded because the content version changed.',
+              retryable: false,
+            })}::text::jsonb,
+            version=version+1
+          WHERE id=${event.data.generationRunId}::uuid
+            AND tenant_id=${event.tenantId}::uuid
+            AND status='running'
+            AND version=${context.leaseVersion}
+          RETURNING id
+        `;
+        if (cancelled.length !== 1) throw new Error('Quality run lease was lost');
+        return 'stale';
+      }
       const targetStatus = (gate ? gate.passed : result.decision === 'pass')
         ? 'quality_passed'
         : 'quality_failed';
@@ -383,6 +411,7 @@ export class QualityCheckWorker {
           ${event.data.requestId}
         )
       `;
+      return 'persisted';
     });
   }
 

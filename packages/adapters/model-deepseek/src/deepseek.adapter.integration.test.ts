@@ -133,6 +133,33 @@ describe('DeepSeekModelAdapter integration', () => {
     expect(attempts).toBe(2);
   });
 
+  it('reports safe completion diagnostics after bounded empty-response retries', async () => {
+    let attempts = 0;
+    const baseUrl = await serve((_incoming, outgoing) => {
+      attempts += 1;
+      json(
+        outgoing,
+        completion({
+          completionTokens: 256,
+          content: '',
+          finishReason: 'length',
+          reasoningContent: 'private-reasoning-test-secret',
+        }),
+      );
+    });
+    const adapter = new DeepSeekModelAdapter(configuration(baseUrl, { maxRetries: 2 }));
+
+    const error = await adapter.generate(request).catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(DeepSeekAdapterError);
+    expect(error).toMatchObject({ code: 'DEEPSEEK_RESPONSE_INVALID', retryable: false });
+    expect(String(error)).toContain('after 3 attempt(s)');
+    expect(String(error)).toContain('finish_reason=length');
+    expect(String(error)).toContain('output_tokens=256');
+    expect(String(error)).not.toContain('private-reasoning-test-secret');
+    expect(attempts).toBe(3);
+  });
+
   it('does not retry authentication failures or expose credentials', async () => {
     let attempts = 0;
     const baseUrl = await serve((_incoming, outgoing) => {
@@ -293,12 +320,34 @@ function configuration(
   };
 }
 
-function completion(message: { readonly content: string }) {
+function completion(message: {
+  readonly completionTokens?: number;
+  readonly content: string;
+  readonly finishReason?: string;
+  readonly reasoningContent?: string;
+}) {
+  const completionTokens = message.completionTokens ?? 7;
   return {
-    choices: [{ finish_reason: 'stop', index: 0, message: { ...message, role: 'assistant' } }],
+    choices: [
+      {
+        finish_reason: message.finishReason ?? 'stop',
+        index: 0,
+        message: {
+          content: message.content,
+          ...(message.reasoningContent === undefined
+            ? {}
+            : { reasoning_content: message.reasoningContent }),
+          role: 'assistant',
+        },
+      },
+    ],
     id: 'provider-request-1',
     model: 'provider-model-response',
-    usage: { completion_tokens: 7, prompt_tokens: 11, total_tokens: 18 },
+    usage: {
+      completion_tokens: completionTokens,
+      prompt_tokens: 11,
+      total_tokens: completionTokens + 11,
+    },
   };
 }
 
