@@ -1,6 +1,10 @@
 import { createRequestUuid } from '@/lib/request-uuid';
 
 import {
+  BaijiahaoAutomationPolicyPageSchema,
+  BaijiahaoAutomationPolicyResponseSchema,
+  BaijiahaoBrowserLoginResponseSchema,
+  BaijiahaoBrowserSessionResponseSchema,
   CapabilityResponseSchema,
   PlatformAccountPageSchema,
   PlatformAccountResponseSchema,
@@ -12,6 +16,11 @@ import {
   type PlatformAccountForm,
 } from './platform-account.schema';
 import type { OfficialSiteAutomationPolicy } from './platform-account.schema';
+import type {
+  BaijiahaoAutomationPolicy,
+  BaijiahaoBrowserLogin,
+  BaijiahaoBrowserSession,
+} from './platform-account.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
 
@@ -38,7 +47,7 @@ export async function createPlatformAccount(
 ): Promise<PlatformAccount> {
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts`, {
     body: JSON.stringify({
-      ...(form.publish_mode === 'api'
+      ...(form.publish_mode === 'api' && form.platform_code !== 'baijiahao'
         ? {
             credential: {
               base_url: form.base_url.trim(),
@@ -234,6 +243,96 @@ export async function cancelOfficialSiteDailyBatch(
   );
   if (!response.ok) throw new PlatformAccountRequestError(response.status);
   const parsed = OfficialSiteAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function listBaijiahaoAutomationPolicies(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<readonly BaijiahaoAutomationPolicy[]> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/baijiahao-automation`,
+    { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoAutomationPolicyPageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function saveBaijiahaoAutomationPolicy(
+  accountId: string,
+  input: {
+    readonly dailyCandidateLimit: number;
+    readonly dailyEnabled: boolean;
+    readonly dailyGenerationTime: string;
+    readonly dailyScheduleTimes: readonly string[];
+    readonly dailyTargetCount: number;
+    readonly enabled: boolean;
+    readonly expectedVersion?: number;
+    readonly independentFallbackEnabled: boolean;
+    readonly projectId: string;
+    readonly sourceMode: 'official_site_derived' | 'independent';
+  },
+  csrf: string,
+): Promise<BaijiahaoAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/baijiahao-automation`,
+    {
+      body: JSON.stringify({
+        daily_candidate_limit: input.dailyCandidateLimit,
+        daily_enabled: input.dailyEnabled,
+        daily_generation_time: input.dailyGenerationTime,
+        daily_schedule_times: input.dailyScheduleTimes,
+        daily_target_count: input.dailyTargetCount,
+        enabled: input.enabled,
+        ...(input.expectedVersion === undefined ? {} : { expected_version: input.expectedVersion }),
+        independent_fallback_enabled: input.independentFallbackEnabled,
+        project_id: input.projectId,
+        source_mode: input.sourceMode,
+      }),
+      credentials: 'include',
+      headers: jsonWriteHeaders(csrf),
+      method: 'PUT',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function getBaijiahaoBrowserSession(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<BaijiahaoBrowserSession> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/baijiahao-browser-session`,
+    { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoBrowserSessionResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function startBaijiahaoBrowserLogin(
+  account: PlatformAccount,
+  csrf: string,
+  reauthenticate = false,
+): Promise<BaijiahaoBrowserLogin> {
+  const action = reauthenticate ? 'reauth' : 'login';
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/baijiahao-browser-session/${action}`,
+    {
+      credentials: 'include',
+      headers: writeHeaders(csrf, account.version),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoBrowserLoginResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PlatformAccountRequestError(502);
   return parsed.data.data;
 }

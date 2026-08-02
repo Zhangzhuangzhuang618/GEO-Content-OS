@@ -10,11 +10,11 @@ import {
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all nineteen publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(19);
+  it('contains all twenty-four publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(24);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(19);
+    ).toBe(24);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -25,7 +25,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(19);
+    expect(operations).toHaveLength(24);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -77,6 +77,27 @@ describe('Publishing API frozen contract', () => {
       }).success,
     ).toBe(false);
     expect(JSON.stringify(PUBLISHING_OPENAPI_DOCUMENT)).not.toContain('credential_ciphertext');
+  });
+
+  it('lets the server inject Baijiahao browser gateway credentials', () => {
+    expect(
+      CreatePlatformAccountRequestSchema.safeParse({
+        display_name: '百家号生产账号',
+        platform_code: 'baijiahao',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      CreatePlatformAccountRequestSchema.safeParse({
+        display_name: '官网生产账号',
+        platform_code: 'official_site',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
   });
 
   it('orders calendar bounds by instant instead of timezone text', () => {

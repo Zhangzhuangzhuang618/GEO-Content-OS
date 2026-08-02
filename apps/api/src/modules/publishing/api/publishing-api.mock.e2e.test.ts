@@ -15,7 +15,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { IdempotencyService } from '../../../common/idempotency/index.js';
 import { PolicyGuard, setPolicyContext } from '../../identity/rbac/index.js';
-import { OfficialSiteAutomationPolicyService, PlatformAccountService } from '../accounts/index.js';
+import {
+  BaijiahaoAutomationPolicyService,
+  OfficialSiteAutomationPolicyService,
+  PlatformAccountService,
+} from '../accounts/index.js';
 import { PublishJobService } from '../jobs/index.js';
 import { PlatformAccountController, PublishJobController } from './publishing-api.controller.js';
 import { PublishingApiService } from './publishing-api.service.js';
@@ -191,6 +195,7 @@ describe('publishing API mock E2E', () => {
       controllers: [PlatformAccountController, PublishJobController],
       providers: [
         { provide: IdempotencyService, useValue: idempotency },
+        { provide: BaijiahaoAutomationPolicyService, useValue: {} },
         { provide: OfficialSiteAutomationPolicyService, useValue: automation },
         { provide: PlatformAccountService, useValue: {} },
         { provide: PublishJobService, useValue: jobs },

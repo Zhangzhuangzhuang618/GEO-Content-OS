@@ -1,5 +1,6 @@
 export type BaijiahaoDeliveryErrorCode =
   | 'CAPABILITY_UNAVAILABLE'
+  | 'MANUAL_REQUIRED'
   | 'PAYLOAD_HASH_MISMATCH'
   | 'PUBLISH_REJECTED'
   | 'PUBLISH_STATE_UNKNOWN'

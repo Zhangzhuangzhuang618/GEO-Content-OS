@@ -44,7 +44,7 @@ GEO Content OS 是 SaaS 多租户内容生产系统，闭环为策略/知识 -> 
 apps/web
 apps/api/src/modules/{identity,workspace,knowledge,content,quality,review,publishing,analytics,billing,audit}
 packages/{contracts,skills,adapters,security,observability,testkit,sdk}
-workers/{knowledge,ai,outbox-relay,publisher,analytics,lifecycle}
+workers/{knowledge,ai,outbox-relay,publisher,baijiahao-browser,analytics,lifecycle}
 infra/{docker,observability,backup}
 docs/
 ```
@@ -103,6 +103,12 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 只对启用每日计划的 `official_site` 项目生效。系统每天 00:00（Asia/Shanghai）幂等创建一个批次，目标固定 10 篇、候选上限固定 30 篇。每个候选继续执行 ADR-0021 机器门禁和最多 3 次重写；仍不通过则淘汰并自动创建新候选补位，不得降低质量阈值。凑足 10 篇后按 08:00、09:30、11:00、12:30、14:00、15:30、17:00、18:30、20:00、21:30 排入当天官网发布计划。重复巡检和消息重放不得重复创建批次、内容或发布任务；跨日仍未完成的批次停止并要求处理。普通单篇官网内容仍在质检通过后立即发布，其他六个平台不变。
 
+### 百家号自动化（ADR-0028 / T145）
+
+百家号使用独立策略、运行、每日批次和浏览器会话表，不迁移或复用官网自动化表。`official_site_derived` 仅监听已成功发布且有公开 URL 的官网自动化文章，复用事实与证据并执行一次百家号定向改写；不适合的信息记录为跳过，百家号失败不反向影响官网。`independent` 使用项目知识、品牌和引用独立生成；派生策略的独立补位默认关闭，启用后最早在首个排期前一小时启动。所有候选执行 GEO>=85、事实>=90、品牌>=90、可读性与安全>=85、问题覆盖>=80、平台适配>=80、任一 BLOCK/非 pass 禁止发布、最多重写 3 次的冻结门禁。
+
+发布由独立 `baijiahao-browser` 进程完成：每账号并发为 1，扫码登录且不保存密码，加密 storage state 配合 `tmpfs` Profile 恢复；验证码、登录失效或页面签名变化立即停止。未知提交必须先从内容列表按标题、指纹和时间核验。媒体资产必须与内容版本同租户同项目、记录无推广水印并通过哈希复核后才以内存文件上传；无媒体时选择无封面。浏览器 E2E 只允许访问本机仿真页面。
+
 ### 官网当日批次重发（ADR-0024）
 
 当日批次因 30 篇候选耗尽仍未补足 10 篇而进入 `attention_required` 后，发布管理员可正式发起下一次当日尝试。旧批次和候选完整保留并标记 `cancelled`，新批次使用递增 `attempt_no`，每次仍固定最多 30 篇候选且不降低 ADR-0021 门禁。同一策略和日期同时最多一个活动批次；操作使用 Idempotency-Key、批次版本和审计日志防止重复或并发误操作。其他失败原因、其他日期和其他平台不可使用该入口。
@@ -121,7 +127,7 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 ## 5. 数据模型
 
-冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束。当前可执行表数为 65，迁移序号为 0040。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束，ADR-0028 新增 7 张百家号策略、运行、每日批次、浏览器会话、发布及诊断制品表。当前可执行表数为 72，迁移序号为 0041。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -318,6 +324,11 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 发布 | PUT | `/platform-accounts/{id}/official-site-automation` | publisher_or_admin | OfficialSiteAutomationPolicyRequest | OfficialSiteAutomationPolicyView | expected_version |
 | 发布 | POST | `/platform-accounts/{id}/official-site-automation/daily-batch/cancel` | publisher_or_admin | OfficialSiteDailyBatchCancelRequest | OfficialSiteAutomationPolicyView | key+body_hash |
 | 发布 | POST | `/platform-accounts/{id}/official-site-automation/daily-batch/restart` | publisher_or_admin | OfficialSiteDailyBatchRestartRequest | OfficialSiteAutomationPolicyView | key+body_hash |
+| 发布 | GET | `/platform-accounts/{id}/baijiahao-automation` | publisher_or_admin | - | BaijiahaoAutomationPolicyPage | - |
+| 发布 | PUT | `/platform-accounts/{id}/baijiahao-automation` | publisher_or_admin | BaijiahaoAutomationPolicyRequest | BaijiahaoAutomationPolicyView | expected_version |
+| 发布 | GET | `/platform-accounts/{id}/baijiahao-browser-session` | publisher_or_admin | - | BaijiahaoBrowserSessionView | - |
+| 发布 | POST | `/platform-accounts/{id}/baijiahao-browser-session/login` | publisher_or_admin | - | BaijiahaoBrowserLoginView | resource+version |
+| 发布 | POST | `/platform-accounts/{id}/baijiahao-browser-session/reauth` | publisher_or_admin | - | BaijiahaoBrowserLoginView | resource+version |
 | 发布 | POST | `/publish-jobs` | publisher_or_admin | CreatePublishJobRequest | PublishJobView | key+body_hash |
 | 发布 | GET | `/publish-jobs` | publisher_or_admin | PublishJobQuery | PublishJobPage | - |
 | 发布 | GET | `/publish-jobs/{id}` | publisher_or_admin | - | PublishJobDetail | - |
@@ -427,7 +438,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 
 ## 10. 开发任务
 
-任务固定 T001-T144，共 144 个。每任务包含交付物、文件范围、依赖、验收命令和统一 DoD。
+原始开发任务固定 T001-T144，共 144 个；新增功能必须通过新 ADR、任务号和验收标准单独批准。T145 为已批准并完成的百家号自动化新增任务。每任务包含交付物、文件范围、依赖、验收命令和统一 DoD。
 
 | 里程碑 | 范围 | 出口 |
 |---|---|---|
@@ -439,6 +450,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | M5 | T103-T126 | 七平台、审核和发布 |
 | M6 | T127-T136 | 数据、成本、审计、可靠性和运维 |
 | M7 | T137-T144 | 安全、性能、迁移、E2E 和发布 |
+| M8 | T145 | 百家号生成、质量门禁、排期与托管浏览器发布 |
 
 ### 启动命令
 

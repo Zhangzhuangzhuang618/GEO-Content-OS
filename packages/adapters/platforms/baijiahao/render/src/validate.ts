@@ -89,20 +89,6 @@ export function validateBaijiahaoContent(input: unknown): BaijiahaoValidationRes
     );
   }
 
-  const availableCitationIds = new Set(value.citations.map((citation) => citation.citation_id));
-  const missingCitation = value.content.citation_map
-    .flatMap((claim) => claim.citation_ids)
-    .find((citationId) => !availableCitationIds.has(citationId));
-  if (missingCitation) {
-    issues.push(
-      blocker(
-        'CITATION_LINK_MISSING',
-        '引用 ID 必须映射到可输出的 HTTP(S) 引用链接。',
-        'citations',
-      ),
-    );
-  }
-
   return issues.length === 0
     ? { issues: [], ok: true, value }
     : { issues: Object.freeze(issues), ok: false };

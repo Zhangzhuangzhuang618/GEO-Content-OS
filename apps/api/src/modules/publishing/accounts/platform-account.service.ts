@@ -11,6 +11,7 @@ import {
   type DatabaseClient,
   type DatabaseClientSource,
 } from '../../../database/index.js';
+import { readBaijiahaoBrowserGatewayCredential } from './baijiahao-browser-gateway.client.js';
 import { PlatformAccountError } from './platform-account.errors.js';
 import type {
   PlatformAccountAudit,
@@ -66,14 +67,17 @@ export class PlatformAccountService {
     audit: PlatformAccountAudit,
   ): Promise<PlatformAccountView> {
     await this.requireWorkspace(tx, scope, input.workspace_id);
+    const credential = await accountCredential(
+      input.platform_code,
+      input.publish_mode,
+      input.credential,
+    );
     const probe = await this.connector.probe({
-      credential: input.credential ?? null,
+      credential,
       platformCode: input.platform_code,
       publishMode: input.publish_mode,
     });
-    const stored = input.credential
-      ? await encryptCredential(this.credentials, input.credential)
-      : null;
+    const stored = credential ? await encryptCredential(this.credentials, credential) : null;
     const rows = await tx<
       Row[]
     >`INSERT INTO platform_accounts (tenant_id,workspace_id,platform_code,provider_account_id,display_name,publishing_url,credential_ciphertext,credential_key_version,scopes,token_expires_at,capabilities_json,publish_mode,status,timezone) VALUES (${scope.tenantId}::uuid,${input.workspace_id}::uuid,${input.platform_code},${probe.providerAccountId},${input.display_name},${input.publishing_url ?? null},${stored?.credentialCiphertext ?? null},${stored?.credentialKeyVersion ?? null},${tx.array([...probe.scopes], 25)}::text[],${probe.tokenExpiresAt},${jsonbText(tx, probe.capabilities)}::jsonb,${probe.publishMode},${probe.status},${input.timezone}) RETURNING *`;
@@ -103,11 +107,15 @@ export class PlatformAccountService {
     audit: PlatformAccountAudit,
   ): Promise<PlatformAccountView> {
     return this.change(scope, id, version, audit, 'platform_account.refreshed', async (row, tx) => {
-      const credential = input.credential ?? (await this.decrypt(row));
+      const credential = await accountCredential(row.platform_code, 'api', input.credential, () =>
+        this.decrypt(row),
+      );
+      if (!credential) throw invalid();
       const probe = await this.connector.refresh({ credential, platformCode: row.platform_code });
-      const stored = input.credential
-        ? await encryptCredential(this.credentials, input.credential)
-        : null;
+      const stored =
+        input.credential || row.platform_code === 'baijiahao'
+          ? await encryptCredential(this.credentials, credential)
+          : null;
       const rows = await tx<
         Row[]
       >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,publish_mode=${probe.publishMode},status=${probe.status},credential_ciphertext=COALESCE(${stored?.credentialCiphertext ?? null},credential_ciphertext),credential_key_version=COALESCE(${stored?.credentialKeyVersion ?? null},credential_key_version),version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
@@ -128,8 +136,12 @@ export class PlatformAccountService {
       audit,
       'platform_account.updated',
       async (row, tx) => {
-        const credential =
-          input.publish_mode === 'api' ? (input.credential ?? (await this.decrypt(row))) : null;
+        const credential = await accountCredential(
+          row.platform_code,
+          input.publish_mode,
+          input.credential,
+          () => this.decrypt(row),
+        );
         const probe = await this.connector.probe({
           credential,
           platformCode: row.platform_code,
@@ -336,6 +348,18 @@ export class PlatformAccountService {
   }
 }
 
+async function accountCredential(
+  platformCode: string,
+  publishMode: 'api' | 'export' | 'manual',
+  supplied?: Readonly<Record<string, unknown>>,
+  fallback?: () => Promise<Readonly<Record<string, unknown>>>,
+): Promise<Readonly<Record<string, unknown>> | null> {
+  if (publishMode !== 'api') return null;
+  if (platformCode === 'baijiahao') return readBaijiahaoBrowserGatewayCredential();
+  if (supplied) return supplied;
+  return fallback ? fallback() : null;
+}
+
 function jsonbText(client: Client, value: unknown) {
   return client.typed(JSON.stringify(value), 25);
 }
@@ -347,6 +371,11 @@ async function disableAutomationPolicies(
 ): Promise<void> {
   await transaction`
     UPDATE official_site_automation_policies
+    SET enabled=false,daily_enabled=false,version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND account_id=${accountId}::uuid AND enabled
+  `;
+  await transaction`
+    UPDATE baijiahao_automation_policies
     SET enabled=false,daily_enabled=false,version=version+1
     WHERE tenant_id=${tenantId}::uuid AND account_id=${accountId}::uuid AND enabled
   `;

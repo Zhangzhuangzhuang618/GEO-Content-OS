@@ -11,6 +11,16 @@ export interface ValidatedPublishEvent {
   readonly tenantId: string;
 }
 
+export interface ValidatedBaijiahaoReconcileEvent {
+  readonly eventId: string;
+  readonly jobId: string;
+  readonly jobVersion: number;
+  readonly occurredAt: string;
+  readonly reconcileAttempt: number;
+  readonly requestId: string;
+  readonly tenantId: string;
+}
+
 export interface PublishCitationLink {
   readonly citation_id: string;
   readonly label: string;
@@ -18,6 +28,7 @@ export interface PublishCitationLink {
 }
 
 export interface PublishClaim {
+  readonly accountId: string;
   readonly accountStatus: 'active' | 'disabled' | 'reauth';
   readonly accountTokenExpiresAt: Date | null;
   readonly attempt: number;
@@ -32,6 +43,28 @@ export interface PublishClaim {
   readonly platformCode: PlatformCode;
   readonly publishMode: 'api' | 'export' | 'manual';
   readonly tenantId: string;
+}
+
+export interface BaijiahaoReconcileClaim {
+  readonly accountId: string;
+  readonly accountStatus: 'active' | 'disabled' | 'reauth';
+  readonly accountTokenExpiresAt: Date | null;
+  readonly attempt: number;
+  readonly contentVersionId: string;
+  readonly credentialCiphertext: string | null;
+  readonly credentialKeyVersion: string | null;
+  readonly externalId: string;
+  readonly jobId: string;
+  readonly jobVersion: number;
+  readonly platformCode: 'baijiahao';
+  readonly publishMode: 'api';
+  readonly tenantId: string;
+}
+
+export interface BaijiahaoRemoteStatus {
+  readonly externalId: string;
+  readonly status: 'failed' | 'processing' | 'published' | 'unknown';
+  readonly url: string | null;
 }
 
 export type PublishClaimResult =
@@ -65,6 +98,11 @@ export interface PublisherPlatformPort {
     credential: Readonly<Record<string, unknown>> | null,
     signal?: AbortSignal,
   ): Promise<PlatformDelivery>;
+  getBaijiahaoStatus?(
+    claim: BaijiahaoReconcileClaim,
+    credential: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<BaijiahaoRemoteStatus>;
 }
 
 export interface PublisherStorePort {
@@ -94,6 +132,17 @@ export interface PublisherStorePort {
     claim: PublishClaim,
     failure: { readonly code: string; readonly message: string; readonly requestHash: string },
   ): Promise<void>;
+  claimBaijiahaoReconciliation?(
+    event: ValidatedBaijiahaoReconcileEvent,
+  ): Promise<
+    | { readonly kind: 'completed' }
+    | { readonly kind: 'claimed'; readonly value: BaijiahaoReconcileClaim }
+  >;
+  completeBaijiahaoReconciliation?(
+    event: ValidatedBaijiahaoReconcileEvent,
+    claim: BaijiahaoReconcileClaim,
+    result: BaijiahaoRemoteStatus,
+  ): Promise<'completed' | 'pending'>;
 }
 
 export interface PublisherWorkerDependencies {

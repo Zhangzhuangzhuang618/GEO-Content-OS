@@ -1,5 +1,5 @@
 {
-  "rule_version": "baijiahao-render-rules@1.0.0",
+  "rule_version": "baijiahao-render-rules@1.1.0",
   "content": {
     "platform_code": "baijiahao",
     "title": "这是一个明显超过四十个字符并且不应被渲染器静默截断的百家号内容标题示例文本用于校验",

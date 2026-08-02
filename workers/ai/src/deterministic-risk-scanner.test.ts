@@ -238,6 +238,38 @@ describe('deterministic pre-publish risk scanner', () => {
       ]),
     );
   });
+
+  it('blocks Baijiahao diversion fields and invalid platform structure deterministically', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'intro',
+            '扫码关注公众号：example，联系电话13800138000，访问https://example.test。',
+          ),
+        ],
+        cta: '立即咨询',
+        platform_code: 'baijiahao',
+        platform_meta: { abstract: '摘要', tags: ['搬家'] },
+        title: '百家号内容',
+      }),
+      platformCode: 'baijiahao',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toEqual(
+      expect.arrayContaining([
+        'deterministic.baijiahao.cta_forbidden',
+        'deterministic.baijiahao.external_account_forbidden',
+        'deterministic.baijiahao.external_url_forbidden',
+        'deterministic.baijiahao.phone_forbidden',
+        'deterministic.baijiahao.qr_code_forbidden',
+        'deterministic.baijiahao.structure_minimum',
+        'deterministic.baijiahao.tag_count',
+      ]),
+    );
+  });
 });
 
 function assessment(): QualityCheckerData {

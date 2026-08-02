@@ -13,6 +13,8 @@ import {
 } from './api/publishing-api.controller.js';
 import { PublishingApiService } from './api/publishing-api.service.js';
 import {
+  BaijiahaoAutomationPolicyService,
+  BaijiahaoBrowserGatewayClient,
   OfficialSiteAutomationPolicyService,
   PlatformAccountService,
   type PlatformAccountConnector,
@@ -51,6 +53,16 @@ import {
       provide: OfficialSiteAutomationPolicyService,
       useFactory: (database: IdentityAuthDatabase) =>
         new OfficialSiteAutomationPolicyService(database),
+    },
+    {
+      provide: BaijiahaoBrowserGatewayClient,
+      useFactory: () => new BaijiahaoBrowserGatewayClient(),
+    },
+    {
+      inject: [IdentityAuthDatabase, BaijiahaoBrowserGatewayClient],
+      provide: BaijiahaoAutomationPolicyService,
+      useFactory: (database: IdentityAuthDatabase, gateway: BaijiahaoBrowserGatewayClient) =>
+        new BaijiahaoAutomationPolicyService(database, gateway),
     },
     {
       inject: [IdentityAuthDatabase, OutboxWriter],

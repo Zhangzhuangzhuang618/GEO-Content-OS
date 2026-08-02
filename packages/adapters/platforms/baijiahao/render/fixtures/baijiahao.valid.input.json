@@ -1,5 +1,5 @@
 {
-  "rule_version": "baijiahao-render-rules@1.0.0",
+  "rule_version": "baijiahao-render-rules@1.1.0",
   "content": {
     "platform_code": "baijiahao",
     "title": "企业GEO内容系统如何建立可信生产闭环",
@@ -32,6 +32,8 @@
     ],
     "platform_meta": {
       "abstract": "说明企业如何用可信资料、版本规则和质量门禁建设可追溯的GEO内容生产流程。",
+      "body_asset_ids": [],
+      "cover_asset_id": null,
       "tags": ["GEO", "内容生产", "可信AI"],
       "content_type": "article"
     }

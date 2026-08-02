@@ -3,6 +3,7 @@ import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 import type { ContentGenerationWorker } from './generation.worker.js';
+import type { BaijiahaoAutomation } from './baijiahao-automation.js';
 import type { OfficialSiteAutomation } from './official-site-automation.js';
 import type { QualityCheckWorker } from './quality.worker.js';
 import type { VisibilityProbeWorker } from './visibility.worker.js';
@@ -21,6 +22,7 @@ export class AiQueueConsumer {
     generation: ContentGenerationWorker,
     quality: QualityCheckWorker,
     automation: OfficialSiteAutomation,
+    baijiahaoAutomation: BaijiahaoAutomation,
     visibility: VisibilityProbeWorker,
     options: AiQueueConsumerOptions,
   ) {
@@ -45,6 +47,12 @@ export class AiQueueConsumer {
         }
         if (job.name === 'content.variant.official_site_rewrite_requested.v1') {
           return automation.runRewrite(job.data);
+        }
+        if (job.name === 'publishing.job.published.v1') {
+          return baijiahaoAutomation.handlePublishedSource(job.data);
+        }
+        if (job.name === 'content.variant.baijiahao_adaptation_requested.v1') {
+          return baijiahaoAutomation.runAdaptation(job.data);
         }
         if (job.name === 'analytics.visibility.probe_requested.v1') {
           return visibility.run(job.data);

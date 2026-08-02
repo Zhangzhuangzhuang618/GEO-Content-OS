@@ -27,6 +27,7 @@ $Services = @(
     "web",
     "outbox-relay",
     "publisher-worker",
+    "baijiahao-browser",
     "ai-worker",
     "knowledge-worker"
 )
@@ -192,6 +193,9 @@ if ($CreatedEnv) {
 if (-not (Get-EnvValue "PUBLISHING_CREDENTIAL_KEY_BASE64")) {
     Set-EnvValue "PUBLISHING_CREDENTIAL_KEY_BASE64" (New-RandomBase64 32)
 }
+if (-not (Get-EnvValue "BAIJIAHAO_BROWSER_GATEWAY_TOKEN")) {
+    Set-EnvValue "BAIJIAHAO_BROWSER_GATEWAY_TOKEN" (New-RandomHex 32)
+}
 
 if ($MockAi) {
     Set-EnvValue "AI_MODEL_DRIVER" "mock"
@@ -234,7 +238,7 @@ $UpArguments += $Services
 Invoke-Docker $UpArguments
 
 Write-Step "等待服务健康"
-foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "ai-worker", "knowledge-worker")) {
+foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "baijiahao-browser", "ai-worker", "knowledge-worker")) {
     Wait-ServiceHealthy $Service
 }
 

@@ -1,6 +1,6 @@
 import type { BaijiahaoPayload } from '../../render/src/types.js';
 
-export const BAIJIAHAO_DELIVERY_VERSION = 'baijiahao-delivery@1.0.0' as const;
+export const BAIJIAHAO_DELIVERY_VERSION = 'baijiahao-delivery@1.1.0' as const;
 export const BAIJIAHAO_EXPORT_SCHEMA_VERSION = 'baijiahao-export@1' as const;
 
 export interface BaijiahaoCapabilities {

@@ -2,8 +2,10 @@ import type { CredentialEnvelopeService } from '@geo-content-os/security/credent
 import { createHash } from 'node:crypto';
 
 import { asDeliveryFailure, PublisherError } from './publisher.errors.js';
+import { validateBaijiahaoReconcileEvent } from './baijiahao-reconcile.event.js';
 import { validatePublishEvent } from './publisher.event.js';
 import type {
+  BaijiahaoReconcileClaim,
   NormalizedExport,
   PlatformDelivery,
   PublishClaim,
@@ -53,11 +55,20 @@ export class PublisherWorker {
     let delivery: PlatformDelivery;
     try {
       delivery = await this.dependencies.platform.deliver(claim, credential, signal);
+      if (
+        delivery.mode === 'export' &&
+        claim.platformCode === 'baijiahao' &&
+        claim.publishMode === 'api'
+      ) {
+        throw Object.assign(new Error('Baijiahao browser capability is temporarily unavailable'), {
+          code: 'CAPABILITY_UNAVAILABLE',
+        });
+      }
     } catch (error) {
       const failure = asDeliveryFailure(error);
       const unknown = failure.code === 'PUBLISH_STATE_UNKNOWN' || failure.code === undefined;
       if (
-        claim.platformCode === 'official_site' &&
+        (claim.platformCode === 'official_site' || claim.platformCode === 'baijiahao') &&
         claim.attempt < 3 &&
         (unknown || failure.code === 'CAPABILITY_UNAVAILABLE')
       ) {
@@ -68,7 +79,7 @@ export class PublisherWorker {
         });
         throw new PublisherError(
           'PUBLISHER_DELIVERY_RETRY',
-          'Official site publication will retry with the same idempotency key',
+          `${claim.platformCode} publication will retry with the same idempotency key`,
           true,
         );
       }
@@ -127,10 +138,76 @@ export class PublisherWorker {
     });
   }
 
+  public async reconcileBaijiahao(
+    rawEvent: unknown,
+    signal?: AbortSignal,
+  ): Promise<PublisherWorkerResult> {
+    const event = validateBaijiahaoReconcileEvent(rawEvent);
+    const claimStore = this.dependencies.store.claimBaijiahaoReconciliation;
+    const completeStore = this.dependencies.store.completeBaijiahaoReconciliation;
+    const getStatus = this.dependencies.platform.getBaijiahaoStatus;
+    if (!claimStore || !completeStore || !getStatus) {
+      throw new PublisherError(
+        'PUBLISHER_STATE_INVALID',
+        'Baijiahao reconciliation is not configured',
+      );
+    }
+    const claimed = await claimStore.call(this.dependencies.store, event);
+    if (claimed.kind === 'completed') {
+      return Object.freeze({ disposition: 'completed', jobId: event.jobId });
+    }
+    const claim = claimed.value;
+    if (
+      claim.accountStatus !== 'active' ||
+      (claim.accountTokenExpiresAt !== null && claim.accountTokenExpiresAt <= new Date())
+    ) {
+      throw new PublisherError(
+        'PUBLISHER_AUTH_INVALID',
+        'Baijiahao account authorization has expired',
+      );
+    }
+    const credential = await this.decryptReconcileCredential(claim);
+    let status;
+    try {
+      status = await getStatus.call(this.dependencies.platform, claim, credential, signal);
+    } catch (error) {
+      const failure = asDeliveryFailure(error);
+      status = Object.freeze({
+        externalId: claim.externalId,
+        status: 'unknown' as const,
+        url: null,
+      });
+      if (failure.code === 'ADAPTER_AUTH_EXPIRED') throw error;
+    }
+    const disposition = await completeStore.call(this.dependencies.store, event, claim, status);
+    return Object.freeze({
+      disposition: disposition === 'pending' ? 'processed' : 'completed',
+      jobId: event.jobId,
+      mode: 'api',
+    });
+  }
+
   private async decryptCredential(
     claim: PublishClaim,
   ): Promise<Readonly<Record<string, unknown>> | null> {
     if (claim.publishMode !== 'api') return null;
+    if (!claim.credentialCiphertext || !claim.credentialKeyVersion) {
+      throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Platform credential is missing');
+    }
+    const plaintext = await this.credentials.decrypt({
+      credentialCiphertext: claim.credentialCiphertext,
+      credentialKeyVersion: claim.credentialKeyVersion,
+    });
+    const parsed = JSON.parse(plaintext) as unknown;
+    if (!isRecord(parsed)) {
+      throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Platform credential is invalid');
+    }
+    return parsed;
+  }
+
+  private async decryptReconcileCredential(
+    claim: BaijiahaoReconcileClaim,
+  ): Promise<Readonly<Record<string, unknown>>> {
     if (!claim.credentialCiphertext || !claim.credentialKeyVersion) {
       throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Platform credential is missing');
     }

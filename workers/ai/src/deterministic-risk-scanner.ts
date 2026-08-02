@@ -122,6 +122,7 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
   addBrandIssues(issues, input);
   addCompanyNameIssues(issues, input);
   addOfficialSiteTechnicalIssues(issues, input);
+  addBaijiahaoPlatformIssues(issues, input);
 
   for (const section of contentSections(input.content)) {
     for (const rule of RISK_RULES) {
@@ -146,6 +147,140 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
     }
   }
   return Object.freeze(deduplicate(issues));
+}
+
+function addBaijiahaoPlatformIssues(
+  issues: QualityIssue[],
+  input: DeterministicRiskScanInput,
+): void {
+  if (input.platformCode !== 'baijiahao') return;
+  const title = typeof input.content['title'] === 'string' ? input.content['title'].trim() : '';
+  if ([...title].length < 2) {
+    issues.push(
+      issue(
+        'deterministic.baijiahao.title_min_length',
+        'format',
+        'title',
+        '百家号标题少于 2 个字符。',
+        '补充能够直接表达用户问题或文章结论的标题。',
+      ),
+    );
+  }
+  const meta = record(input.content['platform_meta']);
+  const abstract = meta && typeof meta['abstract'] === 'string' ? meta['abstract'].trim() : '';
+  const tags = meta && Array.isArray(meta['tags']) ? meta['tags'] : [];
+  if ([...abstract].length < 1 || [...abstract].length > 120) {
+    issues.push(
+      issue(
+        'deterministic.baijiahao.abstract_length',
+        'format',
+        'platform_meta.abstract',
+        '百家号摘要必须为 1–120 个字符。',
+        '重写摘要，保持信息完整且不超过 120 个字符。',
+      ),
+    );
+  }
+  if (
+    tags.length < 3 ||
+    tags.length > 8 ||
+    tags.some((tag) => typeof tag !== 'string' || !tag.trim()) ||
+    new Set(tags).size !== tags.length
+  ) {
+    issues.push(
+      issue(
+        'deterministic.baijiahao.tag_count',
+        'format',
+        'platform_meta.tags',
+        '百家号标签必须为 3–8 个不重复的非空标签。',
+        '按主题、用户问题和地域补充 3–8 个准确标签。',
+      ),
+    );
+  }
+  const blocks = Array.isArray(input.content['blocks']) ? input.content['blocks'] : [];
+  const parsedBlocks = blocks.filter(record);
+  const body = contentSections(input.content)
+    .map((section) => section.text)
+    .join('\n');
+  const readable = parsedBlocks
+    .map((block) => (typeof block['text'] === 'string' ? block['text'] : ''))
+    .join('\n')
+    .replace(/[\s\p{P}\p{S}]/gu, '').length;
+  const headings = parsedBlocks.filter((block) => block['block_type'] === 'heading').length;
+  const lists = parsedBlocks.filter((block) => block['block_type'] === 'list').length;
+  if (readable < 850 || parsedBlocks.length < 7 || headings < 2 || lists < 1) {
+    issues.push(
+      issue(
+        'deterministic.baijiahao.structure_minimum',
+        'format',
+        'blocks',
+        '百家号正文未达到 850 个有效字符、7 个内容块、2 个分节标题和 1 个清单的最低结构。',
+        '补充有事实边界的解释、步骤和清单，不得重复填充。',
+      ),
+    );
+  }
+  if (
+    input.content['cta'] !== null ||
+    parsedBlocks.some((block) => block['block_type'] === 'cta')
+  ) {
+    issues.push(
+      issue(
+        'deterministic.baijiahao.cta_forbidden',
+        'compliance',
+        'cta',
+        '百家号自动发布内容不得包含官网 CTA 或 CTA 内容块。',
+        '删除 CTA，只保留中性的信息总结。',
+      ),
+    );
+  }
+  const prohibitedPatterns: readonly [RegExp, string, string][] = [
+    [/(?:https?:\/\/|www\.)\S+/iu, 'external_url', '第三方网址'],
+    [/(?:二维码|扫码(?:关注|咨询|添加|联系)?)/u, 'qr_code', '二维码或扫码导流'],
+    [
+      /(?:微信|微博|抖音|小红书|公众号|QQ)\s*(?:号|账号|ID|：|:)/iu,
+      'external_account',
+      '外部平台账号',
+    ],
+    [
+      /(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)/u,
+      'phone',
+      '营销电话',
+    ],
+    [
+      /(?:推广水印|广告水印|加微信|联系电话).{0,12}(?:水印|角标)?/u,
+      'promotional_watermark',
+      '推广水印',
+    ],
+  ];
+  for (const [pattern, code, label] of prohibitedPatterns) {
+    if (!pattern.test(body)) continue;
+    issues.push(
+      issue(
+        `deterministic.baijiahao.${code}_forbidden`,
+        'compliance',
+        'blocks',
+        `百家号内容包含禁止的${label}。`,
+        `删除${label}，不得改用隐晦写法规避规则。`,
+      ),
+    );
+  }
+  const ambiguousTime = contentSections(input.content).find(
+    (section) =>
+      /(?:今天|昨天|明天|近日|近期|今年|去年|明年|本月|上月|下月)/u.test(section.text) &&
+      !/(?:19|20)\d{2}(?:年(?:\d{1,2}月(?:\d{1,2}日)?)?|[-/.]\d{1,2}(?:[-/.]\d{1,2})?)/u.test(
+        section.text,
+      ),
+  );
+  if (ambiguousTime) {
+    issues.push(
+      issue(
+        'deterministic.baijiahao.relative_time_ambiguous',
+        'fact',
+        ambiguousTime.location,
+        '相对时间表述缺少明确年份或日期，不能作为最新信息发布。',
+        '删除相对时间，或在同一字段中补充可核验的绝对日期。',
+      ),
+    );
+  }
 }
 
 export function mergeDeterministicRiskIssues(

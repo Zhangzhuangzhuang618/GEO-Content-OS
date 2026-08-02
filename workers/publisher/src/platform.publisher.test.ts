@@ -54,6 +54,7 @@ function createClaim(
   citations: PublishClaim['citations'] = [],
 ): PublishClaim {
   return {
+    accountId: randomUUID(),
     accountStatus: 'active',
     accountTokenExpiresAt: null,
     attempt: 1,

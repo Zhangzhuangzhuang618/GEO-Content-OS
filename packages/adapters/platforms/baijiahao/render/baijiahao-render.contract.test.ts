@@ -14,7 +14,7 @@ const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.u
 
 describe('baijiahao render contract', () => {
   it('publishes immutable versioned rules and Draft 2020-12 schemas', async () => {
-    expect(BAIJIAHAO_RENDER_RULES_V1.version).toBe('baijiahao-render-rules@1.0.0');
+    expect(BAIJIAHAO_RENDER_RULES_V1.version).toBe('baijiahao-render-rules@1.1.0');
     expect(Object.isFrozen(BAIJIAHAO_RENDER_RULES_V1)).toBe(true);
     expect(Object.isFrozen(BAIJIAHAO_RENDER_RULES_V1.tags)).toBe(true);
     expect(BAIJIAHAO_RENDER_INPUT_JSON_SCHEMA.$schema).toBe(
@@ -89,7 +89,7 @@ describe('baijiahao render contract', () => {
     expect(validateBaijiahaoContent(input).ok).toBe(true);
   });
 
-  it('escapes untrusted text while preserving validated citation links', async () => {
+  it('escapes untrusted text without exposing third-party citation links', async () => {
     const input = (await readJson('baijiahao.valid.input.json')) as {
       content: { blocks: { text: string }[] };
     };
@@ -100,19 +100,21 @@ describe('baijiahao render contract', () => {
     if (!result.ok) return;
     expect(result.payload.body_html).toContain('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;');
     expect(result.payload.body_html).not.toContain('<script>alert');
-    expect(result.payload.body_html).toContain('rel="noopener noreferrer"');
+    expect(result.payload.body_html).not.toContain('href=');
+    expect(result.payload.citation_links).toEqual([]);
   });
 
-  it('blocks referenced citations that have no output link', async () => {
+  it('keeps citation provenance server-side even when public links are absent', async () => {
     const input = (await readJson('baijiahao.valid.input.json')) as {
       citations: unknown[];
     };
     input.citations = [];
 
     const result = renderBaijiahao(input);
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.issues.map((issue) => issue.code)).toContain('CITATION_LINK_MISSING');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.citation_links).toEqual([]);
+    expect(result.payload.body_html).not.toContain('href=');
   });
 
   it('rejects unknown input fields before applying platform rules', async () => {

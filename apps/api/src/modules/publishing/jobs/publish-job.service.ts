@@ -209,14 +209,12 @@ export class PublishJobService {
       `;
       const after = requireChangedJob(rows, before);
       if (resolution.variantStatus === 'approved') {
-        const restoredStatus =
-          before.origin === 'official_site_automation' ? 'quality_passed' : 'approved';
-        const cause =
-          before.origin === 'official_site_automation'
-            ? 'official_site_automation'
-            : before.variantStatus === 'publishing'
-              ? 'publish_cancel_before_call'
-              : 'normal';
+        const restoredStatus = isAutomatedOrigin(before.origin) ? 'quality_passed' : 'approved';
+        const cause = isAutomatedOrigin(before.origin)
+          ? before.origin
+          : before.variantStatus === 'publishing'
+            ? 'publish_cancel_before_call'
+            : 'normal';
         assertContentVariantTransition({
           cause,
           from: before.variantStatus,
@@ -230,8 +228,14 @@ export class PublishJobService {
           before.variantStatus,
           restoredStatus,
         );
-        if (before.origin === 'official_site_automation') {
-          await disableAutomationRun(transaction, scope.tenantId, before.id, normalizedReason);
+        if (isAutomatedOrigin(before.origin)) {
+          await disableAutomationRun(
+            transaction,
+            scope.tenantId,
+            before.id,
+            before.origin,
+            normalizedReason,
+          );
         }
         await projectPackage(
           transaction,
@@ -290,8 +294,7 @@ export class PublishJobService {
     if (before.status === 'scheduled' && before.variantStatus !== 'scheduled') {
       throw stateInvalid('Publish job and content variant states are inconsistent');
     }
-    const restoredStatus =
-      before.origin === 'official_site_automation' ? 'quality_passed' : 'approved';
+    const restoredStatus = isAutomatedOrigin(before.origin) ? 'quality_passed' : 'approved';
     if (before.status === 'cancelled' && before.variantStatus !== restoredStatus) {
       throw stateInvalid('Cancelled publish job and content variant states are inconsistent');
     }
@@ -308,7 +311,7 @@ export class PublishJobService {
     if (before.packageStatus === 'archived' || before.packageStatus === 'cancelled') {
       throw stateInvalid('Terminal content package cannot be retried');
     }
-    const attemptLimit = before.origin === 'official_site_automation' ? 3 : 20;
+    const attemptLimit = isAutomatedOrigin(before.origin) ? 3 : 20;
     if (before.attemptCount >= attemptLimit) {
       throw stateInvalid('Publish job attempt limit was reached');
     }
@@ -341,8 +344,7 @@ export class PublishJobService {
       `;
     const after = requireChangedJob(rows, before);
     if (before.status !== 'scheduled') {
-      const transitionCause =
-        before.origin === 'official_site_automation' ? 'official_site_automation' : 'normal';
+      const transitionCause = isAutomatedOrigin(before.origin) ? before.origin : 'normal';
       if (before.status === 'failed') {
         assertContentVariantTransition({
           cause: transitionCause,
@@ -371,14 +373,21 @@ export class PublishJobService {
         restoredStatus,
         'scheduled',
       );
-      if (before.origin === 'official_site_automation') {
+      if (isAutomatedOrigin(before.origin)) {
         await restartAutomationRun(
           transaction,
           scope.tenantId,
           before.id,
+          before.origin,
           before.status === 'failed' ? 'publish_failed' : 'disabled',
         );
-        await syncDailyBatchSchedule(transaction, scope.tenantId, before.id, scheduledAtIso);
+        await syncDailyBatchSchedule(
+          transaction,
+          scope.tenantId,
+          before.id,
+          before.origin,
+          scheduledAtIso,
+        );
       }
       await projectPackage(
         transaction,
@@ -388,8 +397,14 @@ export class PublishJobService {
         before.packageStatus,
         before.packageVersion,
       );
-    } else if (before.origin === 'official_site_automation') {
-      await syncDailyBatchSchedule(transaction, scope.tenantId, before.id, scheduledAtIso);
+    } else if (isAutomatedOrigin(before.origin)) {
+      await syncDailyBatchSchedule(
+        transaction,
+        scope.tenantId,
+        before.id,
+        before.origin,
+        scheduledAtIso,
+      );
     }
     await supersedePendingExecution(transaction, scope.tenantId, before.id);
     await enqueueExecution(transaction, this.outbox, scope, after, scheduledAt);
@@ -617,8 +632,35 @@ async function disableAutomationRun(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
+  origin: 'baijiahao_automation' | 'official_site_automation',
   reason: string,
 ): Promise<void> {
+  if (origin === 'baijiahao_automation') {
+    const rows = await transaction<{ id: string }[]>`
+      UPDATE baijiahao_automation_runs SET
+        status='disabled',
+        last_error_json=${JSON.stringify({
+          code: 'PUBLISH_CANCELLED_BY_USER',
+          message: reason,
+          schema_version: 'baijiahao-automation-error@1',
+        })}::text::jsonb,
+        finished_at=now(),version=version+1
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status IN ('scheduled','publishing','processing')
+      RETURNING id
+    `;
+    if (rows.length !== 1) throw stateInvalid('Baijiahao automation run is inconsistent');
+    await transaction`
+      UPDATE baijiahao_daily_batch_items SET status='retired',
+        last_error_json=jsonb_build_object(
+          'code','PUBLISH_CANCELLED_BY_USER','message',${reason},
+          'schema_version','baijiahao-daily-error@1'
+        )
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status IN ('scheduled','processing')
+    `;
+    return;
+  }
   const rows = await transaction<{ id: string }[]>`
     UPDATE official_site_automation_runs SET
       status='disabled',
@@ -639,8 +681,20 @@ async function restartAutomationRun(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
+  origin: 'baijiahao_automation' | 'official_site_automation',
   expectedStatus: 'disabled' | 'publish_failed',
 ): Promise<void> {
+  if (origin === 'baijiahao_automation') {
+    const rows = await transaction<{ id: string }[]>`
+      UPDATE baijiahao_automation_runs SET
+        status='scheduled',last_error_json=NULL,finished_at=NULL,version=version+1
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status=${expectedStatus}
+      RETURNING id
+    `;
+    if (rows.length !== 1) throw stateInvalid('Baijiahao automation run is inconsistent');
+    return;
+  }
   const rows = await transaction<{ id: string }[]>`
     UPDATE official_site_automation_runs SET
       status='publishing', last_error_json=NULL, finished_at=NULL, version=version+1
@@ -655,14 +709,30 @@ async function syncDailyBatchSchedule(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
+  origin: 'baijiahao_automation' | 'official_site_automation',
   scheduledAtIso: string,
 ): Promise<void> {
+  if (origin === 'baijiahao_automation') {
+    await transaction`
+      UPDATE baijiahao_daily_batch_items SET
+        status='scheduled',scheduled_at=${scheduledAtIso}::timestamptz,last_error_json=NULL
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status IN ('retired','scheduled','publish_failed')
+    `;
+    return;
+  }
   await transaction`
     UPDATE official_site_daily_batch_items SET
       status='scheduled', scheduled_at=${scheduledAtIso}::timestamptz, last_error_json=NULL
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
       AND status IN ('scheduled','publish_failed')
   `;
+}
+
+function isAutomatedOrigin(
+  origin: JobRow['origin'],
+): origin is 'baijiahao_automation' | 'official_site_automation' {
+  return origin !== 'manual';
 }
 
 async function supersedePendingExecution(

@@ -98,7 +98,10 @@ export function retryOptionsForEvent(
   if (
     eventType.startsWith('knowledge.source.') ||
     eventType === 'content.package.generation_requested.v1' ||
-    eventType === 'content.variant.official_site_rewrite_requested.v1'
+    eventType === 'content.variant.official_site_rewrite_requested.v1' ||
+    eventType === 'content.variant.baijiahao_adaptation_requested.v1' ||
+    eventType === 'publishing.job.published.v1' ||
+    eventType === 'baijiahao.publication.reconcile_requested.v1'
   ) {
     return { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } };
   }
@@ -115,7 +118,10 @@ export function queuePriorityForEvent(eventType: EventType): Pick<JobsOptions, '
   if (eventType === 'content.variant.quality_check_requested.v1') {
     return { priority: 1 };
   }
-  if (eventType === 'content.variant.official_site_rewrite_requested.v1') {
+  if (
+    eventType === 'content.variant.official_site_rewrite_requested.v1' ||
+    eventType === 'content.variant.baijiahao_adaptation_requested.v1'
+  ) {
     return { priority: 2 };
   }
   if (eventType === 'content.package.generation_requested.v1') {

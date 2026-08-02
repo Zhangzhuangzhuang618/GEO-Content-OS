@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 
-const FREEZE_TABLE_COUNT = 65;
+const FREEZE_TABLE_COUNT = 72;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -74,7 +74,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database to the 65-table schema including daily official-site batches', async () => {
+  it('migrates an empty database through T145 without changing official-site tables', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -103,6 +103,13 @@ describe('freeze v2.1 database verification', () => {
         'ai_visibility_query_sets',
         'ai_visibility_responses',
         'ai_visibility_runs',
+        'baijiahao_automation_policies',
+        'baijiahao_automation_runs',
+        'baijiahao_daily_batch_items',
+        'baijiahao_daily_batches',
+        'baijiahao_browser_sessions',
+        'baijiahao_browser_publications',
+        'baijiahao_browser_artifacts',
       ]),
     );
     expect(migrationRows[0]?.count).toBe(migrationFiles.length);

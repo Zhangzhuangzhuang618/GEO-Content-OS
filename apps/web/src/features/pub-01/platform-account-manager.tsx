@@ -27,6 +27,7 @@ import {
 } from './platform-account.schema';
 import { resolvePublishingUrl } from './platform-publishing-url';
 import { OfficialSiteAutomationPanel } from './official-site-automation-panel';
+import { BaijiahaoAutomationPanel } from './baijiahao-automation-panel';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -140,6 +141,7 @@ export function PlatformAccountManager() {
       return;
     }
     if (
+      editingAccount.platform_code !== 'baijiahao' &&
       editingAccount.publish_mode !== 'api' &&
       parsed.data.publish_mode === 'api' &&
       (!parsed.data.base_url.trim() || !parsed.data.bearer_token.trim())
@@ -305,7 +307,7 @@ export function PlatformAccountManager() {
           onModeChange={setPublishMode}
           onPlatformChange={(next) => {
             setPlatformCode(next);
-            setPublishMode(next === 'official_site' ? 'api' : 'export');
+            setPublishMode(next === 'official_site' || next === 'baijiahao' ? 'api' : 'export');
           }}
           onSubmit={connect}
           platformCode={platformCode}
@@ -330,10 +332,17 @@ export function PlatformAccountManager() {
       ) : null}
 
       {automationAccount ? (
-        <OfficialSiteAutomationPanel
-          account={automationAccount}
-          onClose={() => setAutomationAccount(null)}
-        />
+        automationAccount.platform_code === 'baijiahao' ? (
+          <BaijiahaoAutomationPanel
+            account={automationAccount}
+            onClose={() => setAutomationAccount(null)}
+          />
+        ) : (
+          <OfficialSiteAutomationPanel
+            account={automationAccount}
+            onClose={() => setAutomationAccount(null)}
+          />
+        )
       ) : null}
 
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
@@ -444,7 +453,7 @@ function EditForm({
             type="url"
           />
         </label>
-        {publishMode === 'api' ? (
+        {publishMode === 'api' && account.platform_code !== 'baijiahao' ? (
           <>
             <label className="text-sm text-ink-700">
               新的发布 API 根地址
@@ -520,7 +529,7 @@ function ConnectForm({
     >
       <h2 className="text-xl font-semibold text-ink-950">连接平台账号</h2>
       <p className="mt-2 text-sm text-ink-500">
-        先选平台和发布方式。只有“自动发布”需要 API 地址和令牌。
+        先选平台和发布方式。百家号网关由服务器管理，其他“自动发布”账号需要 API 地址和令牌。
       </p>
       <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm text-ink-700">
@@ -586,7 +595,7 @@ function ConnectForm({
             这里只用于“打开发布后台”，不参与 API 调用。
           </span>
         </label>
-        {publishMode === 'api' ? (
+        {publishMode === 'api' && platformCode !== 'baijiahao' ? (
           <>
             <label className="text-sm text-ink-700">
               {platformCode === 'official_site' ? '官网发布 API 根地址' : '平台 API 根地址'}
@@ -623,7 +632,9 @@ function ConnectForm({
         ) : (
           <input name="base_url" type="hidden" value="" />
         )}
-        {publishMode !== 'api' ? <input name="bearer_token" type="hidden" value="" /> : null}
+        {publishMode !== 'api' || platformCode === 'baijiahao' ? (
+          <input name="bearer_token" type="hidden" value="" />
+        ) : null}
       </div>
       <ConnectionGuide mode={publishMode} platformCode={platformCode} />
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-red-700">
@@ -723,6 +734,16 @@ function ConnectionGuide({
       </div>
     );
   }
+  if (platformCode === 'baijiahao') {
+    return (
+      <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm leading-6 text-ink-700">
+        <p className="font-semibold text-ink-900">百家号自动发布使用独立托管浏览器</p>
+        <p className="mt-2">
+          内部浏览器网关和令牌由服务器环境变量管理，不会发送到前端。账号保存后，在“百家号自动化”中使用二维码登录，不填写百度账号密码。
+        </p>
+      </div>
+    );
+  }
   if (platformCode !== 'official_site') {
     return (
       <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
@@ -809,6 +830,16 @@ function AccountCard({
             type="button"
           >
             官网自动发布
+          </button>
+        ) : null}
+        {account.platform_code === 'baijiahao' && account.publish_mode === 'api' ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => onAutomation(account)}
+            type="button"
+          >
+            百家号自动化
           </button>
         ) : null}
         {account.publish_mode === 'api' && !disabled ? (

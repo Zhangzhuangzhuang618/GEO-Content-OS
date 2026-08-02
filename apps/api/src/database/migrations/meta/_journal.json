@@ -288,6 +288,13 @@
       "when": 1785148800000,
       "tag": "0040_official_site_daily_batch_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1785630600000,
+      "tag": "0041_baijiahao_automation",
+      "breakpoints": true
     }
   ]
 }

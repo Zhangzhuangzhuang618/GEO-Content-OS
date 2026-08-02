@@ -10,6 +10,13 @@ describe('outbox queue retry options', () => {
     });
   });
 
+  it('retries the published fact event used to create Baijiahao adaptations', () => {
+    expect(retryOptionsForEvent('publishing.job.published.v1')).toEqual({
+      attempts: 5,
+      backoff: { delay: 30_000, type: 'exponential' },
+    });
+  });
+
   it('does not add retries to unrelated events', () => {
     expect(retryOptionsForEvent('strategy.topic_plan.generation_requested.v1')).toEqual({});
   });

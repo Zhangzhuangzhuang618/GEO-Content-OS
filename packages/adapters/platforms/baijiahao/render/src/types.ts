@@ -1,12 +1,14 @@
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
 
 export const BAIJIAHAO_PLATFORM_CODE = 'baijiahao' as const;
-export const BAIJIAHAO_RENDER_RULE_VERSION = 'baijiahao-render-rules@1.0.0' as const;
-export const BAIJIAHAO_PAYLOAD_SCHEMA_VERSION = 'baijiahao-payload@1' as const;
+export const BAIJIAHAO_RENDER_RULE_VERSION = 'baijiahao-render-rules@1.1.0' as const;
+export const BAIJIAHAO_PAYLOAD_SCHEMA_VERSION = 'baijiahao-payload@2' as const;
 
 export interface BaijiahaoPlatformMeta {
   readonly abstract: string;
+  readonly body_asset_ids?: readonly string[];
   readonly content_type: string;
+  readonly cover_asset_id?: string | null;
   readonly tags: readonly string[];
 }
 
@@ -33,9 +35,11 @@ export interface BaijiahaoRenderInput {
 export interface BaijiahaoPayload {
   readonly abstract: string;
   readonly body_html: string;
+  readonly body_asset_ids: readonly string[];
   readonly body_text: string;
   readonly citation_links: readonly BaijiahaoCitationLink[];
   readonly content_type: string;
+  readonly cover_asset_id: string | null;
   readonly platform_code: typeof BAIJIAHAO_PLATFORM_CODE;
   readonly rule_version: typeof BAIJIAHAO_RENDER_RULE_VERSION;
   readonly schema_version: typeof BAIJIAHAO_PAYLOAD_SCHEMA_VERSION;
@@ -45,7 +49,6 @@ export interface BaijiahaoPayload {
 
 export type BaijiahaoValidationCode =
   | 'ABSTRACT_LENGTH_OUT_OF_RANGE'
-  | 'CITATION_LINK_MISSING'
   | 'PAYLOAD_SCHEMA_INVALID'
   | 'SEGMENTATION_REQUIRED'
   | 'TAG_COUNT_OUT_OF_RANGE'

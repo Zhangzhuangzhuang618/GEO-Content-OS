@@ -53,7 +53,7 @@ export const PublishJobViewSchema = z
     id: UuidSchema,
     idempotency_key: z.string().min(1).max(160),
     last_error: z.record(z.string(), z.unknown()).nullable(),
-    origin: z.enum(['manual', 'official_site_automation']),
+    origin: z.enum(['manual', 'official_site_automation', 'baijiahao_automation']),
     payload_hash: z.string().regex(/^[0-9a-f]{64}$/u),
     published_at: IsoDateTimeSchema.nullable(),
     scheduled_at: IsoDateTimeSchema,

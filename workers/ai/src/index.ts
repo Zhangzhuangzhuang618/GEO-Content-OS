@@ -38,6 +38,15 @@ export {
 } from './deterministic-risk-scanner.js';
 export { OfficialSiteAutomation } from './official-site-automation.js';
 export {
+  assessBaijiahaoSourceSuitability,
+  BaijiahaoAutomation,
+  buildBaijiahaoRewriteDiagnostics,
+  sourceSimilarity,
+} from './baijiahao-automation.js';
+export { BaijiahaoDailyScheduler } from './baijiahao-daily-scheduler.js';
+export { validateBaijiahaoAdaptationEvent } from './baijiahao-adaptation.event.js';
+export { validatePublishingPublishedEvent } from './publishing-published.event.js';
+export {
   OfficialSiteDailyScheduler,
   resolveScheduleTimes,
 } from './official-site-daily-scheduler.js';

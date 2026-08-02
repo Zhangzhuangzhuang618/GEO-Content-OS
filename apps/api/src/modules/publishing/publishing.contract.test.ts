@@ -20,9 +20,57 @@ interface Binding {
 const bindings: readonly Binding[] = [
   bind('account.create', PlatformAccountController, PlatformAccountController.prototype.create),
   bind('account.list', PlatformAccountController, PlatformAccountController.prototype.list),
+  bind('account.update', PlatformAccountController, PlatformAccountController.prototype.update),
   bind('account.refresh', PlatformAccountController, PlatformAccountController.prototype.refresh),
   bind('account.test', PlatformAccountController, PlatformAccountController.prototype.test),
   bind('account.disable', PlatformAccountController, PlatformAccountController.prototype.disable),
+  bind('account.restore', PlatformAccountController, PlatformAccountController.prototype.restore),
+  bind('account.remove', PlatformAccountController, PlatformAccountController.prototype.remove),
+  bind(
+    'account.official_site_automation.list',
+    PlatformAccountController,
+    PlatformAccountController.prototype.listOfficialSiteAutomation,
+  ),
+  bind(
+    'account.official_site_automation.put',
+    PlatformAccountController,
+    PlatformAccountController.prototype.updateOfficialSiteAutomation,
+  ),
+  bind(
+    'account.official_site_automation.daily_batch.cancel',
+    PlatformAccountController,
+    PlatformAccountController.prototype.cancelOfficialSiteDailyBatch,
+  ),
+  bind(
+    'account.official_site_automation.daily_batch.restart',
+    PlatformAccountController,
+    PlatformAccountController.prototype.restartOfficialSiteDailyBatch,
+  ),
+  bind(
+    'account.baijiahao_automation.list',
+    PlatformAccountController,
+    PlatformAccountController.prototype.listBaijiahaoAutomation,
+  ),
+  bind(
+    'account.baijiahao_automation.put',
+    PlatformAccountController,
+    PlatformAccountController.prototype.updateBaijiahaoAutomation,
+  ),
+  bind(
+    'account.baijiahao_browser_session.get',
+    PlatformAccountController,
+    PlatformAccountController.prototype.getBaijiahaoBrowserSession,
+  ),
+  bind(
+    'account.baijiahao_browser_session.login',
+    PlatformAccountController,
+    PlatformAccountController.prototype.startBaijiahaoBrowserLogin,
+  ),
+  bind(
+    'account.baijiahao_browser_session.reauth',
+    PlatformAccountController,
+    PlatformAccountController.prototype.reauthenticateBaijiahaoBrowser,
+  ),
   bind('job.create', PublishJobController, PublishJobController.prototype.create),
   bind('job.list', PublishJobController, PublishJobController.prototype.list),
   bind('job.get', PublishJobController, PublishJobController.prototype.detail),
@@ -33,9 +81,9 @@ const bindings: readonly Binding[] = [
 ];
 
 describe('publishing controller contract bindings', () => {
-  it('binds all 12 frozen publishing contracts exactly once', () => {
-    expect(bindings).toHaveLength(12);
-    expect(new Set(bindings.map(({ key }) => key)).size).toBe(12);
+  it('binds every frozen publishing contract exactly once', () => {
+    expect(bindings).toHaveLength(24);
+    expect(new Set(bindings.map(({ key }) => key)).size).toBe(24);
   });
 
   it.each(bindings)('$key matches method, route, and permission', (binding) => {

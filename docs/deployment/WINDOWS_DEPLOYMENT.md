@@ -20,10 +20,11 @@ Web -> API -> PostgreSQL / MinIO / Redis
                     |
                     +-> Outbox Relay -> AI Worker -> DeepSeek
                                       -> Publisher Worker -> configured platform API
+                                                          -> Baijiahao Browser (internal)
                                       -> Knowledge Worker -> ClamAV / Parser / Embedding
 ```
 
-脚本会启动已接入真实队列消费者的 `publisher-worker`；不会启动仍使用通用健康占位镜像的 `analytics-worker` 和
+脚本会启动已接入真实队列消费者的 `publisher-worker`；T145 百家号自动化还必须启动独立的 `baijiahao-browser`。不会启动仍使用通用健康占位镜像的 `analytics-worker` 和
 `lifecycle-worker`。启用官网自动发布策略并配置真实官网 API 账号后，Publisher Worker 会执行远程发布；首次部署和本地验收不得配置生产官网地址或令牌。`knowledge-worker` 是真实队列消费者，
 会执行安全扫描、网页抓取或文件解析、分块与向量化。
 
@@ -204,6 +205,8 @@ QUALITY_CHECKER_MODEL_KEY=deepseek-v4-pro
 
 PUBLISHING_CREDENTIAL_KEY_BASE64=<32字节随机值的Base64>
 PUBLISHING_CREDENTIAL_KEY_VERSION=local-v1
+BAIJIAHAO_BROWSER_GATEWAY_TOKEN=<至少32位随机内部密钥>
+BAIJIAHAO_BROWSER_HEADLESS=true
 
 API_BIND_ADDRESS=127.0.0.1
 TRUST_PROXY_HOPS=1
@@ -249,7 +252,7 @@ docker compose `
   -p geo-content-os `
   -f infra\compose.yaml `
   up -d --build `
-  postgres redis minio migrate api web outbox-relay publisher-worker ai-worker
+  postgres redis minio migrate baijiahao-browser api web outbox-relay publisher-worker ai-worker
 ```
 
 查看状态：
@@ -261,7 +264,7 @@ docker compose --env-file .env -p geo-content-os -f infra\compose.yaml ps
 查看日志：
 
 ```powershell
-docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs -f api web ai-worker outbox-relay publisher-worker
+docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs -f api web ai-worker outbox-relay publisher-worker baijiahao-browser
 ```
 
 停止但保留数据：
@@ -443,7 +446,7 @@ Invoke-WebRequest http://localhost:3000/api/v1/health/ready
 
 ```powershell
 docker compose --env-file .env -p geo-content-os -f infra\compose.yaml ps
-docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs --tail 200 api ai-worker outbox-relay publisher-worker
+docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs --tail 200 api ai-worker outbox-relay publisher-worker baijiahao-browser
 ```
 
 常见原因：
@@ -452,6 +455,7 @@ docker compose --env-file .env -p geo-content-os -f infra\compose.yaml logs --ta
 - DeepSeek Key 无效；
 - `AI_MODEL_DRIVER` 未设为 `deepseek`；
 - `PUBLISHING_CREDENTIAL_KEY_BASE64` 不是 32 字节 Base64；
+- `BAIJIAHAO_BROWSER_GATEWAY_TOKEN` 缺失或短于 32 位；
 - Docker Desktop 内存不足；
 - 依赖下载或访问 DeepSeek 的网络失败。
 

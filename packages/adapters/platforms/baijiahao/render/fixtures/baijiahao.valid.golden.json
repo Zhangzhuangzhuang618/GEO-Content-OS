@@ -1,9 +1,9 @@
 {
-  "citation_link_count": 1,
+  "citation_link_count": 0,
   "content_type": "article",
-  "payload_sha256": "195b8ac1c7218891a99b5bf39faf02cdc4c616cc45fca29e1a1f11b4b2d92a0e",
+  "payload_sha256": "4d6e194360e231ed26aa9aa37a99b741ade60cfc656944705477f0649b512da6",
   "platform_code": "baijiahao",
-  "rule_version": "baijiahao-render-rules@1.0.0",
-  "schema_version": "baijiahao-payload@1",
+  "rule_version": "baijiahao-render-rules@1.1.0",
+  "schema_version": "baijiahao-payload@2",
   "tag_count": 3
 }

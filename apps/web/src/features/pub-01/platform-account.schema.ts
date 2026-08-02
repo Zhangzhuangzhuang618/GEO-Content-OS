@@ -123,6 +123,85 @@ export const OfficialSiteAutomationPolicyResponseSchema = z
   .object({ data: OfficialSiteAutomationPolicySchema, meta: ResponseMetaSchema })
   .strict();
 
+export const BaijiahaoBrowserSessionSchema = z
+  .object({
+    account_id: z.string().uuid(),
+    authenticated_at: z.iso.datetime().nullable(),
+    last_verified_at: z.iso.datetime().nullable(),
+    qr_expires_at: z.iso.datetime().nullable(),
+    status: z.enum([
+      'login_required',
+      'qr_ready',
+      'authenticated',
+      'reauth',
+      'attention_required',
+      'disabled',
+    ]),
+    version: z.number().int().positive(),
+  })
+  .strict();
+export const BaijiahaoBrowserLoginSchema = BaijiahaoBrowserSessionSchema.extend({
+  qr_image_data_url: z.string().startsWith('data:image/png;base64,').optional(),
+}).strict();
+export const BaijiahaoAutomationPolicySchema = z
+  .object({
+    account_id: z.string().uuid(),
+    brand_consistency_min: z.literal(90),
+    browser_session: BaijiahaoBrowserSessionSchema.nullable(),
+    daily_candidate_limit: z.number().int().min(1).max(30),
+    daily_enabled: z.boolean(),
+    daily_generation_time: z.string(),
+    daily_schedule_times: z.array(z.string()).min(1).max(10),
+    daily_target_count: z.number().int().min(1).max(10),
+    daily_timezone: z.literal('Asia/Shanghai'),
+    enabled: z.boolean(),
+    factual_accuracy_min: z.literal(90),
+    geo_total_min: z.literal(85),
+    id: z.string().uuid(),
+    independent_fallback_enabled: z.boolean(),
+    max_rewrites: z.literal(3),
+    max_source_similarity: z.literal(0.82),
+    platform_fit_min: z.literal(80),
+    project_id: z.string().uuid(),
+    publish_attempt_limit: z.literal(3),
+    question_coverage_min: z.literal(80),
+    readability_safety_min: z.literal(85),
+    source_mode: z.enum(['official_site_derived', 'independent']),
+    tenant_id: z.string().uuid(),
+    today_batch: z
+      .object({
+        attempted_count: z.number().int().min(0).max(30),
+        business_date: z.iso.date(),
+        in_progress_count: z.number().int().min(0).max(30),
+        last_error_message: z.string().nullable(),
+        manual_required_count: z.number().int().min(0).max(30),
+        published_count: z.number().int().min(0).max(10),
+        scheduled_count: z.number().int().min(0).max(10),
+        skipped_count: z.number().int().min(0).max(30),
+        status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
+        target_count: z.number().int().min(1).max(10),
+        version: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+    updated_at: z.iso.datetime(),
+    version: z.number().int().positive(),
+    workspace_id: z.string().uuid(),
+  })
+  .strict();
+export const BaijiahaoAutomationPolicyPageSchema = z
+  .object({ data: z.array(BaijiahaoAutomationPolicySchema), meta: ResponseMetaSchema })
+  .strict();
+export const BaijiahaoAutomationPolicyResponseSchema = z
+  .object({ data: BaijiahaoAutomationPolicySchema, meta: ResponseMetaSchema })
+  .strict();
+export const BaijiahaoBrowserSessionResponseSchema = z
+  .object({ data: BaijiahaoBrowserSessionSchema, meta: ResponseMetaSchema })
+  .strict();
+export const BaijiahaoBrowserLoginResponseSchema = z
+  .object({ data: BaijiahaoBrowserLoginSchema, meta: ResponseMetaSchema })
+  .strict();
+
 export const PlatformAccountFormSchema = z
   .object({
     base_url: z.string(),
@@ -143,6 +222,7 @@ export const PlatformAccountFormSchema = z
       });
     }
     if (value.publish_mode !== 'api') return;
+    if (value.platform_code === 'baijiahao') return;
     if (!isValidApiBaseUrl(value.base_url.trim())) {
       context.addIssue({
         code: 'custom',
@@ -208,7 +288,9 @@ function isValidApiBaseUrl(value: string) {
   if (url.protocol === 'https:') return true;
   return (
     url.protocol === 'http:' &&
-    ['localhost', '127.0.0.1', '::1'].includes(url.hostname.toLocaleLowerCase('en-US'))
+    ['localhost', '127.0.0.1', '::1', 'baijiahao-browser'].includes(
+      url.hostname.toLocaleLowerCase('en-US'),
+    )
   );
 }
 
@@ -218,6 +300,9 @@ export type PlatformAccountEdit = z.infer<typeof PlatformAccountEditSchema>;
 export type PlatformAccountStatus = z.infer<typeof PlatformAccountStatusSchema>;
 export type PlatformCode = z.infer<typeof PlatformCodeSchema>;
 export type OfficialSiteAutomationPolicy = z.infer<typeof OfficialSiteAutomationPolicySchema>;
+export type BaijiahaoAutomationPolicy = z.infer<typeof BaijiahaoAutomationPolicySchema>;
+export type BaijiahaoBrowserSession = z.infer<typeof BaijiahaoBrowserSessionSchema>;
+export type BaijiahaoBrowserLogin = z.infer<typeof BaijiahaoBrowserLoginSchema>;
 
 export interface PlatformAccountFilters {
   readonly platformCode?: PlatformCode;

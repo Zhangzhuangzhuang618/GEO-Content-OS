@@ -9,10 +9,10 @@ import {
 } from './deterministic-risk-scanner.js';
 import { asGenerationFailure } from './generation.errors.js';
 import type {
-  OfficialSiteAutomation,
-  OfficialSiteAutomationPolicy,
-  OfficialSiteQualityGate,
-} from './official-site-automation.js';
+  QualityAutomationGate,
+  QualityAutomationPolicy,
+  QualityAutomationPort,
+} from './quality-automation.js';
 import { validateQualityEvent, type ValidatedQualityEvent } from './quality.event.js';
 import type { RuntimeQualityChecker } from './runtime-quality-checker.js';
 import type { UsageContext } from './usage-recorder.js';
@@ -64,7 +64,7 @@ export class QualityCheckWorker {
   public constructor(
     private readonly client: postgres.Sql,
     private readonly checker: RuntimeQualityChecker,
-    private readonly automation?: OfficialSiteAutomation,
+    private readonly automation?: QualityAutomationPort,
   ) {}
 
   public async run(
@@ -300,8 +300,8 @@ export class QualityCheckWorker {
     event: ValidatedQualityEvent,
     context: QualityContext,
     result: QualityCheckerData,
-    policy: OfficialSiteAutomationPolicy | null,
-    gate: OfficialSiteQualityGate | undefined,
+    policy: QualityAutomationPolicy | null,
+    gate: QualityAutomationGate | undefined,
   ): Promise<'persisted' | 'stale'> {
     return this.client.begin(async (transaction) => {
       const currentVariants = await transaction<{ currentContentVersionId: string }[]>`

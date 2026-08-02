@@ -1,4 +1,5 @@
 import {
+  BaijiahaoAutomationPolicyRequestSchema,
   CreatePlatformAccountRequestSchema,
   CreatePublishJobRequestSchema,
   DisablePlatformAccountRequestSchema,
@@ -45,6 +46,7 @@ import {
 } from '../../../common/idempotency/index.js';
 import { getPolicyContext, PolicyGuard, RequirePermissions } from '../../identity/rbac/index.js';
 import {
+  BaijiahaoAutomationPolicyService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
@@ -69,6 +71,8 @@ export class PlatformAccountController {
     @Inject(PlatformAccountService) private readonly accounts: PlatformAccountService,
     @Inject(OfficialSiteAutomationPolicyService)
     private readonly automation: OfficialSiteAutomationPolicyService,
+    @Inject(BaijiahaoAutomationPolicyService)
+    private readonly baijiahaoAutomation: BaijiahaoAutomationPolicyService,
     @Inject(IdempotencyService) private readonly idempotency: IdempotencyService,
   ) {}
 
@@ -389,6 +393,111 @@ export class PlatformAccountController {
         HttpStatus.OK,
       );
       await sendVersioned(reply, result.response.statusCode, result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/baijiahao-automation')
+  @RequirePermissions('publishing.manage')
+  public async listBaijiahaoAutomation(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.baijiahaoAutomation.list(requireScope(request), parsed.data.id);
+      await reply.status(HttpStatus.OK).send({ data, meta: { request_id: request.id } });
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Put(':id/baijiahao-automation')
+  @RequirePermissions('publishing.manage')
+  public async updateBaijiahaoAutomation(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = BaijiahaoAutomationPolicyRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    try {
+      const data = await this.baijiahaoAutomation.update(
+        requireScope(request),
+        parsedParams.data.id,
+        parsedBody.data,
+        audit(request),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/baijiahao-browser-session')
+  @RequirePermissions('publishing.manage')
+  public async getBaijiahaoBrowserSession(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.baijiahaoAutomation.sessionStatus(
+        requireScope(request),
+        parsed.data.id,
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/baijiahao-browser-session/login')
+  @RequirePermissions('publishing.manage')
+  public async startBaijiahaoBrowserLogin(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.baijiahaoAutomation.startLogin(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/baijiahao-browser-session/reauth')
+  @RequirePermissions('publishing.manage')
+  public async reauthenticateBaijiahaoBrowser(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.baijiahaoAutomation.reauthenticate(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
     } catch (error) {
       await sendPublishingError(reply, request.id, error);
     }

@@ -4,6 +4,7 @@ export type ContentVariantTransitionCause =
   | 'drop'
   | 'generation_cancel'
   | 'normal'
+  | 'baijiahao_automation'
   | 'official_site_automation'
   | 'publish_cancel_before_call';
 
@@ -81,7 +82,7 @@ export function canTransitionContentVariant(input: ContentVariantTransition): bo
   if (cause === 'publish_cancel_before_call') {
     return input.from === 'publishing' && input.to === 'approved';
   }
-  if (cause === 'official_site_automation') {
+  if (cause === 'official_site_automation' || cause === 'baijiahao_automation') {
     return (
       (input.from === 'quality_passed' && input.to === 'scheduled') ||
       (input.from === 'publish_failed' && input.to === 'quality_passed') ||

@@ -106,6 +106,17 @@ describe('baijiahao delivery integration', () => {
     expect(transport.requests).toHaveLength(1);
   });
 
+  it('preserves browser attention states as manual handling instead of a review rejection', async () => {
+    const transport = new FakeTransport([
+      response(423, { code: 'CAPTCHA_REQUIRED', message: 'Human verification is required' }),
+    ]);
+
+    await expect(apiAdapter(transport).publish(await deliveryInput())).rejects.toMatchObject({
+      code: 'MANUAL_REQUIRED',
+    });
+    expect(transport.requests).toHaveLength(1);
+  });
+
   it('reads remote status and metric records without exposing credentials', async () => {
     const transport = new FakeTransport([
       response(200, {

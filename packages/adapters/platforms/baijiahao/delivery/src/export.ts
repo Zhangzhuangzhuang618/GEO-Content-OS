@@ -26,8 +26,10 @@ export function exportBaijiahao(input: unknown): BaijiahaoExportBundle {
   const basePath = parsed.content_version_id;
   const metadata = {
     abstract: parsed.payload.abstract,
+    body_asset_ids: parsed.payload.body_asset_ids,
     citation_links: parsed.payload.citation_links,
     content_type: parsed.payload.content_type,
+    cover_asset_id: parsed.payload.cover_asset_id,
     platform_code: 'baijiahao',
     rule_version: parsed.payload.rule_version,
     schema_version: parsed.payload.schema_version,

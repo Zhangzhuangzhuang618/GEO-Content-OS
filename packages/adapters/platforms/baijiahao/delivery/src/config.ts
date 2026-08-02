@@ -18,6 +18,7 @@ export const BaijiahaoDeliveryConfigSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('export_only') }).strict(),
   z
     .object({
+      account_id: z.string().uuid().optional(),
       base_url: z.url().refine(isSafeBaseUrl),
       bearer_token: z.string().trim().min(1),
       endpoints: EndpointSchema.default({

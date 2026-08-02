@@ -56,7 +56,13 @@ import {
 } from '@geo-content-os/adapter-platforms/zhihu/render';
 
 import { PublisherError } from './publisher.errors.js';
-import type { PlatformDelivery, PublishClaim, PublisherPlatformPort } from './publisher.types.js';
+import type {
+  BaijiahaoReconcileClaim,
+  BaijiahaoRemoteStatus,
+  PlatformDelivery,
+  PublishClaim,
+  PublisherPlatformPort,
+} from './publisher.types.js';
 
 interface RenderFailure {
   readonly issues: readonly { readonly code: string; readonly message: string }[];
@@ -81,6 +87,22 @@ type DeliveryResult =
   | { readonly export: unknown; readonly mode: 'export' };
 
 export class SevenPlatformPublisher implements PublisherPlatformPort {
+  public async getBaijiahaoStatus(
+    claim: BaijiahaoReconcileClaim,
+    credential: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<BaijiahaoRemoteStatus> {
+    const adapter = new BaijiahaoDeliveryAdapter(
+      Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' }),
+    );
+    const result = await adapter.getStatus(claim.externalId, signal);
+    return Object.freeze({
+      externalId: result.external_id,
+      status: result.status,
+      url: result.url,
+    });
+  }
+
   public deliver(
     claim: PublishClaim,
     credential: Readonly<Record<string, unknown>> | null,
@@ -239,5 +261,9 @@ function deliveryConfig(
 ): Readonly<Record<string, unknown>> {
   if (claim.publishMode !== 'api') return Object.freeze({ mode: 'export_only' });
   if (!credential) throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Credential is required');
-  return Object.freeze({ ...credential, mode: 'api' });
+  return Object.freeze({
+    ...credential,
+    ...(claim.platformCode === 'baijiahao' ? { account_id: claim.accountId } : {}),
+    mode: 'api',
+  });
 }

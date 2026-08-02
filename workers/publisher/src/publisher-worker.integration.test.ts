@@ -13,7 +13,13 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { PostgresPublisherStore } from './publisher.store.js';
-import type { PlatformDelivery, PublishClaim, PublisherPlatformPort } from './publisher.types.js';
+import type {
+  BaijiahaoReconcileClaim,
+  BaijiahaoRemoteStatus,
+  PlatformDelivery,
+  PublishClaim,
+  PublisherPlatformPort,
+} from './publisher.types.js';
 import { PublisherWorker } from './publisher.worker.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000125';
@@ -30,6 +36,9 @@ const POLICY_ID = 'a2000000-0000-4000-8000-000000000125';
 const AUTOMATION_RUN_ID = 'a3000000-0000-4000-8000-000000000125';
 const DAILY_BATCH_ID = 'a4000000-0000-4000-8000-000000000125';
 const DAILY_ITEM_ID = 'a5000000-0000-4000-8000-000000000125';
+const OFFICIAL_VARIANT_ID = 'b1000000-0000-4000-8000-000000000125';
+const BROWSER_SESSION_ID = 'b2000000-0000-4000-8000-000000000125';
+const BROWSER_PUBLICATION_ID = 'b3000000-0000-4000-8000-000000000125';
 const CONTENT_HASH = 'a'.repeat(64);
 const PLATFORM_PAYLOAD_HASH = 'b'.repeat(64);
 const ACCESS_TOKEN = 't125-platform-secret';
@@ -136,6 +145,78 @@ describe('publisher worker', () => {
     ).toEqual([{ batchStatus: 'attention_required', itemStatus: 'publish_failed' }]);
   });
 
+  it('stops a Baijiahao unknown state after attempt three without claiming rejection', async () => {
+    const database = requireClient(client);
+    await enableBaijiahaoAutomation(database);
+    const platform = new FakePlatform(undefined, 'PUBLISH_STATE_UNKNOWN');
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).rejects.toMatchObject({ retryable: true });
+    await expect(worker.run(event())).rejects.toMatchObject({ retryable: true });
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'unknown' });
+
+    expect(platform.claims).toHaveLength(3);
+    expect(
+      await database<
+        {
+          automationStatus: string;
+          batchStatus: string;
+          browserStatus: string;
+          itemStatus: string;
+          jobStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          publication.status AS "browserStatus",item.status AS "itemStatus",
+          batch.status AS "batchStatus"
+        FROM publish_jobs AS job
+        JOIN baijiahao_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN baijiahao_browser_publications AS publication ON publication.publish_job_id=job.id
+        JOIN baijiahao_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN baijiahao_daily_batches AS batch ON batch.id=item.batch_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'manual_required',
+        batchStatus: 'attention_required',
+        browserStatus: 'manual_required',
+        itemStatus: 'manual_required',
+        jobStatus: 'failed',
+      },
+    ]);
+  });
+
+  it('retries instead of exporting when an automatic Baijiahao API account loses browser capability', async () => {
+    const database = requireClient(client);
+    await enableBaijiahaoAutomation(database);
+    const platform = new FakePlatform({
+      bundle: { files: [], schema_version: 'baijiahao-export@1' },
+      mode: 'export',
+      payloadHash: PLATFORM_PAYLOAD_HASH,
+    });
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).rejects.toMatchObject({ retryable: true });
+    await expect(worker.run(event())).rejects.toMatchObject({ retryable: true });
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+
+    expect(platform.claims).toHaveLength(3);
+    await expect(state(database)).resolves.toMatchObject({
+      attemptCount: 3,
+      attemptStatus: ['failed', 'failed', 'failed'],
+      jobStatus: 'failed',
+      packageStatus: 'published',
+      variantStatus: 'publish_failed',
+    });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM export_artifacts
+        WHERE publish_job_id=${JOB_ID}::uuid
+      `,
+    ).toEqual([{ count: 0 }]);
+  });
+
   it('completes the official-site automation run and records the remote publication time', async () => {
     const database = requireClient(client);
     await enableAutomation(database);
@@ -230,15 +311,168 @@ describe('publisher worker', () => {
       variantStatus: 'published',
     });
   });
+
+  it('reconciles a browser submission from processing to published without changing the official variant', async () => {
+    const database = requireClient(client);
+    await enableBaijiahaoAutomation(database);
+    const platform = new FakePlatform(
+      {
+        externalId: 'baijiahao-t145',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [
+        { externalId: 'baijiahao-t145', status: 'processing', url: null },
+        {
+          externalId: 'baijiahao-t145',
+          status: 'published',
+          url: 'https://baijiahao.baidu.com/s?id=t145',
+        },
+      ],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(
+      worker.reconcileBaijiahao(await latestReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(
+      worker.reconcileBaijiahao(await latestReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(platform.statusClaims).toHaveLength(2);
+    expect(
+      await database<
+        {
+          adapterCode: string;
+          automationStatus: string;
+          browserStatus: string;
+          itemStatus: string;
+          jobStatus: string;
+          packageStatus: string;
+          variantStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          publication.status AS "browserStatus",item.status AS "itemStatus",
+          variant.status AS "variantStatus",package.status AS "packageStatus",
+          attempt.adapter_code AS "adapterCode"
+        FROM publish_jobs AS job
+        JOIN baijiahao_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN baijiahao_browser_publications AS publication ON publication.publish_job_id=job.id
+        JOIN baijiahao_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN content_variants AS variant ON variant.id=job.variant_id
+        JOIN content_packages AS package ON package.id=variant.package_id
+        JOIN publish_attempts AS attempt ON attempt.publish_job_id=job.id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        adapterCode: 'baijiahao-delivery@1.1.0',
+        automationStatus: 'published',
+        browserStatus: 'published',
+        itemStatus: 'published',
+        jobStatus: 'published',
+        packageStatus: 'published',
+        variantStatus: 'published',
+      },
+    ]);
+    expect(
+      await database<{ status: string }[]>`
+        SELECT status FROM content_variants WHERE id=${OFFICIAL_VARIANT_ID}::uuid
+      `,
+    ).toEqual([{ status: 'published' }]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM outbox_events
+        WHERE event_type='publishing.job.published.v1'
+      `,
+    ).toEqual([{ count: 1 }]);
+  });
+
+  it('requires manual handling when review is still processing after twelve reconciliations', async () => {
+    const database = requireClient(client);
+    await enableBaijiahaoAutomation(database);
+    const platform = new FakePlatform(
+      {
+        externalId: 'baijiahao-t145',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [{ externalId: 'baijiahao-t145', status: 'processing', url: null }],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await worker.run(event());
+    const current = await database<{ version: number }[]>`
+      SELECT version FROM publish_jobs WHERE id=${JOB_ID}::uuid
+    `;
+    await expect(
+      worker.reconcileBaijiahao(reconcileEvent(current[0]?.version ?? 0, 12)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(
+      await database<
+        {
+          automationStatus: string;
+          batchStatus: string;
+          browserStatus: string;
+          errorCode: string;
+          itemStatus: string;
+          jobStatus: string;
+          packageStatus: string;
+          variantStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          automation.last_error_json->>'code' AS "errorCode",
+          publication.status AS "browserStatus",item.status AS "itemStatus",
+          batch.status AS "batchStatus",variant.status AS "variantStatus",
+          package.status AS "packageStatus"
+        FROM publish_jobs AS job
+        JOIN baijiahao_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN baijiahao_browser_publications AS publication ON publication.publish_job_id=job.id
+        JOIN baijiahao_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN baijiahao_daily_batches AS batch ON batch.id=item.batch_id
+        JOIN content_variants AS variant ON variant.id=job.variant_id
+        JOIN content_packages AS package ON package.id=variant.package_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'manual_required',
+        batchStatus: 'attention_required',
+        browserStatus: 'manual_required',
+        errorCode: 'BAIJIAHAO_REVIEW_PENDING_TIMEOUT',
+        itemStatus: 'manual_required',
+        jobStatus: 'failed',
+        packageStatus: 'published',
+        variantStatus: 'publish_failed',
+      },
+    ]);
+    expect(
+      await database<{ status: string }[]>`
+        SELECT status FROM content_variants WHERE id=${OFFICIAL_VARIANT_ID}::uuid
+      `,
+    ).toEqual([{ status: 'published' }]);
+  });
 });
 
 class FakePlatform implements PublisherPlatformPort {
   public readonly claims: PublishClaim[] = [];
   public readonly credentials: (Readonly<Record<string, unknown>> | null)[] = [];
+  public readonly statusClaims: BaijiahaoReconcileClaim[] = [];
 
   public constructor(
     private readonly result?: PlatformDelivery,
     private readonly errorCode?: string,
+    private readonly statuses: BaijiahaoRemoteStatus[] = [],
   ) {}
 
   public async deliver(
@@ -254,6 +488,13 @@ class FakePlatform implements PublisherPlatformPort {
     }
     if (!this.result) throw new Error('Fake delivery result is missing');
     return this.result;
+  }
+
+  public async getBaijiahaoStatus(claim: BaijiahaoReconcileClaim): Promise<BaijiahaoRemoteStatus> {
+    this.statusClaims.push(claim);
+    const status = this.statuses.shift();
+    if (!status) throw new Error('Fake Baijiahao status is missing');
+    return status;
   }
 }
 
@@ -283,6 +524,36 @@ function event() {
     occurred_at: new Date().toISOString(),
     tenant: { id: TENANT_ID },
   };
+}
+
+function reconcileEvent(jobVersion: number, reconcileAttempt: number) {
+  return {
+    aggregate: { id: JOB_ID, type: 'publish_job' },
+    data: {
+      account_id: ACCOUNT_ID,
+      external_post_id: null,
+      job_id: JOB_ID,
+      job_version: jobVersion,
+      reconcile_attempt: reconcileAttempt,
+      request_id: 'req-baijiahao-reconcile-125',
+    },
+    event_id: randomUUID(),
+    event_type: 'baijiahao.publication.reconcile_requested.v1',
+    occurred_at: new Date().toISOString(),
+    tenant: { id: TENANT_ID },
+  } as const;
+}
+
+async function latestReconcileEvent(database: Sql): Promise<unknown> {
+  const events = await database<{ payload: unknown }[]>`
+    SELECT payload_json AS payload FROM outbox_events
+    WHERE event_type='baijiahao.publication.reconcile_requested.v1'
+    ORDER BY (payload_json->'data'->>'reconcile_attempt')::integer DESC,id DESC
+    LIMIT 1
+  `;
+  const payload = events[0]?.payload;
+  if (!payload) throw new Error('Baijiahao reconciliation event was not queued');
+  return payload;
 }
 
 async function state(database: Sql) {
@@ -373,6 +644,107 @@ async function seedDailyPublishItem(database: Sql): Promise<void> {
       'selection-guide','Approved content',
       ${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,
       ${VERSION_ID}::uuid,${JOB_ID}::uuid,'scheduled',now(),now()
+    )
+  `;
+}
+
+async function enableBaijiahaoAutomation(database: Sql): Promise<void> {
+  await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+  await database`
+    UPDATE briefs SET platform_codes=ARRAY['official_site','baijiahao']::varchar[]
+    WHERE id=${BRIEF_ID}::uuid
+  `;
+  await database`
+    UPDATE platform_accounts SET
+      platform_code='baijiahao',provider_account_id='baijiahao-t145',
+      display_name='Baijiahao T145',
+      capabilities_json=${database.json({ get_status: true, publish: true })},
+      publish_mode='api',status='active'
+    WHERE id=${ACCOUNT_ID}::uuid
+  `;
+  await database`
+    UPDATE content_variants SET
+      platform_code='baijiahao',platform_account_id=${ACCOUNT_ID}::uuid,
+      status='scheduled',is_required=false
+    WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    INSERT INTO content_variants(
+      id,tenant_id,package_id,platform_code,status,is_required
+    ) VALUES(
+      ${OFFICIAL_VARIANT_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,
+      'official_site','published',true
+    )
+  `;
+  await database`
+    UPDATE content_packages SET status='published'
+    WHERE id=${PACKAGE_ID}::uuid
+  `;
+  await database`
+    INSERT INTO baijiahao_automation_policies(
+      id,tenant_id,workspace_id,project_id,account_id,enabled,source_mode,
+      daily_enabled,created_by
+    ) VALUES(
+      ${POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,true,'independent',true,${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO publish_jobs(
+      id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+      idempotency_key,payload_hash,status,origin,created_by
+    ) VALUES(
+      ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
+      ${CONTENT_HASH},'scheduled','baijiahao_automation',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_automation_runs(
+      id,tenant_id,policy_id,source_mode,variant_id,content_version_id,
+      status,publish_job_id
+    ) VALUES(
+      ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,'independent',
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,'scheduled',${JOB_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_daily_batches(
+      id,tenant_id,policy_id,business_date,status,scheduled_at
+    ) VALUES(
+      ${DAILY_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2026-07-23','scheduled',now()
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,
+      variant_id,content_version_id,publish_job_id,status,qualified_at,scheduled_at
+    ) VALUES(
+      ${DAILY_ITEM_ID}::uuid,${TENANT_ID}::uuid,${DAILY_BATCH_ID}::uuid,1,
+      ${AUTOMATION_RUN_ID}::uuid,${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${JOB_ID}::uuid,
+      'scheduled',now(),now()
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_browser_sessions(
+      id,tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+    ) VALUES(
+      ${BROWSER_SESSION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,
+      'authenticated','tenants/t125/accounts/baijiahao',now(),now()
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_browser_publications(
+      id,tenant_id,session_id,account_id,publish_job_id,content_version_id,
+      idempotency_key,payload_hash,content_fingerprint,title,status,field_summary_json,
+      submitted_at
+    ) VALUES(
+      ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${BROWSER_SESSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,${JOB_ID}::uuid,${VERSION_ID}::uuid,
+      'publish-job-125-stable',${CONTENT_HASH},${'c'.repeat(64)},
+      '百家号测试文章','submitting','{}'::jsonb,now()
     )
   `;
 }

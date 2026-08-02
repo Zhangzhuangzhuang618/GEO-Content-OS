@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, readFileSync as readSourceFile } from 'node:fs';
 import { extname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextRequest } from 'next/server';
@@ -75,11 +76,12 @@ function requireInput(securityCase: SecurityCase): string {
   return securityCase.input;
 }
 
-function listSourceFiles(root: URL): readonly string[] {
+function listSourceFiles(root: URL | string): readonly string[] {
+  const rootPath = typeof root === 'string' ? root : fileURLToPath(root);
   const paths: string[] = [];
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const path = join(root.pathname, entry.name);
-    if (entry.isDirectory()) paths.push(...listSourceFiles(new URL(`${path}/`, 'file:')));
+  for (const entry of readdirSync(rootPath, { withFileTypes: true })) {
+    const path = join(rootPath, entry.name);
+    if (entry.isDirectory()) paths.push(...listSourceFiles(path));
     else if (['.ts', '.tsx'].includes(extname(entry.name)) && !entry.name.includes('.test.')) {
       paths.push(path);
     }

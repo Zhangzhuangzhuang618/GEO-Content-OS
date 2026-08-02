@@ -4,18 +4,23 @@ import type {
   PlatformCode,
 } from '@geo-content-os/contracts';
 import { redactSensitiveData } from '@geo-content-os/security';
+import { randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import { PublisherError } from './publisher.errors.js';
 import type {
+  BaijiahaoReconcileClaim,
+  BaijiahaoRemoteStatus,
   PlatformDelivery,
   PublishClaim,
   PublishClaimResult,
   PublisherStorePort,
+  ValidatedBaijiahaoReconcileEvent,
   ValidatedPublishEvent,
 } from './publisher.types.js';
 
 interface JobRow {
+  readonly accountId: string;
   readonly accountDeletedAt: Date | null;
   readonly accountStatus: 'active' | 'disabled' | 'reauth';
   readonly accountTokenExpiresAt: Date | null;
@@ -29,7 +34,7 @@ interface JobRow {
   readonly currentContentVersionId: string | null;
   readonly id: string;
   readonly idempotencyKey: string;
-  readonly origin: 'manual' | 'official_site_automation';
+  readonly origin: 'manual' | 'official_site_automation' | 'baijiahao_automation';
   readonly packageId: string;
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
@@ -48,21 +53,36 @@ interface JobRow {
 }
 
 interface CompletionRow {
+  readonly accountId: string;
   readonly attemptCount: number;
   readonly createdBy: string;
   readonly packageId: string;
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
-  readonly origin: 'manual' | 'official_site_automation';
+  readonly projectId: string;
+  readonly origin: 'manual' | 'official_site_automation' | 'baijiahao_automation';
   readonly status: 'cancel_requested' | 'publishing';
   readonly variantId: string;
   readonly variantStatus: ContentVariantStatus;
   readonly variantVersion: number;
+  readonly workspaceId: string;
 }
 
 interface ProjectionRow {
   readonly isRequired: boolean;
   readonly status: ContentVariantStatus;
+}
+
+interface BaijiahaoReconcileRow extends CompletionRow {
+  readonly accountDeletedAt: Date | null;
+  readonly accountStatus: 'active' | 'disabled' | 'reauth';
+  readonly accountTokenExpiresAt: Date | null;
+  readonly contentVersionId: string;
+  readonly credentialCiphertext: string | null;
+  readonly credentialKeyVersion: string | null;
+  readonly externalId: string | null;
+  readonly jobVersion: number;
+  readonly publishMode: 'api' | 'export' | 'manual';
 }
 
 const TERMINAL_JOB_STATUSES = new Set(['cancelled', 'failed', 'published']);
@@ -92,6 +112,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           job.idempotency_key AS "idempotencyKey", job.payload_hash AS "payloadHash",
           job.status, job.attempt_count AS "attemptCount", job.scheduled_at AS "scheduledAt",
           job.created_by AS "createdBy", job.updated_at AS "updatedAt", job.version, job.origin,
+          job.account_id AS "accountId",
           variant.id AS "variantId", variant.status AS "variantStatus",
           variant.version AS "variantVersion",
           variant.current_content_version_id AS "currentContentVersionId",
@@ -145,7 +166,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
         `;
         if (refreshed.length !== 1) throw leaseLost();
       } else if (row.status === 'scheduled') {
-        if (attempt >= 20) throw stateInvalid();
+        const attemptLimit = row.origin === 'manual' ? 20 : 3;
+        if (attempt >= attemptLimit) throw stateInvalid();
         const updated = await transaction<{ attempt: number }[]>`
           UPDATE publish_jobs
           SET status='publishing', attempt_count=attempt_count+1, last_error_json=NULL,
@@ -192,6 +214,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
       return {
         kind: 'claimed',
         value: Object.freeze({
+          accountId: row.accountId,
           accountStatus: row.accountDeletedAt === null ? row.accountStatus : 'disabled',
           accountTokenExpiresAt: row.accountTokenExpiresAt,
           attempt,
@@ -234,6 +257,59 @@ export class PostgresPublisherStore implements PublisherStorePort {
             : { mode: 'export', object_uri: artifact?.objectUri },
         status: 'succeeded',
       });
+      if (delivery.mode === 'api' && deliveryStatus(delivery) === 'processing') {
+        if (claim.platformCode !== 'baijiahao' || row.origin !== 'baijiahao_automation') {
+          throw stateInvalid();
+        }
+        const processing = await transaction<{ version: number }[]>`
+          UPDATE publish_jobs SET
+            external_post_id=${delivery.externalId}, external_url=${delivery.url},
+            last_error_json=NULL, version=version+1
+          WHERE id=${claim.jobId}::uuid AND tenant_id=${claim.tenantId}::uuid
+            AND status='publishing' AND attempt_count=${claim.attempt}
+          RETURNING version
+        `;
+        const job = processing[0];
+        if (!job) throw leaseLost();
+        const browserPublications = await transaction<{ id: string }[]>`
+          UPDATE baijiahao_browser_publications SET
+            status='processing',external_post_id=${delivery.externalId},
+            external_url=COALESCE(${delivery.url},external_url),
+            last_reconciled_at=now(),version=version+1
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND account_id=${claim.accountId}::uuid
+            AND content_version_id=${claim.contentVersionId}::uuid
+            AND status IN ('submitting','unknown','processing')
+          RETURNING id
+        `;
+        if (browserPublications.length !== 1) throw stateInvalid();
+        await transaction`
+          UPDATE baijiahao_automation_runs SET
+            status='processing', last_error_json=NULL, version=version+1
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND status IN ('scheduled','publishing')
+        `;
+        await transaction`
+          UPDATE baijiahao_daily_batch_items SET status='processing',last_error_json=NULL
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND status='scheduled'
+        `;
+        await insertBaijiahaoReconcileEvent(transaction, event, claim, row, job.version, 5);
+        await writeAudit(
+          transaction,
+          event,
+          row.createdBy,
+          'publish_job.processing',
+          claim,
+          {
+            attempt: claim.attempt,
+            external_id: delivery.externalId,
+            status: 'processing',
+          },
+          row.status,
+        );
+        return;
+      }
       if (delivery.mode === 'export' && artifact) {
         await transaction`
           INSERT INTO export_artifacts (
@@ -247,7 +323,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           )
         `;
       }
-      const updated = await transaction<{ id: string }[]>`
+      const updated = await transaction<{ version: number }[]>`
         UPDATE publish_jobs SET
           status='published', external_post_id=${delivery.mode === 'api' ? delivery.externalId : null},
           external_url=${delivery.mode === 'api' ? delivery.url : null},
@@ -256,12 +332,38 @@ export class PostgresPublisherStore implements PublisherStorePort {
           version=version+1
         WHERE id=${claim.jobId}::uuid AND tenant_id=${claim.tenantId}::uuid
           AND status IN ('publishing','cancel_requested') AND attempt_count=${claim.attempt}
-        RETURNING id
+        RETURNING version
       `;
-      if (updated.length !== 1) throw leaseLost();
+      const publishedJob = updated[0];
+      if (!publishedJob) throw leaseLost();
       if (row.origin === 'official_site_automation') {
         await completeAutomationRun(transaction, claim.tenantId, claim.jobId, 'published', null);
         await completeDailyBatchItem(transaction, claim.tenantId, claim.jobId, delivery);
+      } else if (row.origin === 'baijiahao_automation') {
+        if (delivery.mode !== 'api') throw stateInvalid();
+        const browserPublications = await transaction<{ id: string }[]>`
+          SELECT id FROM baijiahao_browser_publications
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND account_id=${claim.accountId}::uuid
+            AND content_version_id=${claim.contentVersionId}::uuid
+            AND status='published' AND external_post_id=${delivery.externalId}
+          FOR UPDATE
+        `;
+        if (browserPublications.length !== 1) throw stateInvalid();
+        await completeBaijiahaoAutomationRun(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          'published',
+          null,
+        );
+        await completeBaijiahaoDailyBatchItem(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          'published',
+          null,
+        );
       }
       await transitionVariant(
         transaction,
@@ -292,6 +394,9 @@ export class PostgresPublisherStore implements PublisherStorePort {
         },
         row.status,
       );
+      if (delivery.mode === 'api') {
+        await insertPublishedEvent(transaction, event, claim, row, delivery, publishedJob.version);
+      }
     });
   }
 
@@ -331,6 +436,32 @@ export class PostgresPublisherStore implements PublisherStorePort {
           error,
         );
         await failDailyBatchItem(transaction, claim.tenantId, claim.jobId, error);
+      } else if (row.origin === 'baijiahao_automation') {
+        const requiresManualHandling =
+          failure.status === 'unknown' || failure.code === 'MANUAL_REQUIRED';
+        await completeBaijiahaoAutomationRun(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          requiresManualHandling ? 'manual_required' : 'publish_failed',
+          error,
+        );
+        if (requiresManualHandling) {
+          await transaction`
+            UPDATE baijiahao_browser_publications SET
+              status='manual_required',review_reason=${failure.message},
+              last_reconciled_at=now(),version=version+1
+            WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+              AND status IN ('prepared','submitting','unknown','processing')
+          `;
+        }
+        await completeBaijiahaoDailyBatchItem(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          requiresManualHandling ? 'manual_required' : 'publish_failed',
+          error,
+        );
       }
       await transitionVariant(
         transaction,
@@ -392,6 +523,18 @@ export class PostgresPublisherStore implements PublisherStorePort {
             message: failure.message,
             schema_version: 'official-site-automation-error@1',
           });
+        } else if (row.origin === 'baijiahao_automation') {
+          await completeBaijiahaoAutomationRun(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'disabled',
+            {
+              code: 'PUBLISH_CANCELLED_BY_USER',
+              message: failure.message,
+              schema_version: 'baijiahao-automation-error@1',
+            },
+          );
         }
         await transitionVariant(
           transaction,
@@ -399,7 +542,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           row.variantId,
           row.variantVersion,
           'publishing',
-          row.origin === 'official_site_automation' ? 'quality_passed' : 'approved',
+          automatedReadyStatus(row.origin),
         );
         await projectPackage(
           transaction,
@@ -441,14 +584,14 @@ export class PostgresPublisherStore implements PublisherStorePort {
         row.variantId,
         row.variantVersion + 1,
         'publish_failed',
-        row.origin === 'official_site_automation' ? 'quality_passed' : 'approved',
+        automatedReadyStatus(row.origin),
       );
       await transitionVariant(
         transaction,
         claim.tenantId,
         row.variantId,
         row.variantVersion + 2,
-        row.origin === 'official_site_automation' ? 'quality_passed' : 'approved',
+        automatedReadyStatus(row.origin),
         'scheduled',
       );
       await projectPackage(
@@ -473,6 +616,314 @@ export class PostgresPublisherStore implements PublisherStorePort {
       );
     });
   }
+
+  public claimBaijiahaoReconciliation(
+    event: ValidatedBaijiahaoReconcileEvent,
+  ): Promise<
+    | { readonly kind: 'completed' }
+    | { readonly kind: 'claimed'; readonly value: BaijiahaoReconcileClaim }
+  > {
+    return this.client.begin(async (transaction) => {
+      const rows = await selectBaijiahaoReconcileRow(transaction, event, true);
+      const row = rows[0];
+      if (!row) throw scopeInvalid();
+      if (row.status !== 'publishing') return { kind: 'completed' } as const;
+      if (row.jobVersion > event.jobVersion) return { kind: 'completed' } as const;
+      if (
+        row.jobVersion !== event.jobVersion ||
+        row.origin !== 'baijiahao_automation' ||
+        row.publishMode !== 'api' ||
+        row.variantStatus !== 'publishing' ||
+        !row.externalId
+      ) {
+        throw stateInvalid();
+      }
+      return {
+        kind: 'claimed',
+        value: Object.freeze({
+          accountId: row.accountId,
+          accountStatus: row.accountDeletedAt === null ? row.accountStatus : 'disabled',
+          accountTokenExpiresAt: row.accountTokenExpiresAt,
+          attempt: row.attemptCount,
+          contentVersionId: row.contentVersionId,
+          credentialCiphertext: row.credentialCiphertext,
+          credentialKeyVersion: row.credentialKeyVersion,
+          externalId: row.externalId,
+          jobId: event.jobId,
+          jobVersion: row.jobVersion,
+          platformCode: 'baijiahao',
+          publishMode: 'api',
+          tenantId: event.tenantId,
+        }),
+      } as const;
+    });
+  }
+
+  public completeBaijiahaoReconciliation(
+    event: ValidatedBaijiahaoReconcileEvent,
+    claim: BaijiahaoReconcileClaim,
+    result: BaijiahaoRemoteStatus,
+  ): Promise<'completed' | 'pending'> {
+    return this.client.begin(async (transaction) => {
+      const rows = await selectBaijiahaoReconcileRow(transaction, event, true);
+      const row = rows[0];
+      if (!row || row.status !== 'publishing' || row.jobVersion !== claim.jobVersion) {
+        return 'completed' as const;
+      }
+      if (
+        row.origin !== 'baijiahao_automation' ||
+        row.variantStatus !== 'publishing' ||
+        row.externalId !== claim.externalId ||
+        result.externalId !== claim.externalId
+      ) {
+        throw stateInvalid();
+      }
+      if (
+        (result.status === 'processing' || result.status === 'unknown') &&
+        event.reconcileAttempt < 12
+      ) {
+        const error =
+          result.status === 'unknown'
+            ? adapterError(
+                'BAIJIAHAO_STATUS_UNKNOWN',
+                'Baijiahao status could not be verified; reconciliation will continue.',
+              )
+            : null;
+        const updated = await transaction<{ version: number }[]>`
+          UPDATE publish_jobs SET
+            external_url=COALESCE(${result.url}, external_url),
+            last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb,
+            version=version+1
+          WHERE id=${claim.jobId}::uuid AND tenant_id=${claim.tenantId}::uuid
+            AND status='publishing' AND version=${claim.jobVersion}
+          RETURNING version
+        `;
+        const job = updated[0];
+        if (!job) throw leaseLost();
+        const browserPublications = await transaction<{ id: string }[]>`
+          UPDATE baijiahao_browser_publications SET
+            status=${result.status}, external_url=COALESCE(${result.url}, external_url),
+            last_reconciled_at=now(), version=version+1
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND status IN ('submitting','unknown','processing')
+          RETURNING id
+        `;
+        if (browserPublications.length !== 1) throw stateInvalid();
+        await insertBaijiahaoReconcileEvent(
+          transaction,
+          event,
+          claim,
+          row,
+          job.version,
+          5,
+          event.reconcileAttempt + 1,
+        );
+        await writeAudit(
+          transaction,
+          event,
+          row.createdBy,
+          'publish_job.reconciled',
+          claim,
+          { reconcile_attempt: event.reconcileAttempt, status: result.status },
+          row.status,
+        );
+        return 'pending' as const;
+      }
+      if (result.status === 'published') {
+        const updated = await transaction<{ version: number }[]>`
+          UPDATE publish_jobs SET
+            status='published', external_url=${result.url}, published_at=now(),
+            last_error_json=NULL, version=version+1
+          WHERE id=${claim.jobId}::uuid AND tenant_id=${claim.tenantId}::uuid
+            AND status='publishing' AND version=${claim.jobVersion}
+          RETURNING version
+        `;
+        const job = updated[0];
+        if (!job) throw leaseLost();
+        await completeBaijiahaoAutomationRun(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          'published',
+          null,
+        );
+        const browserPublications = await transaction<{ id: string }[]>`
+          UPDATE baijiahao_browser_publications SET
+            status='published', external_url=${result.url}, last_reconciled_at=now(),
+            version=version+1
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND status IN ('submitting','unknown','processing')
+          RETURNING id
+        `;
+        if (browserPublications.length !== 1) throw stateInvalid();
+        await completeBaijiahaoDailyBatchItem(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          'published',
+          null,
+        );
+        await transitionVariant(
+          transaction,
+          claim.tenantId,
+          row.variantId,
+          row.variantVersion,
+          'publishing',
+          'published',
+        );
+        await projectPackage(
+          transaction,
+          claim.tenantId,
+          row.packageId,
+          row.packageStatus,
+          row.packageVersion,
+        );
+        const delivery: Extract<PlatformDelivery, { readonly mode: 'api' }> = Object.freeze({
+          externalId: result.externalId,
+          mode: 'api',
+          payloadHash: '',
+          response: Object.freeze({ status: 'published' }),
+          url: result.url,
+        });
+        await writeAudit(
+          transaction,
+          event,
+          row.createdBy,
+          'publish_job.published',
+          claim,
+          {
+            external_id: result.externalId,
+            reconcile_attempt: event.reconcileAttempt,
+            status: 'published',
+          },
+          row.status,
+        );
+        await insertPublishedEvent(transaction, event, claim, row, delivery, job.version);
+        return 'completed' as const;
+      }
+      const manualRequired = result.status !== 'failed';
+      const error = adapterError(
+        result.status === 'processing'
+          ? 'BAIJIAHAO_REVIEW_PENDING_TIMEOUT'
+          : manualRequired
+            ? 'BAIJIAHAO_STATUS_UNKNOWN'
+            : 'BAIJIAHAO_REVIEW_FAILED',
+        result.status === 'processing'
+          ? 'Baijiahao publication remained under review after twelve reconciliations.'
+          : manualRequired
+            ? 'Baijiahao publication status remained unknown after twelve reconciliations.'
+            : 'Baijiahao rejected the submitted article.',
+      );
+      const updated = await transaction<{ id: string }[]>`
+        UPDATE publish_jobs SET
+          status='failed', external_url=COALESCE(${result.url}, external_url),
+          last_error_json=${JSON.stringify(error)}::text::jsonb, version=version+1
+        WHERE id=${claim.jobId}::uuid AND tenant_id=${claim.tenantId}::uuid
+          AND status='publishing' AND version=${claim.jobVersion}
+        RETURNING id
+      `;
+      if (updated.length !== 1) throw leaseLost();
+      if (manualRequired) {
+        const automation = await transaction<{ id: string }[]>`
+          UPDATE baijiahao_automation_runs SET
+            status='manual_required', last_error_json=${JSON.stringify(error)}::text::jsonb,
+            finished_at=now(), version=version+1
+          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND status='processing'
+          RETURNING id
+        `;
+        if (automation.length !== 1) throw stateInvalid();
+      } else {
+        await completeBaijiahaoAutomationRun(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          'publish_failed',
+          error,
+        );
+      }
+      const browserPublications = await transaction<{ id: string }[]>`
+        UPDATE baijiahao_browser_publications SET
+          status=${manualRequired ? 'manual_required' : 'failed'},
+          external_url=COALESCE(${result.url}, external_url),
+          review_reason=${String(error['message'])}, last_reconciled_at=now(), version=version+1
+        WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+          AND status IN ('submitting','unknown','processing')
+        RETURNING id
+      `;
+      if (browserPublications.length !== 1) throw stateInvalid();
+      await completeBaijiahaoDailyBatchItem(
+        transaction,
+        claim.tenantId,
+        claim.jobId,
+        manualRequired ? 'manual_required' : 'publish_failed',
+        error,
+      );
+      await transitionVariant(
+        transaction,
+        claim.tenantId,
+        row.variantId,
+        row.variantVersion,
+        'publishing',
+        'publish_failed',
+      );
+      await projectPackage(
+        transaction,
+        claim.tenantId,
+        row.packageId,
+        row.packageStatus,
+        row.packageVersion,
+      );
+      await writeAudit(
+        transaction,
+        event,
+        row.createdBy,
+        manualRequired ? 'publish_job.manual_required' : 'publish_job.failed',
+        claim,
+        {
+          error_code: error['code'],
+          reconcile_attempt: event.reconcileAttempt,
+          status: manualRequired ? 'manual_required' : 'failed',
+        },
+        row.status,
+      );
+      return 'completed' as const;
+    });
+  }
+}
+
+function selectBaijiahaoReconcileRow(
+  transaction: postgres.TransactionSql,
+  event: ValidatedBaijiahaoReconcileEvent,
+  lock: boolean,
+): Promise<BaijiahaoReconcileRow[]> {
+  return transaction<BaijiahaoReconcileRow[]>`
+    SELECT
+      job.status, job.attempt_count AS "attemptCount", job.created_by AS "createdBy",
+      job.origin, job.account_id AS "accountId", job.version AS "jobVersion",
+      job.external_post_id AS "externalId", job.content_version_id AS "contentVersionId",
+      variant.id AS "variantId", variant.status AS "variantStatus",
+      variant.version AS "variantVersion", package.id AS "packageId",
+      package.status AS "packageStatus", package.version AS "packageVersion",
+      package.workspace_id AS "workspaceId", package.project_id AS "projectId",
+      account.credential_ciphertext AS "credentialCiphertext",
+      account.credential_key_version AS "credentialKeyVersion",
+      account.publish_mode AS "publishMode", account.status AS "accountStatus",
+      account.token_expires_at AS "accountTokenExpiresAt",
+      account.deleted_at AS "accountDeletedAt"
+    FROM publish_jobs AS job
+    JOIN content_variants AS variant
+      ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
+      AND variant.platform_code='baijiahao'
+    JOIN content_packages AS package
+      ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+    JOIN platform_accounts AS account
+      ON account.id=job.account_id AND account.tenant_id=job.tenant_id
+      AND account.workspace_id=package.workspace_id AND account.platform_code='baijiahao'
+    WHERE job.id=${event.jobId}::uuid AND job.tenant_id=${event.tenantId}::uuid
+      AND job.origin='baijiahao_automation'
+    ${lock ? transaction`FOR UPDATE OF job, variant, package, account` : transaction``}
+  `;
 }
 
 async function lockCompletion(
@@ -482,10 +933,11 @@ async function lockCompletion(
 ): Promise<CompletionRow> {
   const rows = await transaction<CompletionRow[]>`
     SELECT job.status, job.attempt_count AS "attemptCount", job.created_by AS "createdBy",
-      job.origin,
+      job.origin, job.account_id AS "accountId",
       variant.id AS "variantId", variant.status AS "variantStatus",
       variant.version AS "variantVersion", package.id AS "packageId",
-      package.status AS "packageStatus", package.version AS "packageVersion"
+      package.status AS "packageStatus", package.version AS "packageVersion",
+      package.workspace_id AS "workspaceId", package.project_id AS "projectId"
     FROM publish_jobs AS job
     JOIN content_variants AS variant
       ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
@@ -524,10 +976,16 @@ async function insertAttempt(
       response_json, error_code, started_at, finished_at
     ) VALUES (
       ${claim.tenantId}::uuid, ${claim.jobId}::uuid, ${claim.attempt},
-      ${`${claim.platformCode}-delivery@1.0.0`}, ${value.status}, ${value.requestHash},
+      ${adapterCode(claim.platformCode)}, ${value.status}, ${value.requestHash},
       ${JSON.stringify(response)}::text::jsonb, ${value.errorCode}, now(), now()
     )
   `;
+}
+
+function adapterCode(platformCode: PlatformCode): string {
+  return platformCode === 'baijiahao'
+    ? 'baijiahao-delivery@1.1.0'
+    : `${platformCode}-delivery@1.0.0`;
 }
 
 function publishedAt(delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>): Date {
@@ -537,6 +995,16 @@ function publishedAt(delivery: Extract<PlatformDelivery, { readonly mode: 'api' 
     if (Number.isFinite(parsed.getTime())) return parsed;
   }
   return new Date();
+}
+
+function deliveryStatus(
+  delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>,
+): 'processing' | 'published' {
+  return delivery.response['status'] === 'processing' ? 'processing' : 'published';
+}
+
+function automatedReadyStatus(origin: CompletionRow['origin']): 'approved' | 'quality_passed' {
+  return origin === 'manual' ? 'approved' : 'quality_passed';
 }
 
 async function completeAutomationRun(
@@ -555,6 +1023,108 @@ async function completeAutomationRun(
     RETURNING id
   `;
   if (rows.length !== 1) throw stateInvalid();
+}
+
+async function completeBaijiahaoAutomationRun(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  status: 'disabled' | 'manual_required' | 'publish_failed' | 'published',
+  error: Readonly<Record<string, unknown>> | null,
+): Promise<void> {
+  const rows = await transaction<{ id: string }[]>`
+    UPDATE baijiahao_automation_runs SET
+      status=${status}, last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb,
+      finished_at=now(), version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publishing','processing')
+    RETURNING id
+  `;
+  if (rows.length !== 1) throw stateInvalid();
+}
+
+async function insertPublishedEvent(
+  transaction: postgres.TransactionSql,
+  event: Pick<ValidatedPublishEvent, 'requestId'>,
+  claim: Pick<PublishClaim, 'contentVersionId' | 'jobId' | 'platformCode' | 'tenantId'>,
+  row: CompletionRow,
+  delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>,
+  jobVersion: number,
+): Promise<void> {
+  const eventId = randomUUID();
+  const occurredAt = publishedAt(delivery).toISOString();
+  const data = {
+    account_id: row.accountId,
+    content_version_id: claim.contentVersionId,
+    created_by: row.createdBy,
+    external_post_id: delivery.externalId,
+    external_url: delivery.url,
+    job_id: claim.jobId,
+    job_version: jobVersion,
+    origin: row.origin,
+    package_id: row.packageId,
+    platform_code: claim.platformCode,
+    project_id: row.projectId,
+    published_at: occurredAt,
+    request_id: event.requestId,
+    variant_id: row.variantId,
+    workspace_id: row.workspaceId,
+  };
+  const envelope = {
+    aggregate: { id: claim.jobId, type: 'publish_job' },
+    data,
+    event_id: eventId,
+    event_type: 'publishing.job.published.v1',
+    occurred_at: occurredAt,
+    tenant: { id: claim.tenantId },
+  };
+  await transaction`
+    INSERT INTO outbox_events (
+      id, tenant_id, event_type, aggregate_type, aggregate_id, payload_json
+    ) VALUES (
+      ${eventId}::uuid, ${claim.tenantId}::uuid, 'publishing.job.published.v1',
+      'publish_job', ${claim.jobId}::uuid, ${JSON.stringify(envelope)}::text::jsonb
+    )
+  `;
+}
+
+async function insertBaijiahaoReconcileEvent(
+  transaction: postgres.TransactionSql,
+  event: Pick<ValidatedPublishEvent, 'requestId'>,
+  claim: Pick<PublishClaim, 'jobId' | 'tenantId'>,
+  row: CompletionRow,
+  jobVersion: number,
+  delayMinutes: number,
+  reconcileAttempt = 1,
+): Promise<void> {
+  const eventId = randomUUID();
+  const occurredAt = new Date().toISOString();
+  const envelope = {
+    aggregate: { id: claim.jobId, type: 'publish_job' },
+    data: {
+      account_id: row.accountId,
+      external_post_id: null,
+      job_id: claim.jobId,
+      job_version: jobVersion,
+      reconcile_attempt: reconcileAttempt,
+      request_id: event.requestId,
+    },
+    event_id: eventId,
+    event_type: 'baijiahao.publication.reconcile_requested.v1',
+    occurred_at: occurredAt,
+    tenant: { id: claim.tenantId },
+  };
+  await transaction`
+    INSERT INTO outbox_events (
+      id, tenant_id, event_type, aggregate_type, aggregate_id,
+      payload_json, next_attempt_at
+    ) VALUES (
+      ${eventId}::uuid, ${claim.tenantId}::uuid,
+      'baijiahao.publication.reconcile_requested.v1', 'publish_job',
+      ${claim.jobId}::uuid, ${JSON.stringify(envelope)}::text::jsonb,
+      now() + (${delayMinutes} * interval '1 minute')
+    )
+  `;
 }
 
 async function completeDailyBatchItem(
@@ -583,6 +1153,47 @@ async function completeDailyBatchItem(
         WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
           AND item.status='published'
       ) >= 10
+  `;
+}
+
+async function completeBaijiahaoDailyBatchItem(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  status: 'manual_required' | 'publish_failed' | 'published',
+  error: Readonly<Record<string, unknown>> | null,
+): Promise<void> {
+  const items = await transaction<{ batchId: string }[]>`
+    UPDATE baijiahao_daily_batch_items SET
+      status=${status},
+      published_at=CASE WHEN ${status}='published' THEN now() ELSE NULL END,
+      last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','processing')
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  if (status !== 'published') {
+    await transaction`
+      UPDATE baijiahao_daily_batches SET
+        status='attention_required', last_error_json=${JSON.stringify(error)}::text::jsonb,
+        version=version+1
+      WHERE id=${batchId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('running','scheduled')
+    `;
+    return;
+  }
+  await transaction`
+    UPDATE baijiahao_daily_batches AS batch SET
+      status='completed', completed_at=now(), last_error_json=NULL, version=version+1
+    WHERE batch.id=${batchId}::uuid AND batch.tenant_id=${tenantId}::uuid
+      AND batch.status='scheduled'
+      AND NOT EXISTS (
+        SELECT 1 FROM baijiahao_daily_batch_items AS item
+        WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+          AND item.status NOT IN ('published','skipped','reserve','retired')
+      )
   `;
 }
 
@@ -678,10 +1289,10 @@ function projectPackageStatus(
 
 async function writeAudit(
   transaction: postgres.TransactionSql,
-  event: ValidatedPublishEvent,
+  event: Pick<ValidatedPublishEvent, 'requestId'>,
   actorId: string,
   action: string,
-  claim: PublishClaim,
+  claim: Pick<PublishClaim, 'attempt' | 'jobId' | 'tenantId'>,
   after: Readonly<Record<string, unknown>>,
   beforeStatus: string,
 ): Promise<void> {

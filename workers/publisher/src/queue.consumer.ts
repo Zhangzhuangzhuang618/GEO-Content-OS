@@ -29,7 +29,10 @@ export class PublisherQueueConsumer {
     this.worker = new Worker<DomainEventEnvelope>(
       'geo-publisher',
       async (job) => {
-        const result = await publisher.run(job.data);
+        const result =
+          job.name === 'baijiahao.publication.reconcile_requested.v1'
+            ? await publisher.reconcileBaijiahao(job.data)
+            : await publisher.run(job.data);
         if (result.disposition === 'busy') {
           throw new PublisherError('PUBLISHER_BUSY', 'Publish job is already running', true);
         }

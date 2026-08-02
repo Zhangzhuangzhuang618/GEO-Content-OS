@@ -27,7 +27,9 @@ const CitationMapItemSchema = z
 export const BaijiahaoPlatformMetaSchema = z
   .object({
     abstract: z.string().max(240),
+    body_asset_ids: z.array(UuidSchema).max(10).refine(unique).optional(),
     content_type: z.string().trim().min(1).max(40),
+    cover_asset_id: UuidSchema.nullable().optional(),
     tags: z.array(z.string().trim().min(1).max(40)).max(20).refine(unique),
   })
   .strict();
@@ -68,9 +70,11 @@ export const BaijiahaoPayloadSchema = z
   .object({
     abstract: unicodeText(1, 120),
     body_html: z.string().min(1),
+    body_asset_ids: z.array(UuidSchema).max(10).refine(unique),
     body_text: z.string().min(1),
     citation_links: z.array(BaijiahaoCitationLinkSchema).max(200),
     content_type: z.string().trim().min(1).max(40),
+    cover_asset_id: UuidSchema.nullable(),
     platform_code: z.literal(BAIJIAHAO_PLATFORM_CODE),
     rule_version: z.literal(BAIJIAHAO_RENDER_RULE_VERSION),
     schema_version: z.literal(BAIJIAHAO_PAYLOAD_SCHEMA_VERSION),
@@ -80,7 +84,7 @@ export const BaijiahaoPayloadSchema = z
   .strict();
 
 export const BAIJIAHAO_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
-  $id: 'https://geo.example/schemas/baijiahao-render-input-1.json',
+  $id: 'https://geo.example/schemas/baijiahao-render-input-2.json',
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   additionalProperties: false,
   properties: {
@@ -94,15 +98,22 @@ export const BAIJIAHAO_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
 });
 
 export const BAIJIAHAO_PAYLOAD_JSON_SCHEMA = Object.freeze({
-  $id: 'https://geo.example/schemas/baijiahao-payload-1.json',
+  $id: 'https://geo.example/schemas/baijiahao-payload-2.json',
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   additionalProperties: false,
   properties: {
     abstract: { maxLength: 120, minLength: 1, type: 'string' },
     body_html: { minLength: 1, type: 'string' },
+    body_asset_ids: {
+      items: { format: 'uuid', type: 'string' },
+      maxItems: 10,
+      type: 'array',
+      uniqueItems: true,
+    },
     body_text: { minLength: 1, type: 'string' },
     citation_links: { items: { $ref: '#/$defs/citation' }, maxItems: 200, type: 'array' },
     content_type: { maxLength: 40, minLength: 1, type: 'string' },
+    cover_asset_id: { anyOf: [{ format: 'uuid', type: 'string' }, { type: 'null' }] },
     platform_code: { const: BAIJIAHAO_PLATFORM_CODE },
     rule_version: { const: BAIJIAHAO_RENDER_RULE_VERSION },
     schema_version: { const: BAIJIAHAO_PAYLOAD_SCHEMA_VERSION },
@@ -124,8 +135,10 @@ export const BAIJIAHAO_PAYLOAD_JSON_SCHEMA = Object.freeze({
     'tags',
     'content_type',
     'body_html',
+    'body_asset_ids',
     'body_text',
     'citation_links',
+    'cover_asset_id',
   ],
   type: 'object',
   $defs: schemaDefinitions(),
@@ -179,7 +192,16 @@ function schemaDefinitions() {
           additionalProperties: false,
           properties: {
             abstract: { maxLength: 240, type: 'string' },
+            body_asset_ids: {
+              items: { format: 'uuid', type: 'string' },
+              maxItems: 10,
+              type: 'array',
+              uniqueItems: true,
+            },
             content_type: { maxLength: 40, minLength: 1, type: 'string' },
+            cover_asset_id: {
+              anyOf: [{ format: 'uuid', type: 'string' }, { type: 'null' }],
+            },
             tags: {
               items: { maxLength: 40, minLength: 1, type: 'string' },
               maxItems: 20,

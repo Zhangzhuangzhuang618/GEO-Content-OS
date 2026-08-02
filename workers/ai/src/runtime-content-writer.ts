@@ -182,6 +182,53 @@ export class RuntimeContentWriter implements ContentWriterPort {
     return generated(variant);
   }
 
+  public async rewriteBaijiahaoVariant(input: {
+    readonly context: ContentWriterRunContext;
+    readonly currentContent?: GeneratedContent;
+    readonly issues: readonly string[];
+    readonly requestId: string;
+    readonly signal?: AbortSignal;
+    readonly sourceContent: GeneratedContent;
+    readonly sourceMode: 'independent' | 'official_site_derived';
+    readonly writerInput: JsonObject;
+  }): Promise<GeneratedContent> {
+    const sourceMaster = baijiahaoSourceContent(input.sourceContent, 'master');
+    const current = input.currentContent
+      ? baijiahaoSourceContent(input.currentContent, 'baijiahao')
+      : baijiahaoSourceContent(input.sourceContent, 'baijiahao');
+    const revision: ContentWriterRevision = Object.freeze({
+      candidate: Object.freeze({
+        master_content: sourceMaster,
+        variants: Object.freeze([current]),
+      }),
+      issues: Object.freeze([
+        ...(input.sourceMode === 'official_site_derived'
+          ? [
+              '这是百家号同源派生，不是原文复制：保留来源中的事实、证据和核心观点，但必须重写标题、摘要、段落顺序、表达方式和信息重点。',
+              '禁止用近义词逐句替换制造伪原创，必须重新组织论证和段落结构。',
+            ]
+          : [
+              '这是百家号独立内容的质量重写：只修复报告指出的问题，不得换题或增加输入材料之外的事实。',
+            ]),
+        '删除 FAQ、Schema.org、SEO 元字段、官网外链、二维码、电话、外部账号和导流 CTA；不得补充输入材料之外的事实。',
+        ...input.issues,
+      ]),
+    });
+    const output = await this.execute(input, revision);
+    const variant = output.data.variants.find(
+      (candidate) => candidate.platform_code === 'baijiahao',
+    );
+    if (!variant) {
+      throw new GenerationWorkerError(
+        'GENERATED_CONTENT_INVALID',
+        'Content Writer omitted baijiahao during platform adaptation',
+      );
+    }
+    const content = generated(variant);
+    assertCompanyNamePolicy(content, 'baijiahao');
+    return content;
+  }
+
   private async executeOfficialSiteArticle(
     input: {
       readonly context: ContentWriterRunContext;
@@ -1038,4 +1085,42 @@ function generated(content: ContentWriterContent): GeneratedContent {
     platform_code: content.platform_code,
     schema_version: 'content-writer-data@1',
   }) as GeneratedContent;
+}
+
+function baijiahaoSourceContent(
+  source: GeneratedContent,
+  platformCode: 'baijiahao' | 'master',
+): ContentWriterContent {
+  const title = stringValue(source['title']);
+  const summary = stringValue(source['summary']);
+  const blocks = source.blocks
+    .filter((block) => block.block_type !== 'cta' && block.block_type !== 'media')
+    .map((block) =>
+      Object.freeze({
+        block_key: block.block_key,
+        block_type: block.block_type,
+        text: block.text,
+      }),
+    );
+  const citations = Array.isArray(source['citation_map'])
+    ? source['citation_map'].filter(isJsonObject).map((mapping) =>
+        Object.freeze({
+          citation_ids: Array.isArray(mapping['citation_ids'])
+            ? mapping['citation_ids'].filter((value): value is string => typeof value === 'string')
+            : [],
+          claim_key: stringValue(mapping['claim_key']),
+          claim_text: stringValue(mapping['claim_text']),
+        }),
+      )
+    : [];
+  return Object.freeze({
+    blocks: Object.freeze(blocks),
+    citation_map: Object.freeze(citations.filter((mapping) => mapping.citation_ids.length > 0)),
+    cta: null,
+    hashtags: Object.freeze([]),
+    platform_code: platformCode,
+    platform_meta: Object.freeze({}),
+    summary,
+    title,
+  });
 }
