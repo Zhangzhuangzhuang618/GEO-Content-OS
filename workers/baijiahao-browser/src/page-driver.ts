@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-import { chromium, type BrowserContext, type Page } from 'playwright';
+import { chromium, type BrowserContext, type Locator, type Page } from 'playwright';
 
 import type { BaijiahaoBrowserConfig } from './config.js';
 import type {
@@ -28,9 +28,11 @@ const SELECTORS = Object.freeze({
   noCover: '[data-testid="no-cover"], label:has-text("无封面"), button:has-text("无封面")',
   notOriginal: '[data-testid="not-original"], label:has-text("非原创")',
   qr: '[data-testid="login-qr"], img.tang-pass-qrcode-img, img[src*="/v2/api/qrcode"]',
-  submit: '[data-testid="submit"], button:has-text("发布"), button:has-text("提交")',
+  submit:
+    '[data-testid="publish-btn"], [data-testid="submit"], button:has-text("发布"), button:has-text("提交")',
   tags: 'input[placeholder*="标签"], input[data-field="tags"]',
-  title: 'input[placeholder*="标题"], textarea[placeholder*="标题"], input[data-field="title"]',
+  title:
+    '[data-testid="news-title-input"] [contenteditable="true"], input[placeholder*="标题"], textarea[placeholder*="标题"], input[data-field="title"]',
 });
 
 export class PageDriverError extends Error {
@@ -50,6 +52,7 @@ export class PageDriverError extends Error {
 
 export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   private readonly contexts = new Map<string, BrowserContext>();
+  private readonly loginPageUrls = new Map<string, string>();
   private readonly pages = new Map<string, Page>();
 
   public constructor(private readonly config: BaijiahaoBrowserConfig) {}
@@ -72,6 +75,11 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     if (!(await qr.isVisible().catch(() => false))) {
       const loginTrigger = page.locator(SELECTORS.loginTrigger).first();
       if (!(await loginTrigger.isVisible().catch(() => false))) {
+        await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+        await this.rejectCaptcha(page);
+        if (await this.isAuthenticatedEditor(page)) {
+          return { expiresAt, qrPng: Buffer.alloc(0) };
+        }
         throw new PageDriverError(
           'PAGE_SIGNATURE_CHANGED',
           'Baijiahao login entry no longer matches the frozen page signature',
@@ -80,6 +88,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await loginTrigger.click();
     }
     await qr.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+    this.loginPageUrls.set(accountId, page.url());
     try {
       await page.waitForFunction(
         `(() => {
@@ -106,12 +115,26 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     const page = this.pages.get(accountId);
     if (!page) return false;
     const timeout = Math.max(1, expiresAt.getTime() - Date.now());
-    return page
-      .locator(SELECTORS.authenticated)
-      .first()
-      .waitFor({ state: 'visible', timeout })
+    const loginPageUrl = this.loginPageUrls.get(accountId) ?? page.url();
+    this.loginPageUrls.delete(accountId);
+    const loginObserved = await page
+      .waitForFunction(
+        `(() => {
+          const authenticated = document.querySelector(${JSON.stringify(SELECTORS.authenticated)});
+          if (authenticated instanceof HTMLElement && authenticated.offsetParent !== null) {
+            return true;
+          }
+          return window.location.href !== ${JSON.stringify(loginPageUrl)};
+        })()`,
+        undefined,
+        { timeout },
+      )
       .then(() => true)
       .catch(() => false);
+    if (!loginObserved) return false;
+    await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+    await this.rejectCaptcha(page);
+    return this.isAuthenticatedEditor(page);
   }
 
   public async verifyAuthenticated(
@@ -122,11 +145,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     const page = await this.page(accountId, profilePath, storageStateJson);
     await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
-    return page
-      .locator(SELECTORS.authenticated)
-      .first()
-      .isVisible()
-      .catch(() => false);
+    return this.isAuthenticatedEditor(page);
   }
 
   public async exportStorageState(accountId: string): Promise<string> {
@@ -144,7 +163,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     await this.rejectCaptcha(page);
     await this.requireAuthenticated(page);
     const title = page.locator(SELECTORS.title).first();
-    const body = page.locator(SELECTORS.body).first();
+    const body = await this.bodyLocator(page);
     const submit = page.locator(SELECTORS.submit).first();
     for (const locator of [title, body, submit]) {
       if (!(await locator.isVisible().catch(() => false))) {
@@ -282,6 +301,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   public async close(): Promise<void> {
     const contexts = [...this.contexts.values()];
     this.contexts.clear();
+    this.loginPageUrls.clear();
     this.pages.clear();
     await Promise.all(contexts.map((context) => context.close()));
   }
@@ -319,15 +339,42 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   }
 
   private async requireAuthenticated(page: Page): Promise<void> {
+    if (!(await this.isAuthenticatedEditor(page))) {
+      throw new PageDriverError('AUTH_REQUIRED', 'Baijiahao login has expired');
+    }
+  }
+
+  private async isAuthenticatedEditor(page: Page): Promise<boolean> {
     if (
-      !(await page
+      await page
         .locator(SELECTORS.authenticated)
         .first()
         .isVisible()
-        .catch(() => false))
+        .catch(() => false)
     ) {
-      throw new PageDriverError('AUTH_REQUIRED', 'Baijiahao login has expired');
+      return true;
     }
+    try {
+      const title = page.locator(SELECTORS.title).first();
+      const submit = page.locator(SELECTORS.submit).first();
+      await title.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+      const body = await this.bodyLocator(page);
+      await Promise.all([
+        body.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs }),
+        submit.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs }),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async bodyLocator(page: Page): Promise<Locator> {
+    const iframe = page.locator('iframe#ueditor_0');
+    if ((await iframe.count()) > 0) {
+      return iframe.contentFrame().locator('body[contenteditable="true"]').first();
+    }
+    return page.locator(SELECTORS.body).first();
   }
 }
 

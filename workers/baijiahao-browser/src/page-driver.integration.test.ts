@@ -215,23 +215,24 @@ function route(
       <canvas width="1440" height="1755"></canvas>
       <button data-testid="bjh-login-btn">登录</button>
       <img data-testid="login-qr" style="display:none" src="/v2/api/qrcode">
-      <div data-testid="account-menu" style="display:none">已登录</div>
       <script>
         document.querySelector('[data-testid=bjh-login-btn]').onclick=()=>{
           document.querySelector('[data-testid=login-qr]').style.display='block';
-          setTimeout(()=>{localStorage.setItem('simulator-auth','yes');document.querySelector('[data-testid=account-menu]').style.display='block'},50);
+          setTimeout(()=>{localStorage.setItem('simulator-auth','yes');location.href='/login-complete'},500);
         };
       </script>
     `,
     );
   }
+  if (request.url === '/login-complete') {
+    return html(response, '<main>登录完成</main>');
+  }
   if (request.url === '/editor') {
     return html(
       response,
       `
-      <div data-testid="account-menu" style="display:none">已登录</div>
       <input data-field="title"><textarea data-field="abstract"></textarea>
-      <textarea data-field="body" contenteditable="true"></textarea>
+      <iframe id="ueditor_0" srcdoc="&lt;body contenteditable='true'&gt;&lt;/body&gt;"></iframe>
       <input type="file" data-field="cover" accept="image/*">
       <input type="file" data-field="body-images" accept="image/*" multiple>
       <input data-field="tags"><input data-field="fingerprint">
@@ -239,7 +240,6 @@ function route(
       <label data-testid="not-original"><input type="radio" name="original">非原创</label>
       <button data-testid="submit">发布</button>
       <script>
-        if(localStorage.getItem('simulator-auth')==='yes') document.querySelector('[data-testid=account-menu]').style.display='block';
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             title:document.querySelector('[data-field=title]').value,
