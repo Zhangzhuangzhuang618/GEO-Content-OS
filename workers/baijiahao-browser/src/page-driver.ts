@@ -13,16 +13,22 @@ import type {
 
 const SELECTORS = Object.freeze({
   abstract: 'textarea[placeholder*="摘要"], textarea[data-field="abstract"]',
+  aiGenerated: 'label:has-text("采用AI生成内容")',
   authenticated: '[data-testid="account-menu"], .user-info, .user-name',
+  authenticatedManage:
+    '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list',
   body: '[contenteditable="true"][data-field="body"], .ProseMirror, [contenteditable="true"]',
   bodyImages:
     'input[type="file"][data-field="body-images"], input[type="file"][multiple][accept*="image"]',
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
   category: 'select[data-field="category"], select[name*="category"]',
   contentList:
-    '[data-testid="content-list"], .content-list, table, text=/内容管理|作品管理|我的内容|暂无内容/u',
-  contentRow: '[data-publication-row], .content-item, tr',
-  cover: 'input[type="file"][data-field="cover"], input[type="file"][name*="cover"]',
+    '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list, table, text=/内容管理|作品管理|我的内容|暂无内容/u',
+  contentRow:
+    '[data-publication-row], [class*="client_pages_content_v2_components_articleItem"], .content-item, tr',
+  cover:
+    'input[type="file"][data-field="cover"], input[type="file"][name*="cover"], input[type="file"][name="media"][accept*="image"]',
+  coverTrigger: 'text="选择封面"',
   fingerprint: 'input[data-field="fingerprint"]',
   loginTrigger: '[data-testid="bjh-login-btn"], button:has-text("登录/注册百家号")',
   noCover: '[data-testid="no-cover"], label:has-text("无封面"), button:has-text("无封面")',
@@ -175,9 +181,8 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     }
     await title.fill(input.payload.title);
     await body.fill(input.payload.body_text);
-    await uploadImages(
+    await uploadCover(
       page,
-      SELECTORS.cover,
       input.images.filter((image) => image.role === 'cover'),
     );
     await uploadImages(
@@ -188,6 +193,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     if (input.payload.cover_asset_id === null) await clickOptional(page, SELECTORS.noCover);
     await selectOptional(page, SELECTORS.category, input.payload.content_type);
     await clickOptional(page, SELECTORS.notOriginal);
+    await checkOptional(page, SELECTORS.aiGenerated);
     await fillOptional(page, SELECTORS.abstract, input.payload.abstract);
     await fillOptional(page, SELECTORS.tags, input.payload.tags.join(','));
     await fillOptional(page, SELECTORS.fingerprint, input.contentFingerprint);
@@ -339,6 +345,15 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   }
 
   private async requireAuthenticated(page: Page): Promise<void> {
+    if (
+      await page
+        .locator(SELECTORS.authenticatedManage)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return;
+    }
     if (!(await this.isAuthenticatedEditor(page))) {
       throw new PageDriverError('AUTH_REQUIRED', 'Baijiahao login has expired');
     }
@@ -378,6 +393,42 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   }
 }
 
+async function uploadCover(
+  page: Page,
+  images: readonly DriverPublishInput['images'][number][],
+): Promise<void> {
+  if (images.length === 0) return;
+  const direct = page
+    .locator('input[type="file"][data-field="cover"], input[type="file"][name*="cover"]')
+    .first();
+  if ((await direct.count()) > 0) {
+    await setImageFiles(direct, images);
+    return;
+  }
+  const trigger = page.locator(SELECTORS.coverTrigger).first();
+  if (!(await trigger.isVisible().catch(() => false))) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao cover upload entry no longer matches the frozen page signature',
+    );
+  }
+  await trigger.click();
+  const dialog = page.getByRole('dialog').filter({ hasText: '本地上传' }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+  const locator = dialog.locator(SELECTORS.cover).first();
+  if ((await locator.count()) === 0) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao cover upload field no longer matches the frozen page signature',
+    );
+  }
+  await setImageFiles(locator, images);
+  const confirm = dialog.getByRole('button', { name: /^确定/u });
+  await confirm.waitFor({ state: 'visible', timeout: 10_000 });
+  await confirm.click();
+  await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
+}
+
 async function fillOptional(page: Page, selector: string, value: string): Promise<void> {
   const locator = page.locator(selector).first();
   if (await locator.isVisible().catch(() => false)) await locator.fill(value);
@@ -396,6 +447,13 @@ async function uploadImages(
       'Baijiahao image upload field no longer matches the frozen page signature',
     );
   }
+  await setImageFiles(locator, images);
+}
+
+async function setImageFiles(
+  locator: Locator,
+  images: readonly DriverPublishInput['images'][number][],
+): Promise<void> {
   await locator.setInputFiles(
     images.map((image, index) => ({
       buffer: Buffer.from(image.body),
@@ -408,6 +466,13 @@ async function uploadImages(
 async function clickOptional(page: Page, selector: string): Promise<void> {
   const locator = page.locator(selector).first();
   if (await locator.isVisible().catch(() => false)) await locator.click();
+}
+
+async function checkOptional(page: Page, selector: string): Promise<void> {
+  const locator = page.locator(selector).first();
+  if (!(await locator.isVisible().catch(() => false))) return;
+  const checkbox = locator.locator('input[type="checkbox"]').first();
+  if ((await checkbox.count()) === 0 || !(await checkbox.isChecked())) await locator.click();
 }
 
 async function selectOptional(page: Page, selector: string, value: string): Promise<void> {

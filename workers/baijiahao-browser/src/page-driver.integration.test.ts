@@ -8,12 +8,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BaijiahaoBrowserConfig } from './config.js';
 import { PlaywrightBaijiahaoPageDriver } from './page-driver.js';
 
+type SubmittedPublication = {
+  aiGenerated: boolean;
+  coverUploaded: boolean;
+  fingerprint: string;
+  title: string;
+};
+
 describe('Baijiahao local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
   let profileRoot = '';
   let server: ReturnType<typeof createServer>;
-  let submitted: { fingerprint: string; title: string } | null = null;
+  let submitted: SubmittedPublication | null = null;
   let validManageSignature = true;
 
   beforeEach(async () => {
@@ -106,6 +113,7 @@ describe('Baijiahao local browser simulator', () => {
         },
       );
       expect(preSubmitBytes).toBeGreaterThan(0);
+      expect(submitted).toMatchObject({ aiGenerated: true, coverUploaded: true });
       expect(result).toMatchObject({ externalId: 'simulator-145', status: 'processing' });
       const reconciled = await recovered.reconcile(
         accountId,
@@ -131,7 +139,12 @@ describe('Baijiahao local browser simulator', () => {
     try {
       const login = await driver.startLogin(accountId, profilePath);
       expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
-      submitted = { fingerprint: 'a'.repeat(64), title: '重复匹配测试' };
+      submitted = {
+        aiGenerated: true,
+        coverUploaded: true,
+        fingerprint: 'a'.repeat(64),
+        title: '重复匹配测试',
+      };
       duplicateRows = true;
 
       await expect(
@@ -196,10 +209,10 @@ function config(baseUrl: string, profileRoot: string): BaijiahaoBrowserConfig {
 function route(
   request: IncomingMessage,
   response: ServerResponse,
-  readSubmitted: () => { fingerprint: string; title: string } | null,
+  readSubmitted: () => SubmittedPublication | null,
   readDuplicateRows: () => boolean,
   hasManageSignature: () => boolean,
-  saveSubmitted: (value: { fingerprint: string; title: string }) => void,
+  saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
   if (request.url === '/v2/api/qrcode') {
     response.writeHead(200, { 'content-type': 'image/svg+xml' });
@@ -233,15 +246,24 @@ function route(
       `
       <input data-field="title"><textarea data-field="abstract"></textarea>
       <iframe id="ueditor_0" srcdoc="&lt;body contenteditable='true'&gt;&lt;/body&gt;"></iframe>
-      <input type="file" data-field="cover" accept="image/*">
+      <button type="button" data-testid="cover-trigger">选择封面</button>
+      <div role="dialog" data-testid="cover-dialog" style="display:none">
+        本地上传<input type="file" name="media" accept="image/*">
+        <button type="button" data-testid="cover-confirm">确定 (1)</button>
+      </div>
       <input type="file" data-field="body-images" accept="image/*" multiple>
       <input data-field="tags"><input data-field="fingerprint">
       <select data-field="category"><option value="news">news</option></select>
       <label data-testid="not-original"><input type="radio" name="original">非原创</label>
+      <label><input type="checkbox" data-testid="ai-generated">采用AI生成内容</label>
       <button data-testid="submit">发布</button>
       <script>
+        document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
+        document.querySelector('[data-testid=cover-confirm]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='none';
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+            aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
+            coverUploaded:document.querySelector('[name=media]').files.length===1,
             title:document.querySelector('[data-field=title]').value,
             fingerprint:document.querySelector('[data-field=fingerprint]').value
           })});
@@ -255,12 +277,7 @@ function route(
     const chunks: Buffer[] = [];
     request.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
     request.on('end', () => {
-      saveSubmitted(
-        JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
-          fingerprint: string;
-          title: string;
-        },
-      );
+      saveSubmitted(JSON.parse(Buffer.concat(chunks).toString('utf8')) as SubmittedPublication);
       response.writeHead(204).end();
     });
     return;
