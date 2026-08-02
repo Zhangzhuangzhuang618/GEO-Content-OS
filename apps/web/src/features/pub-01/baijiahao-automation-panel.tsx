@@ -192,11 +192,11 @@ export function BaijiahaoAutomationPanel({
               <div className="mt-4 flex flex-wrap items-center gap-5">
                 <Image
                   alt="百家号扫码登录二维码"
-                  className="h-48 w-48 rounded-lg border border-line bg-white p-2"
-                  height={192}
+                  className="h-72 w-72 rounded-lg border border-line bg-white p-3 [image-rendering:pixelated] sm:h-80 sm:w-80"
+                  height={320}
                   src={login.qr_image_data_url}
                   unoptimized
-                  width={192}
+                  width={320}
                 />
                 <p className="max-w-md text-sm leading-6 text-ink-600">
                   二维码过期后点击“扫码登录”刷新。系统不保存百度账号密码；登录 Cookie 加密保存。

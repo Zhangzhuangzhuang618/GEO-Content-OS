@@ -201,13 +201,27 @@ function route(
   hasManageSignature: () => boolean,
   saveSubmitted: (value: { fingerprint: string; title: string }) => void,
 ): void {
+  if (request.url === '/v2/api/qrcode') {
+    response.writeHead(200, { 'content-type': 'image/svg+xml' });
+    response.end(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="265" height="265"><rect width="265" height="265" fill="white"/><rect x="20" y="20" width="225" height="225" fill="black"/></svg>',
+    );
+    return;
+  }
   if (request.url === '/login') {
     return html(
       response,
       `
-      <img data-testid="login-qr" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==">
+      <canvas width="1440" height="1755"></canvas>
+      <button data-testid="bjh-login-btn">登录</button>
+      <img data-testid="login-qr" style="display:none" src="/v2/api/qrcode">
       <div data-testid="account-menu" style="display:none">已登录</div>
-      <script>setTimeout(()=>{localStorage.setItem('simulator-auth','yes');document.querySelector('[data-testid=account-menu]').style.display='block'},50)</script>
+      <script>
+        document.querySelector('[data-testid=bjh-login-btn]').onclick=()=>{
+          document.querySelector('[data-testid=login-qr]').style.display='block';
+          setTimeout(()=>{localStorage.setItem('simulator-auth','yes');document.querySelector('[data-testid=account-menu]').style.display='block'},50);
+        };
+      </script>
     `,
     );
   }

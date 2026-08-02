@@ -24,9 +24,10 @@ const SELECTORS = Object.freeze({
   contentRow: '[data-publication-row], .content-item, tr',
   cover: 'input[type="file"][data-field="cover"], input[type="file"][name*="cover"]',
   fingerprint: 'input[data-field="fingerprint"]',
+  loginTrigger: '[data-testid="bjh-login-btn"], button:has-text("登录/注册百家号")',
   noCover: '[data-testid="no-cover"], label:has-text("无封面"), button:has-text("无封面")',
   notOriginal: '[data-testid="not-original"], label:has-text("非原创")',
-  qr: '[data-testid="login-qr"], img[src*="qrcode"], canvas',
+  qr: '[data-testid="login-qr"], img.tang-pass-qrcode-img, img[src*="/v2/api/qrcode"]',
   submit: '[data-testid="submit"], button:has-text("发布"), button:has-text("提交")',
   tags: 'input[placeholder*="标签"], input[data-field="tags"]',
   title: 'input[placeholder*="标题"], textarea[placeholder*="标题"], input[data-field="title"]',
@@ -68,7 +69,36 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       return { expiresAt, qrPng: Buffer.alloc(0) };
     }
     const qr = page.locator(SELECTORS.qr).first();
+    if (!(await qr.isVisible().catch(() => false))) {
+      const loginTrigger = page.locator(SELECTORS.loginTrigger).first();
+      if (!(await loginTrigger.isVisible().catch(() => false))) {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Baijiahao login entry no longer matches the frozen page signature',
+        );
+      }
+      await loginTrigger.click();
+    }
     await qr.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+    try {
+      await page.waitForFunction(
+        `(() => {
+          const image = document.querySelector(${JSON.stringify(SELECTORS.qr)});
+          return image instanceof HTMLImageElement
+            && image.complete
+            && image.naturalWidth >= 200
+            && image.naturalHeight >= 200
+            && image.src.includes('/v2/api/qrcode');
+        })()`,
+        undefined,
+        { timeout: this.config.navigationTimeoutMs },
+      );
+    } catch {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Baijiahao login QR code did not finish loading',
+      );
+    }
     return Object.freeze({ expiresAt, qrPng: await qr.screenshot({ type: 'png' }) });
   }
 
