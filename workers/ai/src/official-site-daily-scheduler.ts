@@ -8,7 +8,7 @@ import type { JsonObject } from './generation.types.js';
 const DAILY_TARGET = 10;
 const MAX_ACTIVE_CANDIDATES = 3;
 const SHANGHAI_OFFSET = '+08:00';
-const ACTIVE_ITEM_STATUSES = ['generating', 'quality_check', 'rewriting'] as const;
+const ACTIVE_ITEM_STATUSES = ['generating', 'quality_check', 'rewriting', 'media_pending'] as const;
 const QUALIFIED_ITEM_STATUSES = ['qualified', 'scheduled', 'published', 'reserve'] as const;
 const SCHEDULE_TIMES = Object.freeze([
   '08:00:00',

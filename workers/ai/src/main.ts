@@ -1,5 +1,10 @@
 import { createServer } from 'node:http';
 import postgres from 'postgres';
+import {
+  CloudflareWorkersAiImageAdapter,
+  readImageProviderConfiguration,
+} from '@geo-content-os/adapter-image';
+import { createStorageAdapter, readStorageConfiguration } from '@geo-content-os/adapter-storage';
 
 import { readAiWorkerConfig } from './config.js';
 import { PostgresGenerationStore } from './generation.store.js';
@@ -17,18 +22,37 @@ import { createRuntimeModels } from './runtime-model.js';
 import { RuntimeQualityChecker } from './runtime-quality-checker.js';
 import { PostgresUsageRecorder } from './usage-recorder.js';
 import { VisibilityProbeWorker } from './visibility.worker.js';
+import { ArticleImagePlanner } from './media-planner.js';
+import { PostgresMediaUsageRecorder } from './media-usage.js';
+import { ContentMediaAutomation } from './content-media-automation.js';
+import { ContentMediaWorker } from './content-media.worker.js';
 
 async function main(): Promise<void> {
   const config = readAiWorkerConfig();
   const database = postgres(config.databaseUrl, { max: 5, prepare: false });
   const adapters = createRuntimeModels(config.driver);
+  const imageConfiguration = readImageProviderConfiguration();
+  const imageProvider = imageConfiguration.provider
+    ? new CloudflareWorkersAiImageAdapter(imageConfiguration.provider)
+    : null;
+  const storage = createStorageAdapter(readStorageConfiguration());
   const usage = new PostgresUsageRecorder(database);
+  const mediaUsage = new PostgresMediaUsageRecorder(database);
   const writer = new RuntimeContentWriter(database, adapters, (context, modelUsage) =>
     usage.record(context, modelUsage),
   );
   const automation = new OfficialSiteAutomation(database, writer, config.automation);
   const baijiahaoAutomation = new BaijiahaoAutomation(database, writer, config.automation);
-  const qualityAutomation = new QualityAutomationCoordinator(automation, baijiahaoAutomation);
+  const mediaAutomation = new ContentMediaAutomation(config.media, {
+    generationModel: imageConfiguration.provider?.generationModel ?? null,
+    inspectionModel: imageConfiguration.provider?.inspectionModel ?? null,
+    provider: imageConfiguration.driver === 'cloudflare' ? 'cloudflare' : null,
+  });
+  const qualityAutomation = new QualityAutomationCoordinator(
+    automation,
+    baijiahaoAutomation,
+    mediaAutomation,
+  );
   const generationAutomation = new GenerationAutomationCoordinator(automation, baijiahaoAutomation);
   const dailyScheduler = new OfficialSiteDailyScheduler(database, config.automation, {
     onError: (error) => console.error('Official-site daily scheduler error', error),
@@ -50,12 +74,27 @@ async function main(): Promise<void> {
     qualityAutomation,
   );
   const visibility = new VisibilityProbeWorker(database, adapters);
+  const plannerModel = adapters.get(config.media.plannerModelKey);
+  if (!plannerModel)
+    throw new Error(`Image planner model ${config.media.plannerModelKey} is unavailable`);
+  const media = new ContentMediaWorker(
+    database,
+    new ArticleImagePlanner(plannerModel, (scope, modelUsage) =>
+      mediaUsage.recordPlanner(scope, modelUsage),
+    ),
+    imageProvider,
+    storage,
+    automation,
+    baijiahaoAutomation,
+    config.media,
+  );
   const consumer = new AiQueueConsumer(
     generation,
     quality,
     automation,
     baijiahaoAutomation,
     visibility,
+    media,
     {
       concurrency: config.queueConcurrency,
       onError: (error) => console.error('AI Worker queue error', error),

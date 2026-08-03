@@ -11,6 +11,7 @@ const ACTIVE_STATUSES = [
   'generating',
   'quality_check',
   'rewriting',
+  'media_pending',
 ] as const;
 const QUALIFIED_STATUSES = [
   'qualified',

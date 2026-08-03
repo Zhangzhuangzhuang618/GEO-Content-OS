@@ -63,6 +63,15 @@ export const OfficialSiteCitationLinkSchema = z
   })
   .strict();
 
+export const OfficialSiteMediaAssetSchema = z
+  .object({
+    alt_text: z.string().trim().min(1).max(240),
+    position: z.number().int().min(0).max(10),
+    role: z.enum(['cover', 'body']),
+    url: z.url().refine((value) => value.startsWith('https://') || value.startsWith('http://')),
+  })
+  .strict();
+
 export const OfficialSiteRenderInputSchema = z
   .object({
     citations: z
@@ -70,6 +79,11 @@ export const OfficialSiteRenderInputSchema = z
       .max(200)
       .refine((items) => unique(items.map((item) => item.citation_id))),
     content: OfficialSiteContentSchema,
+    media_assets: z
+      .array(OfficialSiteMediaAssetSchema)
+      .max(11)
+      .refine((items) => unique(items.map((item) => `${item.role}:${item.position}`)))
+      .optional(),
     rule_version: z.literal(OFFICIAL_SITE_RENDER_RULE_VERSION),
   })
   .strict();
@@ -109,6 +123,11 @@ export const OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
       type: 'array',
     },
     content: { $ref: '#/$defs/content' },
+    media_assets: {
+      items: { $ref: '#/$defs/media_asset' },
+      maxItems: 11,
+      type: 'array',
+    },
     rule_version: { const: OFFICIAL_SITE_RENDER_RULE_VERSION },
   },
   required: ['rule_version', 'content', 'citations'],
@@ -243,6 +262,17 @@ function schemaDefinitions() {
         question: { minLength: 1, type: 'string' },
       },
       required: ['question', 'answer'],
+      type: 'object',
+    },
+    media_asset: {
+      additionalProperties: false,
+      properties: {
+        alt_text: { maxLength: 240, minLength: 1, type: 'string' },
+        position: { maximum: 10, minimum: 0, type: 'integer' },
+        role: { enum: ['cover', 'body'] },
+        url: { format: 'uri', pattern: '^https?://', type: 'string' },
+      },
+      required: ['alt_text', 'position', 'role', 'url'],
       type: 'object',
     },
     schema_org: {

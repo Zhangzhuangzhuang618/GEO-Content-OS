@@ -118,6 +118,14 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           renderOfficialSite({
             citations: claim.citations,
             content,
+            media_assets: (claim.mediaAssets ?? [])
+              .filter((asset) => asset.publicUrl !== null)
+              .map((asset) => ({
+                alt_text: asset.altText,
+                position: asset.position,
+                role: asset.role,
+                url: asset.publicUrl as string,
+              })),
             rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
           }),
           hashOfficialSitePayload,
@@ -129,7 +137,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderBaijiahao({
             citations: claim.citations,
-            content,
+            content: baijiahaoContentWithMedia(content, claim.mediaAssets ?? []),
             rule_version: BAIJIAHAO_RENDER_RULE_VERSION,
           }),
           hashBaijiahaoPayload,
@@ -211,6 +219,27 @@ function platformRenderContent(
   const renderContent = { ...content };
   delete renderContent['schema_version'];
   return Object.freeze(renderContent);
+}
+
+function baijiahaoContentWithMedia(
+  content: Readonly<Record<string, unknown>>,
+  assets: readonly NonNullable<PublishClaim['mediaAssets']>[number][],
+): Readonly<Record<string, unknown>> {
+  if (assets.length === 0) return content;
+  const platformMeta = content['platform_meta'];
+  if (typeof platformMeta !== 'object' || platformMeta === null || Array.isArray(platformMeta)) {
+    return content;
+  }
+  const cover = assets.find((asset) => asset.role === 'cover');
+  const body = assets.filter((asset) => asset.role === 'body').map((asset) => asset.id);
+  return Object.freeze({
+    ...content,
+    platform_meta: Object.freeze({
+      ...platformMeta,
+      body_asset_ids: body,
+      cover_asset_id: cover?.id ?? null,
+    }),
+  });
 }
 
 async function execute<TPayload>(

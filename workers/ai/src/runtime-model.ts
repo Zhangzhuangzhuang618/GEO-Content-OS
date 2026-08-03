@@ -27,6 +27,9 @@ export function createRuntimeModels(
     environment['VISIBILITY_MODEL_KEY'] ??
       environment['CONTENT_MODEL_BALANCED_KEY'] ??
       'deepseek-v4-flash',
+    environment['IMAGE_PLANNER_MODEL_KEY'] ??
+      environment['CONTENT_MODEL_BALANCED_KEY'] ??
+      'deepseek-v4-flash',
   ]);
   return new Map(
     [...keys].map((key) => [
@@ -115,6 +118,8 @@ function mockOutput(input: ModelRequest): ModelJsonObject | string {
   if (visibilityInput) return string(visibilityInput['text']) || '未提供测试问题。';
   const qualityInput = optionalMessageObject(input, 'quality_checker_input');
   if (qualityInput) return mockQualityOutput(qualityInput);
+  const imagePlannerInput = optionalMessageObject(input, 'image_planner_input');
+  if (imagePlannerInput) return mockImagePlan(imagePlannerInput);
   const writerInput = messageObject(input, 'content_writer_input');
   const brief = object(writerInput['brief']);
   const citations = array(writerInput['citations']).map(object);
@@ -172,6 +177,23 @@ function mockOutput(input: ModelRequest): ModelJsonObject | string {
   return {
     master_content: content('master'),
     variants: platformCodes.map(content),
+  };
+}
+
+function mockImagePlan(input: ModelJsonObject): ModelJsonObject {
+  const title = string(input['title']) || '内容指南';
+  return {
+    cover_label: '实用指南',
+    scenes: [
+      {
+        caption: '搬家前的准备与核对示意',
+        prompt: `Editorial flat illustration about preparing and checking items for ${title}, anonymous people, clean blue palette, no text, no logo, no watermark.`,
+      },
+      {
+        caption: '搬家完成后的清点与验收示意',
+        prompt: `Editorial flat illustration about counting and inspecting household items after moving, anonymous people, clean teal palette, no text, no logo, no watermark.`,
+      },
+    ],
   };
 }
 

@@ -19,6 +19,7 @@ const EVENT_QUEUE: Readonly<Record<EventType, OutboxQueueName>> = Object.freeze(
   'content.variant.quality_check_requested.v1': 'geo-ai',
   'content.variant.official_site_rewrite_requested.v1': 'geo-ai',
   'content.variant.baijiahao_adaptation_requested.v1': 'geo-ai',
+  'content.variant.media_generation_requested.v1': 'geo-ai',
   'publishing.job.execution_requested.v1': 'geo-publisher',
   'publishing.job.published.v1': 'geo-ai',
   'baijiahao.publication.reconcile_requested.v1': 'geo-publisher',

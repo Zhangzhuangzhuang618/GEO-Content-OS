@@ -112,6 +112,7 @@ export const OfficialSiteAutomationRunSchema = z
       'quality_pending',
       'rewrite_pending',
       'rewriting',
+      'media_pending',
       'publish_pending',
       'publishing',
       'published',

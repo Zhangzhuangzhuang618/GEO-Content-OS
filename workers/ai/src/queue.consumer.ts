@@ -7,6 +7,7 @@ import type { BaijiahaoAutomation } from './baijiahao-automation.js';
 import type { OfficialSiteAutomation } from './official-site-automation.js';
 import type { QualityCheckWorker } from './quality.worker.js';
 import type { VisibilityProbeWorker } from './visibility.worker.js';
+import type { ContentMediaWorker } from './content-media.worker.js';
 
 export interface AiQueueConsumerOptions {
   readonly concurrency: number;
@@ -24,6 +25,7 @@ export class AiQueueConsumer {
     automation: OfficialSiteAutomation,
     baijiahaoAutomation: BaijiahaoAutomation,
     visibility: VisibilityProbeWorker,
+    media: ContentMediaWorker,
     options: AiQueueConsumerOptions,
   ) {
     const onError = options.onError ?? (() => undefined);
@@ -44,6 +46,9 @@ export class AiQueueConsumer {
             attempt: job.attemptsMade + 1,
             maxAttempts: job.opts.attempts ?? 1,
           });
+        }
+        if (job.name === 'content.variant.media_generation_requested.v1') {
+          return media.run(job.data);
         }
         if (job.name === 'content.variant.official_site_rewrite_requested.v1') {
           return automation.runRewrite(job.data);

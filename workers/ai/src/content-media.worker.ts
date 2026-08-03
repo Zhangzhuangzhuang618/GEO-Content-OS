@@ -1,0 +1,559 @@
+import {
+  applyAiDisclosure,
+  imageHash,
+  imageMetadata,
+  inspectionPassed,
+  normalizeGeneratedImage,
+  renderTemplateImage,
+  type ImageInspectionResult,
+  type ImageProvider,
+} from '@geo-content-os/adapter-image';
+import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import { findDisallowedCompanyNames } from '@geo-content-os/contracts';
+import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
+import type postgres from 'postgres';
+
+import type { BaijiahaoAutomation, BaijiahaoQualityGate } from './baijiahao-automation.js';
+import type { ContentMediaAutomationConfig } from './config.js';
+import { validateMediaGenerationEvent } from './media-generation.event.js';
+import type { ArticleImagePlan, ArticleImagePlanner } from './media-planner.js';
+import type {
+  OfficialSiteAutomation,
+  OfficialSiteQualityGate,
+} from './official-site-automation.js';
+import type { ValidatedQualityEvent } from './quality.event.js';
+
+type MediaStatus = 'fallback' | 'succeeded';
+
+interface MediaClaim {
+  readonly content: Readonly<Record<string, unknown>>;
+  readonly contentHash: string;
+  readonly createdBy: string;
+  readonly generationRunId: string;
+  readonly generationModel: string | null;
+  readonly inspectionModel: string | null;
+  readonly platformCode: 'baijiahao' | 'official_site';
+  readonly provider: string | null;
+  readonly version: number;
+}
+
+interface PreparedAsset {
+  readonly altText: string;
+  readonly body: Uint8Array;
+  readonly position: number;
+  readonly promptHash: string | null;
+  readonly quality: Readonly<Record<string, unknown>>;
+  readonly role: 'body' | 'cover';
+  readonly source: 'cloudflare' | 'template';
+}
+
+interface StoredAsset extends PreparedAsset {
+  readonly contentHash: string;
+  readonly height: number;
+  readonly objectUri: string;
+  readonly publicUrl: string | null;
+  readonly sizeBytes: number;
+  readonly width: number;
+}
+
+interface StoredQualityRow {
+  readonly automationGate: unknown;
+  readonly decision: string;
+  readonly generationRunId: string;
+  readonly geoScores: unknown;
+  readonly issues: unknown;
+  readonly score: number;
+}
+
+export class ContentMediaWorker {
+  public constructor(
+    private readonly client: postgres.Sql,
+    private readonly planner: ArticleImagePlanner,
+    private readonly provider: ImageProvider | null,
+    private readonly storage: ObjectStorageAdapter,
+    private readonly officialSite: OfficialSiteAutomation,
+    private readonly baijiahao: BaijiahaoAutomation,
+    private readonly config: ContentMediaAutomationConfig,
+  ) {}
+
+  public async run(
+    raw: unknown,
+    signal?: AbortSignal,
+  ): Promise<{ readonly disposition: 'completed' | 'processed' }> {
+    const event = validateMediaGenerationEvent(raw);
+    const claim = await this.claim(event);
+    if (!claim) return Object.freeze({ disposition: 'completed' });
+
+    const plan = await this.planner.plan({
+      content: claim.content,
+      platformCode: claim.platformCode,
+      requestId: event.data.requestId,
+      scope: scope(event),
+      ...(signal ? { signal } : {}),
+    });
+    let prepared: Awaited<ReturnType<ContentMediaWorker['prepareAssets']>>;
+    try {
+      prepared = await this.prepareAssets(plan, claim, event.data.requestId, signal);
+    } catch (error) {
+      prepared = Object.freeze({
+        assets: Object.freeze([]),
+        externalCalls: 0,
+        providerErrors: Object.freeze([safeError(error)]),
+        usedFallback: true,
+      });
+    }
+    const stored: StoredAsset[] = [];
+    const storageErrors: string[] = [];
+    for (const asset of prepared.assets) {
+      try {
+        stored.push(await this.storeAsset(event.tenantId, event.data.contentVersionId, asset));
+      } catch (error) {
+        storageErrors.push(safeError(error));
+      }
+    }
+
+    const status: MediaStatus =
+      prepared.usedFallback || stored.length !== prepared.assets.length ? 'fallback' : 'succeeded';
+    await this.persistAndResume(event, claim, plan, stored, status, {
+      external_calls: prepared.externalCalls,
+      provider_failures: prepared.providerErrors,
+      storage_failures: storageErrors,
+    });
+    return Object.freeze({ disposition: 'processed' });
+  }
+
+  private claim(
+    event: ReturnType<typeof validateMediaGenerationEvent>,
+  ): Promise<MediaClaim | null> {
+    return this.client.begin(async (transaction) => {
+      const rows = await transaction<
+        (MediaClaim & { readonly status: string; readonly updatedAt: Date })[]
+      >`
+        SELECT run.status,run.version,run.created_by AS "createdBy",
+          run.platform_code AS "platformCode",run.provider,
+          run.generation_model AS "generationModel",run.inspection_model AS "inspectionModel",
+          version.content_json AS content,version.content_hash AS "contentHash",
+          report.generation_run_id AS "generationRunId",run.updated_at AS "updatedAt"
+        FROM content_media_runs AS run
+        JOIN content_versions AS version
+          ON version.id=run.content_version_id AND version.tenant_id=run.tenant_id
+        JOIN quality_reports AS report
+          ON report.id=run.quality_report_id AND report.tenant_id=run.tenant_id
+        WHERE run.id=${event.data.mediaRunId}::uuid AND run.tenant_id=${event.tenantId}::uuid
+          AND run.workspace_id=${event.data.workspaceId}::uuid
+          AND run.project_id=${event.data.projectId}::uuid
+          AND run.package_id=${event.data.packageId}::uuid
+          AND run.variant_id=${event.data.variantId}::uuid
+          AND run.content_version_id=${event.data.contentVersionId}::uuid
+          AND run.quality_report_id=${event.data.qualityReportId}::uuid
+          AND run.platform_code=${event.data.platformCode}
+        FOR UPDATE OF run
+      `;
+      const row = rows[0];
+      if (!row || row.contentHash !== event.data.contentHash)
+        throw new Error('Content media scope is invalid');
+      if (row.status === 'succeeded' || row.status === 'fallback' || row.status === 'cancelled') {
+        return null;
+      }
+      if (row.status === 'running' && Date.now() - row.updatedAt.getTime() < 120_000) {
+        throw new Error('Content media generation is already running');
+      }
+      const changed = await transaction<{ version: number }[]>`
+        UPDATE content_media_runs SET status='running',started_at=COALESCE(started_at,now()),
+          finished_at=NULL,last_error_json=NULL,version=version+1
+        WHERE id=${event.data.mediaRunId}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND status IN ('queued','running') AND version=${row.version}
+        RETURNING version
+      `;
+      const lease = changed[0];
+      if (!lease) throw new Error('Content media run lease was lost');
+      return Object.freeze({
+        content: Object.freeze(row.content),
+        contentHash: row.contentHash,
+        createdBy: row.createdBy,
+        generationModel: row.generationModel,
+        generationRunId: row.generationRunId,
+        inspectionModel: row.inspectionModel,
+        platformCode: row.platformCode,
+        provider: row.provider,
+        version: lease.version,
+      });
+    });
+  }
+
+  private async prepareAssets(
+    plan: ArticleImagePlan,
+    claim: MediaClaim,
+    requestId: string,
+    signal?: AbortSignal,
+  ): Promise<{
+    readonly assets: readonly PreparedAsset[];
+    readonly externalCalls: number;
+    readonly providerErrors: readonly string[];
+    readonly usedFallback: boolean;
+  }> {
+    const title = safeDisplayText(string(claim.content['title']) || '内容指南', '内容指南', 90);
+    const assets: PreparedAsset[] = [
+      {
+        altText: `${title}封面示意图`,
+        body: await renderTemplateImage({ accent: 'blue', label: plan.coverLabel, title }),
+        position: 0,
+        promptHash: null,
+        quality: templateQuality(),
+        role: 'cover',
+        source: 'template',
+      },
+    ];
+    const providerErrors: string[] = [];
+    let externalCalls = 0;
+    let usedFallback = plan.source === 'template' || !this.provider;
+    for (const [index, scene] of plan.scenes.entries()) {
+      let asset: PreparedAsset | null = null;
+      if (plan.source === 'deepseek' && this.provider) {
+        try {
+          externalCalls += 1;
+          const generated = await this.provider.generate({
+            prompt: scene.prompt,
+            requestId: `${requestId}:generate:${index + 1}`,
+            seed: seed(claim.contentHash, index),
+            ...(signal ? { signal } : {}),
+            steps: this.config.generationSteps,
+          });
+          const normalized = await normalizeGeneratedImage(generated.body);
+          externalCalls += 1;
+          const inspection = await this.provider.inspect({
+            body: normalized,
+            expectedScene: scene.caption,
+            mimeType: 'image/jpeg',
+            requestId: `${requestId}:inspect:${index + 1}`,
+            ...(signal ? { signal } : {}),
+          });
+          if (!inspectionPassed(inspection)) throw new Error('Generated image failed image QA');
+          asset = {
+            altText: safeDisplayText(scene.caption, `文章步骤${index + 1}示意图`, 220),
+            body: await applyAiDisclosure(normalized),
+            position: index + 1,
+            promptHash: imageHash(new TextEncoder().encode(scene.prompt)),
+            quality: providerQuality(inspection),
+            role: 'body',
+            source: 'cloudflare',
+          };
+        } catch (error) {
+          usedFallback = true;
+          providerErrors.push(safeError(error));
+        }
+      }
+      assets.push(
+        asset ?? {
+          altText: safeDisplayText(scene.caption, `文章步骤${index + 1}示意图`, 220),
+          body: await renderTemplateImage({
+            accent: index === 0 ? 'gold' : 'teal',
+            label: safeDisplayText(scene.caption, `文章步骤${index + 1}`, 60),
+            title,
+          }),
+          position: index + 1,
+          promptHash: null,
+          quality: templateQuality(),
+          role: 'body',
+          source: 'template',
+        },
+      );
+    }
+    return Object.freeze({
+      assets: Object.freeze(assets),
+      externalCalls,
+      providerErrors: Object.freeze(providerErrors),
+      usedFallback,
+    });
+  }
+
+  private async storeAsset(
+    tenantId: string,
+    contentVersionId: string,
+    asset: PreparedAsset,
+  ): Promise<StoredAsset> {
+    const hash = imageHash(asset.body);
+    const metadata = await imageMetadata(asset.body);
+    const key = `generated-media/${tenantId}/${contentVersionId}/${asset.role}-${asset.position}-${hash}.jpg`;
+    const stored = await this.storage.putObject({
+      body: asset.body,
+      contentHash: hash,
+      contentType: 'image/jpeg',
+      key,
+      metadata: {
+        ai_disclosure: 'AI示意图',
+        content_version_id: contentVersionId,
+        promotional_watermark: 'false',
+        source: asset.source,
+        tenant_id: tenantId,
+      },
+    });
+    return Object.freeze({
+      ...asset,
+      contentHash: hash,
+      height: metadata.height,
+      objectUri: stored.uri,
+      publicUrl: this.config.publicBaseUrl ? `${this.config.publicBaseUrl}/${key}` : null,
+      sizeBytes: metadata.sizeBytes,
+      width: metadata.width,
+    });
+  }
+
+  private persistAndResume(
+    event: ReturnType<typeof validateMediaGenerationEvent>,
+    claim: MediaClaim,
+    plan: ArticleImagePlan,
+    assets: readonly StoredAsset[],
+    status: MediaStatus,
+    diagnostics: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    return this.client.begin(async (transaction) => {
+      const qualityRows = await transaction<StoredQualityRow[]>`
+        SELECT decision,score,issues_json AS issues,geo_scores_json AS "geoScores",
+          automation_gate_json AS "automationGate",generation_run_id AS "generationRunId"
+        FROM quality_reports
+        WHERE id=${event.data.qualityReportId}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND content_version_id=${event.data.contentVersionId}::uuid
+          AND variant_id=${event.data.variantId}::uuid
+      `;
+      const storedQuality = qualityRows[0];
+      if (!storedQuality || storedQuality.generationRunId !== claim.generationRunId) {
+        throw new Error('Stored quality report scope is invalid');
+      }
+      const result = parseQualityResult(storedQuality);
+      const gate = parseQualityGate(storedQuality.automationGate, claim.platformCode);
+      if (!gate.passed) throw new Error('Stored quality gate did not pass');
+
+      for (const asset of assets) {
+        const metadata = {
+          ai_disclosure: 'AI示意图',
+          ai_generated: true,
+          content_version_id: event.data.contentVersionId,
+          height: asset.height,
+          media_run_id: event.data.mediaRunId,
+          model: asset.source === 'cloudflare' ? claim.generationModel : null,
+          promotional_watermark: false,
+          prompt_hash: asset.promptHash,
+          provider: asset.source === 'cloudflare' ? claim.provider : 'internal',
+          role: asset.role,
+          schema_version: 'generated-media@1',
+          source: asset.source,
+          width: asset.width,
+        };
+        const rows = await transaction<{ id: string }[]>`
+          INSERT INTO media_assets (
+            tenant_id,workspace_id,project_id,asset_type,object_uri,content_hash,
+            mime_type,size_bytes,metadata_json,created_by
+          ) VALUES (
+            ${event.tenantId}::uuid,${event.data.workspaceId}::uuid,
+            ${event.data.projectId}::uuid,'image',${asset.objectUri},${asset.contentHash},
+            'image/jpeg',${asset.sizeBytes},${JSON.stringify(metadata)}::text::jsonb,
+            ${claim.createdBy}::uuid
+          )
+          ON CONFLICT (tenant_id,object_uri) DO UPDATE SET object_uri=EXCLUDED.object_uri
+          RETURNING id
+        `;
+        const mediaAssetId = rows[0]?.id;
+        if (!mediaAssetId) throw new Error('Generated media asset was not persisted');
+        await transaction`
+          INSERT INTO content_media_assets (
+            tenant_id,content_media_run_id,content_version_id,media_asset_id,
+            role,position,alt_text,source,public_url,quality_json
+          ) VALUES (
+            ${event.tenantId}::uuid,${event.data.mediaRunId}::uuid,
+            ${event.data.contentVersionId}::uuid,${mediaAssetId}::uuid,
+            ${asset.role},${asset.position},${asset.altText},${asset.source},
+            ${asset.publicUrl},${JSON.stringify(asset.quality)}::text::jsonb
+          )
+          ON CONFLICT (tenant_id,content_version_id,role,position) DO NOTHING
+        `;
+      }
+
+      const completed = await transaction<{ id: string }[]>`
+        UPDATE content_media_runs SET status=${status},plan_json=${JSON.stringify(plan)}::text::jsonb,
+          diagnostics_json=${JSON.stringify(diagnostics)}::text::jsonb,
+          finished_at=now(),last_error_json=NULL,version=version+1
+        WHERE id=${event.data.mediaRunId}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND status='running' AND version=${claim.version}
+        RETURNING id
+      `;
+      if (completed.length !== 1) throw new Error('Content media run lease was lost');
+
+      const qualityEvent: ValidatedQualityEvent = Object.freeze({
+        data: Object.freeze({
+          actorUserId: event.data.actorUserId,
+          contentHash: event.data.contentHash,
+          contentVersionId: event.data.contentVersionId,
+          generationRunId: claim.generationRunId,
+          packageId: event.data.packageId,
+          projectId: event.data.projectId,
+          requestId: event.data.requestId,
+          variantId: event.data.variantId,
+          workspaceId: event.data.workspaceId,
+        }),
+        eventId: event.eventId,
+        tenantId: event.tenantId,
+      });
+      if (claim.platformCode === 'official_site') {
+        if (gate.schema_version !== 'official-site-quality-gate@1') {
+          throw new Error('Stored official-site quality gate is invalid');
+        }
+        const policy = await this.officialSite.loadGatePolicy(
+          transaction,
+          event.tenantId,
+          event.data.variantId,
+        );
+        if (!policy) throw new Error('Official-site automation policy is unavailable');
+        await transaction`
+          UPDATE official_site_automation_runs SET status='quality_pending',version=version+1
+          WHERE tenant_id=${event.tenantId}::uuid AND variant_id=${event.data.variantId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND status='media_pending'
+        `;
+        await transaction`
+          UPDATE official_site_daily_batch_items SET status='quality_check'
+          WHERE tenant_id=${event.tenantId}::uuid AND variant_id=${event.data.variantId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND status='media_pending'
+        `;
+        await this.officialSite.advanceAfterQuality(
+          transaction,
+          qualityEvent,
+          policy,
+          event.data.qualityReportId,
+          gate,
+          result,
+        );
+      } else {
+        const policy = await this.baijiahao.loadGatePolicy(
+          transaction,
+          event.tenantId,
+          event.data.variantId,
+        );
+        if (!policy) throw new Error('Baijiahao automation policy is unavailable');
+        const runs = await transaction<{ id: string }[]>`
+          UPDATE baijiahao_automation_runs SET status='quality_pending',version=version+1
+          WHERE tenant_id=${event.tenantId}::uuid AND variant_id=${event.data.variantId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND status='media_pending'
+          RETURNING id
+        `;
+        const automationRunId = runs[0]?.id;
+        if (!automationRunId) throw new Error('Baijiahao media state was not resumed');
+        await transaction`
+          UPDATE baijiahao_daily_batch_items SET status='quality_check'
+          WHERE tenant_id=${event.tenantId}::uuid AND automation_run_id=${automationRunId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND status='media_pending'
+        `;
+        if (gate.schema_version !== 'baijiahao-quality-gate@1') {
+          throw new Error('Stored Baijiahao quality gate is invalid');
+        }
+        await this.baijiahao.advanceAfterQuality(
+          transaction,
+          qualityEvent,
+          policy,
+          event.data.qualityReportId,
+          gate,
+          result,
+        );
+      }
+    });
+  }
+}
+
+function parseQualityResult(row: StoredQualityRow): QualityCheckerData {
+  const issuesDocument = record(row.issues) ? row.issues : null;
+  const geoDocument = record(row.geoScores) ? row.geoScores : null;
+  const issues = issuesDocument?.['issues'];
+  if (
+    (row.decision !== 'pass' && row.decision !== 'revise' && row.decision !== 'block') ||
+    !Array.isArray(issues) ||
+    !geoDocument
+  ) {
+    throw new Error('Stored quality result is invalid');
+  }
+  return Object.freeze({
+    decision: row.decision,
+    geo_scores: geoDocument as unknown as QualityCheckerData['geo_scores'],
+    issues: Object.freeze(issues as QualityIssue[]),
+    score: row.score,
+  });
+}
+
+function parseQualityGate(
+  value: unknown,
+  platformCode: 'baijiahao' | 'official_site',
+): BaijiahaoQualityGate | OfficialSiteQualityGate {
+  if (!record(value) || value['passed'] !== true || !Array.isArray(value['blocking_rules'])) {
+    throw new Error('Stored quality gate is invalid');
+  }
+  const expected =
+    platformCode === 'official_site' ? 'official-site-quality-gate@1' : 'baijiahao-quality-gate@1';
+  if (value['schema_version'] !== expected)
+    throw new Error('Stored quality gate platform is invalid');
+  return value as unknown as BaijiahaoQualityGate | OfficialSiteQualityGate;
+}
+
+function templateQuality(): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    decision: 'pass',
+    method: 'deterministic_template',
+    schema_version: 'content-image-quality@1',
+  });
+}
+
+function providerQuality(value: ImageInspectionResult): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    article_relevance: value.articleRelevance,
+    decision: 'pass',
+    deceptive_realism: value.deceptiveRealism,
+    detected_company_names: value.companyNames,
+    detected_text: value.detectedText,
+    issues: value.issues,
+    logos_or_watermarks: value.logosOrWatermarks,
+    model: value.modelId,
+    phone_numbers: value.phoneNumbers,
+    provider: value.providerCode,
+    schema_version: 'content-image-quality@1',
+    unsafe: value.unsafe,
+  });
+}
+
+function safeDisplayText(value: string, fallback: string, maxLength: number): string {
+  let normalized = value.trim();
+  for (const company of findDisallowedCompanyNames(normalized)) {
+    normalized = normalized.replaceAll(company, '某公司');
+  }
+  normalized = normalized
+    .replace(/https?:\/\/\S+|www\.\S+/giu, '')
+    .replace(/\b1[3-9]\d{9}\b/gu, '')
+    .trim();
+  return [...(normalized || fallback)].slice(0, maxLength).join('');
+}
+
+function seed(hash: string, index: number): number {
+  return Number.parseInt(hash.slice(index * 8, index * 8 + 8), 16) & 0x7fffffff || index + 1;
+}
+
+function scope(event: ReturnType<typeof validateMediaGenerationEvent>) {
+  return Object.freeze({
+    packageId: event.data.packageId,
+    projectId: event.data.projectId,
+    tenantId: event.tenantId,
+    variantId: event.data.variantId,
+    workspaceId: event.data.workspaceId,
+  });
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function safeError(value: unknown): string {
+  return value instanceof Error ? value.message.slice(0, 500) : 'Unknown media error';
+}
+
+function string(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}

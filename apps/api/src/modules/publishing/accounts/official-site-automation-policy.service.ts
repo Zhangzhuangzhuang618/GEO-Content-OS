@@ -122,24 +122,48 @@ export class OfficialSiteAutomationPolicyService {
           ) AS restart_allowed,
           count(item.id)::integer AS attempted_count,
           count(item.id) FILTER (
-            WHERE item.status IN ('generating','quality_check','rewriting')
+            WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
           )::integer AS in_progress_count,
           count(item.id) FILTER (
-            WHERE item.status IN ('generating','quality_check','rewriting')
-              AND NOT EXISTS (
-                SELECT 1 FROM generation_runs AS run
-                WHERE run.tenant_id=item.tenant_id
-                  AND run.package_id=item.package_id
-                  AND run.status='running'
+            WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
+              AND (
+                (
+                  item.status<>'media_pending'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM generation_runs AS run
+                    WHERE run.tenant_id=item.tenant_id
+                      AND run.package_id=item.package_id AND run.status='running'
+                  )
+                ) OR (
+                  item.status='media_pending'
+                  AND EXISTS (
+                    SELECT 1 FROM content_media_runs AS media
+                    WHERE media.tenant_id=item.tenant_id AND media.variant_id=item.variant_id
+                      AND media.content_version_id=item.content_version_id
+                      AND media.status='queued'
+                  )
+                )
               )
           )::integer AS queued_count,
           count(item.id) FILTER (
-            WHERE item.status IN ('generating','quality_check','rewriting')
-              AND EXISTS (
-                SELECT 1 FROM generation_runs AS run
-                WHERE run.tenant_id=item.tenant_id
-                  AND run.package_id=item.package_id
-                  AND run.status='running'
+            WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
+              AND (
+                (
+                  item.status<>'media_pending'
+                  AND EXISTS (
+                    SELECT 1 FROM generation_runs AS run
+                    WHERE run.tenant_id=item.tenant_id
+                      AND run.package_id=item.package_id AND run.status='running'
+                  )
+                ) OR (
+                  item.status='media_pending'
+                  AND EXISTS (
+                    SELECT 1 FROM content_media_runs AS media
+                    WHERE media.tenant_id=item.tenant_id AND media.variant_id=item.variant_id
+                      AND media.content_version_id=item.content_version_id
+                      AND media.status='running'
+                  )
+                )
               )
           )::integer AS running_count,
           count(item.id) FILTER (
@@ -544,7 +568,7 @@ export class OfficialSiteAutomationPolicyService {
         version=automation.version+1
       WHERE automation.tenant_id=${scope.tenantId}::uuid
         AND automation.status IN (
-          'quality_pending','rewrite_pending','rewriting','publish_pending'
+          'quality_pending','rewrite_pending','rewriting','media_pending','publish_pending'
         )
         AND EXISTS (
           SELECT 1
@@ -552,6 +576,21 @@ export class OfficialSiteAutomationPolicyService {
           WHERE item.tenant_id=automation.tenant_id
             AND item.batch_id=${before.id}::uuid
             AND item.variant_id=automation.variant_id
+        )
+    `;
+    await transaction`
+      UPDATE content_media_runs AS media SET
+        status='cancelled',finished_at=now(),
+        last_error_json=${JSON.stringify(cancellation)}::text::jsonb,
+        version=media.version+1
+      WHERE media.tenant_id=${scope.tenantId}::uuid
+        AND media.status IN ('queued','running')
+        AND EXISTS (
+          SELECT 1
+          FROM official_site_daily_batch_items AS item
+          WHERE item.tenant_id=media.tenant_id
+            AND item.batch_id=${before.id}::uuid
+            AND item.variant_id=media.variant_id
         )
     `;
     await transaction`
@@ -566,7 +605,7 @@ export class OfficialSiteAutomationPolicyService {
       FROM official_site_daily_batch_items AS item
       WHERE item.tenant_id=${scope.tenantId}::uuid
         AND item.batch_id=${before.id}::uuid
-        AND item.status IN ('generating','quality_check','rewriting')
+        AND item.status IN ('generating','quality_check','rewriting','media_pending')
         AND variant.id=item.variant_id AND variant.tenant_id=item.tenant_id
         AND variant.status IN ('generating','generated','quality_failed','quality_passed')
     `;
@@ -594,7 +633,7 @@ export class OfficialSiteAutomationPolicyService {
         status='retired',
         last_error_json=${JSON.stringify(cancellation)}::text::jsonb
       WHERE tenant_id=${scope.tenantId}::uuid AND batch_id=${before.id}::uuid
-        AND status IN ('generating','quality_check','rewriting')
+        AND status IN ('generating','quality_check','rewriting','media_pending')
     `;
     await transaction`
       UPDATE official_site_daily_batch_items SET status='reserve'
@@ -651,24 +690,48 @@ export class OfficialSiteAutomationPolicyService {
         true AS "batchRestartAllowed",
         count(item.id)::integer AS "attemptedCount",
         count(item.id) FILTER (
-          WHERE item.status IN ('generating','quality_check','rewriting')
+          WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
         )::integer AS "inProgressCount",
         count(item.id) FILTER (
-          WHERE item.status IN ('generating','quality_check','rewriting')
-            AND NOT EXISTS (
-              SELECT 1 FROM generation_runs AS run
-              WHERE run.tenant_id=item.tenant_id
-                AND run.package_id=item.package_id
-                AND run.status='running'
+          WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
+            AND (
+              (
+                item.status<>'media_pending'
+                AND NOT EXISTS (
+                  SELECT 1 FROM generation_runs AS run
+                  WHERE run.tenant_id=item.tenant_id
+                    AND run.package_id=item.package_id AND run.status='running'
+                )
+              ) OR (
+                item.status='media_pending'
+                AND EXISTS (
+                  SELECT 1 FROM content_media_runs AS media
+                  WHERE media.tenant_id=item.tenant_id AND media.variant_id=item.variant_id
+                    AND media.content_version_id=item.content_version_id
+                    AND media.status='queued'
+                )
+              )
             )
         )::integer AS "queuedCount",
         count(item.id) FILTER (
-          WHERE item.status IN ('generating','quality_check','rewriting')
-            AND EXISTS (
-              SELECT 1 FROM generation_runs AS run
-              WHERE run.tenant_id=item.tenant_id
-                AND run.package_id=item.package_id
-                AND run.status='running'
+          WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
+            AND (
+              (
+                item.status<>'media_pending'
+                AND EXISTS (
+                  SELECT 1 FROM generation_runs AS run
+                  WHERE run.tenant_id=item.tenant_id
+                    AND run.package_id=item.package_id AND run.status='running'
+                )
+              ) OR (
+                item.status='media_pending'
+                AND EXISTS (
+                  SELECT 1 FROM content_media_runs AS media
+                  WHERE media.tenant_id=item.tenant_id AND media.variant_id=item.variant_id
+                    AND media.content_version_id=item.content_version_id
+                    AND media.status='running'
+                )
+              )
             )
         )::integer AS "runningCount",
         count(item.id) FILTER (

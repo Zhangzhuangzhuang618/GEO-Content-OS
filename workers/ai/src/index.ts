@@ -59,3 +59,7 @@ export {
 } from './visibility.worker.js';
 export { RuntimeQualityChecker } from './runtime-quality-checker.js';
 export type { UsageContext } from './usage-recorder.js';
+export { ContentMediaAutomation } from './content-media-automation.js';
+export { ContentMediaWorker } from './content-media.worker.js';
+export { ArticleImagePlanner } from './media-planner.js';
+export { validateMediaGenerationEvent } from './media-generation.event.js';

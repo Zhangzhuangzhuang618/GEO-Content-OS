@@ -7,6 +7,7 @@ import {
   type OfficialSiteCitationLink,
   type OfficialSiteContent,
   type OfficialSiteFaqItem,
+  type OfficialSiteMediaAsset,
   type OfficialSitePayload,
   type OfficialSiteRenderResult,
 } from './types.js';
@@ -15,15 +16,15 @@ export function renderOfficialSite(input: unknown): OfficialSiteRenderResult {
   const validation = validateOfficialSiteContent(input);
   if (!validation.ok) return validation;
 
-  const { citations, content } = validation.value;
+  const { citations, content, media_assets: mediaAssets = [] } = validation.value;
   const linkedIds = new Set(content.citation_map.flatMap((claim) => claim.citation_ids));
   const citationLinks = citations.filter((citation) => linkedIds.has(citation.citation_id));
   const payload: OfficialSitePayload = {
-    body_html: renderPublishBodyHtml(content, citationLinks),
+    body_html: renderPublishBodyHtml(content, citationLinks, mediaAssets),
     citation_links: citationLinks,
     faq: content.platform_meta.faq,
-    html: renderHtml(content, citationLinks),
-    markdown: renderMarkdown(content, citationLinks),
+    html: renderHtml(content, citationLinks, mediaAssets),
+    markdown: renderMarkdown(content, citationLinks, mediaAssets),
     meta_description: content.platform_meta.meta_description,
     platform_code: OFFICIAL_SITE_PLATFORM_CODE,
     rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
@@ -52,9 +53,10 @@ export function renderOfficialSite(input: unknown): OfficialSiteRenderResult {
 function renderPublishBodyHtml(
   content: OfficialSiteContent,
   citations: readonly OfficialSiteCitationLink[],
+  mediaAssets: readonly OfficialSiteMediaAsset[],
 ): string {
   return [
-    renderContentBlocks(content),
+    renderContentBlocks(content, mediaAssets),
     renderFaqHtml(content.platform_meta.faq),
     renderReferencesHtml(citations),
   ]
@@ -65,11 +67,12 @@ function renderPublishBodyHtml(
 function renderHtml(
   content: OfficialSiteContent,
   citations: readonly OfficialSiteCitationLink[],
+  mediaAssets: readonly OfficialSiteMediaAsset[],
 ): string {
   const parts = [
     '<article data-platform="official_site">',
     `<h1>${escapeHtml(content.title)}</h1>`,
-    renderContentBlocks(content),
+    renderContentBlocks(content, mediaAssets),
     renderFaqHtml(content.platform_meta.faq),
     renderReferencesHtml(citations),
     `<script type="application/ld+json">${safeJson(content.platform_meta.schema_org)}</script>`,
@@ -78,8 +81,29 @@ function renderHtml(
   return parts.filter(Boolean).join('\n');
 }
 
-function renderContentBlocks(content: OfficialSiteContent): string {
-  return content.blocks.map(renderBlockHtml).join('\n');
+function renderContentBlocks(
+  content: OfficialSiteContent,
+  mediaAssets: readonly OfficialSiteMediaAsset[],
+): string {
+  const cover = mediaAssets.find((asset) => asset.role === 'cover');
+  const body = mediaAssets
+    .filter((asset) => asset.role === 'body')
+    .sort((left, right) => left.position - right.position);
+  const parts: string[] = cover ? [renderImageHtml(cover)] : [];
+  let imageIndex = 0;
+  for (const block of content.blocks) {
+    parts.push(renderBlockHtml(block));
+    if (block.block_type === 'heading' && body[imageIndex]) {
+      parts.push(renderImageHtml(body[imageIndex] as OfficialSiteMediaAsset));
+      imageIndex += 1;
+    }
+  }
+  parts.push(...body.slice(imageIndex).map(renderImageHtml));
+  return parts.join('\n');
+}
+
+function renderImageHtml(asset: OfficialSiteMediaAsset): string {
+  return `<figure class="article-image" data-image-role="${asset.role}"><img src="${escapeHtml(asset.url)}" alt="${escapeHtml(asset.alt_text)}" loading="lazy" decoding="async"/><figcaption>${escapeHtml(asset.alt_text)}（AI示意图）</figcaption></figure>`;
 }
 
 function renderBlockHtml(block: {
@@ -134,40 +158,69 @@ function renderReferencesHtml(citations: readonly OfficialSiteCitationLink[]): s
 function renderMarkdown(
   content: OfficialSiteContent,
   citations: readonly OfficialSiteCitationLink[],
+  mediaAssets: readonly OfficialSiteMediaAsset[],
 ): string {
-  const blocks = content.blocks.map((block) => {
+  const cover = mediaAssets.find((asset) => asset.role === 'cover');
+  const body = mediaAssets
+    .filter((asset) => asset.role === 'body')
+    .sort((left, right) => left.position - right.position);
+  const blocks: string[] = [];
+  let imageIndex = 0;
+  for (const block of content.blocks) {
     const text = block.text.trim();
+    let rendered: string;
     switch (block.block_type) {
       case 'heading':
-        return `## ${text}`;
+        rendered = `## ${text}`;
+        break;
       case 'list':
-        return text
+        rendered = text
           .split('\n')
           .map((item) => item.replace(/^[-*•]\s*/u, '').trim())
           .filter(Boolean)
           .map((item) => `- ${item}`)
           .join('\n');
+        break;
       case 'quote':
-        return text
+        rendered = text
           .split('\n')
           .map((line) => `> ${line}`)
           .join('\n');
+        break;
       case 'media':
-        return `> 媒体说明：${text}`;
+        rendered = `> 媒体说明：${text}`;
+        break;
       case 'cta':
-        return `**行动建议：** ${text}`;
+        rendered = `**行动建议：** ${text}`;
+        break;
       default:
-        return text;
+        rendered = text;
     }
-  });
+    blocks.push(rendered);
+    if (block.block_type === 'heading' && body[imageIndex]) {
+      blocks.push(renderImageMarkdown(body[imageIndex] as OfficialSiteMediaAsset));
+      imageIndex += 1;
+    }
+  }
+  blocks.push(...body.slice(imageIndex).map(renderImageMarkdown));
   const faq = content.platform_meta.faq.flatMap((item) => [`### ${item.question}`, item.answer]);
   const references = citations.map(
     (citation, index) =>
       `${index + 1}. [${escapeMarkdownLabel(citation.label)}](${citation.url}) <!-- ${citation.citation_id} -->`,
   );
-  const sections = [`# ${content.title}`, ...blocks, '## 常见问题', ...faq];
+  const sections = [
+    `# ${content.title}`,
+    ...(cover ? [renderImageMarkdown(cover)] : []),
+    ...blocks,
+    '## 常见问题',
+    ...faq,
+  ];
   if (references.length > 0) sections.push('## 参考资料', ...references);
   return sections.join('\n\n');
+}
+
+function renderImageMarkdown(asset: OfficialSiteMediaAsset): string {
+  return `![${escapeMarkdownLabel(asset.alt_text)}](${asset.url})\n\n*${asset.alt_text}（AI示意图）*`;
 }
 
 function escapeHtml(value: string): string {

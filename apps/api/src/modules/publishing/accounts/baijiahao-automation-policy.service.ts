@@ -235,7 +235,8 @@ export class BaijiahaoAutomationPolicyService {
             AS last_error_message,
           count(item.id)::integer AS attempted_count,
           count(item.id) FILTER (WHERE item.status IN (
-            'pending','adapting','generating','quality_check','rewriting','qualified','processing'
+            'pending','adapting','generating','quality_check','rewriting','media_pending',
+            'qualified','processing'
           ))::integer AS in_progress_count,
           count(item.id) FILTER (WHERE item.status IN ('scheduled','processing','published'))::integer
             AS scheduled_count,

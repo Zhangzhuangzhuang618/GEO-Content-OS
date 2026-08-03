@@ -1,11 +1,14 @@
 import type { QualityCheckerData, QualityGeoScores } from '@geo-content-os/contracts/skills';
 import {
+  ContentMediaAutomation,
+  ContentMediaWorker,
   contentHash,
   OfficialSiteAutomation,
   QualityCheckWorker,
   type GeneratedContent,
   validateQualityEvent,
 } from '@geo-content-os/worker-ai';
+import { InMemoryStorageAdapter } from '@geo-content-os/adapter-storage';
 import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
@@ -225,6 +228,93 @@ describe('official-site quality, rewrite, and publication automation', () => {
         WHERE event_type='publishing.job.execution_requested.v1'
       `,
     ).toEqual([{ count: 1 }]);
+  });
+
+  it('persists template media and resumes the daily publication flow when image generation falls back', async () => {
+    const database = requireClient(client);
+    const official = createAutomation(database, writer);
+    const result: QualityCheckerData = {
+      decision: 'pass',
+      geo_scores: SCORES,
+      issues: [],
+      score: SCORES.total,
+    };
+    const policy = await official.loadGatePolicy(database, TENANT_ID, VARIANT_ID);
+    if (!policy) throw new Error('Automation policy was not loaded');
+    const gate = official.calculateGate(policy, result, SCORES);
+    const event = await seedQualityCycle(database, 'quality_passed', 0, 'succeeded', result, gate);
+    await seedDailyItem(database);
+    const config = {
+      enabled: true,
+      generationSteps: 4,
+      plannerModelKey: 'deepseek-v4-flash',
+      publicBaseUrl: 'https://cdn.example.com',
+    } as const;
+    const automation = new ContentMediaAutomation(config, {
+      generationModel: null,
+      inspectionModel: null,
+      provider: null,
+    });
+
+    await database.begin((transaction) =>
+      automation.enqueue(
+        transaction,
+        event,
+        { kind: 'official_site', value: policy },
+        QUALITY_REPORT_ID,
+      ),
+    );
+    const queued = await database<{ payload: unknown }[]>`
+      SELECT payload_json AS payload FROM outbox_events
+      WHERE event_type='content.variant.media_generation_requested.v1'
+    `;
+    expect(queued).toHaveLength(1);
+
+    const worker = new ContentMediaWorker(
+      database,
+      {
+        plan: async () => ({
+          coverLabel: '搬家验收指南',
+          scenes: [
+            { caption: '逐项清点物品示意', prompt: '' },
+            { caption: '复核费用项目示意', prompt: '' },
+          ],
+          source: 'template',
+        }),
+      } as never,
+      null,
+      new InMemoryStorageAdapter(),
+      official,
+      {} as never,
+      config,
+    );
+
+    await expect(worker.run(queued[0]?.payload)).resolves.toEqual({ disposition: 'processed' });
+    await expect(worker.run(queued[0]?.payload)).resolves.toEqual({ disposition: 'completed' });
+    expect(
+      await database<{ status: string }[]>`
+        SELECT status FROM content_media_runs
+        WHERE tenant_id=${TENANT_ID}::uuid AND quality_report_id=${QUALITY_REPORT_ID}::uuid
+      `,
+    ).toEqual([{ status: 'fallback' }]);
+    expect(
+      await database<{ assetCount: number; publicCount: number }[]>`
+        SELECT count(*)::integer AS "assetCount",
+          count(*) FILTER (WHERE public_url LIKE 'https://cdn.example.com/%')::integer
+            AS "publicCount"
+        FROM content_media_assets
+        WHERE tenant_id=${TENANT_ID}::uuid AND content_version_id=${VERSION_ID}::uuid
+      `,
+    ).toEqual([{ assetCount: 3, publicCount: 3 }]);
+    expect(
+      await database<{ itemStatus: string; runStatus: string }[]>`
+        SELECT item.status AS "itemStatus",automation.status AS "runStatus"
+        FROM official_site_daily_batch_items AS item
+        JOIN official_site_automation_runs AS automation
+          ON automation.tenant_id=item.tenant_id AND automation.variant_id=item.variant_id
+        WHERE item.tenant_id=${TENANT_ID}::uuid AND item.content_version_id=${VERSION_ID}::uuid
+      `,
+    ).toEqual([{ itemStatus: 'qualified', runStatus: 'publish_pending' }]);
   });
 
   it('holds a qualified daily article for the ten-article scheduler instead of publishing immediately', async () => {
@@ -474,6 +564,8 @@ async function seedQualityCycle(
   variantStatus: 'quality_failed' | 'quality_passed',
   rewriteCount: number,
   runStatus: 'queued' | 'succeeded' = 'succeeded',
+  result: QualityCheckerData = failedResult(),
+  automationGate?: ReturnType<OfficialSiteAutomation['calculateGate']>,
 ) {
   await database`
     UPDATE content_variants SET status=${variantStatus} WHERE id=${VARIANT_ID}::uuid
@@ -493,12 +585,13 @@ async function seedQualityCycle(
     await database`
       INSERT INTO quality_reports(
         id,tenant_id,variant_id,content_version_id,generation_run_id,checker_version,
-        score,decision,issues_json,geo_scores_json
+        score,decision,issues_json,geo_scores_json,automation_gate_json
       ) VALUES(
         ${QUALITY_REPORT_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,
-        ${VERSION_ID}::uuid,${QUALITY_RUN_ID}::uuid,'1.0.0',84,'block',
-        ${JSON.stringify({ issues: failedResult().issues, schema_version: 'quality-checker-data@1' })}::text::jsonb,
-        ${database.json({ ...SCORES, schema_version: 'geo-scores@1' })}
+        ${VERSION_ID}::uuid,${QUALITY_RUN_ID}::uuid,'1.0.0',${result.score},${result.decision},
+        ${JSON.stringify({ issues: result.issues, schema_version: 'quality-checker-data@1' })}::text::jsonb,
+        ${database.json({ ...result.geo_scores, schema_version: 'geo-scores@1' })},
+        ${automationGate ? JSON.stringify(automationGate) : null}::text::jsonb
       )
     `;
   }

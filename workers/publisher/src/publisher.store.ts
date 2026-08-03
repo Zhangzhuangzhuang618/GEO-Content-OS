@@ -211,6 +211,26 @@ export class PostgresPublisherStore implements PublisherStorePort {
           AND COALESCE(chunk.metadata_json->>'url', source.uri) ~* '^https?://'
         ORDER BY citation.claim_key, citation.id
       `;
+      const mediaAssets = await transaction<
+        {
+          altText: string;
+          id: string;
+          position: number;
+          publicUrl: string | null;
+          role: 'body' | 'cover';
+        }[]
+      >`
+        SELECT asset.id,link.role,link.position,link.alt_text AS "altText",
+          link.public_url AS "publicUrl"
+        FROM content_media_assets AS link
+        JOIN media_assets AS asset
+          ON asset.id=link.media_asset_id AND asset.tenant_id=link.tenant_id
+          AND asset.asset_type='image' AND asset.deleted_at IS NULL
+        WHERE link.tenant_id=${row.tenantId}::uuid
+          AND link.content_version_id=${row.contentVersionId}::uuid
+          AND link.quality_json->>'decision'='pass'
+        ORDER BY CASE link.role WHEN 'cover' THEN 0 ELSE 1 END,link.position,link.id
+      `;
       return {
         kind: 'claimed',
         value: Object.freeze({
@@ -225,6 +245,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           credentialKeyVersion: row.credentialKeyVersion,
           idempotencyKey: row.idempotencyKey,
           jobId: row.id,
+          mediaAssets: Object.freeze(mediaAssets.map((asset) => Object.freeze(asset))),
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,
           publishMode: row.publishMode,

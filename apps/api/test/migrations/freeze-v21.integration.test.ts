@@ -10,12 +10,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 
-const FREEZE_TABLE_COUNT = 74;
+const FREEZE_TABLE_COUNT = 76;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
   'audit_events_append_only_guard',
   'content_blocks_append_only_guard',
+  'content_media_assets_append_only_guard',
   'content_versions_append_only_guard',
   'export_artifacts_append_only_guard',
   'fact_check_results_append_only_guard',
@@ -74,7 +75,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T147 without changing official-site tables', async () => {
+  it('migrates an empty database through T148 with content media automation tables', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -112,6 +113,8 @@ describe('freeze v2.1 database verification', () => {
         'baijiahao_browser_artifacts',
         'keyword_import_jobs',
         'keyword_import_candidates',
+        'content_media_runs',
+        'content_media_assets',
       ]),
     );
     expect(migrationRows[0]?.count).toBe(migrationFiles.length);

@@ -10,3 +10,4 @@ overrides:
 
 onlyBuiltDependencies:
   - argon2
+  - sharp

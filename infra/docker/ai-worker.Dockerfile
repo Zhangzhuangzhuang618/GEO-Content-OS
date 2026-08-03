@@ -15,6 +15,10 @@ FROM node:22.23.1-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /workspace
 
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends fonts-noto-cjk \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --chown=node:node --from=build /workspace /workspace
 
 USER node

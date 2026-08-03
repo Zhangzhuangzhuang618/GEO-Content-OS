@@ -27,6 +27,14 @@ export interface PublishCitationLink {
   readonly url: string;
 }
 
+export interface PublishMediaAsset {
+  readonly altText: string;
+  readonly id: string;
+  readonly position: number;
+  readonly publicUrl: string | null;
+  readonly role: 'body' | 'cover';
+}
+
 export interface PublishClaim {
   readonly accountId: string;
   readonly accountStatus: 'active' | 'disabled' | 'reauth';
@@ -39,6 +47,7 @@ export interface PublishClaim {
   readonly citations: readonly PublishCitationLink[];
   readonly idempotencyKey: string;
   readonly jobId: string;
+  readonly mediaAssets?: readonly PublishMediaAsset[];
   readonly payloadHash: string;
   readonly platformCode: PlatformCode;
   readonly publishMode: 'api' | 'export' | 'manual';

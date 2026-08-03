@@ -185,6 +185,32 @@ describe('official_site render contract', () => {
     expect(result.payload.body_html).not.toContain('参考资料');
   });
 
+  it('renders persistent qualified media with an explicit AI illustration disclosure', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as Record<string, unknown>;
+    input['media_assets'] = [
+      {
+        alt_text: '搬家验收步骤封面示意图',
+        position: 0,
+        role: 'cover',
+        url: 'https://cdn.example.com/generated-media/cover.jpg',
+      },
+      {
+        alt_text: '逐项清点物品示意图',
+        position: 1,
+        role: 'body',
+        url: 'https://cdn.example.com/generated-media/body-1.jpg',
+      },
+    ];
+
+    const result = renderOfficialSite(input);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.body_html).toContain('https://cdn.example.com/generated-media/cover.jpg');
+    expect(result.payload.body_html).toContain('逐项清点物品示意图（AI示意图）');
+    expect(result.payload.markdown).toContain('![搬家验收步骤封面示意图]');
+  });
+
   it('blocks other company names but permits the owner and anonymous companies', async () => {
     const input = (await readJson('official-site.valid.input.json')) as {
       content: { blocks: { block_type: string; text: string }[] };

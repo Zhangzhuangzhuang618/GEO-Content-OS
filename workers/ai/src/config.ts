@@ -6,8 +6,16 @@ export interface AiWorkerConfig {
   readonly dailySchedulerTickMs: number;
   readonly driver: AiModelDriver;
   readonly healthPort: number;
+  readonly media: ContentMediaAutomationConfig;
   readonly queueConcurrency: number;
   readonly redisUrl: string;
+}
+
+export interface ContentMediaAutomationConfig {
+  readonly enabled: boolean;
+  readonly generationSteps: number;
+  readonly plannerModelKey: string;
+  readonly publicBaseUrl: string | null;
 }
 
 export interface OfficialSiteAutomationConfig {
@@ -59,6 +67,27 @@ export function readAiWorkerConfig(environment = process.env): AiWorkerConfig {
     ),
     driver,
     healthPort: port(environment['HEALTH_PORT'], 9090, 'HEALTH_PORT'),
+    media: Object.freeze({
+      enabled: booleanValue(
+        environment['IMAGE_AUTOMATION_ENABLED'],
+        true,
+        'IMAGE_AUTOMATION_ENABLED',
+      ),
+      generationSteps: boundedInteger(
+        environment['IMAGE_GENERATION_STEPS'],
+        4,
+        'IMAGE_GENERATION_STEPS',
+        1,
+        8,
+      ),
+      plannerModelKey: required(
+        environment['IMAGE_PLANNER_MODEL_KEY'] ??
+          environment['CONTENT_MODEL_BALANCED_KEY'] ??
+          'deepseek-v4-flash',
+        'IMAGE_PLANNER_MODEL_KEY',
+      ),
+      publicBaseUrl: publicBaseUrl(environment['GENERATED_MEDIA_PUBLIC_BASE_URL']),
+    }),
     queueConcurrency: boundedInteger(
       environment['AI_WORKER_CONCURRENCY'],
       2,
@@ -97,12 +126,46 @@ function required(value: string | undefined, name: string): string {
   return value.trim();
 }
 
-function boundedInteger(value: string | undefined, fallback: number, name: string): number {
+function boundedInteger(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+  minimum = 1,
+  maximum = 100,
+): number {
   const parsed = value === undefined ? fallback : Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 100) {
-    throw new Error(`${name} must be an integer between 1 and 100`);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}`);
   }
   return parsed;
+}
+
+function booleanValue(value: string | undefined, fallback: boolean, name: string): boolean {
+  if (value === undefined || value.trim() === '') return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error(`${name} must be true or false`);
+}
+
+function publicBaseUrl(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  const parsed = new URL(value.trim());
+  if (parsed.username || parsed.password || parsed.search || parsed.hash) {
+    throw new Error(
+      'GENERATED_MEDIA_PUBLIC_BASE_URL must not contain credentials, query, or fragment',
+    );
+  }
+  if (parsed.protocol !== 'https:' && !isLoopback(parsed)) {
+    throw new Error('GENERATED_MEDIA_PUBLIC_BASE_URL must use HTTPS outside local development');
+  }
+  return parsed.toString().replace(/\/$/u, '');
+}
+
+function isLoopback(value: URL): boolean {
+  return (
+    value.protocol === 'http:' &&
+    (value.hostname === 'localhost' || value.hostname === '127.0.0.1' || value.hostname === '::1')
+  );
 }
 
 function port(value: string | undefined, fallback: number, name: string): number {

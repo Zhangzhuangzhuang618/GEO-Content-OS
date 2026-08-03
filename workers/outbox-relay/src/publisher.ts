@@ -100,6 +100,7 @@ export function retryOptionsForEvent(
     eventType === 'content.package.generation_requested.v1' ||
     eventType === 'content.variant.official_site_rewrite_requested.v1' ||
     eventType === 'content.variant.baijiahao_adaptation_requested.v1' ||
+    eventType === 'content.variant.media_generation_requested.v1' ||
     eventType === 'publishing.job.published.v1' ||
     eventType === 'baijiahao.publication.reconcile_requested.v1'
   ) {
@@ -120,7 +121,8 @@ export function queuePriorityForEvent(eventType: EventType): Pick<JobsOptions, '
   }
   if (
     eventType === 'content.variant.official_site_rewrite_requested.v1' ||
-    eventType === 'content.variant.baijiahao_adaptation_requested.v1'
+    eventType === 'content.variant.baijiahao_adaptation_requested.v1' ||
+    eventType === 'content.variant.media_generation_requested.v1'
   ) {
     return { priority: 2 };
   }

@@ -22,6 +22,15 @@ describe('SevenPlatformPublisher', () => {
         schema_version: 'content-writer-data@1',
       },
       fixture.citations,
+      [
+        {
+          altText: '搬家验收封面示意图',
+          id: randomUUID(),
+          position: 0,
+          publicUrl: 'https://cdn.example.com/generated-media/cover.jpg',
+          role: 'cover',
+        },
+      ],
     );
 
     const result = await new SevenPlatformPublisher().deliver(claim, null);
@@ -32,6 +41,9 @@ describe('SevenPlatformPublisher', () => {
       platform_code: 'official_site',
       schema_version: 'official-site-export@1',
     });
+    expect(JSON.stringify(result.bundle)).toContain(
+      'https://cdn.example.com/generated-media/cover.jpg',
+    );
   });
 
   it('rejects unsupported content storage schemas', async () => {
@@ -52,6 +64,7 @@ describe('SevenPlatformPublisher', () => {
 function createClaim(
   content: Readonly<Record<string, unknown>>,
   citations: PublishClaim['citations'] = [],
+  mediaAssets: NonNullable<PublishClaim['mediaAssets']> = [],
 ): PublishClaim {
   return {
     accountId: randomUUID(),
@@ -65,6 +78,7 @@ function createClaim(
     credentialKeyVersion: null,
     idempotencyKey: `official-site:${randomUUID()}`,
     jobId: randomUUID(),
+    mediaAssets,
     payloadHash: 'a'.repeat(64),
     platformCode: 'official_site',
     publishMode: 'export',

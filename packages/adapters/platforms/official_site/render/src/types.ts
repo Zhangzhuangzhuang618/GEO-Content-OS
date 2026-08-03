@@ -22,6 +22,13 @@ export interface OfficialSiteCitationLink {
   readonly url: string;
 }
 
+export interface OfficialSiteMediaAsset {
+  readonly alt_text: string;
+  readonly position: number;
+  readonly role: 'body' | 'cover';
+  readonly url: string;
+}
+
 export interface OfficialSiteContent extends Omit<
   ContentWriterContent,
   'platform_code' | 'platform_meta'
@@ -33,6 +40,7 @@ export interface OfficialSiteContent extends Omit<
 export interface OfficialSiteRenderInput {
   readonly citations: readonly OfficialSiteCitationLink[];
   readonly content: OfficialSiteContent;
+  readonly media_assets?: readonly OfficialSiteMediaAsset[];
   readonly rule_version: typeof OFFICIAL_SITE_RENDER_RULE_VERSION;
 }
 

@@ -13,6 +13,7 @@ export {
   OFFICIAL_SITE_RENDER_RULE_VERSION,
   type OfficialSiteCitationLink,
   type OfficialSiteContent,
+  type OfficialSiteMediaAsset,
   type OfficialSitePayload,
   type OfficialSiteRenderInput,
   type OfficialSiteRenderResult,

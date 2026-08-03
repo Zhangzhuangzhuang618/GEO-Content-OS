@@ -12,6 +12,7 @@ import type {
   OfficialSiteQualityGate,
 } from './official-site-automation.js';
 import type { ValidatedQualityEvent } from './quality.event.js';
+import type { ContentMediaAutomation } from './content-media-automation.js';
 
 type AutomationSql = postgres.Sql | postgres.TransactionSql;
 
@@ -51,6 +52,7 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
   public constructor(
     private readonly officialSite: OfficialSiteAutomation,
     private readonly baijiahao: BaijiahaoAutomation,
+    private readonly media?: ContentMediaAutomation,
   ) {}
 
   public async loadGatePolicy(
@@ -82,6 +84,9 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
     gate: QualityAutomationGate,
     result: QualityCheckerData,
   ): Promise<void> {
+    if (this.media?.shouldEnqueue(gate)) {
+      return this.media.enqueue(transaction, event, policy, reportId);
+    }
     if (policy.kind === 'official_site') {
       if (gate.schema_version !== 'official-site-quality-gate@1') {
         throw new Error('Official-site quality gate type is invalid');

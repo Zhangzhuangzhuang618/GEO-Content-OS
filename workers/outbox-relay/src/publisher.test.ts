@@ -17,6 +17,16 @@ describe('outbox queue retry options', () => {
     });
   });
 
+  it('retries media generation without outranking the frozen quality gate', () => {
+    expect(retryOptionsForEvent('content.variant.media_generation_requested.v1')).toEqual({
+      attempts: 5,
+      backoff: { delay: 30_000, type: 'exponential' },
+    });
+    expect(queuePriorityForEvent('content.variant.media_generation_requested.v1')).toEqual({
+      priority: 2,
+    });
+  });
+
   it('does not add retries to unrelated events', () => {
     expect(retryOptionsForEvent('strategy.topic_plan.generation_requested.v1')).toEqual({});
   });
