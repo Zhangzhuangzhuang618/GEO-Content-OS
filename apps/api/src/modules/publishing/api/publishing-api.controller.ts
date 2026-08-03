@@ -798,7 +798,7 @@ async function sendPublishingError(
       return sendError(reply, requestId, 'VERSION_CONFLICT');
     if (error.code === 'PLATFORM_ACCOUNT_CREDENTIAL_INVALID')
       return sendError(reply, requestId, 'ADAPTER_AUTH_EXPIRED');
-    return sendError(reply, requestId, 'STATE_TRANSITION_INVALID');
+    return sendError(reply, requestId, 'STATE_TRANSITION_INVALID', error.details);
   }
   if (error instanceof PublishJobError) {
     if (error.code === 'PUBLISH_JOB_NOT_FOUND')

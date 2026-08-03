@@ -1,4 +1,4 @@
-import { createRequestUuid } from '@/lib/request-uuid';
+import { createRequestUuid } from '../../lib/request-uuid';
 
 import {
   BaijiahaoAutomationPolicyPageSchema,
@@ -331,16 +331,44 @@ export async function startBaijiahaoBrowserLogin(
       method: 'POST',
     },
   );
-  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  if (!response.ok) throw await parseRequestError(response);
   const parsed = BaijiahaoBrowserLoginResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PlatformAccountRequestError(502);
   return parsed.data.data;
 }
 
 export class PlatformAccountRequestError extends Error {
-  public constructor(public readonly status: number) {
+  public constructor(
+    public readonly status: number,
+    public readonly code?: string,
+    public readonly details?: Readonly<Record<string, unknown>>,
+  ) {
     super('Platform account request failed');
     this.name = 'PlatformAccountRequestError';
+  }
+}
+
+async function parseRequestError(response: Response): Promise<PlatformAccountRequestError> {
+  try {
+    const value = (await response.json()) as unknown;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return new PlatformAccountRequestError(response.status);
+    }
+    const error = (value as Readonly<Record<string, unknown>>)['error'];
+    if (!error || typeof error !== 'object' || Array.isArray(error)) {
+      return new PlatformAccountRequestError(response.status);
+    }
+    const candidate = error as Readonly<Record<string, unknown>>;
+    const details = candidate['details'];
+    return new PlatformAccountRequestError(
+      response.status,
+      typeof candidate['code'] === 'string' ? candidate['code'] : undefined,
+      details && typeof details === 'object' && !Array.isArray(details)
+        ? (details as Readonly<Record<string, unknown>>)
+        : undefined,
+    );
+  } catch {
+    return new PlatformAccountRequestError(response.status);
   }
 }
 

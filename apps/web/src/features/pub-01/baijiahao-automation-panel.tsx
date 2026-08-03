@@ -1,13 +1,14 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
   getBaijiahaoBrowserSession,
   listBaijiahaoAutomationPolicies,
+  PlatformAccountRequestError,
   saveBaijiahaoAutomationPolicy,
   startBaijiahaoBrowserLogin,
 } from './platform-account-api';
@@ -30,6 +31,8 @@ export function BaijiahaoAutomationPanel({
   const [projectId, setProjectId] = useState('');
   const [session, setSession] = useState<BaijiahaoBrowserSession | null>(null);
   const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
+  const [loginPending, setLoginPending] = useState(false);
+  const loginInFlight = useRef(false);
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
   const [message, setMessage] = useState<string | null>(null);
   const selected = useMemo(
@@ -76,8 +79,11 @@ export function BaijiahaoAutomationPanel({
   }, [account.id, session?.status]);
 
   async function beginLogin() {
+    if (loginInFlight.current) return;
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+    loginInFlight.current = true;
+    setLoginPending(true);
     setMessage(null);
     try {
       const next = await startBaijiahaoBrowserLogin(account, csrf, session?.status === 'reauth');
@@ -88,8 +94,11 @@ export function BaijiahaoAutomationPanel({
           ? '当前浏览器会话仍然有效。'
           : '请使用百度 App 扫码。二维码仅在本页显示，不会写入日志或数据库。',
       );
-    } catch {
-      setMessage('无法启动扫码登录。请检查浏览器 Worker 和内部网关配置。');
+    } catch (error) {
+      setMessage(loginErrorMessage(error));
+    } finally {
+      loginInFlight.current = false;
+      setLoginPending(false);
     }
   }
 
@@ -184,8 +193,17 @@ export function BaijiahaoAutomationPanel({
                   状态：{sessionLabel(session?.status ?? 'login_required')}
                 </p>
               </div>
-              <button className={primaryButton} onClick={() => void beginLogin()} type="button">
-                {session?.status === 'reauth' ? '重新扫码' : '扫码登录'}
+              <button
+                className={primaryButton}
+                disabled={loginPending}
+                onClick={() => void beginLogin()}
+                type="button"
+              >
+                {loginPending
+                  ? '正在启动…'
+                  : session?.status === 'reauth'
+                    ? '重新扫码'
+                    : '扫码登录'}
               </button>
             </div>
             {login?.qr_image_data_url ? (
@@ -366,6 +384,29 @@ function sessionLabel(status: BaijiahaoBrowserSession['status']) {
       reauth: '登录已失效',
     } as const
   )[status];
+}
+
+function loginErrorMessage(error: unknown): string {
+  if (!(error instanceof PlatformAccountRequestError)) {
+    return '无法启动扫码登录。请检查浏览器 Worker 和内部网关配置。';
+  }
+  if (error.code === 'VERSION_CONFLICT') {
+    return '账号信息已经变化，请关闭百家号自动化面板并重新打开后再试。';
+  }
+  const reason = error.details?.['reason'];
+  if (reason === 'CAPTCHA_REQUIRED') {
+    return '百度要求额外人工验证，自动化已停止。请在受控浏览器中完成人工处理后重试。';
+  }
+  if (reason === 'PAGE_SIGNATURE_CHANGED') {
+    return '百度登录页面结构已经变化，当前自动化已安全停止，需要更新页面适配。';
+  }
+  if (reason === 'GATEWAY_AUTH_FAILED') {
+    return 'API 与浏览器 Worker 的内部令牌不一致，请检查部署环境配置。';
+  }
+  if (reason === 'CONFLICT') {
+    return '浏览器登录会话发生并发变化，请等待当前操作结束后重试。';
+  }
+  return '托管浏览器无法完成登录启动，请检查浏览器 Worker 日志中的安全错误码。';
 }
 
 function readCookie(name: string): string | null {

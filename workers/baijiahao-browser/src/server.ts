@@ -13,7 +13,9 @@ export function createGatewayServer(
   isReady: () => boolean,
 ): Server {
   return createServer((request, response) => {
-    void route(service, request, response, isReady).catch((error) => sendError(response, error));
+    void route(service, request, response, isReady).catch((error) =>
+      sendError(request, response, error),
+    );
   });
 }
 
@@ -147,13 +149,14 @@ function send(
   response.end(JSON.stringify(body));
 }
 
-function sendError(response: ServerResponse, error: unknown): void {
+function sendError(request: IncomingMessage, response: ServerResponse, error: unknown): void {
   const candidate = error as {
     readonly code?: unknown;
     readonly message?: unknown;
     readonly statusCode?: unknown;
   };
   if (typeof candidate.statusCode === 'number' && typeof candidate.code === 'string') {
+    logGatewayFailure(request, candidate.statusCode, candidate.code);
     send(response, candidate.statusCode, {
       code: candidate.code,
       message: typeof candidate.message === 'string' ? candidate.message : 'Request failed',
@@ -161,5 +164,17 @@ function sendError(response: ServerResponse, error: unknown): void {
     return;
   }
   const gateway = toGatewayError(error);
+  logGatewayFailure(request, gateway.statusCode, gateway.code);
   send(response, gateway.statusCode, { code: gateway.code, message: gateway.message });
+}
+
+function logGatewayFailure(request: IncomingMessage, statusCode: number, code: string): void {
+  if (statusCode < 409) return;
+  const pathname = new URL(request.url ?? '/', 'http://gateway.local').pathname;
+  console.error('Baijiahao browser gateway request failed', {
+    error_code: code,
+    http_method: request.method ?? 'UNKNOWN',
+    http_path: pathname,
+    http_status: statusCode,
+  });
 }

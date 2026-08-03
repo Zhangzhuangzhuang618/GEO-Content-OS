@@ -67,7 +67,7 @@ export class BaijiahaoBrowserGatewayClient {
             'Baijiahao browser session was not found',
           );
         }
-        throw unavailable();
+        throw await upstreamFailure(response);
       }
       return response.json() as Promise<unknown>;
     } catch (error) {
@@ -103,5 +103,42 @@ function unavailable(): PlatformAccountError {
   return new PlatformAccountError(
     'PLATFORM_ACCOUNT_STATE_INVALID',
     'Baijiahao browser gateway is unavailable',
+    { reason: 'BROWSER_GATEWAY_UNAVAILABLE' },
   );
 }
+
+async function upstreamFailure(response: Response): Promise<PlatformAccountError> {
+  const reason = await safeGatewayReason(response);
+  return new PlatformAccountError(
+    'PLATFORM_ACCOUNT_STATE_INVALID',
+    'Baijiahao browser gateway rejected the operation',
+    { reason, upstream_status: response.status },
+  );
+}
+
+async function safeGatewayReason(response: Response): Promise<string> {
+  try {
+    const value = (await response.json()) as unknown;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return 'BROWSER_GATEWAY_UNAVAILABLE';
+    }
+    const code = (value as Readonly<Record<string, unknown>>)['code'];
+    if (typeof code !== 'string' || !SAFE_GATEWAY_ERROR_CODES.has(code)) {
+      return 'BROWSER_GATEWAY_UNAVAILABLE';
+    }
+    return code === 'UNAUTHORIZED' ? 'GATEWAY_AUTH_FAILED' : code;
+  } catch {
+    return 'BROWSER_GATEWAY_UNAVAILABLE';
+  }
+}
+
+const SAFE_GATEWAY_ERROR_CODES = new Set([
+  'AUTH_REQUIRED',
+  'BROWSER_GATEWAY_UNAVAILABLE',
+  'CAPTCHA_REQUIRED',
+  'CONFLICT',
+  'PAGE_SIGNATURE_CHANGED',
+  'SCHEMA_INVALID',
+  'STATE_INVALID',
+  'UNAUTHORIZED',
+]);

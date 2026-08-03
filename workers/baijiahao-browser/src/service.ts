@@ -59,7 +59,23 @@ export class BaijiahaoBrowserService {
   public async startLogin(accountId: string): Promise<Readonly<Record<string, unknown>>> {
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
-      const result = await this.driver.startLogin(accountId, this.profilePath(session));
+      let result: Awaited<ReturnType<BaijiahaoPageDriver['startLogin']>>;
+      try {
+        result = await this.driver.startLogin(accountId, this.profilePath(session));
+      } catch (error) {
+        if (
+          error instanceof PageDriverError &&
+          (error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED')
+        ) {
+          await this.store.markSession(session, {
+            error: { code: error.code, schema_version: 'baijiahao-browser-error@1' },
+            qrExpiresAt: null,
+            status: 'attention_required',
+          });
+          throw new BrowserGatewayError(423, error.code, error.message);
+        }
+        throw error;
+      }
       if (result.qrPng.byteLength === 0) {
         const authenticated = await this.persistAuthenticatedSession(session);
         return sessionView(authenticated);

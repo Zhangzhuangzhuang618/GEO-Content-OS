@@ -18,6 +18,7 @@ import { PolicyGuard, setPolicyContext } from '../../identity/rbac/index.js';
 import {
   BaijiahaoAutomationPolicyService,
   OfficialSiteAutomationPolicyService,
+  PlatformAccountError,
   PlatformAccountService,
 } from '../accounts/index.js';
 import { PublishJobService } from '../jobs/index.js';
@@ -181,6 +182,9 @@ describe('publishing API mock E2E', () => {
     })),
     restartDailyBatchInTransaction: vi.fn(async () => automationPolicy),
   };
+  const baijiahaoAutomation = {
+    startLogin: vi.fn(),
+  };
   const idempotency = {
     execute: vi.fn(
       async (
@@ -195,7 +199,7 @@ describe('publishing API mock E2E', () => {
       controllers: [PlatformAccountController, PublishJobController],
       providers: [
         { provide: IdempotencyService, useValue: idempotency },
-        { provide: BaijiahaoAutomationPolicyService, useValue: {} },
+        { provide: BaijiahaoAutomationPolicyService, useValue: baijiahaoAutomation },
         { provide: OfficialSiteAutomationPolicyService, useValue: automation },
         { provide: PlatformAccountService, useValue: {} },
         { provide: PublishJobService, useValue: jobs },
@@ -355,6 +359,32 @@ describe('publishing API mock E2E', () => {
       }),
       expect.any(Function),
     );
+  });
+
+  it('returns the safe browser gateway reason for a failed Baijiahao login', async () => {
+    baijiahaoAutomation.startLogin.mockRejectedValueOnce(
+      new PlatformAccountError(
+        'PLATFORM_ACCOUNT_STATE_INVALID',
+        'Baijiahao browser gateway rejected the operation',
+        { reason: 'PAGE_SIGNATURE_CHANGED', upstream_status: 423 },
+      ),
+    );
+
+    const response = await application.inject({
+      headers: { 'if-match': '"4"' },
+      method: 'POST',
+      url: `/platform-accounts/${ACCOUNT_ID}/baijiahao-browser-session/login`,
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      error: {
+        code: 'STATE_TRANSITION_INVALID',
+        details: { reason: 'PAGE_SIGNATURE_CHANGED', upstream_status: 423 },
+        message: '状态转换不允许',
+        request_id: REQUEST_ID,
+      },
+    });
   });
 });
 

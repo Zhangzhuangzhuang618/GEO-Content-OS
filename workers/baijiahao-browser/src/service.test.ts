@@ -4,6 +4,7 @@ import type { CredentialEnvelopeService } from '@geo-content-os/security/credent
 import { describe, expect, it, vi } from 'vitest';
 
 import type { BaijiahaoBrowserConfig } from './config.js';
+import { PageDriverError } from './page-driver.js';
 import { BaijiahaoBrowserService } from './service.js';
 import type { PostgresBaijiahaoBrowserStore } from './store.js';
 import type { BaijiahaoPageDriver, BrowserSession, PublicationClaim } from './types.js';
@@ -15,20 +16,49 @@ const SESSION_ID = '00000000-0000-4000-8000-000000000148';
 const TENANT_ID = '00000000-0000-4000-8000-000000000149';
 
 describe('Baijiahao browser service', () => {
-  it('reports an immediate platform rejection instead of claiming the publication is processing', async () => {
-    const session: BrowserSession = Object.freeze({
-      accountId: ACCOUNT_ID,
-      authenticatedAt: new Date('2026-08-02T00:00:00.000Z'),
-      id: SESSION_ID,
-      lastVerifiedAt: new Date('2026-08-02T00:00:00.000Z'),
-      profileKey: `baijiahao/${TENANT_ID}/${ACCOUNT_ID}`,
-      qrExpiresAt: null,
-      status: 'authenticated',
-      storageStateCiphertext: 'encrypted-state',
-      storageStateKeyVersion: 'test-v1',
-      tenantId: TENANT_ID,
-      version: 1,
+  it('persists a safe attention state when the login page signature changes', async () => {
+    const session = browserSession('login_required');
+    const markSession = vi.fn(async () => ({
+      ...session,
+      status: 'attention_required',
+      version: 2,
+    }));
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      startLogin: vi.fn(async () => {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Baijiahao login entry no longer matches the frozen page signature',
+        );
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.startLogin(ACCOUNT_ID)).rejects.toMatchObject({
+      code: 'PAGE_SIGNATURE_CHANGED',
+      statusCode: 423,
     });
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'baijiahao-browser-error@1',
+      },
+      qrExpiresAt: null,
+      status: 'attention_required',
+    });
+  });
+
+  it('reports an immediate platform rejection instead of claiming the publication is processing', async () => {
+    const session = browserSession('authenticated');
     const prepared: PublicationClaim = Object.freeze({
       accountId: ACCOUNT_ID,
       contentVersionId: CONTENT_VERSION_ID,
@@ -107,6 +137,22 @@ describe('Baijiahao browser service', () => {
     );
   });
 });
+
+function browserSession(status: BrowserSession['status']): BrowserSession {
+  return Object.freeze({
+    accountId: ACCOUNT_ID,
+    authenticatedAt: status === 'authenticated' ? new Date('2026-08-02T00:00:00.000Z') : null,
+    id: SESSION_ID,
+    lastVerifiedAt: status === 'authenticated' ? new Date('2026-08-02T00:00:00.000Z') : null,
+    profileKey: `baijiahao/${TENANT_ID}/${ACCOUNT_ID}`,
+    qrExpiresAt: null,
+    status,
+    storageStateCiphertext: status === 'authenticated' ? 'encrypted-state' : null,
+    storageStateKeyVersion: status === 'authenticated' ? 'test-v1' : null,
+    tenantId: TENANT_ID,
+    version: 1,
+  });
+}
 
 function config(): BaijiahaoBrowserConfig {
   return Object.freeze({
