@@ -185,7 +185,7 @@ export class BaijiahaoDailyScheduler {
           'code','DAILY_BATCH_DAY_ENDED',
           'message','当天未能完成百家号目标内容，批次已停止。',
           'schema_version','baijiahao-daily-error@1'
-        ),version=version+1
+        ),version=batch.version+1
       FROM baijiahao_automation_policies AS policy
       WHERE policy.id=batch.policy_id AND policy.tenant_id=batch.tenant_id
         AND batch.status='running'

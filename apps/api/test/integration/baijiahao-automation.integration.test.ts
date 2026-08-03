@@ -1,4 +1,9 @@
-import { BaijiahaoAutomation, contentHash, type GeneratedContent } from '@geo-content-os/worker-ai';
+import {
+  BaijiahaoAutomation,
+  BaijiahaoDailyScheduler,
+  contentHash,
+  type GeneratedContent,
+} from '@geo-content-os/worker-ai';
 import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
@@ -21,6 +26,7 @@ const OFFICIAL_ACCOUNT_ID = '91000000-0000-4000-8000-000000000145';
 const BAIJIAHAO_ACCOUNT_ID = '92000000-0000-4000-8000-000000000145';
 const PUBLISH_JOB_ID = 'a1000000-0000-4000-8000-000000000145';
 const POLICY_ID = 'a2000000-0000-4000-8000-000000000145';
+const DAILY_BATCH_ID = 'a2100000-0000-4000-8000-000000000145';
 const BRAND_PROFILE_ID = 'a3000000-0000-4000-8000-000000000145';
 const RULE_ID = 'a4000000-0000-4000-8000-000000000145';
 const SOURCE_ID = 'a5000000-0000-4000-8000-000000000145';
@@ -169,6 +175,52 @@ describe('Baijiahao official-site derived automation', () => {
         WHERE platform_code='baijiahao'
       `,
     ).toEqual([{ count: 0 }]);
+  });
+
+  it('expires a past running batch when both the batch and policy have version columns', async () => {
+    const database = requireClient(client);
+    await database`
+      UPDATE baijiahao_automation_policies SET version=9 WHERE id=${POLICY_ID}::uuid
+    `;
+    await database`
+      INSERT INTO baijiahao_daily_batches(
+        id,tenant_id,policy_id,business_date,status,version
+      ) VALUES(
+        ${DAILY_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+        (now() AT TIME ZONE 'Asia/Shanghai')::date - 1,'running',4
+      )
+    `;
+    const scheduler = new BaijiahaoDailyScheduler(
+      database,
+      {
+        qualityModelKey: 'deepseek-v4-flash',
+        qualityPromptVersionId: QUALITY_PROMPT_ID,
+        qualitySkillVersion: '1.0.0',
+        rewriteModelKey: 'deepseek-v4-flash',
+        writerPromptVersionId: WRITER_PROMPT_ID,
+        writerSkillVersion: '1.0.0',
+      },
+      { tickMs: 30_000 },
+    );
+
+    await expect(scheduler.tick()).resolves.toBeUndefined();
+    expect(
+      await database<{ code: string; policyVersion: number; status: string; version: number }[]>`
+        SELECT batch.status,batch.version,policy.version AS "policyVersion",
+          batch.last_error_json->>'code' AS code
+        FROM baijiahao_daily_batches AS batch
+        JOIN baijiahao_automation_policies AS policy
+          ON policy.id=batch.policy_id AND policy.tenant_id=batch.tenant_id
+        WHERE batch.id=${DAILY_BATCH_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        code: 'DAILY_BATCH_DAY_ENDED',
+        policyVersion: 9,
+        status: 'attention_required',
+        version: 5,
+      },
+    ]);
   });
 });
 
