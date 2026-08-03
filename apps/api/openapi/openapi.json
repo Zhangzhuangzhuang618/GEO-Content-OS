@@ -19657,14 +19657,19 @@
                                 "format": "uuid",
                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                               },
-                              "intent": {
-                                "type": "string",
-                                "enum": [
-                                  "informational",
-                                  "commercial",
-                                  "transactional",
-                                  "navigational"
-                                ]
+                              "intents": {
+                                "minItems": 1,
+                                "maxItems": 4,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": [
+                                    "informational",
+                                    "commercial",
+                                    "transactional",
+                                    "navigational"
+                                  ]
+                                }
                               },
                               "keyword_set_id": {
                                 "type": "string",
@@ -19710,7 +19715,7 @@
                             "required": [
                               "created_at",
                               "id",
-                              "intent",
+                              "intents",
                               "keyword_set_id",
                               "platform_scope",
                               "priority",
@@ -19869,9 +19874,14 @@
                     "items": {
                       "type": "object",
                       "properties": {
-                        "intent": {
-                          "type": "string",
-                          "enum": ["informational", "commercial", "transactional", "navigational"]
+                        "intents": {
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["informational", "commercial", "transactional", "navigational"]
+                          }
                         },
                         "platform_scope": {
                           "minItems": 1,
@@ -19909,7 +19919,7 @@
                         },
                         "term": { "type": "string", "minLength": 1, "maxLength": 240 }
                       },
-                      "required": ["intent", "platform_scope", "term"],
+                      "required": ["intents", "platform_scope", "term"],
                       "additionalProperties": false
                     }
                   }
@@ -19943,9 +19953,19 @@
                             "format": "uuid",
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                           },
-                          "intent": {
-                            "type": "string",
-                            "enum": ["informational", "commercial", "transactional", "navigational"]
+                          "intents": {
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "informational",
+                                "commercial",
+                                "transactional",
+                                "navigational"
+                              ]
+                            }
                           },
                           "keyword_set_id": {
                             "type": "string",
@@ -19991,7 +20011,7 @@
                         "required": [
                           "created_at",
                           "id",
-                          "intent",
+                          "intents",
                           "keyword_set_id",
                           "platform_scope",
                           "priority",

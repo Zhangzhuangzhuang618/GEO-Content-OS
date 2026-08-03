@@ -60,8 +60,10 @@ test('imports, edits and disables keywords through the frozen upsert endpoint', 
   await expect(page.getByText('1 个关键词已导入或更新。')).toBeVisible();
 
   await page.getByRole('button', { name: '编辑' }).click();
-  await page.getByLabel('优先级', { exact: true }).fill('90');
-  await page.getByRole('button', { name: '保存' }).click();
+  const editForm = page.getByRole('heading', { name: '编辑关键词' }).locator('..');
+  await editForm.getByLabel('比较或选择服务').check();
+  await editForm.getByLabel('优先级', { exact: true }).fill('90');
+  await editForm.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('关键词“GEO 内容”已更新。')).toBeVisible();
 
   await page.getByRole('button', { name: '禁用' }).click();
@@ -70,7 +72,7 @@ test('imports, edits and disables keywords through the frozen upsert endpoint', 
   expect(bodies[0]).toEqual({
     keywords: [
       {
-        intent: 'commercial',
+        intents: ['commercial'],
         platform_scope: ['official_site', 'zhihu'],
         priority: 75,
         status: 'active',
@@ -79,7 +81,15 @@ test('imports, edits and disables keywords through the frozen upsert endpoint', 
       },
     ],
   });
-  expect(bodies[1]).toMatchObject({ keywords: [{ priority: 90, term: 'GEO 内容' }] });
+  expect(bodies[1]).toMatchObject({
+    keywords: [
+      {
+        intents: ['informational', 'commercial', 'transactional'],
+        priority: 90,
+        term: 'GEO 内容',
+      },
+    ],
+  });
   expect(bodies[2]).toMatchObject({ keywords: [{ status: 'disabled', term: 'GEO 内容' }] });
 });
 
@@ -92,13 +102,15 @@ test('exposes keyword management and supports a simple single-keyword form', asy
 
   await page.goto('/str-04');
   await expect(page.getByRole('link', { name: '关键词管理' })).toBeVisible();
+  await expect(page.getByText('了解知识或方法、准备咨询或下单')).toBeVisible();
   await page.getByLabel('关键词', { exact: true }).fill('广州搬家公司推荐');
+  await page.getByLabel('了解知识或方法').check();
   await page.getByRole('button', { name: '添加关键词' }).click();
   await expect(page.getByText('关键词“广州搬家公司推荐”已添加。')).toBeVisible();
   expect(bodies[0]).toEqual({
     keywords: [
       {
-        intent: 'commercial',
+        intents: ['informational', 'commercial'],
         platform_scope: ['official_site'],
         priority: 80,
         status: 'active',
@@ -109,6 +121,38 @@ test('exposes keyword management and supports a simple single-keyword form', asy
   });
 });
 
+test('loads every keyword-set page and renders an adaptive selectable list', async ({ page }) => {
+  const secondId = '30000000-0000-4000-8000-000000000078';
+  await page.route('**/api/v1/keyword-sets?*', async (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get('cursor');
+    if (cursor) {
+      await json(route, [{ ...keywordSet(), id: secondId, name: '长尾问题关键词' }], {
+        next_cursor: null,
+        request_id: 'sets-2',
+      });
+      return;
+    }
+    await json(route, [keywordSet()], { next_cursor: 'next-page', request_id: 'sets-1' });
+  });
+  await page.route(`**/api/v1/keyword-sets/${secondId}`, (route) =>
+    json(
+      route,
+      { ...keywordSet(), id: secondId, keywords: [keyword()], name: '长尾问题关键词' },
+      { request_id: 'detail-2' },
+    ),
+  );
+
+  await page.goto('/str-04');
+  const list = page.getByRole('region', { name: '关键词集列表' });
+  await expect(list.getByText('共 2 个')).toBeVisible();
+  await expect(list.getByRole('button')).toHaveCount(2);
+  await list.getByRole('button', { name: /长尾问题关键词/u }).click();
+  await expect(list.getByRole('button', { name: /长尾问题关键词/u })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+});
+
 test('creates the first keyword set for a selected project', async ({ page }) => {
   let createBody: unknown;
   await page.route('**/api/v1/keyword-sets?*', (route) =>
@@ -116,11 +160,7 @@ test('creates the first keyword set for a selected project', async ({ page }) =>
   );
   await page.route('**/api/v1/keyword-sets', async (route) => {
     createBody = route.request().postDataJSON();
-    await json(
-      route,
-      { ...keywordSet(), name: '官网核心关键词' },
-      { request_id: 'created-set' },
-    );
+    await json(route, { ...keywordSet(), name: '官网核心关键词' }, { request_id: 'created-set' });
   });
 
   await page.goto('/str-04');
@@ -130,7 +170,9 @@ test('creates the first keyword set for a selected project', async ({ page }) =>
   await page.getByLabel('关键词集名称').fill('官网核心关键词');
   await page.getByRole('button', { name: '创建关键词集' }).click();
 
-  await expect(page.getByText('关键词集“官网核心关键词”已创建，现在可以添加关键词。')).toBeVisible();
+  await expect(
+    page.getByText('关键词集“官网核心关键词”已创建，现在可以添加关键词。'),
+  ).toBeVisible();
   expect(createBody).toEqual({ name: '官网核心关键词', project_id: PROJECT_ID });
 });
 
@@ -166,7 +208,7 @@ function keyword() {
   return {
     created_at: '2026-07-15T00:00:00.000Z',
     id: KEYWORD_ID,
-    intent: 'informational',
+    intents: ['informational', 'transactional'],
     keyword_set_id: KEYWORD_SET_ID,
     platform_scope: ['official_site'],
     priority: 80,

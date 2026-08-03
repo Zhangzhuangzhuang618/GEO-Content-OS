@@ -180,7 +180,10 @@ describe('keyword API', () => {
     const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
     const initialPayload = {
       keywords: [
-        keyword('GEO content system', 'informational', 90, ['official_site', 'zhihu']),
+        {
+          ...keyword('GEO content system', 'informational', 90, ['official_site', 'zhihu']),
+          intents: ['informational', 'commercial'],
+        },
         keyword('Enterprise content automation', 'commercial', 70, ['wechat_mp']),
       ],
     };
@@ -198,6 +201,7 @@ describe('keyword API', () => {
       'GEO content system',
       'Enterprise content automation',
     ]);
+    expect(created.json().data[0].intents).toEqual(['informational', 'commercial']);
     expect(replay.json().data).toEqual(created.json().data);
     const originalId = created.json().data[0].id;
 
@@ -218,7 +222,7 @@ describe('keyword API', () => {
     expect(updated.statusCode).toBe(200);
     expect(updated.json().data[0]).toMatchObject({
       id: originalId,
-      intent: 'transactional',
+      intents: ['transactional'],
       platform_scope: ['douyin'],
       priority: 45,
       status: 'disabled',
@@ -249,9 +253,9 @@ describe('keyword API', () => {
     );
     await database`
       INSERT INTO keywords (
-        tenant_id, keyword_set_id, term, intent, priority, synonyms, platform_scope, status
+        tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope, status
       ) VALUES (
-        ${TENANT_ID}, ${setA}, 'Scoped GEO', 'informational', 88,
+        ${TENANT_ID}, ${setA}, 'Scoped GEO', 'informational', ARRAY['informational','commercial'], 88,
         ARRAY['GEO scope'], ARRAY['official_site'], 'active'
       )
     `;
@@ -282,7 +286,11 @@ describe('keyword API', () => {
     expect(detail.statusCode).toBe(200);
     expect(KeywordSetDetailResponseSchema.safeParse(detail.json()).success).toBe(true);
     expect(detail.json().data.keywords).toHaveLength(1);
-    expect(detail.json().data.keywords[0]).toMatchObject({ priority: 88, term: 'Scoped GEO' });
+    expect(detail.json().data.keywords[0]).toMatchObject({
+      intents: ['informational', 'commercial'],
+      priority: 88,
+      term: 'Scoped GEO',
+    });
 
     expect(
       (
@@ -351,9 +359,9 @@ describe('keyword API', () => {
     await expect(
       database`
         INSERT INTO keywords (
-          tenant_id, keyword_set_id, term, intent, synonyms, platform_scope
+          tenant_id, keyword_set_id, term, intent, intents, synonyms, platform_scope
         ) VALUES (
-          ${TENANT_ID}, ${setA}, 'Oversized synonym', 'informational',
+          ${TENANT_ID}, ${setA}, 'Oversized synonym', 'informational', ARRAY['informational'],
           ARRAY[${'x'.repeat(241)}], ARRAY['official_site']
         )
       `,
@@ -400,7 +408,7 @@ function keyword(
   platformScope: readonly string[] = ['official_site'],
 ) {
   return {
-    intent,
+    intents: [intent],
     platform_scope: platformScope,
     priority,
     status: 'active',

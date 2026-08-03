@@ -553,9 +553,9 @@ async function resetDatabase(database: Sql, hash: string): Promise<void> {
   `;
   await database`
     INSERT INTO keywords (
-      id, tenant_id, keyword_set_id, term, intent, priority, platform_scope
+      id, tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope
     ) VALUES (
-      ${KEYWORD_ID}, ${TENANT_ID}, ${KEYWORD_SET_ID}, '企业 GEO 内容', 'commercial', 90,
+      ${KEYWORD_ID}, ${TENANT_ID}, ${KEYWORD_SET_ID}, '企业 GEO 内容', 'commercial', ARRAY['commercial'], 90,
       ${PLATFORMS}::varchar[]
     )
   `;

@@ -230,7 +230,7 @@ function keyword() {
   return {
     created_at: timestamp,
     id: id('14'),
-    intent: 'informational',
+    intents: ['informational', 'commercial'],
     keyword_set_id: id('11'),
     platform_scope: ['official_site'],
     priority: 80,

@@ -185,7 +185,7 @@ export function QuickCreate({
           setId,
           [
             {
-              intent: 'informational',
+              intents: ['informational'],
               platform_scope: [...platforms],
               priority: 50,
               status: 'active',

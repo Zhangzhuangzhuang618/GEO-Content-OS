@@ -448,7 +448,7 @@ test('creates and starts all-platform content from one human-friendly form', asy
   expect(keywordBody).toEqual({
     keywords: [
       {
-        intent: 'informational',
+        intents: ['informational'],
         platform_scope: platforms,
         priority: 50,
         status: 'active',
@@ -567,7 +567,7 @@ function keyword() {
   return {
     created_at: '2026-07-01T00:00:00.000Z',
     id: KEYWORD_ID,
-    intent: 'informational',
+    intents: ['informational'],
     keyword_set_id: KEYWORD_SET_ID,
     platform_scope: ['official_site'],
     priority: 100,

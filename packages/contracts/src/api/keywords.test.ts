@@ -10,7 +10,7 @@ import {
 } from './keywords.js';
 
 const validKeyword = {
-  intent: 'informational' as const,
+  intents: ['informational'] as const,
   platform_scope: ['official_site', 'zhihu'] as const,
   priority: 80,
   status: 'active' as const,
@@ -29,11 +29,17 @@ describe('keyword API contracts', () => {
 
     expect(
       KeywordInputSchema.parse({
-        intent: 'commercial',
+        intents: ['commercial', 'transactional'],
         platform_scope: ['zhihu'],
         term: '  GEO platform  ',
       }),
-    ).toMatchObject({ priority: 50, status: 'active', synonyms: [], term: 'GEO platform' });
+    ).toMatchObject({
+      intents: ['commercial', 'transactional'],
+      priority: 50,
+      status: 'active',
+      synonyms: [],
+      term: 'GEO platform',
+    });
   });
 
   it('rejects duplicate terms, synonyms, and platform codes case-insensitively', () => {
@@ -51,6 +57,12 @@ describe('keyword API contracts', () => {
     expect(
       KeywordInputSchema.safeParse({
         ...validKeyword,
+        intents: ['commercial', 'commercial'],
+      }).success,
+    ).toBe(false);
+    expect(
+      KeywordInputSchema.safeParse({
+        ...validKeyword,
         platform_scope: ['zhihu', 'zhihu'],
       }).success,
     ).toBe(false);
@@ -58,7 +70,7 @@ describe('keyword API contracts', () => {
 
   it('enforces frozen intents, platform codes, priority, batch, and strict fields', () => {
     expect(KeywordInputSchema.safeParse({ ...validKeyword, priority: 101 }).success).toBe(false);
-    expect(KeywordInputSchema.safeParse({ ...validKeyword, intent: 'awareness' }).success).toBe(
+    expect(KeywordInputSchema.safeParse({ ...validKeyword, intents: ['awareness'] }).success).toBe(
       false,
     );
     expect(

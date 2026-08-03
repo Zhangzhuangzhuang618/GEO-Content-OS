@@ -36,18 +36,28 @@ export async function listKeywordSets(
   filters: { readonly projectId?: string; readonly status?: 'active' | 'archived' },
   signal?: AbortSignal,
 ): Promise<KeywordSet[]> {
-  const query = new URLSearchParams({ limit: '100' });
-  if (filters.projectId) query.set('project_id', filters.projectId);
-  if (filters.status) query.set('status', filters.status);
-  const response = await fetch(`${API_ORIGIN}/api/v1/keyword-sets?${query}`, {
-    credentials: 'include',
-    method: 'GET',
-    ...(signal ? { signal } : {}),
-  });
-  if (!response.ok) throw new KeywordSetRequestError(response.status);
-  const parsed = KeywordSetPageSchema.safeParse(await response.json());
-  if (!parsed.success) throw new KeywordSetRequestError(502);
-  return parsed.data.data;
+  const items: KeywordSet[] = [];
+  const seenCursors = new Set<string>();
+  let cursor: string | null = null;
+  do {
+    const query = new URLSearchParams({ limit: '100' });
+    if (filters.projectId) query.set('project_id', filters.projectId);
+    if (filters.status) query.set('status', filters.status);
+    if (cursor) query.set('cursor', cursor);
+    const response = await fetch(`${API_ORIGIN}/api/v1/keyword-sets?${query}`, {
+      credentials: 'include',
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    });
+    if (!response.ok) throw new KeywordSetRequestError(response.status);
+    const parsed = KeywordSetPageSchema.safeParse(await response.json());
+    if (!parsed.success) throw new KeywordSetRequestError(502);
+    items.push(...parsed.data.data);
+    cursor = parsed.data.meta.next_cursor;
+    if (cursor && seenCursors.has(cursor)) throw new KeywordSetRequestError(502);
+    if (cursor) seenCursors.add(cursor);
+  } while (cursor);
+  return items;
 }
 
 export async function getKeywordSet(id: string, signal?: AbortSignal): Promise<KeywordSetDetail> {

@@ -91,6 +91,62 @@ describe('TopicPlannerSkill', () => {
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
+  it('accepts an expanded keyword intent and rejects intents outside the selected keywords', async () => {
+    const baseKeyword = (fixture.input['keywords'] as readonly Record<string, unknown>[])[0]!;
+    const expandedInput = {
+      ...fixture.input,
+      keywords: [baseKeyword, { ...baseKeyword, intent: 'commercial' }],
+    };
+    const commercialOutput = {
+      ...fixture.output,
+      data: {
+        topics: [{ ...fixture.output.data.topics[0]!, intent: 'commercial' }],
+      },
+    };
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'pro',
+          responses: [searchCall(), { text: JSON.stringify(commercialOutput) }],
+        }),
+        () => fixture.toolResults as unknown as JsonValue,
+      ).run({ context, input: expandedInput, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { topics: [{ intent: 'commercial' }] } } });
+
+    const unsupportedOutput = {
+      ...commercialOutput,
+      data: { topics: [{ ...commercialOutput.data.topics[0]!, intent: 'navigational' }] },
+    };
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'pro',
+          responses: [searchCall(), { text: JSON.stringify(unsupportedOutput) }],
+        }),
+        () => fixture.toolResults as unknown as JsonValue,
+      ).run({ context, input: expandedInput, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('rejects duplicate topic questions after normalization', async () => {
+    const topic = fixture.output.data.topics[0]!;
+    const duplicateOutput = {
+      ...fixture.output,
+      data: {
+        topics: [topic, { ...topic, question: ` ${topic.question} ` }],
+      },
+    };
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'pro',
+          responses: [searchCall(), { text: JSON.stringify(duplicateOutput) }],
+        }),
+        () => fixture.toolResults as unknown as JsonValue,
+      ).run({ context, input: fixture.input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
   it('runs through the real DeepSeek Adapter using JSON mode and authorized tools', async () => {
     const boundary = TOPIC_PLANNER_CONTRACT_V1.fewShots[1]!;
     let requestBody: Record<string, unknown> | undefined;

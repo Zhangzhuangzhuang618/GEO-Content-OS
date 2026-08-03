@@ -298,6 +298,7 @@ export const keywords = pgTable(
     keywordSetId: uuid('keyword_set_id').notNull(),
     term: citext().notNull(),
     intent: varchar({ length: 32 }).$type<KeywordIntent>().notNull(),
+    intents: varchar({ length: 32 }).array().$type<KeywordIntent[]>().notNull(),
     priority: smallint().notNull().default(50),
     synonyms: text()
       .array()
@@ -332,6 +333,11 @@ export const keywords = pgTable(
       'keywords_intent_check',
       sql`${table.intent} IN ('informational', 'commercial', 'transactional', 'navigational')`,
     ),
+    check(
+      'keywords_intents_check',
+      sql`cardinality(${table.intents}) BETWEEN 1 AND 4 AND array_position(${table.intents}, NULL) IS NULL AND ${table.intents} <@ ARRAY['informational', 'commercial', 'transactional', 'navigational']::varchar(32)[] AND cardinality(array_positions(${table.intents}, 'informational')) <= 1 AND cardinality(array_positions(${table.intents}, 'commercial')) <= 1 AND cardinality(array_positions(${table.intents}, 'transactional')) <= 1 AND cardinality(array_positions(${table.intents}, 'navigational')) <= 1`,
+    ),
+    check('keywords_primary_intent_check', sql`${table.intent} = ${table.intents}[1]`),
     check('keywords_priority_check', sql`${table.priority} BETWEEN 0 AND 100`),
     check('keywords_synonyms_check', sql`is_valid_nonblank_text_array(${table.synonyms})`),
     check(

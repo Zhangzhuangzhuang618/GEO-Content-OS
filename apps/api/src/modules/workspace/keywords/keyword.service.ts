@@ -42,7 +42,7 @@ export interface KeywordSetPageResult {
 interface KeywordRow {
   readonly createdAt: Date | string;
   readonly id: string;
-  readonly intent: Keyword['intent'];
+  readonly intents: Keyword['intents'];
   readonly keywordSetId: string;
   readonly platformScope: Keyword['platform_scope'];
   readonly priority: number;
@@ -138,7 +138,7 @@ export class KeywordService {
           keyword.tenant_id AS "tenantId",
           keyword.keyword_set_id AS "keywordSetId",
           keyword.term::text AS term,
-          keyword.intent,
+          keyword.intents,
           keyword.priority,
           keyword.synonyms,
           keyword.platform_scope AS "platformScope",
@@ -222,7 +222,7 @@ export class KeywordService {
         keyword.tenant_id AS "tenantId",
         keyword.keyword_set_id AS "keywordSetId",
         keyword.term::text AS term,
-        keyword.intent,
+        keyword.intents,
         keyword.priority,
         keyword.synonyms,
         keyword.platform_scope AS "platformScope",
@@ -239,10 +239,10 @@ export class KeywordService {
 
     const rows = await transaction<KeywordRow[]>`
       WITH input_keyword AS (
-        SELECT term, intent, priority, synonyms, platform_scope, status, ordinal
+        SELECT term, intents, priority, synonyms, platform_scope, status, ordinal
         FROM jsonb_to_recordset(${serializedInput}::text::jsonb) AS item(
           term text,
-          intent varchar(32),
+          intents varchar(32)[],
           priority smallint,
           synonyms text[],
           platform_scope varchar(24)[],
@@ -255,6 +255,7 @@ export class KeywordService {
           keyword_set_id,
           term,
           intent,
+          intents,
           priority,
           synonyms,
           platform_scope,
@@ -264,7 +265,8 @@ export class KeywordService {
           ${tenantId},
           ${keywordSetId},
           btrim(input_keyword.term),
-          input_keyword.intent,
+          input_keyword.intents[1],
+          input_keyword.intents,
           input_keyword.priority,
           input_keyword.synonyms,
           input_keyword.platform_scope,
@@ -274,6 +276,7 @@ export class KeywordService {
         ON CONFLICT (tenant_id, keyword_set_id, term) DO UPDATE SET
           term = EXCLUDED.term,
           intent = EXCLUDED.intent,
+          intents = EXCLUDED.intents,
           priority = EXCLUDED.priority,
           synonyms = EXCLUDED.synonyms,
           platform_scope = EXCLUDED.platform_scope,
@@ -283,7 +286,7 @@ export class KeywordService {
           tenant_id AS "tenantId",
           keyword_set_id AS "keywordSetId",
           term::text AS term,
-          intent,
+          intents,
           priority,
           synonyms,
           platform_scope AS "platformScope",
@@ -508,7 +511,7 @@ function toKeywordView(row: KeywordRow): Keyword {
   return {
     created_at: toIso(row.createdAt),
     id: row.id,
-    intent: row.intent,
+    intents: row.intents,
     keyword_set_id: row.keywordSetId,
     platform_scope: row.platformScope,
     priority: row.priority,

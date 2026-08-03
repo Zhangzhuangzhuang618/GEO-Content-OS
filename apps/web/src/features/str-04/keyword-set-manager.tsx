@@ -36,6 +36,12 @@ const PLATFORM_OPTIONS = [
   ['wechat_mp', '微信公众号'],
   ['douyin', '抖音'],
 ] as const satisfies readonly (readonly [PlatformCode, string])[];
+const INTENT_OPTIONS = [
+  ['informational', '了解知识或方法'],
+  ['commercial', '比较或选择服务'],
+  ['transactional', '准备咨询或下单'],
+  ['navigational', '查找品牌或页面'],
+] as const satisfies readonly (readonly [KeywordIntent, string])[];
 
 interface Filters {
   readonly keywordSetId?: string;
@@ -329,21 +335,38 @@ export function KeywordSetManager() {
         />
       ) : (
         <>
-          <label className="mt-5 block rounded-2xl border border-line bg-white p-4 text-sm text-ink-700 shadow-panel">
-            当前关键词集
-            <select
-              aria-label="当前关键词集"
-              className={controlClass}
-              onChange={(event) => selectSet(event.currentTarget.value)}
-              value={detail?.id ?? ''}
-            >
-              {sets.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name} · {item.status === 'active' ? '启用' : '已归档'}
-                </option>
-              ))}
-            </select>
-          </label>
+          <section
+            aria-label="关键词集列表"
+            className="mt-5 rounded-2xl border border-line bg-white p-4 shadow-panel"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-ink-950">关键词集</h2>
+              <span className="text-xs text-ink-500">共 {sets.length} 个</span>
+            </div>
+            <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
+              {sets.map((item) => {
+                const selected = detail?.id === item.id;
+                return (
+                  <button
+                    aria-pressed={selected}
+                    className={`rounded-xl border p-3 text-left transition ${
+                      selected
+                        ? 'border-brand-600 bg-brand-50 text-brand-800'
+                        : 'border-line bg-white text-ink-700 hover:border-brand-300'
+                    }`}
+                    key={item.id}
+                    onClick={() => selectSet(item.id)}
+                    type="button"
+                  >
+                    <span className="block font-medium">{item.name}</span>
+                    <span className="mt-1 block text-xs opacity-75">
+                      {item.status === 'active' ? '启用' : '已归档'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
           {detail ? <KeywordWorkspace detail={detail} onRefresh={refresh} /> : null}
         </>
       )}
@@ -385,7 +408,7 @@ function KeywordWorkspace({
     const form = event.currentTarget;
     const data = new FormData(form);
     const parsed = KeywordInputSchema.safeParse({
-      intent: data.get('intent'),
+      intents: data.getAll('intents'),
       platform_scope: data.getAll('platform_scope'),
       priority: Number(data.get('priority')),
       status: 'active',
@@ -449,7 +472,7 @@ function KeywordWorkspace({
               {detail.keywords.map((keyword) => (
                 <tr className="border-t border-line" key={keyword.id}>
                   <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
-                  <td className="p-4">{keyword.intent}</td>
+                  <td className="p-4">{keyword.intents.map(intentLabel).join('、')}</td>
                   <td className="p-4">{keyword.priority}</td>
                   <td className="p-4">{keyword.synonyms.join('、') || '—'}</td>
                   <td className="p-4">{keyword.platform_scope.map(platformLabel).join('、')}</td>
@@ -495,15 +518,7 @@ function KeywordWorkspace({
             先添加关键词，其他细节可以稍后编辑。
           </p>
           <TextField label="关键词" name="term" />
-          <label className="mt-4 block text-sm text-ink-700">
-            搜索意图
-            <select className={controlClass} defaultValue="commercial" name="intent">
-              <option value="commercial">比较或选择服务</option>
-              <option value="informational">了解知识或方法</option>
-              <option value="transactional">准备咨询或下单</option>
-              <option value="navigational">查找品牌或页面</option>
-            </select>
-          </label>
+          <IntentCheckboxes defaultValues={['commercial']} legend="搜索意图" />
           <label className="mt-4 block text-sm text-ink-700">
             新增关键词优先级
             <input
@@ -546,7 +561,7 @@ function KeywordWorkspace({
           <h2 className="font-semibold text-ink-950">批量导入关键词</h2>
           <p className="mt-2 text-xs leading-5 text-ink-500">
             简单方式：每行输入一个关键词，默认用于官网、优先级 80。需要精细设置时，可使用 Tab
-            分隔：关键词、意图、优先级、同义词、平台、状态。
+            分隔：关键词、意图、优先级、同义词、平台、状态；多个意图使用 | 分隔。
           </p>
           <textarea
             aria-label="批量关键词"
@@ -597,7 +612,7 @@ function EditKeywordForm({
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const parsed = KeywordInputSchema.safeParse({
-      intent: data.get('intent'),
+      intents: data.getAll('intents'),
       platform_scope: data.getAll('platform_scope'),
       priority: Number(data.get('priority')),
       status: data.get('status'),
@@ -615,16 +630,7 @@ function EditKeywordForm({
       <h2 className="font-semibold text-ink-950">编辑关键词</h2>
       <p className="mt-2 text-sm font-medium">{keyword.term}</p>
       <p className="mt-1 text-xs text-ink-500">term 是唯一键；改名需新增关键词并禁用旧项。</p>
-      <label className="mt-4 block text-sm text-ink-700">
-        意图
-        <select className={controlClass} defaultValue={keyword.intent} name="intent">
-          {INTENTS.map((intent) => (
-            <option key={intent} value={intent}>
-              {intent}
-            </option>
-          ))}
-        </select>
-      </label>
+      <IntentCheckboxes defaultValues={keyword.intents} legend="搜索意图" />
       <label className="mt-4 block text-sm text-ink-700">
         优先级
         <input
@@ -676,12 +682,6 @@ function EditKeywordForm({
   );
 }
 
-const INTENTS: readonly KeywordIntent[] = [
-  'informational',
-  'commercial',
-  'transactional',
-  'navigational',
-];
 function parseBatch(value: string): KeywordInput[] {
   const rows = value
     .split(/\r?\n/u)
@@ -692,13 +692,13 @@ function parseBatch(value: string): KeywordInput[] {
   const terms = new Set<string>();
   return rows.map((row, index) => {
     const columns = row.split('\t');
-    const [term, intent, priority, synonyms = '', platforms = '', status = 'active', ...rest] =
+    const [term, intents, priority, synonyms = '', platforms = '', status = 'active', ...rest] =
       columns.length === 1
         ? [columns[0], 'commercial', '80', '', 'official_site', 'active']
         : columns;
     if (rest.length > 0) throw new Error(`第 ${index + 1} 行字段数超过 6 个。`);
     const parsed = KeywordInputSchema.safeParse({
-      intent,
+      intents: splitPipe(intents),
       platform_scope: splitPipe(platforms),
       priority: Number(priority),
       status,
@@ -714,7 +714,7 @@ function parseBatch(value: string): KeywordInput[] {
 }
 function toInput(keyword: Keyword, status: KeywordStatus): KeywordInput {
   return {
-    intent: keyword.intent,
+    intents: keyword.intents,
     platform_scope: keyword.platform_scope,
     priority: keyword.priority,
     status,
@@ -730,6 +730,35 @@ function splitPipe(value: string) {
 }
 function platformLabel(code: PlatformCode) {
   return PLATFORM_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
+}
+function intentLabel(intent: KeywordIntent) {
+  return INTENT_OPTIONS.find(([value]) => value === intent)?.[1] ?? intent;
+}
+function IntentCheckboxes({
+  defaultValues,
+  legend,
+}: {
+  readonly defaultValues: readonly KeywordIntent[];
+  readonly legend: string;
+}) {
+  return (
+    <fieldset className="mt-4">
+      <legend className="text-sm text-ink-700">{legend}</legend>
+      <div className="mt-2 grid gap-2">
+        {INTENT_OPTIONS.map(([intent, label]) => (
+          <label className="flex items-center gap-2 text-sm" key={intent}>
+            <input
+              defaultChecked={defaultValues.includes(intent)}
+              name="intents"
+              type="checkbox"
+              value={intent}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
 }
 function readFilters(): Filters {
   if (typeof window === 'undefined') return {};

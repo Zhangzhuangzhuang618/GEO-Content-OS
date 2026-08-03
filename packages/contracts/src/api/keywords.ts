@@ -10,6 +10,20 @@ import {
 } from './common.js';
 
 const KeywordTermSchema = z.string().trim().min(1).max(240);
+const KeywordIntentSchema = z.enum([
+  'informational',
+  'commercial',
+  'transactional',
+  'navigational',
+]);
+
+const KeywordIntentsSchema = z
+  .array(KeywordIntentSchema)
+  .min(1)
+  .max(KeywordIntentSchema.options.length)
+  .refine((values) => new Set(values).size === values.length, {
+    message: 'Keyword intents must be unique',
+  });
 
 const KeywordSynonymsSchema = z
   .array(z.string().trim().min(1).max(240))
@@ -35,7 +49,7 @@ export const CreateKeywordSetRequestSchema = z
 
 export const KeywordInputSchema = z
   .object({
-    intent: z.enum(['informational', 'commercial', 'transactional', 'navigational']),
+    intents: KeywordIntentsSchema,
     platform_scope: KeywordPlatformScopeSchema,
     priority: z.number().int().min(0).max(100).default(50),
     status: z.enum(['active', 'disabled']).default('active'),
@@ -93,7 +107,7 @@ export const KeywordSchema = z
   .object({
     created_at: IsoDateTimeSchema,
     id: UuidSchema,
-    intent: z.enum(['informational', 'commercial', 'transactional', 'navigational']),
+    intents: KeywordIntentsSchema,
     keyword_set_id: UuidSchema,
     platform_scope: KeywordPlatformScopeSchema,
     priority: z.number().int().min(0).max(100),
@@ -143,7 +157,7 @@ export interface KeywordSetView {
 export interface Keyword {
   readonly created_at: string;
   readonly id: string;
-  readonly intent: 'informational' | 'commercial' | 'transactional' | 'navigational';
+  readonly intents: readonly ('informational' | 'commercial' | 'transactional' | 'navigational')[];
   readonly keyword_set_id: string;
   readonly platform_scope: readonly (typeof PLATFORM_CODES)[number][];
   readonly priority: number;

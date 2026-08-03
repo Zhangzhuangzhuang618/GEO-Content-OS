@@ -900,8 +900,8 @@ async function seedSystem(database: Sql, passwordHash: string): Promise<void> {
     VALUES(${KEYWORD_SET_ID},${TENANT_ID},${PROJECT_ID},'System GEO keywords')
   `;
   await database`
-    INSERT INTO keywords(id,tenant_id,keyword_set_id,term,intent,priority,platform_scope)
-    VALUES(${KEYWORD_ID},${TENANT_ID},${KEYWORD_SET_ID},'企业 GEO 内容','commercial',100,${PLATFORMS}::varchar[])
+    INSERT INTO keywords(id,tenant_id,keyword_set_id,term,intent,intents,priority,platform_scope)
+    VALUES(${KEYWORD_ID},${TENANT_ID},${KEYWORD_SET_ID},'企业 GEO 内容','commercial',ARRAY['commercial'],100,${PLATFORMS}::varchar[])
   `;
   await database`
     INSERT INTO source_documents (

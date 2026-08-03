@@ -16,10 +16,15 @@ export const KeywordIntentSchema = z.enum([
   'navigational',
 ]);
 export const KeywordStatusSchema = z.enum(['active', 'disabled']);
+const KeywordIntentsSchema = z
+  .array(KeywordIntentSchema)
+  .min(1)
+  .max(KeywordIntentSchema.options.length)
+  .refine((values) => new Set(values).size === values.length);
 
 export const KeywordInputSchema = z
   .object({
-    intent: KeywordIntentSchema,
+    intents: KeywordIntentsSchema,
     platform_scope: z.array(PlatformCodeSchema).min(1),
     priority: z.number().int().min(0).max(100),
     status: KeywordStatusSchema,

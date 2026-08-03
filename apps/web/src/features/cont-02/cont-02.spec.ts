@@ -181,7 +181,7 @@ async function mockChoices(page: Page) {
             {
               created_at: '2026-07-15T00:00:00.000Z',
               id: KEYWORD_ID,
-              intent: 'informational',
+              intents: ['informational'],
               keyword_set_id: keywordSet.id,
               platform_scope: ['official_site'],
               priority: 80,
@@ -212,6 +212,7 @@ async function mockChoices(page: Page) {
             id: SOURCE_ID,
             language: 'zh-CN',
             mime_type: 'application/pdf',
+            parsed_at: null,
             project_id: null,
             source_type: 'pdf',
             status: 'active',

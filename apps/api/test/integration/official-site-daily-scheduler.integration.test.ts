@@ -264,10 +264,10 @@ async function seed(database: Sql): Promise<void> {
   `;
   await database`
     INSERT INTO keywords(
-      id,tenant_id,keyword_set_id,term,intent,priority,platform_scope
+      id,tenant_id,keyword_set_id,term,intent,intents,priority,platform_scope
     ) VALUES(
       ${KEYWORD_ID}::uuid,${TENANT_ID}::uuid,${KEYWORD_SET_ID}::uuid,
-      '广州搬家公司','commercial',100,ARRAY['official_site']::varchar[]
+      '广州搬家公司','commercial',ARRAY['commercial'],100,ARRAY['official_site']::varchar[]
     )
   `;
   await database`

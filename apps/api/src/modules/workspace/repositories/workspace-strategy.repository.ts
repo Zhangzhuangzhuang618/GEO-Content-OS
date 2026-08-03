@@ -309,7 +309,7 @@ export class WorkspaceStrategyRepository {
         keyword.tenant_id AS "tenantId",
         keyword.keyword_set_id AS "keywordSetId",
         keyword.term::text AS term,
-        keyword.intent,
+        expanded_intent.intent,
         keyword.priority,
         keyword.synonyms,
         keyword.platform_scope AS "platformScope",
@@ -317,6 +317,8 @@ export class WorkspaceStrategyRepository {
         keyword.created_at AS "createdAt",
         keyword.updated_at AS "updatedAt"
       FROM keywords AS keyword
+      CROSS JOIN LATERAL unnest(keyword.intents) WITH ORDINALITY
+        AS expanded_intent(intent, intent_ordinal)
       JOIN keyword_sets AS keyword_set
         ON keyword_set.id = keyword.keyword_set_id
         AND keyword_set.tenant_id = keyword.tenant_id
@@ -332,7 +334,7 @@ export class WorkspaceStrategyRepository {
         AND keyword_set.deleted_at IS NULL
         AND project.deleted_at IS NULL
         AND workspace.deleted_at IS NULL
-      ORDER BY keyword.priority DESC, keyword.term, keyword.id
+      ORDER BY keyword.priority DESC, keyword.term, keyword.id, expanded_intent.intent_ordinal
     `;
   }
 

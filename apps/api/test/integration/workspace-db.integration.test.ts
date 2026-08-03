@@ -181,9 +181,9 @@ describe('workspace and strategy database', () => {
     await expect(
       database`
         INSERT INTO keywords (
-          tenant_id, keyword_set_id, term, intent, priority, synonyms, platform_scope
+          tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope
         ) VALUES (
-          ${TENANT_A}, ${keywordSet}, 'Duplicate synonym', 'informational', 50,
+          ${TENANT_A}, ${keywordSet}, 'Duplicate synonym', 'informational', ARRAY['informational'], 50,
           ARRAY['GEO', 'geo'], ARRAY['zhihu']
         )
       `,
@@ -191,13 +191,33 @@ describe('workspace and strategy database', () => {
     await expect(
       database`
         INSERT INTO keywords (
-          tenant_id, keyword_set_id, term, intent, priority, platform_scope
+          tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope
         ) VALUES (
-          ${TENANT_A}, ${keywordSet}, 'Bad priority', 'informational', 101,
+          ${TENANT_A}, ${keywordSet}, 'Bad priority', 'informational', ARRAY['informational'], 101,
           ARRAY['zhihu']
         )
       `,
     ).rejects.toThrow(/keywords_priority_check/u);
+    await expect(
+      database`
+        INSERT INTO keywords (
+          tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope
+        ) VALUES (
+          ${TENANT_A}, ${keywordSet}, 'Duplicate intent', 'commercial',
+          ARRAY['commercial','commercial'], 50, ARRAY['zhihu']
+        )
+      `,
+    ).rejects.toThrow(/keywords_intents_check/u);
+    await expect(
+      database`
+        INSERT INTO keywords (
+          tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope
+        ) VALUES (
+          ${TENANT_A}, ${keywordSet}, 'Mismatched primary intent', 'commercial',
+          ARRAY['informational','commercial'], 50, ARRAY['zhihu']
+        )
+      `,
+    ).rejects.toThrow(/keywords_primary_intent_check/u);
     const repository = new WorkspaceStrategyRepository(database);
     expect(await repository.findKeywordSet(TENANT_A, keywordSet)).toMatchObject({
       id: keywordSet,
@@ -205,7 +225,8 @@ describe('workspace and strategy database', () => {
     });
     expect(await repository.findKeywordSet(TENANT_B, keywordSet)).toBeUndefined();
     expect(await repository.listKeywords(TENANT_A, keywordSet)).toMatchObject([
-      { platformScope: ['zhihu', 'official_site'], term: 'GEO Content' },
+      { intent: 'informational', platformScope: ['zhihu', 'official_site'], term: 'GEO Content' },
+      { intent: 'commercial', platformScope: ['zhihu', 'official_site'], term: 'GEO Content' },
     ]);
   });
 
@@ -350,9 +371,10 @@ async function insertKeyword(
 ): Promise<void> {
   await database`
     INSERT INTO keywords (
-      tenant_id, keyword_set_id, term, intent, priority, platform_scope
+      tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope
     ) VALUES (
-      ${TENANT_A}, ${keywordSetId}, ${term}, 'informational', 50, ${platformScope}
+      ${TENANT_A}, ${keywordSetId}, ${term}, 'informational',
+      ARRAY['informational','commercial'], 50, ${platformScope}
     )
   `;
 }

@@ -132,11 +132,11 @@ describe('topic API', () => {
     `;
     await database`
       INSERT INTO keywords (
-        id, tenant_id, keyword_set_id, term, intent, priority, platform_scope
+        id, tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope
       ) VALUES
-        (${KEYWORD_A}, ${TENANT_ID}, ${KEYWORD_SET_A}, 'Enterprise GEO', 'informational', 90, ARRAY['official_site']),
-        (${KEYWORD_B}, ${TENANT_ID}, ${KEYWORD_SET_B}, 'Other project GEO', 'commercial', 80, ARRAY['zhihu']),
-        (${OTHER_KEYWORD}, ${OTHER_TENANT_ID}, ${OTHER_KEYWORD_SET}, 'Cross tenant GEO', 'informational', 70, ARRAY['douyin'])
+        (${KEYWORD_A}, ${TENANT_ID}, ${KEYWORD_SET_A}, 'Enterprise GEO', 'informational', ARRAY['informational','commercial'], 90, ARRAY['official_site']),
+        (${KEYWORD_B}, ${TENANT_ID}, ${KEYWORD_SET_B}, 'Other project GEO', 'commercial', ARRAY['commercial'], 80, ARRAY['zhihu']),
+        (${OTHER_KEYWORD}, ${OTHER_TENANT_ID}, ${OTHER_KEYWORD_SET}, 'Cross tenant GEO', 'informational', ARRAY['informational'], 70, ARRAY['douyin'])
     `;
   });
 

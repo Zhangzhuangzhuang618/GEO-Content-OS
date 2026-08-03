@@ -121,11 +121,11 @@ describe('Brief API', () => {
     `;
     await database`
       INSERT INTO keywords (
-        id, tenant_id, keyword_set_id, term, intent, priority, platform_scope, status
+        id, tenant_id, keyword_set_id, term, intent, intents, priority, platform_scope, status
       ) VALUES
-        (${KEYWORD_A}, ${TENANT_ID}, ${KEYWORD_SET_A}, 'Enterprise GEO', 'informational', 90, ARRAY['official_site','zhihu'], 'active'),
-        (${KEYWORD_A2}, ${TENANT_ID}, ${KEYWORD_SET_A}, 'GEO evidence', 'informational', 80, ARRAY['official_site','zhihu','douyin'], 'active'),
-        (${KEYWORD_B}, ${TENANT_ID}, ${KEYWORD_SET_B}, 'Wrong project GEO', 'commercial', 70, ARRAY['official_site'], 'active')
+        (${KEYWORD_A}, ${TENANT_ID}, ${KEYWORD_SET_A}, 'Enterprise GEO', 'informational', ARRAY['informational'], 90, ARRAY['official_site','zhihu'], 'active'),
+        (${KEYWORD_A2}, ${TENANT_ID}, ${KEYWORD_SET_A}, 'GEO evidence', 'informational', ARRAY['informational'], 80, ARRAY['official_site','zhihu','douyin'], 'active'),
+        (${KEYWORD_B}, ${TENANT_ID}, ${KEYWORD_SET_B}, 'Wrong project GEO', 'commercial', ARRAY['commercial'], 70, ARRAY['official_site'], 'active')
     `;
     await database`
       INSERT INTO source_documents (

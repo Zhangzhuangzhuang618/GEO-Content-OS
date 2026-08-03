@@ -127,7 +127,7 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 ## 5. 数据模型
 
-冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束，ADR-0028 新增 7 张百家号策略、运行、每日批次、浏览器会话、发布及诊断制品表。当前可执行表数为 72，迁移序号为 0041。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束，ADR-0028 新增 7 张百家号策略、运行、每日批次、浏览器会话、发布及诊断制品表，T146 为关键词增加多搜索意图数组并保留首项兼容字段。当前可执行表数为 72，迁移序号为 0042。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -145,7 +145,7 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 | `projects` | 品牌/业务主题边界 |
 | `brand_profiles` | 不可覆盖的品牌策略版本 |
 | `keyword_sets` | 项目关键词集合 |
-| `keywords` | 关键词、意图和平台范围 |
+| `keywords` | 关键词、多搜索意图和平台范围；首项同步到兼容字段 `intent` |
 | `topic_candidates` | Topic Planner 可采纳主题 |
 | `source_documents` | 原始可信资料 |
 | `ingest_jobs` | 解析/OCR/分块/索引任务 |
@@ -409,7 +409,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | STR-01 | 品牌策略列表 | tenant_member | 写操作仅 strategy_editor_or_admin |
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
 | STR-03 | 主题规划 | strategy_editor_or_admin | 无证据主题标记风险，不自动进入生产 |
-| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一 |
+| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选并显示中文标签；关键词集列表完整分页且按数量自适应 |
 | KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索 |
 | KNOW-02 | 上传资料 | strategy_or_content_editor_or_admin | 类型、大小、病毒扫描和 SSRF 校验 |
 | KNOW-03 | 资料详情 | tenant_member | 原文和 chunk 可回溯 |

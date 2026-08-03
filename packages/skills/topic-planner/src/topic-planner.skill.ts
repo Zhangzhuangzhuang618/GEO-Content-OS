@@ -30,6 +30,7 @@ export interface TopicPlannerSkillRunInput {
 interface PlannerInput {
   readonly keywords: readonly {
     readonly id: string;
+    readonly intent: string;
     readonly platform_scope: readonly string[];
   }[];
   readonly platform_scope: readonly string[];
@@ -127,20 +128,33 @@ function assertOutput(
       invalid('Topic Planner returned a citation outside search results');
   }
 
-  const keywords = new Map(input.keywords.map((keyword) => [keyword.id, keyword]));
+  const keywords = new Map<string, PlannerInput['keywords'][number][]>();
+  for (const keyword of input.keywords) {
+    const entries = keywords.get(keyword.id) ?? [];
+    entries.push(keyword);
+    keywords.set(keyword.id, entries);
+  }
   let evidenceFree = false;
+  const normalizedQuestions = new Set<string>();
   for (const topic of output.data.topics) {
     const suggestion = topic.brief_suggestion;
-    const selected = suggestion.keyword_ids.map((id) => keywords.get(id));
+    const selectedGroups = suggestion.keyword_ids.map((id) => keywords.get(id));
+    const selected = selectedGroups.flatMap((entries) => entries ?? []);
+    const normalizedQuestion = topic.question.normalize('NFKC').replace(/\s+/gu, '').toLowerCase();
     if (
       !suggestion.keyword_ids.includes(suggestion.primary_keyword_id) ||
-      selected.some((keyword) => !keyword) ||
+      selectedGroups.some((entries) => !entries) ||
+      !selected.some((keyword) => keyword.intent === topic.intent) ||
       topic.platform_codes.some((platform) => !input.platform_scope.includes(platform)) ||
       topic.platform_codes.some(
         (platform) => !selected.some((keyword) => keyword?.platform_scope.includes(platform)),
       )
     )
       invalid('Topic Planner exceeded supplied keyword or platform scope');
+    if (normalizedQuestions.has(normalizedQuestion)) {
+      invalid('Topic Planner returned duplicate topic questions');
+    }
+    normalizedQuestions.add(normalizedQuestion);
 
     if (topic.evidence_ids.length === 0) {
       evidenceFree = true;
