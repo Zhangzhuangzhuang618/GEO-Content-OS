@@ -42,6 +42,7 @@ const INTENT_OPTIONS = [
   ['transactional', '准备咨询或下单'],
   ['navigational', '查找品牌或页面'],
 ] as const satisfies readonly (readonly [KeywordIntent, string])[];
+const KEYWORDS_PER_PAGE = 10;
 
 interface Filters {
   readonly keywordSetId?: string;
@@ -388,6 +389,15 @@ function KeywordWorkspace({
   const [editing, setEditing] = useState<Keyword | null>(null);
   const [busy, setBusy] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const pageCount = Math.max(1, Math.ceil(detail.keywords.length / KEYWORDS_PER_PAGE));
+  const pageKeywords = detail.keywords.slice(
+    (page - 1) * KEYWORDS_PER_PAGE,
+    page * KEYWORDS_PER_PAGE,
+  );
+
+  useEffect(() => setPage(1), [detail.id]);
+  useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
 
   async function submitBatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -452,62 +462,97 @@ function KeywordWorkspace({
 
   return (
     <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_360px]">
-      <div className="min-w-0 overflow-x-auto rounded-2xl border border-line bg-white shadow-panel">
+      <section
+        aria-label="关键词列表"
+        className="min-w-0 self-start overflow-hidden rounded-2xl border border-line bg-white shadow-panel"
+      >
         {detail.keywords.length === 0 ? (
           <StatePanel title="暂无关键词" text="使用右侧批量导入添加第一个关键词。" />
         ) : (
-          <table className="w-full min-w-[980px] text-left text-sm">
-            <thead className="bg-surface-subtle text-ink-500">
-              <tr>
-                <th className="p-4">关键词</th>
-                <th className="p-4">搜索意图</th>
-                <th className="p-4">优先级</th>
-                <th className="p-4">同义词</th>
-                <th className="p-4">适用平台</th>
-                <th className="p-4">状态</th>
-                <th className="p-4">动作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {detail.keywords.map((keyword) => (
-                <tr className="border-t border-line" key={keyword.id}>
-                  <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
-                  <td className="p-4">{keyword.intents.map(intentLabel).join('、')}</td>
-                  <td className="p-4">{keyword.priority}</td>
-                  <td className="p-4">{keyword.synonyms.join('、') || '—'}</td>
-                  <td className="p-4">{keyword.platform_scope.map(platformLabel).join('、')}</td>
-                  <td className="p-4">{keyword.status === 'active' ? '启用' : '禁用'}</td>
-                  <td className="p-4">
-                    {canWrite ? (
-                      <div className="flex gap-3">
-                        <button
-                          className="text-brand-700"
-                          onClick={() => setEditing(keyword)}
-                          type="button"
-                        >
-                          编辑
-                        </button>
-                        {keyword.status === 'active' ? (
-                          <button
-                            className="text-red-700 disabled:opacity-50"
-                            disabled={busy}
-                            onClick={() => void disable(keyword)}
-                            type="button"
-                          >
-                            禁用
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="text-ink-500">只读</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[980px] text-left text-sm">
+                <thead className="bg-surface-subtle text-ink-500">
+                  <tr>
+                    <th className="p-4">关键词</th>
+                    <th className="p-4">搜索意图</th>
+                    <th className="p-4">优先级</th>
+                    <th className="p-4">同义词</th>
+                    <th className="p-4">适用平台</th>
+                    <th className="p-4">状态</th>
+                    <th className="p-4">动作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageKeywords.map((keyword) => (
+                    <tr className="border-t border-line" key={keyword.id}>
+                      <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
+                      <td className="p-4">{keyword.intents.map(intentLabel).join('、')}</td>
+                      <td className="p-4">{keyword.priority}</td>
+                      <td className="p-4">{keyword.synonyms.join('、') || '—'}</td>
+                      <td className="p-4">
+                        {keyword.platform_scope.map(platformLabel).join('、')}
+                      </td>
+                      <td className="p-4">{keyword.status === 'active' ? '启用' : '禁用'}</td>
+                      <td className="p-4">
+                        {canWrite ? (
+                          <div className="flex gap-3">
+                            <button
+                              className="text-brand-700"
+                              onClick={() => setEditing(keyword)}
+                              type="button"
+                            >
+                              编辑
+                            </button>
+                            {keyword.status === 'active' ? (
+                              <button
+                                className="text-red-700 disabled:opacity-50"
+                                disabled={busy}
+                                onClick={() => void disable(keyword)}
+                                type="button"
+                              >
+                                禁用
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-ink-500">只读</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <nav
+              aria-label="关键词分页"
+              className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm"
+            >
+              <span className="text-ink-500">
+                第 {page} / {pageCount} 页 · 共 {detail.keywords.length} 个关键词
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={page === 1}
+                  onClick={() => setPage((current) => Math.max(1, current - 1))}
+                  type="button"
+                >
+                  上一页
+                </button>
+                <button
+                  className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={page === pageCount}
+                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                  type="button"
+                >
+                  下一页
+                </button>
+              </div>
+            </nav>
+          </>
         )}
-      </div>
+      </section>
       <aside className="space-y-5">
         <form
           className="rounded-2xl border border-line bg-white p-5 shadow-panel"

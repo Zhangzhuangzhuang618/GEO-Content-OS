@@ -153,6 +153,31 @@ test('loads every keyword-set page and renders an adaptive selectable list', asy
   );
 });
 
+test('sizes the keyword table to its rows and paginates long lists', async ({ page }) => {
+  const keywords = Array.from({ length: 12 }, (_, index) => ({
+    ...keyword(),
+    id: `40000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    term: `关键词 ${index + 1}`,
+  }));
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}`, (route) =>
+    json(route, { ...keywordSet(), keywords }, { request_id: 'paginated-detail' }),
+  );
+
+  await page.goto('/str-04');
+  const list = page.getByRole('region', { name: '关键词列表' });
+  const pagination = page.getByRole('navigation', { name: '关键词分页' });
+  await expect(list).toHaveCSS('align-self', 'flex-start');
+  await expect(pagination.getByText('第 1 / 2 页 · 共 12 个关键词')).toBeVisible();
+  await expect(list.getByText('关键词 1', { exact: true })).toBeVisible();
+  await expect(list.getByText('关键词 11', { exact: true })).toHaveCount(0);
+
+  await pagination.getByRole('button', { name: '下一页' }).click();
+  await expect(pagination.getByText('第 2 / 2 页 · 共 12 个关键词')).toBeVisible();
+  await expect(list.getByText('关键词 1', { exact: true })).toHaveCount(0);
+  await expect(list.getByText('关键词 11', { exact: true })).toBeVisible();
+  await expect(pagination.getByRole('button', { name: '下一页' })).toBeDisabled();
+});
+
 test('creates the first keyword set for a selected project', async ({ page }) => {
   let createBody: unknown;
   await page.route('**/api/v1/keyword-sets?*', (route) =>
