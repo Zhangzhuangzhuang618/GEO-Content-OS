@@ -308,6 +308,7 @@ services:
       BAIJIAHAO_MANAGE_URL: ${BAIJIAHAO_MANAGE_URL:-https://baijiahao.baidu.com/builder/rc/content}
       DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}
       HEALTH_PORT: '9095'
+      NODE_ENV: development
       PUBLISHING_CREDENTIAL_KEY_BASE64: ${PUBLISHING_CREDENTIAL_KEY_BASE64:?PUBLISHING_CREDENTIAL_KEY_BASE64 must be set via --env-file .env}
       PUBLISHING_CREDENTIAL_KEY_VERSION: ${PUBLISHING_CREDENTIAL_KEY_VERSION:-local-v1}
       S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-geo_minio}
