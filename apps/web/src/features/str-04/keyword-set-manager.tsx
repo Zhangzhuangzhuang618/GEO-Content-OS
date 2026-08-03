@@ -9,20 +9,25 @@ import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import { listActiveWorkspaces } from '../str-02/brand-profile-api';
 import {
+  commitKeywordImport,
   createKeywordSet,
-  getKeywordSet,
+  getKeywordImport,
+  listKeywords,
   listKeywordSets,
   KeywordSetRequestError,
+  preflightKeywordImport,
   upsertKeywords,
 } from './keyword-set-api';
 import {
   KeywordInputSchema,
   type Keyword,
   type KeywordInput,
+  type KeywordImportJob,
   type KeywordIntent,
+  type KeywordSourceIntent,
   type KeywordSet,
-  type KeywordSetDetail,
   type KeywordStatus,
+  type KeywordSuggestedPageType,
   type PlatformCode,
 } from './keyword-set.schema';
 
@@ -42,7 +47,7 @@ const INTENT_OPTIONS = [
   ['transactional', '准备咨询或下单'],
   ['navigational', '查找品牌或页面'],
 ] as const satisfies readonly (readonly [KeywordIntent, string])[];
-const KEYWORDS_PER_PAGE = 10;
+const KEYWORDS_PER_PAGE = 20;
 
 interface Filters {
   readonly keywordSetId?: string;
@@ -53,7 +58,7 @@ interface Filters {
 export function KeywordSetManager() {
   const [filters, setFilters] = useState<Filters>(readFilters);
   const [sets, setSets] = useState<KeywordSet[]>([]);
-  const [detail, setDetail] = useState<KeywordSetDetail | null>(null);
+  const [detail, setDetail] = useState<KeywordSet | null>(null);
   const [state, setState] = useState<
     'loading' | 'ready' | 'error' | 'permission' | 'unauthenticated'
   >('loading');
@@ -84,7 +89,7 @@ export function KeywordSetManager() {
       const selectedId = items.some((item) => item.id === next.keywordSetId)
         ? next.keywordSetId
         : items[0]?.id;
-      const selected = selectedId ? await getKeywordSet(selectedId, signal) : null;
+      const selected = selectedId ? (items.find((item) => item.id === selectedId) ?? null) : null;
       if (signal?.aborted) return;
       setSets(items);
       setDetail(selected);
@@ -196,11 +201,6 @@ export function KeywordSetManager() {
     if (!id) delete next.keywordSetId;
     setFilters(next);
     writeFilters(next);
-  }
-
-  async function refresh(message?: string) {
-    await load(filters);
-    if (message) setMessage(message);
   }
 
   if (state === 'permission')
@@ -368,7 +368,7 @@ export function KeywordSetManager() {
               })}
             </div>
           </section>
-          {detail ? <KeywordWorkspace detail={detail} onRefresh={refresh} /> : null}
+          {detail ? <KeywordWorkspace detail={detail} onMessage={setMessage} /> : null}
         </>
       )}
       <div aria-live="polite" className="mt-4 min-h-6">
@@ -380,24 +380,68 @@ export function KeywordSetManager() {
 
 function KeywordWorkspace({
   detail,
-  onRefresh,
+  onMessage,
 }: {
-  readonly detail: KeywordSetDetail;
-  readonly onRefresh: (message?: string) => Promise<void>;
+  readonly detail: KeywordSet;
+  readonly onMessage: (message: string | null) => void;
 }) {
   const canWrite = detail.status === 'active';
   const [editing, setEditing] = useState<Keyword | null>(null);
   const [busy, setBusy] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const pageCount = Math.max(1, Math.ceil(detail.keywords.length / KEYWORDS_PER_PAGE));
-  const pageKeywords = detail.keywords.slice(
-    (page - 1) * KEYWORDS_PER_PAGE,
-    page * KEYWORDS_PER_PAGE,
-  );
+  const [keywords, setKeywords] = useState<readonly Keyword[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [cursorHistory, setCursorHistory] = useState<readonly (string | null)[]>([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [keywordState, setKeywordState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<KeywordStatus | ''>('');
+  const [reloadToken, setReloadToken] = useState(0);
+  const cursor = cursorHistory[pageIndex] ?? null;
 
-  useEffect(() => setPage(1), [detail.id]);
-  useEffect(() => setPage((current) => Math.min(current, pageCount)), [pageCount]);
+  useEffect(() => {
+    setCursorHistory([null]);
+    setPageIndex(0);
+    setEditing(null);
+    setSearch('');
+    setStatusFilter('');
+  }, [detail.id]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setKeywordState('loading');
+    void listKeywords(
+      detail.id,
+      {
+        ...(cursor ? { cursor } : {}),
+        limit: KEYWORDS_PER_PAGE,
+        ...(search ? { search } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
+      },
+      controller.signal,
+    )
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        setKeywords(page.data);
+        setNextCursor(page.meta.next_cursor);
+        setKeywordState('ready');
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setKeywordState('error');
+      });
+    return () => controller.abort();
+  }, [cursor, detail.id, reloadToken, search, statusFilter]);
+
+  function applyKeywordFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const nextSearch = String(data.get('keyword_search') ?? '').trim();
+    const rawStatus = String(data.get('keyword_status') ?? '');
+    setSearch(nextSearch);
+    setStatusFilter(rawStatus === 'active' || rawStatus === 'disabled' ? rawStatus : '');
+    setCursorHistory([null]);
+    setPageIndex(0);
+  }
 
   async function submitBatch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -444,7 +488,8 @@ function KeywordWorkspace({
     try {
       await upsertKeywords(detail.id, keywords, csrf);
       setEditing(null);
-      await onRefresh(success);
+      setReloadToken((current) => current + 1);
+      onMessage(success);
     } catch (error) {
       setLocalMessage(
         error instanceof KeywordSetRequestError && error.status === 422
@@ -460,184 +505,537 @@ function KeywordWorkspace({
     await save([toInput(keyword, 'disabled')], `关键词“${keyword.term}”已禁用。`);
   }
 
+  const handleImportComplete = useCallback(() => {
+    setCursorHistory([null]);
+    setPageIndex(0);
+    setReloadToken((current) => current + 1);
+    onMessage('关键词表格导入完成。');
+  }, [onMessage]);
+
   return (
-    <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_360px]">
-      <section
-        aria-label="关键词列表"
-        className="min-w-0 self-start overflow-hidden rounded-2xl border border-line bg-white shadow-panel"
-      >
-        {detail.keywords.length === 0 ? (
-          <StatePanel title="暂无关键词" text="使用右侧批量导入添加第一个关键词。" />
-        ) : (
-          <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-sm">
-                <thead className="bg-surface-subtle text-ink-500">
-                  <tr>
-                    <th className="p-4">关键词</th>
-                    <th className="p-4">搜索意图</th>
-                    <th className="p-4">优先级</th>
-                    <th className="p-4">同义词</th>
-                    <th className="p-4">适用平台</th>
-                    <th className="p-4">状态</th>
-                    <th className="p-4">动作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageKeywords.map((keyword) => (
-                    <tr className="border-t border-line" key={keyword.id}>
-                      <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
-                      <td className="p-4">{keyword.intents.map(intentLabel).join('、')}</td>
-                      <td className="p-4">{keyword.priority}</td>
-                      <td className="p-4">{keyword.synonyms.join('、') || '—'}</td>
-                      <td className="p-4">
-                        {keyword.platform_scope.map(platformLabel).join('、')}
-                      </td>
-                      <td className="p-4">{keyword.status === 'active' ? '启用' : '禁用'}</td>
-                      <td className="p-4">
-                        {canWrite ? (
-                          <div className="flex gap-3">
-                            <button
-                              className="text-brand-700"
-                              onClick={() => setEditing(keyword)}
-                              type="button"
-                            >
-                              编辑
-                            </button>
-                            {keyword.status === 'active' ? (
+    <>
+      <KeywordSpreadsheetImport
+        canWrite={canWrite}
+        keywordSetId={detail.id}
+        onComplete={handleImportComplete}
+      />
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_360px]">
+        <section
+          aria-label="关键词列表"
+          className="min-w-0 self-start overflow-hidden rounded-2xl border border-line bg-white shadow-panel"
+        >
+          <form
+            className="flex flex-wrap items-end gap-3 border-b border-line p-4"
+            onSubmit={applyKeywordFilters}
+          >
+            <label className="min-w-56 flex-1 text-sm text-ink-700">
+              搜索关键词
+              <input className={controlClass} name="keyword_search" placeholder="输入关键词" />
+            </label>
+            <label className="w-36 text-sm text-ink-700">
+              状态
+              <select className={controlClass} name="keyword_status">
+                <option value="">全部</option>
+                <option value="active">启用</option>
+                <option value="disabled">禁用</option>
+              </select>
+            </label>
+            <button className={secondaryButton} type="submit">
+              筛选
+            </button>
+          </form>
+          {keywordState === 'loading' ? (
+            <StatePanel title="正在加载关键词" text="正在读取当前页数据。" />
+          ) : keywordState === 'error' ? (
+            <StatePanel
+              actionLabel="重新加载"
+              onAction={() => setReloadToken((current) => current + 1)}
+              title="暂时无法加载关键词"
+              text="请稍后重试。"
+            />
+          ) : keywords.length === 0 ? (
+            <StatePanel title="暂无关键词" text="可使用右侧文本导入或上方 Excel 导入。" />
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] text-left text-sm">
+                  <thead className="bg-surface-subtle text-ink-500">
+                    <tr>
+                      <th className="p-4">关键词</th>
+                      <th className="p-4">搜索意图</th>
+                      <th className="p-4">优先级</th>
+                      <th className="p-4">同义词</th>
+                      <th className="p-4">适用平台</th>
+                      <th className="p-4">状态</th>
+                      <th className="p-4">动作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {keywords.map((keyword) => (
+                      <tr className="border-t border-line" key={keyword.id}>
+                        <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
+                        <td className="p-4">{keyword.intents.map(intentLabel).join('、')}</td>
+                        <td className="p-4">{keyword.priority}</td>
+                        <td className="p-4">{keyword.synonyms.join('、') || '—'}</td>
+                        <td className="p-4">
+                          {keyword.platform_scope.map(platformLabel).join('、')}
+                        </td>
+                        <td className="p-4">{keyword.status === 'active' ? '启用' : '禁用'}</td>
+                        <td className="p-4">
+                          {canWrite ? (
+                            <div className="flex gap-3">
                               <button
-                                className="text-red-700 disabled:opacity-50"
-                                disabled={busy}
-                                onClick={() => void disable(keyword)}
+                                className="text-brand-700"
+                                onClick={() => setEditing(keyword)}
                                 type="button"
                               >
-                                禁用
+                                编辑
                               </button>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <span className="text-ink-500">只读</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <nav
-              aria-label="关键词分页"
-              className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm"
+                              {keyword.status === 'active' ? (
+                                <button
+                                  className="text-red-700 disabled:opacity-50"
+                                  disabled={busy}
+                                  onClick={() => void disable(keyword)}
+                                  type="button"
+                                >
+                                  禁用
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <span className="text-ink-500">只读</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <nav
+                aria-label="关键词分页"
+                className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm"
+              >
+                <span className="text-ink-500">
+                  第 {pageIndex + 1} 页 · 每页最多 {KEYWORDS_PER_PAGE} 个
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={pageIndex === 0}
+                    onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                    type="button"
+                  >
+                    上一页
+                  </button>
+                  <button
+                    className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!nextCursor}
+                    onClick={() => {
+                      if (!nextCursor) return;
+                      setCursorHistory((current) => [
+                        ...current.slice(0, pageIndex + 1),
+                        nextCursor,
+                      ]);
+                      setPageIndex((current) => current + 1);
+                    }}
+                    type="button"
+                  >
+                    下一页
+                  </button>
+                </div>
+              </nav>
+            </>
+          )}
+        </section>
+        <aside className="space-y-5">
+          <form
+            className="rounded-2xl border border-line bg-white p-5 shadow-panel"
+            onSubmit={submitSingle}
+          >
+            <h2 className="font-semibold text-ink-950">添加关键词</h2>
+            <p className="mt-1 text-xs leading-5 text-ink-500">
+              先添加关键词，其他细节可以稍后编辑。
+            </p>
+            <TextField label="关键词" name="term" />
+            <IntentCheckboxes defaultValues={['commercial']} legend="搜索意图" />
+            <label className="mt-4 block text-sm text-ink-700">
+              新增关键词优先级
+              <input
+                className={controlClass}
+                defaultValue="80"
+                max="100"
+                min="0"
+                name="priority"
+                type="number"
+              />
+            </label>
+            <fieldset className="mt-4">
+              <legend className="text-sm text-ink-700">适用平台</legend>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {PLATFORM_OPTIONS.map(([code, label]) => (
+                  <label className="flex items-center gap-2 text-sm" key={code}>
+                    <input
+                      defaultChecked={code === 'official_site'}
+                      name="platform_scope"
+                      type="checkbox"
+                      value={code}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <button
+              className={`${primaryButton} mt-4 w-full`}
+              disabled={busy || !canWrite}
+              type="submit"
             >
-              <span className="text-ink-500">
-                第 {page} / {pageCount} 页 · 共 {detail.keywords.length} 个关键词
-              </span>
-              <div className="flex gap-2">
-                <button
-                  className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={page === 1}
-                  onClick={() => setPage((current) => Math.max(1, current - 1))}
-                  type="button"
-                >
-                  上一页
-                </button>
-                <button
-                  className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={page === pageCount}
-                  onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-                  type="button"
-                >
-                  下一页
+              添加关键词
+            </button>
+          </form>
+          <form
+            className="rounded-2xl border border-line bg-white p-5 shadow-panel"
+            onSubmit={submitBatch}
+          >
+            <h2 className="font-semibold text-ink-950">批量导入关键词</h2>
+            <p className="mt-2 text-xs leading-5 text-ink-500">
+              简单方式：每行输入一个关键词，默认用于官网、优先级 80。需要精细设置时，可使用 Tab
+              分隔：关键词、意图、优先级、同义词、平台、状态；多个意图使用 | 分隔。
+            </p>
+            <textarea
+              aria-label="批量关键词"
+              className={`${controlClass} min-h-40 font-mono text-xs`}
+              name="batch"
+              placeholder={'广州搬家公司推荐\n广州企业搬迁注意事项\n广州搬家收费标准'}
+              required
+            />
+            <button
+              className={`${primaryButton} mt-4 w-full`}
+              disabled={busy || !canWrite}
+              type="submit"
+            >
+              导入关键词
+            </button>
+          </form>
+          {editing ? (
+            <EditKeywordForm
+              busy={busy}
+              keyword={editing}
+              onCancel={() => setEditing(null)}
+              onInvalid={() => setLocalMessage('请填写 0–100 的优先级并至少选择一个平台。')}
+              onSave={save}
+            />
+          ) : null}
+          <div aria-live="polite" className="min-h-6 text-sm">
+            {localMessage ? <p role="status">{localMessage}</p> : null}
+          </div>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function KeywordSpreadsheetImport({
+  canWrite,
+  keywordSetId,
+  onComplete,
+}: {
+  readonly canWrite: boolean;
+  readonly keywordSetId: string;
+  readonly onComplete: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [sheetName, setSheetName] = useState('关键词库');
+  const [job, setJob] = useState<KeywordImportJob | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFile(null);
+    setJob(null);
+    setMessage(null);
+  }, [keywordSetId]);
+
+  useEffect(() => {
+    if (!job || !['queued', 'running'].includes(job.status)) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void getKeywordImport(keywordSetId, job.id, controller.signal)
+        .then((next) => {
+          setJob(next);
+          if (next.status === 'succeeded') onComplete();
+          if (next.status === 'failed') setMessage(next.error?.message ?? '关键词导入失败。');
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setMessage('暂时无法读取导入进度。');
+        });
+    }, 1_500);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [job, keywordSetId, onComplete]);
+
+  async function preflight() {
+    if (!file) {
+      setMessage('请选择 XLSX 文件。');
+      return;
+    }
+    if (
+      file.size === 0 ||
+      file.size > 25 * 1_024 * 1_024 ||
+      !file.name.toLowerCase().endsWith('.xlsx')
+    ) {
+      setMessage('文件必须是非空 XLSX，且不能超过 25 MiB。');
+      return;
+    }
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await preflightKeywordImport(keywordSetId, file, sheetName, csrf);
+      setJob(result);
+      setMessage(
+        `预检完成：${result.candidate_count} 个主关键词，折叠 ${result.folded_row_count} 个词序变体。`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof KeywordSetRequestError && error.status === 422
+          ? '无法解析文件。请确认工作表包含关键词、搜索意图和建议页面类型表头。'
+          : '预检失败，请稍后重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!job || job.status !== 'preflight_ready') return;
+    const data = new FormData(event.currentTarget);
+    const selectedSourceIntents = data.getAll('import_source_intent') as KeywordSourceIntent[];
+    const selectedPageTypes = data.getAll('import_page_type') as KeywordSuggestedPageType[];
+    const platformScope = data.getAll('import_platform') as PlatformCode[];
+    if (selectedSourceIntents.length === 0 || selectedPageTypes.length === 0) {
+      setMessage('至少选择一种原始搜索意图和一种页面类型。');
+      return;
+    }
+    if (platformScope.length === 0) {
+      setMessage('至少选择一个适用平台。');
+      return;
+    }
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const queued = await commitKeywordImport(
+        keywordSetId,
+        job.id,
+        {
+          platformScope,
+          priority: Number(data.get('import_priority')),
+          selectedPageTypes,
+          selectedSourceIntents,
+          status: data.get('import_activate') === 'on' ? 'active' : 'disabled',
+        },
+        csrf,
+      );
+      setJob(queued);
+      setMessage(`已提交后台导入，共选择 ${queued.selected_count} 个主关键词。`);
+    } catch (error) {
+      setMessage(
+        error instanceof KeywordSetRequestError && error.status === 422
+          ? '当前筛选没有可导入候选，或导入选项不合法。'
+          : '提交导入失败，请稍后重试。',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="font-semibold text-ink-950">从 Excel 导入结构化关键词库</h2>
+          <p className="mt-1 text-sm leading-6 text-ink-500">
+            先预检并折叠可验证的词序变体，再按意图和页面类型确认导入。默认导入为禁用。
+          </p>
+        </div>
+        {job ? (
+          <span className="rounded-full bg-surface-subtle px-3 py-1 text-xs text-ink-700">
+            {importStatusLabel(job.status)}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-4 grid gap-4 md:grid-cols-[1fr_240px_auto] md:items-end">
+        <label className="text-sm text-ink-700">
+          XLSX 文件
+          <input
+            accept=".xlsx"
+            className={`${controlClass} py-2`}
+            onChange={(event) => {
+              setFile(event.currentTarget.files?.[0] ?? null);
+              setJob(null);
+            }}
+            type="file"
+          />
+        </label>
+        <label className="text-sm text-ink-700">
+          工作表
+          <input
+            className={controlClass}
+            onChange={(event) => setSheetName(event.currentTarget.value)}
+            value={sheetName}
+          />
+        </label>
+        <button
+          className={primaryButton}
+          disabled={busy || !canWrite || !file}
+          onClick={() => void preflight()}
+          type="button"
+        >
+          {busy ? '正在检查…' : '预检文件'}
+        </button>
+      </div>
+
+      {job ? (
+        <div className="mt-5 border-t border-line pt-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <ImportMetric label="原始行" value={job.total_row_count} />
+            <ImportMetric label="主关键词" value={job.candidate_count} />
+            <ImportMetric label="折叠变体" value={job.folded_row_count} />
+            <ImportMetric label="无效行" value={job.invalid_row_count} />
+            <ImportMetric label="已写入" value={job.imported_count} />
+          </div>
+          {job.status === 'preflight_ready' ? (
+            <form className="mt-5 grid gap-5 lg:grid-cols-2" onSubmit={commit}>
+              <ImportChoices
+                counts={job.summary.source_intents}
+                legend="导入哪些原始搜索意图"
+                name="import_source_intent"
+              />
+              <ImportChoices
+                counts={job.summary.page_types}
+                legend="导入哪些建议页面类型"
+                name="import_page_type"
+              />
+              <fieldset>
+                <legend className="text-sm font-medium text-ink-700">适用平台</legend>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {PLATFORM_OPTIONS.map(([code, label]) => (
+                    <label className="flex items-center gap-2 text-sm" key={code}>
+                      <input
+                        defaultChecked={code === 'official_site'}
+                        name="import_platform"
+                        type="checkbox"
+                        value={code}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div>
+                <label className="block text-sm text-ink-700">
+                  默认优先级
+                  <input
+                    className={controlClass}
+                    defaultValue="50"
+                    max="100"
+                    min="0"
+                    name="import_priority"
+                    type="number"
+                  />
+                </label>
+                <label className="mt-4 flex items-start gap-2 text-sm text-ink-700">
+                  <input className="mt-1" name="import_activate" type="checkbox" />
+                  <span>
+                    导入后立即启用
+                    <span className="block text-xs text-red-700">
+                      仅勾选后进入自动选题；大批量关键词建议先保持禁用。
+                    </span>
+                  </span>
+                </label>
+              </div>
+              <div className="lg:col-span-2">
+                <button className={primaryButton} disabled={busy} type="submit">
+                  确认并开始后台导入
                 </button>
               </div>
-            </nav>
-          </>
-        )}
-      </section>
-      <aside className="space-y-5">
-        <form
-          className="rounded-2xl border border-line bg-white p-5 shadow-panel"
-          onSubmit={submitSingle}
-        >
-          <h2 className="font-semibold text-ink-950">添加关键词</h2>
-          <p className="mt-1 text-xs leading-5 text-ink-500">
-            先添加关键词，其他细节可以稍后编辑。
-          </p>
-          <TextField label="关键词" name="term" />
-          <IntentCheckboxes defaultValues={['commercial']} legend="搜索意图" />
-          <label className="mt-4 block text-sm text-ink-700">
-            新增关键词优先级
-            <input
-              className={controlClass}
-              defaultValue="80"
-              max="100"
-              min="0"
-              name="priority"
-              type="number"
-            />
-          </label>
-          <fieldset className="mt-4">
-            <legend className="text-sm text-ink-700">适用平台</legend>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {PLATFORM_OPTIONS.map(([code, label]) => (
-                <label className="flex items-center gap-2 text-sm" key={code}>
-                  <input
-                    defaultChecked={code === 'official_site'}
-                    name="platform_scope"
-                    type="checkbox"
-                    value={code}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <button
-            className={`${primaryButton} mt-4 w-full`}
-            disabled={busy || !canWrite}
-            type="submit"
-          >
-            添加关键词
-          </button>
-        </form>
-        <form
-          className="rounded-2xl border border-line bg-white p-5 shadow-panel"
-          onSubmit={submitBatch}
-        >
-          <h2 className="font-semibold text-ink-950">批量导入关键词</h2>
-          <p className="mt-2 text-xs leading-5 text-ink-500">
-            简单方式：每行输入一个关键词，默认用于官网、优先级 80。需要精细设置时，可使用 Tab
-            分隔：关键词、意图、优先级、同义词、平台、状态；多个意图使用 | 分隔。
-          </p>
-          <textarea
-            aria-label="批量关键词"
-            className={`${controlClass} min-h-40 font-mono text-xs`}
-            name="batch"
-            placeholder={'广州搬家公司推荐\n广州企业搬迁注意事项\n广州搬家收费标准'}
-            required
-          />
-          <button
-            className={`${primaryButton} mt-4 w-full`}
-            disabled={busy || !canWrite}
-            type="submit"
-          >
-            导入关键词
-          </button>
-        </form>
-        {editing ? (
-          <EditKeywordForm
-            busy={busy}
-            keyword={editing}
-            onCancel={() => setEditing(null)}
-            onInvalid={() => setLocalMessage('请填写 0–100 的优先级并至少选择一个平台。')}
-            onSave={save}
-          />
-        ) : null}
-        <div aria-live="polite" className="min-h-6 text-sm">
-          {localMessage ? <p role="status">{localMessage}</p> : null}
+            </form>
+          ) : (
+            <p className="mt-4 text-sm text-ink-700">
+              {job.status === 'failed'
+                ? (job.error?.message ?? '导入失败。')
+                : job.status === 'succeeded'
+                  ? `导入完成，共写入或更新 ${job.imported_count} 个主关键词。`
+                  : `后台处理中：${job.imported_count} / ${job.selected_count}`}
+            </p>
+          )}
         </div>
-      </aside>
+      ) : null}
+      <div aria-live="polite" className="mt-3 min-h-5 text-sm">
+        {message ? <p role="status">{message}</p> : null}
+      </div>
+    </section>
+  );
+}
+
+function ImportMetric({ label, value }: { readonly label: string; readonly value: number }) {
+  return (
+    <div className="rounded-xl bg-surface-subtle p-3">
+      <p className="text-xs text-ink-500">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-ink-950">{value.toLocaleString('zh-CN')}</p>
     </div>
   );
+}
+
+function ImportChoices({
+  counts,
+  legend,
+  name,
+}: {
+  readonly counts: readonly { readonly count: number; readonly label: string }[];
+  readonly legend: string;
+  readonly name: string;
+}) {
+  return (
+    <fieldset>
+      <legend className="text-sm font-medium text-ink-700">{legend}</legend>
+      <div className="mt-2 max-h-52 space-y-2 overflow-auto rounded-control border border-line p-3">
+        {counts.map((item) => (
+          <label className="flex items-center justify-between gap-3 text-sm" key={item.label}>
+            <span className="flex items-center gap-2">
+              <input defaultChecked name={name} type="checkbox" value={item.label} />
+              {item.label}
+            </span>
+            <span className="text-xs text-ink-500">{item.count.toLocaleString('zh-CN')}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function importStatusLabel(status: KeywordImportJob['status']): string {
+  return (
+    {
+      failed: '导入失败',
+      preflight_ready: '等待确认',
+      queued: '等待后台处理',
+      running: '正在导入',
+      succeeded: '导入完成',
+    } as const
+  )[status];
 }
 
 function EditKeywordForm({

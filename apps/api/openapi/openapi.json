@@ -19835,7 +19835,1405 @@
         "security": [{ "sessionCookie": [] }]
       }
     },
+    "/keyword-sets/{id}/imports/{importId}": {
+      "get": {
+        "operationId": "keyword_set_import_get",
+        "tags": ["Keyword Sets"],
+        "x-contract-key": "keyword-set.import.get",
+        "x-idempotency": "-",
+        "x-permission": "strategy.read",
+        "x-policy": "tenant_member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "path",
+            "name": "importId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "candidate_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "file_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+                        "folded_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "imported_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "invalid_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "keyword_set_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "selected_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "sheet_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                        "status": {
+                          "type": "string",
+                          "enum": ["preflight_ready", "queued", "running", "succeeded", "failed"]
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "candidate_samples": {
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "intents": {
+                                    "minItems": 1,
+                                    "maxItems": 4,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "informational",
+                                        "commercial",
+                                        "transactional",
+                                        "navigational"
+                                      ]
+                                    }
+                                  },
+                                  "source_intent": {
+                                    "type": "string",
+                                    "enum": [
+                                      "价格咨询",
+                                      "信任筛选",
+                                      "本地搜索",
+                                      "品质筛选",
+                                      "价格筛选",
+                                      "联系方式",
+                                      "商圈/街道搜索",
+                                      "即时需求",
+                                      "路线需求",
+                                      "时间需求",
+                                      "比较选择",
+                                      "预约转化",
+                                      "服务方式",
+                                      "核心服务",
+                                      "服务咨询",
+                                      "预约咨询",
+                                      "避坑咨询",
+                                      "时效咨询",
+                                      "攻略咨询"
+                                    ]
+                                  },
+                                  "suggested_page_type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "服务页",
+                                      "报价页",
+                                      "联系页",
+                                      "对比页",
+                                      "场景页",
+                                      "企业服务页",
+                                      "预约页",
+                                      "问答页",
+                                      "单项服务页",
+                                      "车型页"
+                                    ]
+                                  },
+                                  "synonyms": {
+                                    "maxItems": 50,
+                                    "type": "array",
+                                    "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                                  },
+                                  "term": { "type": "string", "minLength": 1, "maxLength": 240 }
+                                },
+                                "required": [
+                                  "intents",
+                                  "source_intent",
+                                  "suggested_page_type",
+                                  "synonyms",
+                                  "term"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "page_types": {
+                              "maxItems": 10,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "required": ["count", "label"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "source_intents": {
+                              "maxItems": 19,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "required": ["count", "label"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": ["candidate_samples", "page_types", "source_intents"],
+                          "additionalProperties": false
+                        },
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "total_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "error": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "code": { "type": "string", "minLength": 1, "maxLength": 80 },
+                                "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+                                "schema_version": {
+                                  "type": "string",
+                                  "const": "keyword-import-error@1"
+                                }
+                              },
+                              "required": ["code", "message", "schema_version"],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "candidate_count",
+                        "content_hash",
+                        "created_at",
+                        "file_name",
+                        "folded_row_count",
+                        "id",
+                        "imported_count",
+                        "invalid_row_count",
+                        "keyword_set_id",
+                        "selected_count",
+                        "sheet_name",
+                        "status",
+                        "summary",
+                        "tenant_id",
+                        "total_row_count",
+                        "updated_at",
+                        "error"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "KeywordImportJobView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "sessionCookie": [] }]
+      }
+    },
+    "/keyword-sets/{id}/imports/{importId}/commit": {
+      "post": {
+        "operationId": "keyword_set_import_commit",
+        "tags": ["Keyword Sets"],
+        "x-contract-key": "keyword-set.import.commit",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "strategy.manage",
+        "x-policy": "strategy_editor_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "path",
+            "name": "importId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "platform_scope": {
+                    "minItems": 1,
+                    "maxItems": 7,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "official_site",
+                        "baijiahao",
+                        "toutiao",
+                        "zhihu",
+                        "xiaohongshu",
+                        "wechat_mp",
+                        "douyin"
+                      ]
+                    }
+                  },
+                  "priority": { "default": 50, "type": "integer", "minimum": 0, "maximum": 100 },
+                  "selected_page_types": {
+                    "minItems": 1,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "服务页",
+                        "报价页",
+                        "联系页",
+                        "对比页",
+                        "场景页",
+                        "企业服务页",
+                        "预约页",
+                        "问答页",
+                        "单项服务页",
+                        "车型页"
+                      ]
+                    }
+                  },
+                  "selected_source_intents": {
+                    "minItems": 1,
+                    "maxItems": 19,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "价格咨询",
+                        "信任筛选",
+                        "本地搜索",
+                        "品质筛选",
+                        "价格筛选",
+                        "联系方式",
+                        "商圈/街道搜索",
+                        "即时需求",
+                        "路线需求",
+                        "时间需求",
+                        "比较选择",
+                        "预约转化",
+                        "服务方式",
+                        "核心服务",
+                        "服务咨询",
+                        "预约咨询",
+                        "避坑咨询",
+                        "时效咨询",
+                        "攻略咨询"
+                      ]
+                    }
+                  },
+                  "status": {
+                    "default": "disabled",
+                    "type": "string",
+                    "enum": ["active", "disabled"]
+                  }
+                },
+                "required": ["platform_scope", "selected_page_types", "selected_source_intents"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "candidate_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "file_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+                        "folded_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "imported_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "invalid_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "keyword_set_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "selected_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "sheet_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                        "status": {
+                          "type": "string",
+                          "enum": ["preflight_ready", "queued", "running", "succeeded", "failed"]
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "candidate_samples": {
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "intents": {
+                                    "minItems": 1,
+                                    "maxItems": 4,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "informational",
+                                        "commercial",
+                                        "transactional",
+                                        "navigational"
+                                      ]
+                                    }
+                                  },
+                                  "source_intent": {
+                                    "type": "string",
+                                    "enum": [
+                                      "价格咨询",
+                                      "信任筛选",
+                                      "本地搜索",
+                                      "品质筛选",
+                                      "价格筛选",
+                                      "联系方式",
+                                      "商圈/街道搜索",
+                                      "即时需求",
+                                      "路线需求",
+                                      "时间需求",
+                                      "比较选择",
+                                      "预约转化",
+                                      "服务方式",
+                                      "核心服务",
+                                      "服务咨询",
+                                      "预约咨询",
+                                      "避坑咨询",
+                                      "时效咨询",
+                                      "攻略咨询"
+                                    ]
+                                  },
+                                  "suggested_page_type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "服务页",
+                                      "报价页",
+                                      "联系页",
+                                      "对比页",
+                                      "场景页",
+                                      "企业服务页",
+                                      "预约页",
+                                      "问答页",
+                                      "单项服务页",
+                                      "车型页"
+                                    ]
+                                  },
+                                  "synonyms": {
+                                    "maxItems": 50,
+                                    "type": "array",
+                                    "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                                  },
+                                  "term": { "type": "string", "minLength": 1, "maxLength": 240 }
+                                },
+                                "required": [
+                                  "intents",
+                                  "source_intent",
+                                  "suggested_page_type",
+                                  "synonyms",
+                                  "term"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "page_types": {
+                              "maxItems": 10,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "required": ["count", "label"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "source_intents": {
+                              "maxItems": 19,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "required": ["count", "label"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": ["candidate_samples", "page_types", "source_intents"],
+                          "additionalProperties": false
+                        },
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "total_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "error": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "code": { "type": "string", "minLength": 1, "maxLength": 80 },
+                                "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+                                "schema_version": {
+                                  "type": "string",
+                                  "const": "keyword-import-error@1"
+                                }
+                              },
+                              "required": ["code", "message", "schema_version"],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "candidate_count",
+                        "content_hash",
+                        "created_at",
+                        "file_name",
+                        "folded_row_count",
+                        "id",
+                        "imported_count",
+                        "invalid_row_count",
+                        "keyword_set_id",
+                        "selected_count",
+                        "sheet_name",
+                        "status",
+                        "summary",
+                        "tenant_id",
+                        "total_row_count",
+                        "updated_at",
+                        "error"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "KeywordImportJobView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/keyword-sets/{id}/imports/preflight": {
+      "post": {
+        "operationId": "keyword_set_import_preflight",
+        "tags": ["Keyword Sets"],
+        "x-contract-key": "keyword-set.import.preflight",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "strategy.manage",
+        "x-policy": "strategy_editor_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {},
+                  "sheet_name": { "type": "string", "minLength": 1, "maxLength": 120 }
+                },
+                "required": ["file"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "candidate_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "file_name": { "type": "string", "minLength": 1, "maxLength": 255 },
+                        "folded_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "imported_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "invalid_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "keyword_set_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "selected_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "sheet_name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                        "status": {
+                          "type": "string",
+                          "enum": ["preflight_ready", "queued", "running", "succeeded", "failed"]
+                        },
+                        "summary": {
+                          "type": "object",
+                          "properties": {
+                            "candidate_samples": {
+                              "maxItems": 20,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "intents": {
+                                    "minItems": 1,
+                                    "maxItems": 4,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string",
+                                      "enum": [
+                                        "informational",
+                                        "commercial",
+                                        "transactional",
+                                        "navigational"
+                                      ]
+                                    }
+                                  },
+                                  "source_intent": {
+                                    "type": "string",
+                                    "enum": [
+                                      "价格咨询",
+                                      "信任筛选",
+                                      "本地搜索",
+                                      "品质筛选",
+                                      "价格筛选",
+                                      "联系方式",
+                                      "商圈/街道搜索",
+                                      "即时需求",
+                                      "路线需求",
+                                      "时间需求",
+                                      "比较选择",
+                                      "预约转化",
+                                      "服务方式",
+                                      "核心服务",
+                                      "服务咨询",
+                                      "预约咨询",
+                                      "避坑咨询",
+                                      "时效咨询",
+                                      "攻略咨询"
+                                    ]
+                                  },
+                                  "suggested_page_type": {
+                                    "type": "string",
+                                    "enum": [
+                                      "服务页",
+                                      "报价页",
+                                      "联系页",
+                                      "对比页",
+                                      "场景页",
+                                      "企业服务页",
+                                      "预约页",
+                                      "问答页",
+                                      "单项服务页",
+                                      "车型页"
+                                    ]
+                                  },
+                                  "synonyms": {
+                                    "maxItems": 50,
+                                    "type": "array",
+                                    "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                                  },
+                                  "term": { "type": "string", "minLength": 1, "maxLength": 240 }
+                                },
+                                "required": [
+                                  "intents",
+                                  "source_intent",
+                                  "suggested_page_type",
+                                  "synonyms",
+                                  "term"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "page_types": {
+                              "maxItems": 10,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "required": ["count", "label"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "source_intents": {
+                              "maxItems": 19,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "label": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "required": ["count", "label"],
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "required": ["candidate_samples", "page_types", "source_intents"],
+                          "additionalProperties": false
+                        },
+                        "tenant_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "total_row_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "error": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "code": { "type": "string", "minLength": 1, "maxLength": 80 },
+                                "message": { "type": "string", "minLength": 1, "maxLength": 2000 },
+                                "schema_version": {
+                                  "type": "string",
+                                  "const": "keyword-import-error@1"
+                                }
+                              },
+                              "required": ["code", "message", "schema_version"],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "candidate_count",
+                        "content_hash",
+                        "created_at",
+                        "file_name",
+                        "folded_row_count",
+                        "id",
+                        "imported_count",
+                        "invalid_row_count",
+                        "keyword_set_id",
+                        "selected_count",
+                        "sheet_name",
+                        "status",
+                        "summary",
+                        "tenant_id",
+                        "total_row_count",
+                        "updated_at",
+                        "error"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "KeywordImportJobView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
     "/keyword-sets/{id}/keywords": {
+      "get": {
+        "operationId": "keyword_set_list_keywords",
+        "tags": ["Keyword Sets"],
+        "x-contract-key": "keyword-set.list-keywords",
+        "x-idempotency": "-",
+        "x-permission": "strategy.read",
+        "x-policy": "tenant_member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 512 }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": { "default": 20, "type": "integer", "minimum": 1, "maximum": 100 }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": { "type": "string", "minLength": 1, "maxLength": 240 }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": { "type": "string", "enum": ["active", "disabled"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "created_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                          },
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "intents": {
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "informational",
+                                "commercial",
+                                "transactional",
+                                "navigational"
+                              ]
+                            }
+                          },
+                          "keyword_set_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "platform_scope": {
+                            "minItems": 1,
+                            "maxItems": 7,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "official_site",
+                                "baijiahao",
+                                "toutiao",
+                                "zhihu",
+                                "xiaohongshu",
+                                "wechat_mp",
+                                "douyin"
+                              ]
+                            }
+                          },
+                          "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+                          "status": { "type": "string", "enum": ["active", "disabled"] },
+                          "synonyms": {
+                            "maxItems": 50,
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                          },
+                          "tenant_id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "term": { "type": "string", "minLength": 1, "maxLength": 240 },
+                          "updated_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                          }
+                        },
+                        "required": [
+                          "created_at",
+                          "id",
+                          "intents",
+                          "keyword_set_id",
+                          "platform_scope",
+                          "priority",
+                          "status",
+                          "synonyms",
+                          "tenant_id",
+                          "term",
+                          "updated_at"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        },
+                        "next_cursor": {
+                          "anyOf": [
+                            { "type": "string", "minLength": 1, "maxLength": 512 },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": ["request_id", "next_cursor"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "KeywordPage"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "sessionCookie": [] }]
+      },
       "post": {
         "operationId": "keyword_set_upsert_keywords",
         "tags": ["Keyword Sets"],

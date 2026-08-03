@@ -11,8 +11,14 @@ import {
 } from '../brand-profiles.js';
 import { ReasonRequestSchema } from '../common.js';
 import {
+  CommitKeywordImportRequestSchema,
   CreateKeywordSetRequestSchema,
+  KeywordImportIdSchema,
+  KeywordImportJobResponseSchema,
+  KeywordImportPreflightRequestSchema,
+  KeywordListQuerySchema,
   KeywordListResponseSchema,
+  KeywordPageSchema,
   KeywordSetDetailResponseSchema,
   KeywordSetIdSchema,
   KeywordSetPageSchema,
@@ -43,6 +49,7 @@ export interface StrategyApiContract {
   readonly permission: Extract<PermissionCode, 'strategy.read' | 'strategy.manage'>;
   readonly policy: Extract<PolicyCode, 'tenant_member' | 'strategy_editor_or_admin'>;
   readonly querySchema: z.ZodType | null;
+  readonly requestContentType?: 'application/json' | 'multipart/form-data';
   readonly requestName: string;
   readonly responseName: string;
   readonly responseSchema: z.ZodType;
@@ -51,6 +58,9 @@ export interface StrategyApiContract {
 
 const BrandProfileParamsSchema = z.object({ id: BrandProfileIdSchema }).strict();
 const KeywordSetParamsSchema = z.object({ id: KeywordSetIdSchema }).strict();
+const KeywordImportParamsSchema = z
+  .object({ id: KeywordSetIdSchema, importId: KeywordImportIdSchema })
+  .strict();
 const TopicCandidateParamsSchema = z.object({ id: TopicCandidateIdSchema }).strict();
 
 const contracts = [
@@ -175,6 +185,21 @@ const contracts = [
     successStatus: 200,
   },
   {
+    bodySchema: null,
+    idempotency: '-',
+    key: 'keyword-set.list-keywords',
+    method: 'GET',
+    paramsSchema: KeywordSetParamsSchema,
+    path: '/keyword-sets/{id}/keywords',
+    permission: 'strategy.read',
+    policy: 'tenant_member',
+    querySchema: KeywordListQuerySchema,
+    requestName: 'KeywordListQuery',
+    responseName: 'KeywordPage',
+    responseSchema: KeywordPageSchema,
+    successStatus: 200,
+  },
+  {
     bodySchema: UpsertKeywordsRequestSchema,
     idempotency: 'key+body_hash',
     key: 'keyword-set.upsert-keywords',
@@ -187,6 +212,52 @@ const contracts = [
     requestName: 'UpsertKeywordsRequest',
     responseName: 'Keyword[]',
     responseSchema: KeywordListResponseSchema,
+    successStatus: 200,
+  },
+  {
+    bodySchema: KeywordImportPreflightRequestSchema,
+    idempotency: 'key+body_hash',
+    key: 'keyword-set.import.preflight',
+    method: 'POST',
+    paramsSchema: KeywordSetParamsSchema,
+    path: '/keyword-sets/{id}/imports/preflight',
+    permission: 'strategy.manage',
+    policy: 'strategy_editor_or_admin',
+    querySchema: null,
+    requestContentType: 'multipart/form-data',
+    requestName: 'KeywordImportPreflight',
+    responseName: 'KeywordImportJobView',
+    responseSchema: KeywordImportJobResponseSchema,
+    successStatus: 201,
+  },
+  {
+    bodySchema: CommitKeywordImportRequestSchema,
+    idempotency: 'key+body_hash',
+    key: 'keyword-set.import.commit',
+    method: 'POST',
+    paramsSchema: KeywordImportParamsSchema,
+    path: '/keyword-sets/{id}/imports/{importId}/commit',
+    permission: 'strategy.manage',
+    policy: 'strategy_editor_or_admin',
+    querySchema: null,
+    requestName: 'CommitKeywordImportRequest',
+    responseName: 'KeywordImportJobView',
+    responseSchema: KeywordImportJobResponseSchema,
+    successStatus: 202,
+  },
+  {
+    bodySchema: null,
+    idempotency: '-',
+    key: 'keyword-set.import.get',
+    method: 'GET',
+    paramsSchema: KeywordImportParamsSchema,
+    path: '/keyword-sets/{id}/imports/{importId}',
+    permission: 'strategy.read',
+    policy: 'tenant_member',
+    querySchema: null,
+    requestName: '-',
+    responseName: 'KeywordImportJobView',
+    responseSchema: KeywordImportJobResponseSchema,
     successStatus: 200,
   },
   {

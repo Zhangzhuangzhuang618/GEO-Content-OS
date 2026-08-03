@@ -16,7 +16,7 @@ import { listBrandProfiles } from '../str-01/brand-profile-list-api';
 import { createBrandProfile, publishBrandProfile } from '../str-02/brand-profile-api';
 import {
   createKeywordSet,
-  getKeywordSet,
+  listKeywords,
   listKeywordSets,
   upsertKeywords,
 } from '../str-04/keyword-set-api';
@@ -679,12 +679,13 @@ async function loadKeywordContext(
   signal: AbortSignal,
 ): Promise<{ readonly keywordSetId: string | null; readonly keywords: Keyword[] }> {
   const sets = await listKeywordSets({ projectId, status: 'active' }, signal);
-  const details = await Promise.all(sets.map((item) => getKeywordSet(item.id, signal)));
+  const pages = await Promise.all(
+    sets.map((item) => listKeywords(item.id, { limit: 100, status: 'active' }, signal)),
+  );
   return {
     keywordSetId: sets[0]?.id ?? null,
-    keywords: details
-      .flatMap((item) => item.keywords)
-      .filter((item) => item.status === 'active')
+    keywords: pages
+      .flatMap((item) => item.data)
       .sort((left, right) => right.priority - left.priority),
   };
 }

@@ -21,7 +21,7 @@ const timestamp = '2026-07-14T03:00:00.000Z';
 const requestId = '01J00000000000000000000000';
 
 describe('frozen strategy API contract', () => {
-  it('contains exactly the twelve frozen brand, keyword, and topic endpoints', () => {
+  it('contains the sixteen approved brand, keyword, import, and topic endpoints', () => {
     expect(
       STRATEGY_API_CONTRACTS.map((contract) => ({
         idempotency: contract.idempotency,
@@ -90,12 +90,48 @@ describe('frozen strategy API contract', () => {
       ),
       endpoint('GET', '/keyword-sets/{id}', 'strategy.read', '-', 'KeywordSetDetail', '-', 200),
       endpoint(
+        'GET',
+        '/keyword-sets/{id}/keywords',
+        'strategy.read',
+        'KeywordListQuery',
+        'KeywordPage',
+        '-',
+        200,
+      ),
+      endpoint(
         'POST',
         '/keyword-sets/{id}/keywords',
         'strategy.manage',
         'UpsertKeywordsRequest',
         'Keyword[]',
         'key+body_hash',
+        200,
+      ),
+      endpoint(
+        'POST',
+        '/keyword-sets/{id}/imports/preflight',
+        'strategy.manage',
+        'KeywordImportPreflight',
+        'KeywordImportJobView',
+        'key+body_hash',
+        201,
+      ),
+      endpoint(
+        'POST',
+        '/keyword-sets/{id}/imports/{importId}/commit',
+        'strategy.manage',
+        'CommitKeywordImportRequest',
+        'KeywordImportJobView',
+        'key+body_hash',
+        202,
+      ),
+      endpoint(
+        'GET',
+        '/keyword-sets/{id}/imports/{importId}',
+        'strategy.read',
+        '-',
+        'KeywordImportJobView',
+        '-',
         200,
       ),
       endpoint(
@@ -126,7 +162,7 @@ describe('frozen strategy API contract', () => {
         200,
       ),
     ]);
-    expect(new Set(STRATEGY_API_CONTRACTS.map((contract) => contract.key)).size).toBe(12);
+    expect(new Set(STRATEGY_API_CONTRACTS.map((contract) => contract.key)).size).toBe(16);
     expect(STRATEGY_API_CONTRACTS.every((contract) => Object.isFrozen(contract))).toBe(true);
   });
 

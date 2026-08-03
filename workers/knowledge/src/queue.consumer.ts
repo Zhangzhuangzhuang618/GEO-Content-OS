@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 
 import { IngestWorkerError } from './ingest.errors.js';
 import type { KnowledgeIngestWorker } from './ingest.worker.js';
+import type { KeywordImportWorker } from './keyword-import.worker.js';
 
 export interface KnowledgeQueueConsumerOptions {
   readonly concurrency?: number;
@@ -15,7 +16,11 @@ export class KnowledgeQueueConsumer {
   private readonly connection: Redis;
   private readonly worker: Worker<DomainEventEnvelope>;
 
-  public constructor(ingest: KnowledgeIngestWorker, options: KnowledgeQueueConsumerOptions) {
+  public constructor(
+    ingest: KnowledgeIngestWorker,
+    keywordImport: KeywordImportWorker,
+    options: KnowledgeQueueConsumerOptions,
+  ) {
     const concurrency = options.concurrency ?? 4;
     if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 100) {
       throw new TypeError('Knowledge queue concurrency is invalid');
@@ -27,6 +32,9 @@ export class KnowledgeQueueConsumer {
     this.worker = new Worker<DomainEventEnvelope>(
       'geo-knowledge',
       async (job) => {
+        if (job.name === 'strategy.keyword_import.requested.v1') {
+          return keywordImport.run(job.data);
+        }
         const result = await ingest.run(job.data);
         if (result.disposition === 'busy') {
           throw new IngestWorkerError('INGEST_BUSY', 'Knowledge ingest is already running', {

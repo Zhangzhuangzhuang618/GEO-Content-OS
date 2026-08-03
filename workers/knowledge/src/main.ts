@@ -21,6 +21,8 @@ import { ClamAvMalwareScanner } from './malware.scanner.js';
 import { MaterialIngestParser } from './material.ingest-parser.js';
 import { AdapterMaterialLoader } from './material.loader.js';
 import { KnowledgeQueueConsumer } from './queue.consumer.js';
+import { PostgresKeywordImportStore } from './keyword-import.store.js';
+import { KeywordImportWorker } from './keyword-import.worker.js';
 import { RuntimeMaterialChunker } from './runtime-material.chunker.js';
 
 async function main(): Promise<void> {
@@ -44,7 +46,8 @@ async function main(): Promise<void> {
     new RuntimeMaterialChunker(),
     embedding,
   );
-  const consumer = new KnowledgeQueueConsumer(ingest, {
+  const keywordImport = new KeywordImportWorker(new PostgresKeywordImportStore(database));
+  const consumer = new KnowledgeQueueConsumer(ingest, keywordImport, {
     concurrency: config.queueConcurrency,
     onError: (error) => console.error('Knowledge Worker queue error', error),
     redisUrl: config.redisUrl,

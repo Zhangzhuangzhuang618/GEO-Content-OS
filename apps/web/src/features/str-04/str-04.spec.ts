@@ -22,8 +22,8 @@ test.beforeEach(async ({ context, page }) => {
   await page.route('**/api/v1/keyword-sets?*', (route) =>
     json(route, [keywordSet()], { next_cursor: null, request_id: 'sets' }),
   );
-  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}`, (route) =>
-    json(route, { ...keywordSet(), keywords: [keyword()] }, { request_id: 'detail' }),
+  await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) =>
+    json(route, [keyword()], { next_cursor: null, request_id: 'keywords' }),
   );
 });
 
@@ -134,14 +134,6 @@ test('loads every keyword-set page and renders an adaptive selectable list', asy
     }
     await json(route, [keywordSet()], { next_cursor: 'next-page', request_id: 'sets-1' });
   });
-  await page.route(`**/api/v1/keyword-sets/${secondId}`, (route) =>
-    json(
-      route,
-      { ...keywordSet(), id: secondId, keywords: [keyword()], name: '长尾问题关键词' },
-      { request_id: 'detail-2' },
-    ),
-  );
-
   await page.goto('/str-04');
   const list = page.getByRole('region', { name: '关键词集列表' });
   await expect(list.getByText('共 2 个')).toBeVisible();
@@ -153,29 +145,84 @@ test('loads every keyword-set page and renders an adaptive selectable list', asy
   );
 });
 
-test('sizes the keyword table to its rows and paginates long lists', async ({ page }) => {
-  const keywords = Array.from({ length: 12 }, (_, index) => ({
+test('sizes the keyword table to its rows and paginates long lists on the server', async ({
+  page,
+}) => {
+  const keywords = Array.from({ length: 22 }, (_, index) => ({
     ...keyword(),
     id: `40000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
     term: `关键词 ${index + 1}`,
   }));
-  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}`, (route) =>
-    json(route, { ...keywordSet(), keywords }, { request_id: 'paginated-detail' }),
-  );
+  await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get('cursor');
+    return cursor
+      ? json(route, keywords.slice(20), { next_cursor: null, request_id: 'keywords-2' })
+      : json(route, keywords.slice(0, 20), {
+          next_cursor: 'page-2',
+          request_id: 'keywords-1',
+        });
+  });
 
   await page.goto('/str-04');
   const list = page.getByRole('region', { name: '关键词列表' });
   const pagination = page.getByRole('navigation', { name: '关键词分页' });
   await expect(list).toHaveCSS('align-self', 'flex-start');
-  await expect(pagination.getByText('第 1 / 2 页 · 共 12 个关键词')).toBeVisible();
+  await expect(pagination.getByText('第 1 页 · 每页最多 20 个')).toBeVisible();
   await expect(list.getByText('关键词 1', { exact: true })).toBeVisible();
-  await expect(list.getByText('关键词 11', { exact: true })).toHaveCount(0);
+  await expect(list.getByText('关键词 21', { exact: true })).toHaveCount(0);
 
   await pagination.getByRole('button', { name: '下一页' }).click();
-  await expect(pagination.getByText('第 2 / 2 页 · 共 12 个关键词')).toBeVisible();
+  await expect(pagination.getByText('第 2 页 · 每页最多 20 个')).toBeVisible();
   await expect(list.getByText('关键词 1', { exact: true })).toHaveCount(0);
-  await expect(list.getByText('关键词 11', { exact: true })).toBeVisible();
+  await expect(list.getByText('关键词 21', { exact: true })).toBeVisible();
   await expect(pagination.getByRole('button', { name: '下一页' })).toBeDisabled();
+});
+
+test('preflights a structured workbook and defaults the async import to disabled', async ({
+  page,
+}) => {
+  const importId = '50000000-0000-4000-8000-000000000077';
+  let commitBody: unknown;
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/imports/preflight`, (route) =>
+    json(route, keywordImport(importId, 'preflight_ready'), { request_id: 'preflight' }, 201),
+  );
+  await page.route(
+    `**/api/v1/keyword-sets/${KEYWORD_SET_ID}/imports/${importId}/commit`,
+    async (route) => {
+      commitBody = route.request().postDataJSON();
+      await json(
+        route,
+        { ...keywordImport(importId, 'queued'), selected_count: 2 },
+        { request_id: 'commit' },
+        202,
+      );
+    },
+  );
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/imports/${importId}`, (route) =>
+    json(
+      route,
+      { ...keywordImport(importId, 'succeeded'), imported_count: 2, selected_count: 2 },
+      { request_id: 'progress' },
+    ),
+  );
+
+  await page.goto('/str-04');
+  await page.getByLabel('XLSX 文件').setInputFiles({
+    buffer: Buffer.from('mock workbook'),
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    name: '广州搬家关键词库.xlsx',
+  });
+  await page.getByRole('button', { name: '预检文件' }).click();
+  await expect(page.getByText('预检完成：2 个主关键词，折叠 1 个词序变体。')).toBeVisible();
+  await page.getByRole('button', { name: '确认并开始后台导入' }).click();
+  await expect(page.getByText('关键词表格导入完成。')).toBeVisible({ timeout: 5_000 });
+  expect(commitBody).toMatchObject({
+    platform_scope: ['official_site'],
+    priority: 50,
+    selected_page_types: ['服务页'],
+    selected_source_intents: ['本地搜索'],
+    status: 'disabled',
+  });
 });
 
 test('creates the first keyword set for a selected project', async ({ page }) => {
@@ -245,6 +292,43 @@ function keyword() {
   };
 }
 
+function keywordImport(
+  id: string,
+  status: 'preflight_ready' | 'queued' | 'running' | 'succeeded' | 'failed',
+) {
+  return {
+    candidate_count: 2,
+    content_hash: 'a'.repeat(64),
+    created_at: '2026-08-03T00:00:00.000Z',
+    error: null,
+    file_name: '广州搬家关键词库.xlsx',
+    folded_row_count: 1,
+    id,
+    imported_count: 0,
+    invalid_row_count: 0,
+    keyword_set_id: KEYWORD_SET_ID,
+    selected_count: 0,
+    sheet_name: '关键词库',
+    status,
+    summary: {
+      candidate_samples: [
+        {
+          intents: ['commercial', 'transactional'],
+          source_intent: '本地搜索',
+          suggested_page_type: '服务页',
+          synonyms: ['广州荔湾搬家附近'],
+          term: '广州荔湾附近搬家',
+        },
+      ],
+      page_types: [{ count: 2, label: '服务页' }],
+      source_intents: [{ count: 2, label: '本地搜索' }],
+    },
+    tenant_id: TENANT_ID,
+    total_row_count: 3,
+    updated_at: '2026-08-03T00:00:00.000Z',
+  };
+}
+
 async function mockRole(page: Page, role: string) {
   await page.route('**/api/v1/auth/tenants', (route) =>
     json(
@@ -268,10 +352,11 @@ async function json(
   route: Parameters<Parameters<Page['route']>[1]>[0],
   data: unknown,
   meta: Record<string, unknown>,
+  status = 200,
 ) {
   await route.fulfill({
     body: JSON.stringify({ data, meta }),
     contentType: 'application/json',
-    status: 200,
+    status,
   });
 }

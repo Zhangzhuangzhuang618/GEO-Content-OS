@@ -14,6 +14,7 @@ const EVENT_QUEUE: Readonly<Record<EventType, OutboxQueueName>> = Object.freeze(
   'knowledge.source.ingest_requested.v1': 'geo-knowledge',
   'knowledge.source.reindex_requested.v1': 'geo-knowledge',
   'strategy.topic_plan.generation_requested.v1': 'geo-ai',
+  'strategy.keyword_import.requested.v1': 'geo-knowledge',
   'content.package.generation_requested.v1': 'geo-ai',
   'content.variant.quality_check_requested.v1': 'geo-ai',
   'content.variant.official_site_rewrite_requested.v1': 'geo-ai',

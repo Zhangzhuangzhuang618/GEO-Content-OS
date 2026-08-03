@@ -10,14 +10,14 @@ import {
 } from './common.js';
 
 const KeywordTermSchema = z.string().trim().min(1).max(240);
-const KeywordIntentSchema = z.enum([
+export const KeywordIntentSchema = z.enum([
   'informational',
   'commercial',
   'transactional',
   'navigational',
 ]);
 
-const KeywordIntentsSchema = z
+export const KeywordIntentsSchema = z
   .array(KeywordIntentSchema)
   .min(1)
   .max(KeywordIntentSchema.options.length)
@@ -32,7 +32,7 @@ const KeywordSynonymsSchema = z
     message: 'Keyword synonyms must be unique',
   });
 
-const KeywordPlatformScopeSchema = z
+export const KeywordPlatformScopeSchema = z
   .array(z.enum(PLATFORM_CODES))
   .min(1)
   .max(PLATFORM_CODES.length)
@@ -81,6 +81,42 @@ export const UpsertKeywordsRequestSchema = z
   });
 
 export const KeywordSetIdSchema = UuidSchema;
+export const KeywordImportIdSchema = UuidSchema;
+
+export const KeywordSourceIntentSchema = z.enum([
+  '价格咨询',
+  '信任筛选',
+  '本地搜索',
+  '品质筛选',
+  '价格筛选',
+  '联系方式',
+  '商圈/街道搜索',
+  '即时需求',
+  '路线需求',
+  '时间需求',
+  '比较选择',
+  '预约转化',
+  '服务方式',
+  '核心服务',
+  '服务咨询',
+  '预约咨询',
+  '避坑咨询',
+  '时效咨询',
+  '攻略咨询',
+]);
+
+export const KeywordSuggestedPageTypeSchema = z.enum([
+  '服务页',
+  '报价页',
+  '联系页',
+  '对比页',
+  '场景页',
+  '企业服务页',
+  '预约页',
+  '问答页',
+  '单项服务页',
+  '车型页',
+]);
 
 export const KeywordSetQuerySchema = z
   .object({
@@ -90,6 +126,48 @@ export const KeywordSetQuerySchema = z
     status: z.enum(['active', 'archived']).optional(),
   })
   .strict();
+
+export const KeywordListQuerySchema = z
+  .object({
+    cursor: CursorSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    search: z.string().trim().min(1).max(240).optional(),
+    status: z.enum(['active', 'disabled']).optional(),
+  })
+  .strict();
+
+export const KeywordImportPreflightRequestSchema = z
+  .object({
+    file: z.unknown(),
+    sheet_name: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+
+export const CommitKeywordImportRequestSchema = z
+  .object({
+    platform_scope: KeywordPlatformScopeSchema,
+    priority: z.number().int().min(0).max(100).default(50),
+    selected_page_types: z.array(KeywordSuggestedPageTypeSchema).min(1).max(10),
+    selected_source_intents: z.array(KeywordSourceIntentSchema).min(1).max(19),
+    status: z.enum(['active', 'disabled']).default('disabled'),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new Set(value.selected_page_types).size !== value.selected_page_types.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Selected page types must be unique',
+        path: ['selected_page_types'],
+      });
+    }
+    if (new Set(value.selected_source_intents).size !== value.selected_source_intents.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Selected source intents must be unique',
+        path: ['selected_source_intents'],
+      });
+    }
+  });
 
 export const KeywordSetViewSchema = z
   .object({
@@ -139,8 +217,72 @@ export const KeywordListResponseSchema = z
   .object({ data: z.array(KeywordSchema), meta: RequestMetaSchema })
   .strict();
 
+export const KeywordPageSchema = z
+  .object({ data: z.array(KeywordSchema), meta: CursorPageMetaSchema })
+  .strict();
+
+const KeywordImportCountSchema = z
+  .object({ count: z.number().int().nonnegative(), label: z.string().trim().min(1).max(80) })
+  .strict();
+
+const KeywordImportCandidateSampleSchema = z
+  .object({
+    intents: KeywordIntentsSchema,
+    source_intent: KeywordSourceIntentSchema,
+    suggested_page_type: KeywordSuggestedPageTypeSchema,
+    synonyms: KeywordSynonymsSchema,
+    term: KeywordTermSchema,
+  })
+  .strict();
+
+export const KeywordImportSummarySchema = z
+  .object({
+    candidate_samples: z.array(KeywordImportCandidateSampleSchema).max(20),
+    page_types: z.array(KeywordImportCountSchema).max(10),
+    source_intents: z.array(KeywordImportCountSchema).max(19),
+  })
+  .strict();
+
+export const KeywordImportJobViewSchema = z
+  .object({
+    candidate_count: z.number().int().nonnegative(),
+    content_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+    created_at: IsoDateTimeSchema,
+    file_name: z.string().trim().min(1).max(255),
+    folded_row_count: z.number().int().nonnegative(),
+    id: UuidSchema,
+    imported_count: z.number().int().nonnegative(),
+    invalid_row_count: z.number().int().nonnegative(),
+    keyword_set_id: UuidSchema,
+    selected_count: z.number().int().nonnegative(),
+    sheet_name: z.string().trim().min(1).max(120),
+    status: z.enum(['preflight_ready', 'queued', 'running', 'succeeded', 'failed']),
+    summary: KeywordImportSummarySchema,
+    tenant_id: UuidSchema,
+    total_row_count: z.number().int().nonnegative(),
+    updated_at: IsoDateTimeSchema,
+    error: z
+      .object({
+        code: z.string().trim().min(1).max(80),
+        message: z.string().trim().min(1).max(2_000),
+        schema_version: z.literal('keyword-import-error@1'),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+export const KeywordImportJobResponseSchema = z
+  .object({ data: KeywordImportJobViewSchema, meta: RequestMetaSchema })
+  .strict();
+
 export type CreateKeywordSetRequest = z.infer<typeof CreateKeywordSetRequestSchema>;
+export type CommitKeywordImportRequest = z.infer<typeof CommitKeywordImportRequestSchema>;
 export type KeywordInput = z.infer<typeof KeywordInputSchema>;
+export type KeywordListQuery = z.infer<typeof KeywordListQuerySchema>;
+export type KeywordSourceIntent = z.infer<typeof KeywordSourceIntentSchema>;
+export type KeywordSuggestedPageType = z.infer<typeof KeywordSuggestedPageTypeSchema>;
+export type KeywordImportJobView = z.infer<typeof KeywordImportJobViewSchema>;
 export type KeywordSetQuery = z.infer<typeof KeywordSetQuerySchema>;
 export type UpsertKeywordsRequest = z.infer<typeof UpsertKeywordsRequestSchema>;
 

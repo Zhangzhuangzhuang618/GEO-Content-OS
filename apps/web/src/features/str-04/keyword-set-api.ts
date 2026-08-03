@@ -2,10 +2,17 @@ import { createRequestUuid } from '@/lib/request-uuid';
 
 import {
   KeywordListResponseSchema,
+  KeywordImportJobResponseSchema,
+  KeywordPageSchema,
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
   KeywordSetResponseSchema,
   type KeywordInput,
+  type KeywordImportJob,
+  type KeywordSourceIntent,
+  type KeywordStatus,
+  type KeywordSuggestedPageType,
+  type PlatformCode,
   type KeywordSet,
   type KeywordSetDetail,
 } from './keyword-set.schema';
@@ -89,6 +96,117 @@ export async function upsertKeywords(
   });
   if (!response.ok) throw new KeywordSetRequestError(response.status);
   const parsed = KeywordListResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new KeywordSetRequestError(502);
+  return parsed.data.data;
+}
+
+export async function listKeywords(
+  keywordSetId: string,
+  input: {
+    readonly cursor?: string;
+    readonly limit?: number;
+    readonly search?: string;
+    readonly status?: KeywordStatus;
+  },
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({ limit: String(input.limit ?? 20) });
+  if (input.cursor) query.set('cursor', input.cursor);
+  if (input.search) query.set('search', input.search);
+  if (input.status) query.set('status', input.status);
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/keywords?${query}`,
+    {
+      credentials: 'include',
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    },
+  );
+  if (!response.ok) throw new KeywordSetRequestError(response.status);
+  const parsed = KeywordPageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new KeywordSetRequestError(502);
+  return parsed.data;
+}
+
+export async function preflightKeywordImport(
+  keywordSetId: string,
+  file: File,
+  sheetName: string,
+  csrf: string,
+): Promise<KeywordImportJob> {
+  const form = new FormData();
+  form.set('file', file);
+  if (sheetName.trim()) form.set('sheet_name', sheetName.trim());
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/imports/preflight`,
+    {
+      body: form,
+      credentials: 'include',
+      headers: {
+        'idempotency-key': `keyword-import-preflight-${createRequestUuid()}`,
+        'x-csrf-token': csrf,
+      },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw new KeywordSetRequestError(response.status);
+  const parsed = KeywordImportJobResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new KeywordSetRequestError(502);
+  return parsed.data.data;
+}
+
+export async function commitKeywordImport(
+  keywordSetId: string,
+  importJobId: string,
+  input: {
+    readonly platformScope: readonly PlatformCode[];
+    readonly priority: number;
+    readonly selectedPageTypes: readonly KeywordSuggestedPageType[];
+    readonly selectedSourceIntents: readonly KeywordSourceIntent[];
+    readonly status: KeywordStatus;
+  },
+  csrf: string,
+): Promise<KeywordImportJob> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/imports/${importJobId}/commit`,
+    {
+      body: JSON.stringify({
+        platform_scope: input.platformScope,
+        priority: input.priority,
+        selected_page_types: input.selectedPageTypes,
+        selected_source_intents: input.selectedSourceIntents,
+        status: input.status,
+      }),
+      credentials: 'include',
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': `keyword-import-commit-${createRequestUuid()}`,
+        'x-csrf-token': csrf,
+      },
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw new KeywordSetRequestError(response.status);
+  const parsed = KeywordImportJobResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new KeywordSetRequestError(502);
+  return parsed.data.data;
+}
+
+export async function getKeywordImport(
+  keywordSetId: string,
+  importJobId: string,
+  signal?: AbortSignal,
+): Promise<KeywordImportJob> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/imports/${importJobId}`,
+    {
+      credentials: 'include',
+      method: 'GET',
+      ...(signal ? { signal } : {}),
+    },
+  );
+  if (!response.ok) throw new KeywordSetRequestError(response.status);
+  const parsed = KeywordImportJobResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new KeywordSetRequestError(502);
   return parsed.data.data;
 }

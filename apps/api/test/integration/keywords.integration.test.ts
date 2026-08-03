@@ -1,5 +1,7 @@
 import {
+  KeywordImportJobResponseSchema,
   KeywordListResponseSchema,
+  KeywordPageSchema,
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
   KeywordSetResponseSchema,
@@ -8,7 +10,9 @@ import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
 } from '@geo-content-os/testkit';
+import { KeywordImportWorker, PostgresKeywordImportStore } from '@geo-content-os/worker-knowledge';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import ExcelJS from 'exceljs';
 import type { FastifyInstance } from 'fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import postgres, { type Sql } from 'postgres';
@@ -303,6 +307,221 @@ describe('keyword API', () => {
     ).toBe(404);
   });
 
+  it('paginates keywords on the server and filters by status', async () => {
+    const database = requireClient(client);
+    const keywordSetId = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Paged set');
+    await database`
+      INSERT INTO keywords (
+        tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope, status
+      ) VALUES
+        (${TENANT_ID}, ${keywordSetId}, '关键词 A', 'commercial', ARRAY['commercial'], 90, '{}', ARRAY['official_site'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '关键词 B', 'commercial', ARRAY['commercial'], 80, '{}', ARRAY['official_site'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '关键词 C', 'informational', ARRAY['informational'], 70, '{}', ARRAY['official_site'], 'disabled')
+    `;
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const server = requireServer(application);
+    const first = await server.inject({
+      headers: writeHeaders(strategy),
+      method: 'GET',
+      url: `${API_PATH}/${keywordSetId}/keywords?limit=1&status=active`,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(KeywordPageSchema.safeParse(first.json()).success).toBe(true);
+    expect(first.json().data.map((item: { term: string }) => item.term)).toEqual(['关键词 A']);
+    const second = await server.inject({
+      headers: writeHeaders(strategy),
+      method: 'GET',
+      url: `${API_PATH}/${keywordSetId}/keywords?limit=1&status=active&cursor=${encodeURIComponent(first.json().meta.next_cursor)}`,
+    });
+    expect(second.json().data.map((item: { term: string }) => item.term)).toEqual(['关键词 B']);
+    expect(second.json().meta.next_cursor).toBeNull();
+  });
+
+  it('preflights an XLSX upload idempotently and stages clustered candidates', async () => {
+    const database = requireClient(client);
+    const keywordSetId = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Preflight set');
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('关键词库');
+    sheet.addRow([
+      '关键词',
+      '地域',
+      '服务类型',
+      '搜索意图',
+      '场景',
+      '修饰词/路线',
+      '建议页面类型',
+      '生成来源',
+    ]);
+    sheet.addRow([
+      '广州荔湾附近搬家',
+      '广州荔湾',
+      '搬家',
+      '本地搜索',
+      '居民搬家',
+      '附近',
+      '服务页',
+      '地域×服务×修饰词',
+    ]);
+    sheet.addRow([
+      '广州荔湾搬家附近',
+      '广州荔湾',
+      '搬家',
+      '本地搜索',
+      '居民搬家',
+      '附近',
+      '服务页',
+      '地域×服务×修饰词',
+    ]);
+    const boundary = 'keyword-import-integration-boundary';
+    const payload = multipartKeywordWorkbook(
+      Buffer.from(await workbook.xlsx.writeBuffer()),
+      boundary,
+    );
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const request = {
+      headers: {
+        ...writeHeaders(strategy),
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        'idempotency-key': 'keyword-import-preflight-001',
+      },
+      method: 'POST' as const,
+      payload,
+      url: `${API_PATH}/${keywordSetId}/imports/preflight`,
+    };
+    const created = await requireServer(application).inject(request);
+    const replay = await requireServer(application).inject(request);
+    expect(created.statusCode).toBe(201);
+    expect(KeywordImportJobResponseSchema.safeParse(created.json()).success).toBe(true);
+    expect(created.json().data).toMatchObject({
+      candidate_count: 1,
+      folded_row_count: 1,
+      invalid_row_count: 0,
+      status: 'preflight_ready',
+      total_row_count: 2,
+    });
+    expect(replay.json().data.id).toBe(created.json().data.id);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM keyword_import_candidates
+        WHERE import_job_id = ${created.json().data.id}
+      `,
+    ).toEqual([{ count: 1 }]);
+  });
+
+  it('queues and processes a staged keyword import with durable progress', async () => {
+    const database = requireClient(client);
+    const keywordSetId = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Import set');
+    const importJobId = '51000000-0000-4000-8000-000000000025';
+    const summary = {
+      candidate_samples: [
+        {
+          intents: ['commercial', 'transactional'],
+          source_intent: '本地搜索',
+          suggested_page_type: '服务页',
+          synonyms: ['广州荔湾搬家附近'],
+          term: '广州荔湾附近搬家',
+        },
+      ],
+      page_types: [{ count: 1, label: '服务页' }],
+      source_intents: [{ count: 1, label: '本地搜索' }],
+    };
+    await database`
+      INSERT INTO keyword_import_jobs (
+        id, tenant_id, keyword_set_id, file_name, content_hash, sheet_name, header_row,
+        total_row_count, candidate_count, folded_row_count, invalid_row_count, summary_json, created_by
+      ) VALUES (
+        ${importJobId}, ${TENANT_ID}, ${keywordSetId}, '广州搬家关键词库.xlsx', ${'a'.repeat(64)},
+        '关键词库', 4, 2, 1, 1, 0, ${JSON.stringify(summary)}::text::jsonb, ${STRATEGY_ID}
+      )
+    `;
+    await database`
+      INSERT INTO keyword_import_candidates (
+        tenant_id, import_job_id, row_number, term, intents, synonyms, source_intent,
+        suggested_page_type, cluster_key, metadata_json
+      ) VALUES (
+        ${TENANT_ID}, ${importJobId}, 5, '广州荔湾附近搬家', ARRAY['commercial','transactional'],
+        ARRAY['广州荔湾搬家附近'], '本地搜索', '服务页', ${'b'.repeat(64)},
+        ${JSON.stringify({
+          generation_source: '地域×服务×修饰词',
+          modifier_route: '附近',
+          region: '广州荔湾',
+          scene: '居民搬家',
+          schema_version: 'keyword-import-metadata@1',
+          service_type: '搬家',
+          source_intent: '本地搜索',
+          source_row: 5,
+          source_sheet: '关键词库',
+          suggested_page_type: '服务页',
+        })}::text::jsonb
+      )
+    `;
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const queued = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-import-commit-001' },
+      method: 'POST',
+      payload: {
+        platform_scope: ['official_site'],
+        priority: 50,
+        selected_page_types: ['服务页'],
+        selected_source_intents: ['本地搜索'],
+        status: 'disabled',
+      },
+      url: `${API_PATH}/${keywordSetId}/imports/${importJobId}/commit`,
+    });
+    expect(queued.statusCode).toBe(202);
+    expect(KeywordImportJobResponseSchema.safeParse(queued.json()).success).toBe(true);
+    expect(queued.json().data).toMatchObject({ selected_count: 1, status: 'queued' });
+
+    const progress = await requireServer(application).inject({
+      headers: writeHeaders(strategy),
+      method: 'GET',
+      url: `${API_PATH}/${keywordSetId}/imports/${importJobId}`,
+    });
+    expect(progress.statusCode).toBe(200);
+    expect(progress.json().data.status).toBe('queued');
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM outbox_events
+        WHERE aggregate_id = ${importJobId}
+          AND event_type = 'strategy.keyword_import.requested.v1'
+      `,
+    ).toEqual([{ count: 1 }]);
+
+    const worker = new KeywordImportWorker(new PostgresKeywordImportStore(database), 1);
+    await expect(
+      worker.run({
+        aggregate: { id: importJobId, type: 'keyword_import_job' },
+        data: { import_job_id: importJobId, keyword_set_id: keywordSetId },
+        event_id: '61000000-0000-4000-8000-000000000025',
+        event_type: 'strategy.keyword_import.requested.v1',
+        occurred_at: '2026-08-03T00:00:00.000Z',
+        tenant: { id: TENANT_ID },
+      }),
+    ).resolves.toMatchObject({ disposition: 'processed', importJobId });
+    await expect(
+      worker.run({
+        aggregate: { id: importJobId, type: 'keyword_import_job' },
+        data: { import_job_id: importJobId, keyword_set_id: keywordSetId },
+        event_id: '61000000-0000-4000-8000-000000000026',
+        event_type: 'strategy.keyword_import.requested.v1',
+        occurred_at: '2026-08-03T00:00:01.000Z',
+        tenant: { id: TENANT_ID },
+      }),
+    ).resolves.toMatchObject({ disposition: 'already_processed' });
+    expect(
+      await database<
+        { importedCount: number; status: string }[]
+      >`SELECT status, imported_count AS "importedCount" FROM keyword_import_jobs WHERE id = ${importJobId}`,
+    ).toEqual([{ importedCount: 1, status: 'succeeded' }]);
+    expect(
+      await database<
+        { sourceImportJobId: string; status: string; term: string }[]
+      >`SELECT term::text AS term, status, source_import_job_id AS "sourceImportJobId" FROM keywords WHERE keyword_set_id = ${keywordSetId}`,
+    ).toEqual([{ sourceImportJobId: importJobId, status: 'disabled', term: '广州荔湾附近搬家' }]);
+  });
+
   it('rejects invalid batches and enforces project scope and active parent state', async () => {
     const database = requireClient(client);
     const setA = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Scoped A');
@@ -456,6 +675,21 @@ function writeHeaders(tokens: { readonly csrf: string; readonly session: string 
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function multipartKeywordWorkbook(body: Buffer, boundary: string): Buffer {
+  return Buffer.concat([
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="sheet_name"\r\n\r\n关键词库\r\n`,
+      'utf8',
+    ),
+    Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="keywords.xlsx"\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n`,
+      'utf8',
+    ),
+    body,
+    Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'),
+  ]);
 }
 
 function requireServer(application: NestFastifyApplication | undefined): FastifyInstance {

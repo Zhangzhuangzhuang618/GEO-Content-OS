@@ -127,7 +127,7 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 
 ## 5. 数据模型
 
-冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束，ADR-0028 新增 7 张百家号策略、运行、每日批次、浏览器会话、发布及诊断制品表，T146 为关键词增加多搜索意图数组并保留首项兼容字段。当前可执行表数为 72，迁移序号为 0042。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
+冻结基线表数为 57；ADR-0010 新增账号定向生成字段和约束，ADR-0017 增加 URL 资料唯一性和历史去重，ADR-0020 为平台账号增加可配置发布后台地址，ADR-0021 新增官网自动化策略与运行表，ADR-0022 新增 AI 可见度问题集、问题、运行和逐题响应表，ADR-0023 新增官网每日批次及候选关联表，ADR-0024 为每日批次增加同日尝试编号和单活动批次约束，ADR-0028 新增 7 张百家号策略、运行、每日批次、浏览器会话、发布及诊断制品表，T146 为关键词增加多搜索意图数组并保留首项兼容字段，ADR-0029 新增关键词表格预检和候选暂存表。当前可执行表数为 74，迁移序号为 0043。所有业务主键/API ID 为 UUID；content_versions.content_json 是内容唯一权威；append-only 表由数据库 trigger 保护。
 
 | 表 | 用途 |
 |---|---|
@@ -146,6 +146,8 @@ AI 可见度实验是独立于七个平台发布流程的分析域。问题集�
 | `brand_profiles` | 不可覆盖的品牌策略版本 |
 | `keyword_sets` | 项目关键词集合 |
 | `keywords` | 关键词、多搜索意图和平台范围；首项同步到兼容字段 `intent` |
+| `keyword_import_jobs` | 关键词 XLSX 预检、选择、异步导入进度和错误 |
+| `keyword_import_candidates` | 预检后的确定性主关键词、同义词及结构化导入元数据 |
 | `topic_candidates` | Topic Planner 可采纳主题 |
 | `source_documents` | 原始可信资料 |
 | `ingest_jobs` | 解析/OCR/分块/索引任务 |
@@ -217,7 +219,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，当前可执行端点数为 134。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，当前可执行端点数为 143。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -270,6 +272,10 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 策略 | GET | `/keyword-sets` | tenant_member | KeywordSetQuery | KeywordSetPage | - |
 | 策略 | GET | `/keyword-sets/{id}` | tenant_member | - | KeywordSetDetail | - |
 | 策略 | POST | `/keyword-sets/{id}/keywords` | strategy_editor_or_admin | UpsertKeywordsRequest | Keyword[] | key+body_hash |
+| 策略 | GET | `/keyword-sets/{id}/keywords` | tenant_member | KeywordListQuery | KeywordPage | - |
+| 策略 | POST | `/keyword-sets/{id}/imports/preflight` | strategy_editor_or_admin | multipart KeywordImportPreflight | KeywordImportJobView | key+body_hash |
+| 策略 | POST | `/keyword-sets/{id}/imports/{importId}/commit` | strategy_editor_or_admin | CommitKeywordImportRequest | KeywordImportJobView | key+body_hash |
+| 策略 | GET | `/keyword-sets/{id}/imports/{importId}` | tenant_member | - | KeywordImportJobView | - |
 | 策略 | POST | `/topic-plans/generate` | strategy_editor_or_admin | TopicPlanRequest | GenerationRunView | key+body_hash |
 | 策略 | GET | `/topic-candidates` | tenant_member | TopicCandidateQuery | TopicCandidatePage | - |
 | 策略 | POST | `/topic-candidates/{id}/adopt` | strategy_editor_or_admin | AdoptTopicRequest | BriefView | resource+version |
@@ -438,7 +444,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 
 ## 10. 开发任务
 
-原始开发任务固定 T001-T144，共 144 个；新增功能必须通过新 ADR、任务号和验收标准单独批准。T145 为已批准并完成的百家号自动化新增任务。每任务包含交付物、文件范围、依赖、验收命令和统一 DoD。
+原始开发任务固定 T001-T144，共 144 个；新增功能必须通过新 ADR、任务号和验收标准单独批准。T145 为已批准并完成的百家号自动化新增任务，T146 为已完成的关键词多意图与自适应管理，T147 为已完成的关键词表格预检与异步分批导入。每任务包含交付物、文件范围、依赖、验收命令和统一 DoD。
 
 | 里程碑 | 范围 | 出口 |
 |---|---|---|

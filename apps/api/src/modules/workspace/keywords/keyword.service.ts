@@ -2,6 +2,7 @@ import type {
   CreateKeywordSetRequest,
   Keyword,
   KeywordInput,
+  KeywordListQuery,
   KeywordSetDetail,
   KeywordSetQuery,
   KeywordSetView,
@@ -16,7 +17,7 @@ import {
   KeywordValidationError,
 } from './keyword.errors.js';
 
-interface KeywordSetRow {
+export interface KeywordSetRow {
   readonly createdAt: Date | string;
   readonly cursorUpdatedAt?: string;
   readonly id: string;
@@ -37,6 +38,16 @@ interface KeywordSetCursor {
 export interface KeywordSetPageResult {
   readonly items: readonly KeywordSetView[];
   readonly nextCursor: string | null;
+}
+
+export interface KeywordPageResult {
+  readonly items: readonly Keyword[];
+  readonly nextCursor: string | null;
+}
+
+interface KeywordCursor {
+  readonly id: string;
+  readonly priority: number;
 }
 
 interface KeywordRow {
@@ -152,6 +163,63 @@ export class KeywordService {
         ORDER BY keyword.priority DESC, keyword.term, keyword.id
       `;
       return { ...toKeywordSetView(keywordSet), keywords: keywords.map(toKeywordView) };
+    });
+  }
+
+  public async listKeywords(
+    tenantId: string,
+    userId: string,
+    keywordSetId: string,
+    query: KeywordListQuery,
+  ): Promise<KeywordPageResult> {
+    const cursor = query.cursor ? decodeKeywordCursor(query.cursor) : undefined;
+    return this.database.client.begin(async (transaction) => {
+      await findKeywordSet(transaction, tenantId, userId, keywordSetId);
+      const rows = await transaction<KeywordRow[]>`
+        SELECT
+          keyword.id,
+          keyword.tenant_id AS "tenantId",
+          keyword.keyword_set_id AS "keywordSetId",
+          keyword.term::text AS term,
+          keyword.intents,
+          keyword.priority,
+          keyword.synonyms,
+          keyword.platform_scope AS "platformScope",
+          keyword.status,
+          keyword.created_at AS "createdAt",
+          keyword.updated_at AS "updatedAt"
+        FROM keywords AS keyword
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+          AND (${query.status ?? null}::text IS NULL OR keyword.status = ${query.status ?? null})
+          AND (
+            ${query.search ?? null}::text IS NULL
+            OR position(lower(${query.search ?? null}) in lower(keyword.term::text)) > 0
+          )
+          AND (
+            ${cursor?.priority ?? null}::smallint IS NULL
+            OR (keyword.priority, keyword.id) < (
+              ${cursor?.priority ?? null}::smallint,
+              ${cursor?.id ?? null}::uuid
+            )
+          )
+        ORDER BY keyword.priority DESC, keyword.id DESC
+        LIMIT ${query.limit + 1}
+      `;
+      const hasMore = rows.length > query.limit;
+      const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+      const last = pageRows.at(-1);
+      return {
+        items: pageRows.map(toKeywordView),
+        nextCursor:
+          hasMore && last
+            ? Buffer.from(
+                JSON.stringify({ id: last.id, priority: last.priority }),
+                'utf8',
+              ).toString('base64url')
+            : null,
+      };
     });
   }
 
@@ -317,7 +385,7 @@ export class KeywordService {
   }
 }
 
-async function assertKeywordManager(
+export async function assertKeywordManager(
   transaction: TransactionSql,
   tenantId: string,
   actorUserId: string,
@@ -372,7 +440,7 @@ async function lockActiveProject(
   if (rows.length !== 1) throw new KeywordNotFoundError();
 }
 
-async function lockKeywordSet(
+export async function lockKeywordSet(
   transaction: TransactionSql,
   tenantId: string,
   userId: string,
@@ -415,7 +483,7 @@ async function lockKeywordSet(
   return row;
 }
 
-async function findKeywordSet(
+export async function findKeywordSet(
   transaction: TransactionSql,
   tenantId: string,
   userId: string,
@@ -553,4 +621,28 @@ function isCursor(value: unknown): value is KeywordSetCursor {
     typeof record['updatedAt'] === 'string' &&
     Number.isFinite(new Date(record['updatedAt']).getTime())
   );
+}
+
+function decodeKeywordCursor(value: string): KeywordCursor {
+  try {
+    const decoded = JSON.parse(Buffer.from(value, 'base64url').toString('utf8')) as unknown;
+    if (!decoded || typeof decoded !== 'object') throw new Error('Malformed keyword cursor');
+    const record = decoded as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 2 ||
+      typeof record['id'] !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(
+        record['id'],
+      ) ||
+      typeof record['priority'] !== 'number' ||
+      !Number.isInteger(record['priority']) ||
+      record['priority'] < 0 ||
+      record['priority'] > 100
+    ) {
+      throw new Error('Malformed keyword cursor');
+    }
+    return { id: record['id'], priority: record['priority'] };
+  } catch {
+    throw new KeywordValidationError();
+  }
 }

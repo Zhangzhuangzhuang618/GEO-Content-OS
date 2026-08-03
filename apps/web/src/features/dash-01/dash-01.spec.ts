@@ -31,8 +31,15 @@ test.beforeEach(async ({ context, page }) => {
   await page.route('**/api/v1/workspaces?*', (route) => json(route, [workspace()]));
   await page.route('**/api/v1/projects?*', (route) => json(route, [project()]));
   await page.route('**/api/v1/keyword-sets?*', (route) => json(route, [keywordSet()]));
-  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}`, (route) =>
-    response(route, { ...keywordSet(), keywords: [keyword()] }),
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/keywords?*`, (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [keyword()],
+        meta: { next_cursor: null, request_id: 'keywords' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
   );
   await page.route('**/api/v1/brand-profiles?*', (route) =>
     json(route, [brandProfile('published')]),

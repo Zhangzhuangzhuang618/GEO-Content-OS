@@ -172,28 +172,25 @@ async function mockChoices(page: Page) {
       status: 200,
     }),
   );
-  await page.route(`**/api/v1/keyword-sets/${keywordSet.id}`, (route) =>
+  await page.route(`**/api/v1/keyword-sets/${keywordSet.id}/keywords?*`, (route) =>
     route.fulfill({
       body: JSON.stringify({
-        data: {
-          ...keywordSet,
-          keywords: [
-            {
-              created_at: '2026-07-15T00:00:00.000Z',
-              id: KEYWORD_ID,
-              intents: ['informational'],
-              keyword_set_id: keywordSet.id,
-              platform_scope: ['official_site'],
-              priority: 80,
-              status: 'active',
-              synonyms: [],
-              tenant_id: TENANT_ID,
-              term: 'GEO 核心词',
-              updated_at: '2026-07-15T00:00:00.000Z',
-            },
-          ],
-        },
-        meta: { request_id: 'keyword-set' },
+        data: [
+          {
+            created_at: '2026-07-15T00:00:00.000Z',
+            id: KEYWORD_ID,
+            intents: ['informational'],
+            keyword_set_id: keywordSet.id,
+            platform_scope: ['official_site'],
+            priority: 80,
+            status: 'active',
+            synonyms: [],
+            tenant_id: TENANT_ID,
+            term: 'GEO 核心词',
+            updated_at: '2026-07-15T00:00:00.000Z',
+          },
+        ],
+        meta: { next_cursor: null, request_id: 'keyword-set' },
       }),
       contentType: 'application/json',
       status: 200,

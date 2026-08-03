@@ -34,6 +34,7 @@ export type BrandProfileStatus = 'draft' | 'published' | 'retired';
 export type KeywordSetStatus = 'active' | 'archived';
 export type KeywordIntent = 'informational' | 'commercial' | 'transactional' | 'navigational';
 export type KeywordStatus = 'active' | 'disabled';
+export type KeywordImportStatus = 'preflight_ready' | 'queued' | 'running' | 'succeeded' | 'failed';
 export type GenerationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type TopicRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 export type TopicCandidateStatus = 'proposed' | 'adopted' | 'archived';
@@ -53,6 +54,19 @@ export interface EntityList {
 export interface CitationSet {
   readonly evidence_ids: readonly string[];
   readonly schema_version: 'citation-set@1';
+}
+
+export interface KeywordImportMetadata {
+  readonly generation_source: string | null;
+  readonly modifier_route: string | null;
+  readonly region: string | null;
+  readonly scene: string | null;
+  readonly schema_version: 'keyword-import-metadata@1';
+  readonly service_type: string | null;
+  readonly source_intent: string;
+  readonly source_row: number;
+  readonly source_sheet: string;
+  readonly suggested_page_type: string;
 }
 
 export const workspaces = pgTable(
@@ -290,6 +304,103 @@ export const keywordSets = pgTable(
   ],
 );
 
+export const keywordImportJobs = pgTable(
+  'keyword_import_jobs',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    keywordSetId: uuid('keyword_set_id').notNull(),
+    fileName: varchar('file_name', { length: 255 }).notNull(),
+    contentHash: char('content_hash', { length: 64 }).notNull(),
+    sheetName: varchar('sheet_name', { length: 120 }).notNull(),
+    headerRow: integer('header_row').notNull(),
+    status: varchar({ length: 24 })
+      .$type<KeywordImportStatus>()
+      .notNull()
+      .default('preflight_ready'),
+    totalRowCount: integer('total_row_count').notNull(),
+    candidateCount: integer('candidate_count').notNull(),
+    foldedRowCount: integer('folded_row_count').notNull(),
+    invalidRowCount: integer('invalid_row_count').notNull(),
+    selectedCount: integer('selected_count').notNull().default(0),
+    importedCount: integer('imported_count').notNull().default(0),
+    lastRowNumber: integer('last_row_number').notNull().default(0),
+    summaryJson: jsonb('summary_json').$type<Record<string, unknown>>().notNull(),
+    optionsJson: jsonb('options_json').$type<Record<string, unknown>>(),
+    errorJson: jsonb('error_json').$type<Record<string, unknown>>(),
+    createdBy: uuid('created_by').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique('keyword_import_jobs_id_tenant_uq').on(table.id, table.tenantId),
+    foreignKey({
+      columns: [table.keywordSetId, table.tenantId],
+      foreignColumns: [keywordSets.id, keywordSets.tenantId],
+      name: 'keyword_import_jobs_keyword_set_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.tenantId, table.createdBy],
+      foreignColumns: [memberships.tenantId, memberships.userId],
+      name: 'keyword_import_jobs_created_by_membership_fk',
+    }).onDelete('restrict'),
+    index('keyword_import_jobs_set_status_idx').on(
+      table.tenantId,
+      table.keywordSetId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+    check(
+      'keyword_import_jobs_status_check',
+      sql`${table.status} IN ('preflight_ready', 'queued', 'running', 'succeeded', 'failed')`,
+    ),
+  ],
+);
+
+export const keywordImportCandidates = pgTable(
+  'keyword_import_candidates',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id').notNull(),
+    importJobId: uuid('import_job_id').notNull(),
+    rowNumber: integer('row_number').notNull(),
+    term: citext().notNull(),
+    intents: varchar({ length: 32 }).array().$type<KeywordIntent[]>().notNull(),
+    synonyms: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    sourceIntent: varchar('source_intent', { length: 80 }).notNull(),
+    suggestedPageType: varchar('suggested_page_type', { length: 80 }).notNull(),
+    clusterKey: char('cluster_key', { length: 64 }).notNull(),
+    metadataJson: jsonb('metadata_json').$type<KeywordImportMetadata>().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.importJobId, table.tenantId],
+      foreignColumns: [keywordImportJobs.id, keywordImportJobs.tenantId],
+      name: 'keyword_import_candidates_job_fk',
+    }).onDelete('restrict'),
+    unique('keyword_import_candidates_row_uq').on(
+      table.tenantId,
+      table.importJobId,
+      table.rowNumber,
+    ),
+    unique('keyword_import_candidates_term_uq').on(table.tenantId, table.importJobId, table.term),
+    unique('keyword_import_candidates_cluster_uq').on(
+      table.tenantId,
+      table.importJobId,
+      table.clusterKey,
+    ),
+    index('keyword_import_candidates_job_row_idx').on(
+      table.tenantId,
+      table.importJobId,
+      table.rowNumber,
+    ),
+  ],
+);
+
 export const keywords = pgTable(
   'keywords',
   {
@@ -308,6 +419,8 @@ export const keywords = pgTable(
       .array()
       .$type<PlatformCode[]>()
       .notNull(),
+    importMetadataJson: jsonb('import_metadata_json').$type<KeywordImportMetadata>(),
+    sourceImportJobId: uuid('source_import_job_id'),
     status: varchar({ length: 16 }).$type<KeywordStatus>().notNull().default('active'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -318,6 +431,11 @@ export const keywords = pgTable(
       columns: [table.keywordSetId, table.tenantId],
       foreignColumns: [keywordSets.id, keywordSets.tenantId],
       name: 'keywords_keyword_set_fk',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [table.sourceImportJobId, table.tenantId],
+      foreignColumns: [keywordImportJobs.id, keywordImportJobs.tenantId],
+      name: 'keywords_source_import_job_fk',
     }).onDelete('restrict'),
     unique('keywords_set_term_uq').on(table.tenantId, table.keywordSetId, table.term),
     index('keywords_set_status_priority_idx').on(
@@ -345,6 +463,10 @@ export const keywords = pgTable(
       sql`is_valid_platform_code_array(${table.platformScope})`,
     ),
     check('keywords_status_check', sql`${table.status} IN ('active', 'disabled')`),
+    check(
+      'keywords_import_metadata_check',
+      sql`(${table.sourceImportJobId} IS NULL AND ${table.importMetadataJson} IS NULL) OR (${table.sourceImportJobId} IS NOT NULL AND jsonb_typeof(${table.importMetadataJson}) = 'object' AND ${table.importMetadataJson}->>'schema_version' = 'keyword-import-metadata@1')`,
+    ),
   ],
 );
 
@@ -547,6 +669,8 @@ export type WorkspaceMembershipRecord = typeof workspaceMemberships.$inferSelect
 export type ProjectRecord = typeof projects.$inferSelect;
 export type BrandProfileRecord = typeof brandProfiles.$inferSelect;
 export type KeywordSetRecord = typeof keywordSets.$inferSelect;
+export type KeywordImportJobRecord = typeof keywordImportJobs.$inferSelect;
+export type KeywordImportCandidateRecord = typeof keywordImportCandidates.$inferSelect;
 export type KeywordRecord = typeof keywords.$inferSelect;
 export type GenerationRunRecord = typeof generationRuns.$inferSelect;
 export type TopicCandidateRecord = typeof topicCandidates.$inferSelect;

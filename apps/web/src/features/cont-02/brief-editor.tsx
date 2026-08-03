@@ -11,7 +11,7 @@ import type { SourceListItem } from '../know-01/source.schema';
 import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import { listActiveWorkspaces } from '../str-02/brand-profile-api';
-import { getKeywordSet, listKeywordSets } from '../str-04/keyword-set-api';
+import { listKeywords, listKeywordSets } from '../str-04/keyword-set-api';
 import type { Keyword, KeywordSet } from '../str-04/keyword-set.schema';
 import {
   BriefEditorRequestError,
@@ -121,14 +121,14 @@ export function BriefEditor() {
           listKeywordSets({ projectId, status: 'active' }, controller.signal),
           listSources({ projectId, status: 'active', workspaceId }, controller.signal),
         ]);
-        const details = await Promise.all(
-          sets.map((item) => getKeywordSet(item.id, controller.signal)),
+        const keywordPages = await Promise.all(
+          sets.map((item) =>
+            listKeywords(item.id, { limit: 100, status: 'active' }, controller.signal),
+          ),
         );
         if (controller.signal.aborted) return;
         setKeywordSets(sets);
-        setKeywords(
-          details.flatMap((item) => item.keywords).filter((item) => item.status === 'active'),
-        );
+        setKeywords(keywordPages.flatMap((item) => item.data));
         setSources(sourcePage.items.filter((item) => item.status === 'active'));
       } catch {
         if (!controller.signal.aborted) setMessage('无法加载关键词或资料，请稍后重试。');

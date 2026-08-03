@@ -1,6 +1,9 @@
 import {
+  CommitKeywordImportRequestSchema,
   CreateKeywordSetRequestSchema,
   ERROR_DEFINITIONS,
+  KeywordImportIdSchema,
+  KeywordListQuerySchema,
   KeywordSetIdSchema,
   KeywordSetQuerySchema,
   UpsertKeywordsRequestSchema,
@@ -36,6 +39,8 @@ import {
   KeywordValidationError,
 } from './keyword.errors.js';
 import { KeywordService } from './keyword.service.js';
+import { KeywordImportService } from './keyword-import.service.js';
+import { parseKeywordImportPreflight } from './keyword-import.parser.js';
 
 type KeywordErrorCode =
   | 'IDEMPOTENCY_CONFLICT'
@@ -48,6 +53,7 @@ type KeywordErrorCode =
 export class KeywordController {
   public constructor(
     @Inject(IdempotencyService) private readonly idempotencyService: IdempotencyService,
+    @Inject(KeywordImportService) private readonly keywordImportService: KeywordImportService,
     @Inject(KeywordService) private readonly keywordService: KeywordService,
   ) {}
 
@@ -202,6 +208,186 @@ export class KeywordController {
         },
       );
       await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/keywords')
+  @RequirePermissions('strategy.read')
+  public async listKeywords(
+    @Param('id') id: string,
+    @Query() query: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedId = KeywordSetIdSchema.safeParse(id);
+    const parsedQuery = KeywordListQuerySchema.safeParse(query);
+    if (!parsedId.success || !parsedQuery.success) {
+      await sendSchemaError(reply, request.id, [
+        ...(parsedId.success ? [] : parsedId.error.issues),
+        ...(parsedQuery.success ? [] : parsedQuery.error.issues),
+      ]);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    try {
+      const page = await this.keywordService.listKeywords(
+        policy.tenantId,
+        policy.userId,
+        parsedId.data,
+        parsedQuery.data,
+      );
+      await reply.status(HttpStatus.OK).send({
+        data: page.items,
+        meta: { next_cursor: page.nextCursor, request_id: request.id },
+      });
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/imports/preflight')
+  @RequirePermissions('strategy.manage')
+  public async preflightImport(
+    @Param('id') id: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedId = KeywordSetIdSchema.safeParse(id);
+    if (!parsedId.success) {
+      await sendSchemaError(reply, request.id, parsedId.error.issues);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    try {
+      const preflight = await parseKeywordImportPreflight(request);
+      const route = `/keyword-sets/${parsedId.data}/imports/preflight`;
+      const result = await this.idempotencyService.execute(
+        {
+          fingerprint: {
+            body: {
+              content_hash: preflight.contentHash,
+              file_name: preflight.fileName,
+              sheet_name: preflight.sheetName,
+            },
+            method: request.method,
+            path: route,
+          },
+          idempotencyKey: parseIdempotencyKey(request.headers['idempotency-key']),
+          scopeKey: buildIdempotencyScope({
+            actorId: policy.userId,
+            method: request.method,
+            route,
+          }),
+          tenantId: policy.tenantId,
+        },
+        async (transaction) => {
+          const job = await this.keywordImportService.stage(
+            transaction,
+            policy.tenantId,
+            policy.userId,
+            parsedId.data,
+            preflight,
+            auditContext(request),
+          );
+          return {
+            body: toJson({ data: job, meta: { request_id: request.id } }),
+            statusCode: HttpStatus.CREATED,
+          };
+        },
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/imports/:importId/commit')
+  @RequirePermissions('strategy.manage')
+  public async commitImport(
+    @Param('id') id: string,
+    @Param('importId') importId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedId = KeywordSetIdSchema.safeParse(id);
+    const parsedImportId = KeywordImportIdSchema.safeParse(importId);
+    const parsedBody = CommitKeywordImportRequestSchema.safeParse(body);
+    if (!parsedId.success || !parsedImportId.success || !parsedBody.success) {
+      await sendSchemaError(reply, request.id, [
+        ...(parsedId.success ? [] : parsedId.error.issues),
+        ...(parsedImportId.success ? [] : parsedImportId.error.issues),
+        ...(parsedBody.success ? [] : parsedBody.error.issues),
+      ]);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    const route = `/keyword-sets/${parsedId.data}/imports/${parsedImportId.data}/commit`;
+    try {
+      const result = await this.idempotencyService.execute(
+        {
+          fingerprint: { body: parsedBody.data as JsonValue, method: request.method, path: route },
+          idempotencyKey: parseIdempotencyKey(request.headers['idempotency-key']),
+          scopeKey: buildIdempotencyScope({
+            actorId: policy.userId,
+            method: request.method,
+            route,
+          }),
+          tenantId: policy.tenantId,
+        },
+        async (transaction) => {
+          const job = await this.keywordImportService.commit(
+            transaction,
+            policy.tenantId,
+            policy.userId,
+            parsedId.data,
+            parsedImportId.data,
+            parsedBody.data,
+            auditContext(request),
+          );
+          return {
+            body: toJson({ data: job, meta: { request_id: request.id } }),
+            statusCode: HttpStatus.ACCEPTED,
+          };
+        },
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/imports/:importId')
+  @RequirePermissions('strategy.read')
+  public async getImport(
+    @Param('id') id: string,
+    @Param('importId') importId: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedId = KeywordSetIdSchema.safeParse(id);
+    const parsedImportId = KeywordImportIdSchema.safeParse(importId);
+    if (!parsedId.success || !parsedImportId.success) {
+      await sendSchemaError(reply, request.id, [
+        ...(parsedId.success ? [] : parsedId.error.issues),
+        ...(parsedImportId.success ? [] : parsedImportId.error.issues),
+      ]);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    try {
+      const job = await this.keywordImportService.find(
+        policy.tenantId,
+        policy.userId,
+        parsedId.data,
+        parsedImportId.data,
+      );
+      await reply.status(HttpStatus.OK).send({
+        data: job,
+        meta: { request_id: request.id },
+      });
     } catch (error) {
       await sendKeywordError(reply, request.id, error);
     }

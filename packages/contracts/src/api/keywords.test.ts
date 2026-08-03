@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CommitKeywordImportRequestSchema,
   CreateKeywordSetRequestSchema,
+  KeywordImportJobResponseSchema,
   KeywordInputSchema,
+  KeywordListQuerySchema,
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
   KeywordSetQuerySchema,
@@ -105,6 +108,66 @@ describe('keyword API contracts', () => {
       KeywordSetDetailResponseSchema.safeParse({
         data: { ...keywordSet, keywords: [] },
         meta: requestMeta,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('validates paginated keyword queries and safe import selections', () => {
+    expect(KeywordListQuerySchema.parse({ limit: '20', status: 'disabled' })).toEqual({
+      limit: 20,
+      status: 'disabled',
+    });
+    expect(
+      CommitKeywordImportRequestSchema.parse({
+        platform_scope: ['official_site'],
+        selected_page_types: ['服务页', '报价页'],
+        selected_source_intents: ['本地搜索', '价格咨询'],
+      }),
+    ).toMatchObject({ priority: 50, status: 'disabled' });
+    expect(
+      CommitKeywordImportRequestSchema.safeParse({
+        platform_scope: ['official_site'],
+        selected_page_types: ['服务页', '服务页'],
+        selected_source_intents: ['本地搜索'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates keyword import job progress responses', () => {
+    expect(
+      KeywordImportJobResponseSchema.safeParse({
+        data: {
+          candidate_count: 2,
+          content_hash: 'a'.repeat(64),
+          created_at: '2026-08-03T00:00:00.000Z',
+          error: null,
+          file_name: '广州搬家关键词库.xlsx',
+          folded_row_count: 1,
+          id: '10000000-0000-4000-8000-000000000001',
+          imported_count: 0,
+          invalid_row_count: 0,
+          keyword_set_id: '20000000-0000-4000-8000-000000000001',
+          selected_count: 0,
+          sheet_name: '关键词库',
+          status: 'preflight_ready',
+          summary: {
+            candidate_samples: [
+              {
+                intents: ['commercial', 'transactional'],
+                source_intent: '本地搜索',
+                suggested_page_type: '服务页',
+                synonyms: ['广州荔湾搬家附近'],
+                term: '广州荔湾附近搬家',
+              },
+            ],
+            page_types: [{ count: 2, label: '服务页' }],
+            source_intents: [{ count: 2, label: '本地搜索' }],
+          },
+          tenant_id: '30000000-0000-4000-8000-000000000001',
+          total_row_count: 3,
+          updated_at: '2026-08-03T00:00:00.000Z',
+        },
+        meta: { request_id: 'request-keyword-import-1' },
       }).success,
     ).toBe(true);
   });
