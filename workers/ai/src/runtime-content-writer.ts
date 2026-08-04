@@ -592,21 +592,25 @@ export class RuntimeContentWriter implements ContentWriterPort {
           'Content Writer returned failed status',
       );
     }
+    const validationPolicy = revision ? 'quality' : input.context.modelPolicy;
     let output = result.output;
-    let assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
-    let companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
-    if (companyIssues.length === 0 && (assessment.passed || input.context.modelPolicy === 'fast')) {
+    let assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+    let deterministicIssues = deterministicContentIssues(output.data);
+    if (
+      deterministicIssues.length === 0 &&
+      (assessment.passed || (!revision && input.context.modelPolicy === 'fast'))
+    ) {
       return output;
     }
     let shortfalls = contentLengthShortfalls(assessment.issues);
-    if (companyIssues.length === 0 && shortfalls) {
+    if (deterministicIssues.length === 0 && shortfalls) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
-      assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
-      companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
-      if (assessment.passed && companyIssues.length === 0) return output;
+      assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+      deterministicIssues = deterministicContentIssues(output.data);
+      if (assessment.passed && deterministicIssues.length === 0) return output;
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
-        [...assessment.issues, ...companyIssues].join('; '),
+        [...assessment.issues, ...deterministicIssues].join('; '),
       );
     }
 
@@ -614,22 +618,22 @@ export class RuntimeContentWriter implements ContentWriterPort {
       ...invocation,
       revision: {
         candidate: output.data,
-        issues: Object.freeze([...assessment.issues, ...companyIssues]),
+        issues: Object.freeze([...assessment.issues, ...deterministicIssues]),
       },
     });
     output = result.output;
-    assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
-    companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
+    assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+    deterministicIssues = deterministicContentIssues(output.data);
     shortfalls = contentLengthShortfalls(assessment.issues);
-    if (companyIssues.length === 0 && shortfalls) {
+    if (deterministicIssues.length === 0 && shortfalls) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
-      assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
-      companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
+      assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+      deterministicIssues = deterministicContentIssues(output.data);
     }
-    if (!assessment.passed || companyIssues.length > 0) {
+    if (!assessment.passed || deterministicIssues.length > 0) {
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
-        [...assessment.issues, ...companyIssues].join('; '),
+        [...assessment.issues, ...deterministicIssues].join('; '),
       );
     }
     return output;
@@ -1011,6 +1015,19 @@ function contentLengthShortfalls(
     );
   }
   return Object.freeze(shortfalls);
+}
+
+function deterministicContentIssues(data: ContentWriterData): readonly string[] {
+  const issues = [...companyNamePolicyIssues(data, 'content-writer')];
+  for (const content of data.variants) {
+    if (
+      content.platform_code === 'baijiahao' &&
+      (content.cta !== null || content.blocks.some((block) => block.block_type === 'cta'))
+    ) {
+      issues.push('baijiahao:不得包含 CTA 字段或 CTA 内容块，必须删除且不得用新增导流段落替代');
+    }
+  }
+  return Object.freeze(issues);
 }
 
 function officialSiteBodyCharacterCount(article: OfficialSiteArticleDraft): number {

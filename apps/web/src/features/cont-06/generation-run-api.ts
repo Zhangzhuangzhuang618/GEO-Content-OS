@@ -46,7 +46,7 @@ export async function cancelGenerationRun(
   return parseRun(response);
 }
 
-async function getGenerationRun(id: string, signal?: AbortSignal): Promise<GenerationRun> {
+export async function getGenerationRun(id: string, signal?: AbortSignal): Promise<GenerationRun> {
   const response = await request(`/api/v1/generation-runs/${id}`, signal);
   return parseRun(response);
 }

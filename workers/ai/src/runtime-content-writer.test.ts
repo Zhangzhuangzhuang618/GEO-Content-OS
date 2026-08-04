@@ -59,7 +59,10 @@ describe('AI Worker runtime wiring', () => {
   it('includes trusted quality diagnostics in a generic platform rewrite', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const adapter = new LooseMockAdapter(
-      [{ text: JSON.stringify(fixture.output.data) }],
+      [
+        { text: JSON.stringify(fixture.output.data) },
+        { text: JSON.stringify(platformExpansionDraft()) },
+      ],
       'deepseek-v4-flash',
     );
     const writer = new RuntimeContentWriter(
@@ -98,6 +101,148 @@ describe('AI Worker runtime wiring', () => {
       issue,
     );
   });
+
+  it('removes Baijiahao CTA and then expands the final allowed body above the frozen minimum', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const repaired = multiPlatformContentData(['baijiahao'], new Set(['baijiahao']), true);
+    const original = repaired.variants[0]!;
+    const withCta = {
+      ...repaired,
+      variants: [
+        {
+          ...original,
+          blocks: [
+            ...original.blocks,
+            { block_key: 'cta', block_type: 'cta' as const, text: '立即联系我们获取服务方案' },
+          ],
+          cta: '立即联系我们获取服务方案',
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(withCta) },
+        { text: JSON.stringify(repaired) },
+        { text: JSON.stringify(platformExpansionDraft()) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['baijiahao']);
+    const rewriteContext = {
+      ...context(MASTER_RUN, null),
+      modelPolicy: 'balanced' as const,
+    };
+    const master = await writer.generateMaster({
+      context: rewriteContext,
+      requestId: 'runtime-baijiahao-combined-rewrite-0061',
+      revision: {
+        candidate: {
+          master_content: {
+            ...repaired.master_content,
+            schema_version: 'content-writer-data@1',
+          } as unknown as GeneratedContent,
+          variants: [
+            {
+              ...original,
+              schema_version: 'content-writer-data@1',
+            } as unknown as GeneratedContent,
+          ],
+        },
+        contentVersionId: '82000000-0000-4000-8000-000000000061',
+        issues: [
+          '质量问题 BLOCK format.minimum_length；正文未达到 850 个有效字符',
+          '质量问题 BLOCK compliance.cta；删除 CTA 字段和 CTA 内容块',
+        ],
+        qualityReportId: '83000000-0000-4000-8000-000000000061',
+      },
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...rewriteContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'baijiahao',
+      requestId: 'runtime-baijiahao-combined-rewrite-variant-0061',
+      writerInput,
+    });
+
+    expect(variant.cta).toBeNull();
+    expect(variant.blocks.every((block) => block.block_type !== 'cta')).toBe(true);
+    expect(readableContentCharacters(variant)).toBeGreaterThanOrEqual(850);
+    expect(adapter.requests).toHaveLength(3);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '不得包含 CTA 字段或 CTA 内容块',
+    );
+    expect(adapter.requests[2]!.messages.map((message) => message.content).join('\n')).toContain(
+      'must contain at least 850',
+    );
+  });
+
+  it.each(GENERIC_PLATFORM_CASES)(
+    'uses the full %s platform length threshold during a balanced quality-report rewrite',
+    async (platformCode, minimumCharacters) => {
+      const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+      const data = multiPlatformContentData([platformCode], new Set([platformCode]), true);
+      const adapter = new LooseMockAdapter(
+        [{ text: JSON.stringify(data) }, { text: JSON.stringify(platformExpansionDraft()) }],
+        'deepseek-v4-flash',
+      );
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-flash', adapter]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      );
+      const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, [platformCode]);
+      const rewriteContext = {
+        ...context(MASTER_RUN, null),
+        modelPolicy: 'balanced' as const,
+      };
+      const master = await writer.generateMaster({
+        context: rewriteContext,
+        requestId: `runtime-${platformCode}-balanced-rewrite-0061`,
+        revision: {
+          candidate: {
+            master_content: {
+              ...data.master_content,
+              schema_version: 'content-writer-data@1',
+            } as unknown as GeneratedContent,
+            variants: data.variants.map(
+              (variant) =>
+                ({
+                  ...variant,
+                  schema_version: 'content-writer-data@1',
+                }) as unknown as GeneratedContent,
+            ),
+          },
+          contentVersionId: '82000000-0000-4000-8000-000000000061',
+          issues: [
+            `质量问题 BLOCK format.minimum_length；正文未达到 ${minimumCharacters} 个有效字符`,
+          ],
+          qualityReportId: '83000000-0000-4000-8000-000000000061',
+        },
+        writerInput,
+      });
+      const variant = await writer.generateVariant({
+        context: { ...rewriteContext, runId: VARIANT_RUN },
+        masterContent: master,
+        platformCode,
+        requestId: `runtime-${platformCode}-balanced-rewrite-variant-0061`,
+        writerInput,
+      });
+
+      expect(readableContentCharacters(variant)).toBeGreaterThanOrEqual(minimumCharacters);
+      expect(adapter.requests).toHaveLength(2);
+      expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+        `must contain at least ${minimumCharacters}`,
+      );
+    },
+  );
 
   it('makes one fresh low-temperature attempt after structured output repair fails', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;

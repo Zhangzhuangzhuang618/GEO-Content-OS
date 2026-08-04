@@ -4,6 +4,9 @@ const TENANT_ID = '10000000-0000-4000-8000-000000000088';
 const PACKAGE_ID = '50000000-0000-4000-8000-000000000088';
 const VARIANT_ID = '70000000-0000-4000-8000-000000000088';
 const VERSION_ID = '80000000-0000-4000-8000-000000000088';
+const REWRITE_RUN_ID = '63000000-0000-4000-8000-000000000088';
+const REWRITE_VERSION_ID = '81000000-0000-4000-8000-000000000088';
+const REWRITE_REPORT_ID = '94000000-0000-4000-8000-000000000088';
 const CITATION_ID = '90000000-0000-4000-8000-000000000088';
 const HASH = 'a'.repeat(64);
 
@@ -86,7 +89,7 @@ test('rewrites failed content directly from its quality report', async ({ page }
   await page.route(`**/api/v1/content-variants/${VARIANT_ID}/regenerate`, async (route) => {
     body = route.request().postDataJSON();
     ifMatch = route.request().headers()['if-match'];
-    await json(route, { id: '63000000-0000-4000-8000-000000000088' }, 202);
+    await json(route, { id: REWRITE_RUN_ID }, 202);
   });
   await page.goto(`/qual-01?id=${VARIANT_ID}`);
 
@@ -101,6 +104,85 @@ test('rewrites failed content directly from its quality report', async ({ page }
     quality_report_id: '92000000-0000-4000-8000-000000000088',
   });
   expect(ifMatch).toBe('"4"');
+});
+
+test('tracks a quality rewrite through generation and automatic recheck', async ({ page }) => {
+  const base = detail('block');
+  const baijiahao = {
+    ...base,
+    automation_run: { id: '64000000-0000-4000-8000-000000000088' },
+    current_content: {
+      ...base.current_content,
+      content_json: { ...base.current_content.content_json, platform_code: 'baijiahao' },
+    },
+    variant: {
+      ...base.variant,
+      is_required: false,
+      platform_code: 'baijiahao',
+    },
+  };
+  const rewrittenContent = {
+    ...contentVersion(),
+    content_json: {
+      ...contentVersion().content_json,
+      platform_code: 'baijiahao',
+      title: '完成重写后的百家号内容',
+    },
+    id: REWRITE_VERSION_ID,
+    source_run_id: REWRITE_RUN_ID,
+    version_no: 2,
+  };
+  const rewrittenReport = {
+    ...base.quality_report,
+    content_version_id: REWRITE_VERSION_ID,
+    generation_run_id: REWRITE_RUN_ID,
+    id: REWRITE_REPORT_ID,
+    score: 88,
+  };
+  let rewriteRequested = false;
+  let runPolls = 0;
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, (route) => {
+    if (!rewriteRequested || runPolls < 3) return json(route, baijiahao);
+    return json(route, {
+      ...baijiahao,
+      current_content: rewrittenContent,
+      quality_report: runPolls >= 4 ? rewrittenReport : null,
+      variant: {
+        ...baijiahao.variant,
+        current_content_version_id: REWRITE_VERSION_ID,
+        quality_score: runPolls >= 4 ? 88 : null,
+        status: runPolls >= 4 ? 'quality_failed' : 'generated',
+        version: 5,
+      },
+      versions: [rewrittenContent, ...baijiahao.versions],
+    });
+  });
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}/regenerate`, async (route) => {
+    rewriteRequested = true;
+    await json(route, { id: REWRITE_RUN_ID }, 202);
+  });
+  await page.route(`**/api/v1/generation-runs/${REWRITE_RUN_ID}`, async (route) => {
+    runPolls += 1;
+    await json(
+      route,
+      generationRun(runPolls === 1 ? 'queued' : runPolls === 2 ? 'running' : 'succeeded'),
+    );
+  });
+  await page.goto(`/qual-01?id=${VARIANT_ID}`);
+
+  await page.getByRole('button', { name: '按质检报告重写' }).click();
+  await expect(page.getByRole('link', { name: '查看本次生成详情' })).toHaveAttribute(
+    'href',
+    `/cont-06?id=${REWRITE_RUN_ID}`,
+  );
+  await expect(page.getByRole('heading', { name: '正在处理重写结果' })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByText('重写及重新质检已完成，页面已显示最新质量报告。')).toBeVisible({
+    timeout: 12_000,
+  });
+  await expect(page.locator('strong').filter({ hasText: '88' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '按质检报告重写' })).toBeEnabled();
 });
 
 test('offers the first quality check instead of a dead-end empty report', async ({ page }) => {
@@ -270,6 +352,31 @@ function contentVersion() {
     tenant_id: TENANT_ID,
     variant_id: VARIANT_ID,
     version_no: 1,
+  };
+}
+
+function generationRun(status: 'queued' | 'running' | 'succeeded') {
+  const timestamp = '2026-08-05T01:00:00.000Z';
+  return {
+    created_at: timestamp,
+    error: null,
+    finished_at: status === 'succeeded' ? timestamp : null,
+    id: REWRITE_RUN_ID,
+    input_hash: HASH,
+    model_key: 'deepseek-v4-flash',
+    package_id: PACKAGE_ID,
+    project_id: '40000000-0000-4000-8000-000000000088',
+    prompt_version_id: '25000000-0000-4000-8000-000000000088',
+    request_id: 'quality-rewrite-tracking',
+    skill_name: 'content-writer',
+    skill_version: '1.0.0',
+    started_at: status === 'queued' ? null : timestamp,
+    status,
+    tenant_id: TENANT_ID,
+    updated_at: timestamp,
+    variant_id: VARIANT_ID,
+    version: 1,
+    workspace_id: '30000000-0000-4000-8000-000000000088',
   };
 }
 

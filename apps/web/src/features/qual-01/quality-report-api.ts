@@ -36,7 +36,7 @@ export async function rewriteQualityVariant(
   qualityReportId: string,
   lockedBlockKeys: readonly string[],
   csrf: string,
-): Promise<void> {
+): Promise<string> {
   const response = await fetch(`${API_ORIGIN}/api/v1/content-variants/${variantId}/regenerate`, {
     body: JSON.stringify({
       locked_block_keys: lockedBlockKeys,
@@ -55,6 +55,7 @@ export async function rewriteQualityVariant(
   if (!response.ok) throw new QualityReportRequestError(response.status);
   const parsed = QualityMutationResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new QualityReportRequestError(502);
+  return parsed.data.data.id;
 }
 
 export async function submitQualityPassedVariant(

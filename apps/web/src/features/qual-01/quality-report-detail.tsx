@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { getGenerationRun } from '../cont-06/generation-run-api';
 import { TechnicalDetails } from '../human-readable';
 import {
   getQualityVariantDetail,
@@ -26,13 +27,23 @@ const REGENERATE_STATUSES = new Set([
   'review_rejected',
 ]);
 
+interface RewriteTracking {
+  readonly autoRecheck: boolean;
+  readonly baselineContentVersionId: string | null;
+  readonly baselineQualityReportId: string;
+  readonly runId: string;
+  readonly startedAt: number;
+}
+
 export function QualityReportDetail() {
   const [detail, setDetail] = useState<QualityVariantDetail | null>(null);
   const [role, setRole] = useState<TenantRole | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
-  const [rewriteStarted, setRewriteStarted] = useState(false);
+  const [waitingReportId, setWaitingReportId] = useState<string | null>(null);
+  const [rewriteTracking, setRewriteTracking] = useState<RewriteTracking | null>(null);
+  const [lastRewriteRunId, setLastRewriteRunId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,7 +85,7 @@ export function QualityReportDetail() {
         .then((refreshed) => {
           if (cancelled) return;
           setDetail(refreshed);
-          if (refreshed.quality_report) {
+          if (refreshed.quality_report && refreshed.quality_report.id !== waitingReportId) {
             setWaiting(false);
             setMessage('质量检查已完成。');
           } else if (Date.now() - startedAt > 5 * 60_000) {
@@ -88,15 +99,82 @@ export function QualityReportDetail() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [waiting, waitingVariantId]);
+  }, [waiting, waitingReportId, waitingVariantId]);
+
+  useEffect(() => {
+    if (!rewriteTracking || !waitingVariantId) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const [run, refreshed] = await Promise.all([
+          getGenerationRun(rewriteTracking.runId),
+          getQualityVariantDetail(waitingVariantId),
+        ]);
+        if (cancelled) return;
+        setDetail(refreshed);
+        const reportChanged =
+          refreshed.quality_report !== null &&
+          refreshed.quality_report.id !== rewriteTracking.baselineQualityReportId;
+        const contentChanged =
+          refreshed.variant.current_content_version_id !== null &&
+          refreshed.variant.current_content_version_id !== rewriteTracking.baselineContentVersionId;
+        if (run.status === 'failed' || run.status === 'cancelled') {
+          setRewriteTracking(null);
+          setMessage(
+            run.status === 'failed'
+              ? '按质量报告重写失败，请查看本次生成详情后重试。'
+              : '本次按质量报告重写已取消。',
+          );
+          return;
+        }
+        if (reportChanged) {
+          setRewriteTracking(null);
+          setMessage('重写及重新质检已完成，页面已显示最新质量报告。');
+          return;
+        }
+        if (run.status === 'succeeded' && contentChanged && !rewriteTracking.autoRecheck) {
+          setRewriteTracking(null);
+          setMessage('内容重写已完成，请发起新的质量检查。');
+          return;
+        }
+        if (Date.now() - rewriteTracking.startedAt > 5 * 60_000) {
+          setRewriteTracking(null);
+          setMessage('重写或质检耗时较长，已停止自动刷新；请查看本次生成详情。');
+          return;
+        }
+        setMessage(
+          run.status === 'succeeded' && contentChanged
+            ? '内容重写已完成，正在自动重新质检…'
+            : run.status === 'running'
+              ? '正在按当前质量报告重写内容…'
+              : '按质量报告重写任务已排队…',
+        );
+      } catch {
+        if (Date.now() - rewriteTracking.startedAt > 5 * 60_000) {
+          setRewriteTracking(null);
+          setMessage('无法继续获取重写状态，请查看本次生成详情。');
+        }
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 2_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [rewriteTracking, waitingVariantId]);
 
   async function recheck() {
     if (!detail) return;
+    setLastRewriteRunId(null);
     const started = await mutate(
       (csrf) => requestQualityCheck(detail.variant.id, csrf),
       '质量检查已开始，完成后页面会自动刷新。',
     );
-    if (started) setWaiting(true);
+    if (started) {
+      setWaitingReportId(detail.quality_report?.id ?? null);
+      setWaiting(true);
+    }
   }
 
   async function submitReview() {
@@ -110,21 +188,31 @@ export function QualityReportDetail() {
   async function rewriteFromReport() {
     if (!detail?.quality_report) return;
     const qualityReportId = detail.quality_report.id;
-    const started = await mutate(
-      (csrf) =>
-        rewriteQualityVariant(
+    await mutate(
+      async (csrf) => {
+        const runId = await rewriteQualityVariant(
           detail.variant.id,
           detail.variant.version,
           qualityReportId,
           detail.locks.map((lock) => lock.block_key),
           csrf,
-        ),
+        );
+        setLastRewriteRunId(runId);
+        setRewriteTracking({
+          autoRecheck:
+            detail.variant.platform_code === 'official_site' ||
+            detail.variant.platform_code === 'baijiahao',
+          baselineContentVersionId: detail.variant.current_content_version_id,
+          baselineQualityReportId: qualityReportId,
+          runId,
+          startedAt: Date.now(),
+        });
+      },
       detail.variant.platform_code === 'official_site' ||
         detail.variant.platform_code === 'baijiahao'
         ? '已按当前质量报告开始重写；生成成功后系统会自动继续质量检查。'
         : '已按当前质量报告开始重写；完成后请重新进行质量检查。',
     );
-    if (started) setRewriteStarted(true);
   }
 
   async function copyHumanReviewRequest() {
@@ -190,16 +278,23 @@ export function QualityReportDetail() {
     REGENERATE_STATUSES.has(detail.variant.status) &&
     (detail.variant.is_required ||
       (detail.variant.platform_code === 'baijiahao' && Boolean(detail.automation_run)));
+  const rewriteStarted = rewriteTracking !== null;
   if (!detail.quality_report)
     return (
       <section className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-panel">
         <h2 className="text-xl font-semibold text-ink-950">
-          {waiting ? '正在检查内容质量' : '这份内容还没有质量报告'}
+          {rewriteStarted
+            ? '正在处理重写结果'
+            : waiting
+              ? '正在检查内容质量'
+              : '这份内容还没有质量报告'}
         </h2>
         <p className="mt-3 text-sm leading-6 text-ink-500">
-          {waiting
-            ? '系统正在检查事实边界、品牌规则、平台格式和可读性，完成后会自动显示结果。'
-            : '开始检查后，系统会给出分数和具体修改建议；检查通过后才能提交审核。'}
+          {rewriteStarted
+            ? '系统正在完成内容重写并接续质量检查，页面会自动刷新。'
+            : waiting
+              ? '系统正在检查事实边界、品牌规则、平台格式和可读性，完成后会自动显示结果。'
+              : '开始检查后，系统会给出分数和具体修改建议；检查通过后才能提交审核。'}
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Link className={secondaryButton} href={`/cont-05?id=${detail.variant.id}`}>
@@ -207,7 +302,7 @@ export function QualityReportDetail() {
           </Link>
           <button
             className={primaryButton}
-            disabled={busy || waiting || !canRecheck}
+            disabled={busy || waiting || rewriteStarted || !canRecheck}
             onClick={() => void recheck()}
             type="button"
           >
@@ -218,9 +313,20 @@ export function QualityReportDetail() {
           <p className="mt-4 text-xs text-ink-500">当前账号只有查看权限，无法发起检查。</p>
         ) : null}
         {message ? (
-          <p aria-live="polite" className="mt-4 text-sm text-ink-600">
-            {message}
-          </p>
+          <div
+            aria-live="polite"
+            className="mt-4 flex flex-wrap items-center justify-center gap-3 text-sm"
+          >
+            <p className="text-ink-600">{message}</p>
+            {lastRewriteRunId ? (
+              <Link
+                className="font-semibold text-brand-700 hover:text-brand-800"
+                href={`/cont-06?id=${lastRewriteRunId}`}
+              >
+                查看本次生成详情
+              </Link>
+            ) : null}
+          </div>
         ) : null}
       </section>
     );
@@ -253,7 +359,7 @@ export function QualityReportDetail() {
             </Link>
             <button
               className={secondaryButton}
-              disabled={busy || !canRecheck}
+              disabled={busy || waiting || rewriteStarted || !canRecheck}
               onClick={() => void recheck()}
               type="button"
             >
@@ -292,9 +398,17 @@ export function QualityReportDetail() {
           <p>内容版本：{report.content_version_id}</p>
         </TechnicalDetails>
         {message ? (
-          <p aria-live="polite" className="mt-4 text-sm text-ink-600">
-            {message}
-          </p>
+          <div aria-live="polite" className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+            <p className="text-ink-600">{message}</p>
+            {lastRewriteRunId ? (
+              <Link
+                className="font-semibold text-brand-700 hover:text-brand-800"
+                href={`/cont-06?id=${lastRewriteRunId}`}
+              >
+                查看本次生成详情
+              </Link>
+            ) : null}
+          </div>
         ) : null}
       </section>
 
