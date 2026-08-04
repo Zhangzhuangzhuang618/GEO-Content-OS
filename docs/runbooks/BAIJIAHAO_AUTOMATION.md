@@ -66,6 +66,91 @@ Publisher 定时同步 `processing | published | failed | unknown`。只有 `pub
 
 ## 7. 只读诊断
 
+先确认策略、账号和浏览器会话满足触发前提：
+
+```sql
+SELECT
+  policy.id AS policy_id, policy.enabled, policy.daily_enabled, policy.source_mode,
+  policy.independent_fallback_enabled, policy.daily_generation_time,
+  policy.daily_schedule_times, account.status AS account_status,
+  account.publish_mode, session.status AS browser_status,
+  session.last_verified_at, policy.updated_at
+FROM baijiahao_automation_policies AS policy
+JOIN platform_accounts AS account
+  ON account.id=policy.account_id AND account.tenant_id=policy.tenant_id
+LEFT JOIN baijiahao_browser_sessions AS session
+  ON session.account_id=policy.account_id AND session.tenant_id=policy.tenant_id
+ORDER BY policy.updated_at DESC;
+```
+
+`official_site_derived` 不按保存策略的时间立即生成。它只消费
+`origin=official_site_automation`、状态为 `published` 且具有公开 URL 的官网发布成功事件。下面的查询从官网
+发布任务依次追踪 Outbox、百家号运行、百家号发布任务和托管浏览器提交；某一列开始为空，即为链路停止的
+位置：
+
+```sql
+SELECT
+  source_job.id AS source_job_id,
+  source_job.published_at AS source_published_at,
+  source_job.external_url AS source_url,
+  published_event.id AS published_event_id,
+  published_event.status AS published_event_status,
+  published_event.attempt_count AS published_event_attempts,
+  published_event.last_error AS published_event_error,
+  automation.id AS automation_run_id,
+  automation.status AS automation_status,
+  automation.source_provenance_json ->> 'reason' AS skip_reason,
+  automation.last_error_json AS automation_error,
+  derived_job.id AS derived_job_id,
+  derived_job.status AS derived_job_status,
+  derived_job.scheduled_at AS derived_scheduled_at,
+  publication.id AS browser_publication_id,
+  publication.status AS browser_publication_status,
+  publication.review_reason
+FROM publish_jobs AS source_job
+JOIN content_variants AS source_variant
+  ON source_variant.id=source_job.variant_id AND source_variant.tenant_id=source_job.tenant_id
+LEFT JOIN outbox_events AS published_event
+  ON published_event.tenant_id=source_job.tenant_id
+  AND published_event.aggregate_type='publish_job'
+  AND published_event.aggregate_id=source_job.id
+  AND published_event.event_type='publishing.job.published.v1'
+LEFT JOIN baijiahao_automation_runs AS automation
+  ON automation.tenant_id=source_job.tenant_id
+  AND automation.source_publish_job_id=source_job.id
+LEFT JOIN publish_jobs AS derived_job
+  ON derived_job.tenant_id=automation.tenant_id
+  AND derived_job.id=automation.publish_job_id
+LEFT JOIN baijiahao_browser_publications AS publication
+  ON publication.tenant_id=derived_job.tenant_id
+  AND publication.publish_job_id=derived_job.id
+WHERE source_variant.platform_code='official_site'
+  AND source_job.origin='official_site_automation'
+  AND source_job.created_at >= now() - interval '2 days'
+ORDER BY source_job.created_at DESC;
+```
+
+判读顺序：
+
+1. 没有 `source_job_id`：官网自动发布尚未创建任务。
+2. 官网任务不是 `published` 或没有 `source_url`：按冻结契约不得触发派生。
+3. 没有 `published_event_id`：Publisher 未在官网发布成功事务中写入事实事件。
+4. 事件为 `pending/processing/failed`：检查 `outbox-relay`；`last_error` 是直接原因。
+5. 事件为 `published` 但没有 `automation_run_id`：核对策略是否启用、项目范围是否一致；再检查
+   `ai-worker` 的 `publishing.job.published.v1` 消费错误。
+6. 运行是 `skipped`：读取 `skip_reason`，这是来源不适合、达到当日上限或已有百家号变体等确定性结果。
+7. 有运行但没有 `derived_job_id`：按 `automation_status` 和 `automation_error` 排查适配、质量或配图阶段。
+8. 百家号发布任务已到期但没有 `browser_publication_id`：检查 `publisher-worker`、浏览器登录态和
+   `baijiahao-browser`。
+
+容器日志按链路查看，不要只看一个服务：
+
+```powershell
+docker compose --env-file .env -p geo-content-os -f infra/compose.yaml logs --since 24h outbox-relay ai-worker publisher-worker baijiahao-browser
+```
+
+容器时间戳以 `Z` 结尾时是 UTC；与 `Asia/Shanghai` 的排期比较前必须加 8 小时。
+
 ```sql
 SELECT id, account_id, status, last_verified_at, qr_expires_at, version
 FROM baijiahao_browser_sessions

@@ -48,7 +48,7 @@ describe('DeepSeekModelAdapter integration', () => {
     });
   });
 
-  it('maps JSON mode, tools, configured model ID, and usage', async () => {
+  it('maps JSON mode, disables provider-default thinking, and records usage', async () => {
     let receivedBody: Record<string, unknown> | undefined;
     let authorization: string | undefined;
     const baseUrl = await serve(async (incoming, outgoing) => {
@@ -76,6 +76,7 @@ describe('DeepSeekModelAdapter integration', () => {
       model: 'provider-model-from-config',
       response_format: { type: 'json_object' },
       stream: false,
+      thinking: { type: 'disabled' },
       tool_choice: 'auto',
     });
     expect(result.message.content).toBe('{"answer":"verified"}');

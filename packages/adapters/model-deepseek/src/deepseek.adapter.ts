@@ -271,6 +271,7 @@ export class DeepSeekModelAdapter implements ModelAdapter {
       ...(input.responseFormat ? { response_format: responseFormat(input.responseFormat) } : {}),
       stream,
       ...(stream ? { stream_options: { include_usage: true } } : {}),
+      thinking: { type: 'disabled' },
       ...(input.temperature === undefined ? {} : { temperature: input.temperature }),
       ...(input.toolChoice === undefined ? {} : { tool_choice: toolChoice(input.toolChoice) }),
       ...(input.tools?.length ? { tools: input.tools.map(tool) } : {}),
