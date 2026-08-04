@@ -1,12 +1,20 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
-import { PlatformAccountResponseSchema } from './platform-account.schema';
+import {
+  BaijiahaoAutomationPolicySchema,
+  PlatformAccountResponseSchema,
+} from './platform-account.schema';
 
 const TENANT_ID = '10000000-0000-4000-8000-000000000091';
 const WORKSPACE_ID = '20000000-0000-4000-8000-000000000091';
 const ACCOUNT_ID = '30000000-0000-4000-8000-000000000091';
 const PROJECT_ID = '40000000-0000-4000-8000-000000000091';
 const POLICY_ID = '50000000-0000-4000-8000-000000000091';
+const MANUAL_RUN_ID = '60000000-0000-4000-8000-000000000091';
+const MANUAL_PACKAGE_ID = '70000000-0000-4000-8000-000000000091';
+const MANUAL_VARIANT_ID = '80000000-0000-4000-8000-000000000091';
+const MANUAL_VERSION_ID = '90000000-0000-4000-8000-000000000091';
+const MANUAL_REPORT_ID = 'a0000000-0000-4000-8000-000000000091';
 const SECRET = 'pub-01-super-secret-token';
 
 test.beforeEach(async ({ context, page }) => {
@@ -505,6 +513,56 @@ test('stops a running daily batch without deleting completed records', async ({ 
   expect(restartRequest?.idempotencyKey).toMatch(/^official-site-daily-batch-restart-/u);
 });
 
+test('shows actionable Baijiahao manual-required items', async ({ page }) => {
+  const requests: string[] = [];
+  await page.route('**/api/v1/projects?*', (route) => {
+    requests.push(new URL(route.request().url()).pathname);
+    return json(route, {
+      data: [{ id: PROJECT_ID, name: '百家号内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    });
+  });
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    requests.push(path);
+    if (path.endsWith('/baijiahao-browser-session')) {
+      await json(route, {
+        data: baijiahaoPolicy().browser_session,
+        meta: { request_id: 'baijiahao-session' },
+      });
+      return;
+    }
+    if (path.endsWith('/baijiahao-automation')) {
+      await json(route, { data: [baijiahaoPolicy()], meta: { request_id: 'baijiahao-policy' } });
+      return;
+    }
+    await json(route, {
+      data: [baijiahaoAccount()],
+      meta: { request_id: 'account-list' },
+    });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '百家号自动化' }).click();
+  await expect
+    .poll(() => requests)
+    .toContain(`/api/v1/platform-accounts/${ACCOUNT_ID}/baijiahao-automation`);
+  expect(requests).toContain(`/api/v1/platform-accounts/${ACCOUNT_ID}/baijiahao-browser-session`);
+  expect(requests).toContain('/api/v1/projects');
+
+  await expect(page.getByRole('heading', { name: '需要人工处理的内容' })).toBeVisible();
+  await expect(page.getByText('广州搬家前如何系统准备')).toBeVisible();
+  await expect(page.getByText(/达到最大重写次数后仍未通过质量门禁/u)).toBeVisible();
+  await expect(page.getByRole('link', { name: '查看全文和处理' })).toHaveAttribute(
+    'href',
+    `/cont-04?id=${MANUAL_PACKAGE_ID}`,
+  );
+  await expect(page.getByRole('link', { name: '查看质量报告' })).toHaveAttribute(
+    'href',
+    `/qual-01?id=${MANUAL_VARIANT_ID}`,
+  );
+});
+
 test('denies non-publisher roles before requesting account data', async ({ page }) => {
   let accountRequests = 0;
   await page.unroute('**/api/v1/auth/tenants');
@@ -551,6 +609,88 @@ function account({
     version,
     workspace_id: WORKSPACE_ID,
   };
+}
+
+function baijiahaoAccount() {
+  return {
+    ...account({ version: 1 }),
+    display_name: '百家号生产账号',
+    id: ACCOUNT_ID,
+    platform_code: 'baijiahao',
+    provider_account_id: null,
+    publishing_url: null,
+    token_expires_at: null,
+  };
+}
+
+function baijiahaoPolicy() {
+  return BaijiahaoAutomationPolicySchema.parse({
+    account_id: ACCOUNT_ID,
+    brand_consistency_min: 90,
+    browser_session: {
+      account_id: ACCOUNT_ID,
+      authenticated_at: '2026-08-04T00:00:00.000Z',
+      last_verified_at: '2026-08-04T00:00:00.000Z',
+      qr_expires_at: null,
+      status: 'authenticated',
+      version: 1,
+    },
+    daily_candidate_limit: 3,
+    daily_enabled: true,
+    daily_generation_time: '06:30:00',
+    daily_schedule_times: ['10:00:00'],
+    daily_target_count: 1,
+    daily_timezone: 'Asia/Shanghai',
+    enabled: true,
+    factual_accuracy_min: 90,
+    geo_total_min: 85,
+    id: POLICY_ID,
+    independent_fallback_enabled: false,
+    max_rewrites: 3,
+    max_source_similarity: 0.82,
+    platform_fit_min: 80,
+    project_id: PROJECT_ID,
+    publish_attempt_limit: 3,
+    question_coverage_min: 80,
+    readability_safety_min: 85,
+    source_mode: 'official_site_derived',
+    tenant_id: TENANT_ID,
+    today_batch: {
+      attempted_count: 1,
+      business_date: '2026-08-04',
+      in_progress_count: 0,
+      last_error_message: null,
+      manual_items: [
+        {
+          automation_run_id: MANUAL_RUN_ID,
+          candidate_no: 1,
+          content_version_id: MANUAL_VERSION_ID,
+          last_error: {
+            blocking_rules: ['gate.question_coverage'],
+            code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+          },
+          package_id: MANUAL_PACKAGE_ID,
+          publish_job_id: null,
+          quality_report_id: MANUAL_REPORT_ID,
+          rewrite_count: 3,
+          source_mode: 'official_site_derived',
+          title: '广州搬家前如何系统准备',
+          updated_at: '2026-08-04T00:18:19.000Z',
+          variant_id: MANUAL_VARIANT_ID,
+        },
+      ],
+      manual_required_count: 1,
+      published_count: 0,
+      scheduled_count: 0,
+      skipped_count: 0,
+      status: 'running',
+      target_count: 1,
+      version: 1,
+    },
+    updated_at: '2026-08-04T00:18:19.000Z',
+    version: 1,
+    workspace_id: WORKSPACE_ID,
+  });
 }
 
 function workspace() {

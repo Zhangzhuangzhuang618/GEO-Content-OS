@@ -278,6 +278,40 @@ test('shows failed full versions, matching quality reports and copies diagnostic
   await expect(page.getByRole('button', { name: '检查内容质量' })).toBeEnabled();
 });
 
+test('rechecks edited Baijiahao content from its manual-required state', async ({ page }) => {
+  await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
+  const detail = baseDetail('generated', ['quality_failed', 'quality_passed']);
+  detail.variants[0] = { ...detail.variants[0]!, platform_code: 'baijiahao' };
+  await mockDetail(page, detail, {
+    content_version_id: SITE_VERSION_ID,
+    finished_at: '2026-08-04T01:00:00.000Z',
+    id: '93000000-0000-4000-8000-000000000086',
+    last_error: { code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES' },
+    publish_job_id: null,
+    rewrite_count: 3,
+    status: 'manual_required',
+    updated_at: '2026-08-04T01:00:00.000Z',
+  });
+  let body: unknown;
+  await page.route(`**/api/v1/content-variants/${SITE_ID}/quality-check`, async (route) => {
+    body = route.request().postDataJSON();
+    await json(route, { ...generationRun('queued'), variant_id: SITE_ID }, 202);
+  });
+
+  await page.goto(`/cont-04?id=${PACKAGE_ID}`);
+  await expect(page.getByText('需人工处理（已重写 3/3 次）')).toBeVisible();
+  const baijiahaoCard = page.locator('article').filter({
+    has: page.getByRole('heading', { name: '百家号', exact: true }),
+  });
+  await expect(baijiahaoCard.getByRole('link', { name: '编辑内容' })).toHaveAttribute(
+    'href',
+    `/cont-05?id=${SITE_ID}`,
+  );
+  await page.getByRole('button', { name: '检查内容质量' }).click();
+  await expect(page.getByText('质量检查已开始，完成后页面会自动刷新。')).toBeVisible();
+  expect(body).toEqual({ mode: 'full' });
+});
+
 test('allows exact draft abandonment and administrator archive only', async ({ page }) => {
   await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
   await mockDetail(page, baseDetail('draft', ['draft', 'draft']));

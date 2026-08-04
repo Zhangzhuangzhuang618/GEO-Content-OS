@@ -410,9 +410,9 @@ function recommendedActionTitle(
       ? '处理生成失败的内容'
       : '生成各平台内容';
   if (detail.variants.some((item) => item.automationRun?.status === 'manual_required'))
-    return '处理未通过机器检查的官网内容';
+    return '处理未通过机器检查的自动发布内容';
   if (detail.variants.some((item) => item.automationRun?.status === 'publish_failed'))
-    return '处理官网发布失败';
+    return '处理自动发布失败';
   if (qualityCount > 0) return '检查已生成内容的质量';
   if (canSubmitSelection) return '提交已通过检查的内容';
   if (detail.variants.some((item) => item.variant.status === 'in_review')) return '等待审核结果';
@@ -433,9 +433,9 @@ function recommendedActionDescription(
       ? '在下方失败的平台卡片中查看原因，或直接重新生成该平台内容。'
       : '点击开始后，系统会为所选平台分别生成适配内容。';
   if (detail.variants.some((item) => item.automationRun?.status === 'manual_required'))
-    return '自动重写达到上限。请在下方找到官网内容，查看问题并编辑后重新检查。';
+    return '自动检查或重写未能继续。请在下方找到对应平台内容，查看问题并编辑后重新检查。';
   if (detail.variants.some((item) => item.automationRun?.status === 'publish_failed'))
-    return '内容已经通过机器检查，但官网接口发布失败。请从官网平台卡片进入失败任务重试。';
+    return '内容已经通过机器检查，但平台发布失败。请从对应平台卡片进入失败任务重试。';
   if (qualityCount > 0) return `有 ${qualityCount} 个平台内容需要检查，检查通过后才能进入下一步。`;
   if (canSubmitSelection) return '已通过检查的平台已经为你选中，确认后即可提交审核。';
   if (detail.variants.some((item) => item.variant.status === 'in_review'))
@@ -567,7 +567,7 @@ function PlatformContentCard({
         ) : null}
         {item.automationRun?.status === 'publish_failed' && item.automationRun.publish_job_id ? (
           <Link className={primaryButton} href={`/pub-03?id=${item.automationRun.publish_job_id}`}>
-            查看失败并重试
+            查看发布失败并重试
           </Link>
         ) : null}
         {item.variant.status === 'approved' ? (
@@ -756,12 +756,23 @@ function variantNextStep(item: VariantDetail): string {
   if (item.automationRun?.status === 'manual_required')
     return '机器检查连续未通过，需要查看具体问题并修改内容。';
   if (item.automationRun?.status === 'publish_failed')
-    return '内容已通过检查，但发布到官网失败，需要重试。';
+    return '内容已通过检查，但发布到平台失败，需要重试。';
   if (
     item.automationRun &&
-    ['publish_pending', 'publishing', 'quality_pending', 'rewrite_pending', 'rewriting'].includes(
-      item.automationRun.status,
-    )
+    [
+      'adaptation_pending',
+      'adapting',
+      'generation_pending',
+      'generating',
+      'media_pending',
+      'processing',
+      'publish_pending',
+      'publishing',
+      'quality_pending',
+      'rewrite_pending',
+      'rewriting',
+      'scheduled',
+    ].includes(item.automationRun.status)
   )
     return '系统正在自动检查、重写或发布，无需人工操作。';
   if (item.variant.status === 'generation_failed') return '内容生成失败，可以重新生成全部内容。';
@@ -1086,15 +1097,23 @@ function publishLabel(status: string) {
 }
 function automationStatusLabel(status: string, rewriteCount: number) {
   const labels: Record<string, string> = {
+    adaptation_pending: '等待平台改写',
+    adapting: '正在适配平台内容',
     disabled: '自动发布已关闭',
+    generation_pending: '等待生成内容',
+    generating: '正在生成内容',
     manual_required: `需人工处理（已重写 ${rewriteCount}/3 次）`,
-    publish_failed: '官网发布失败',
+    media_pending: '正在准备配图',
+    processing: '平台处理中',
+    publish_failed: '自动发布失败',
     publish_pending: '等待发布',
     published: '已自动发布',
     publishing: '正在自动发布',
     quality_pending: '正在机器质检',
     rewrite_pending: `等待第 ${rewriteCount} 次重写`,
     rewriting: `正在第 ${rewriteCount} 次重写`,
+    scheduled: '已自动排期',
+    skipped: '已跳过',
   };
   return labels[status] ?? status;
 }

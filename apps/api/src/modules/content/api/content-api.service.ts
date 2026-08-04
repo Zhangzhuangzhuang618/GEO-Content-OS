@@ -46,6 +46,12 @@ import { canRegenerateContentVariant } from './content-api.guards.js';
 
 type SqlClient = IdentityAuthDatabase['client'] | TransactionSql;
 
+const RECOVERABLE_BAIJIAHAO_MANUAL_CODES: readonly string[] = [
+  'ADAPTATION_EXECUTION_FAILED',
+  'QUALITY_CHECK_EXECUTION_FAILED',
+  'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+];
+
 export interface ContentApiAudit {
   readonly ip?: string;
   readonly requestId: string;
@@ -642,6 +648,23 @@ export class ContentApiService {
       throw contentStateInvalid('Variant state does not permit a quality check');
     }
     await assertNoActiveVariantRun(transaction, tenantId, variantId);
+    const baijiahaoManualRuns = await transaction<{ errorCode: string | null }[]>`
+      SELECT automation.last_error_json->>'code' AS "errorCode"
+      FROM baijiahao_automation_runs AS automation
+      JOIN baijiahao_automation_policies AS policy
+        ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
+      WHERE automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
+        AND automation.status='manual_required' AND policy.enabled
+    `;
+    if (
+      baijiahaoManualRuns.some(
+        ({ errorCode }) => !RECOVERABLE_BAIJIAHAO_MANUAL_CODES.includes(errorCode ?? ''),
+      )
+    ) {
+      throw contentStateInvalid(
+        'Baijiahao manual state must be resolved from its publication record',
+      );
+    }
     await transaction`
       UPDATE official_site_automation_runs AS automation SET
         status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
@@ -652,6 +675,32 @@ export class ContentApiService {
         AND automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
         AND automation.status='manual_required' AND policy.enabled
     `;
+    const recoveredBaijiahaoRuns = await transaction<{ id: string }[]>`
+      UPDATE baijiahao_automation_runs AS automation SET
+        status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
+        rewrite_count=0,last_quality_report_id=NULL,
+        publish_job_id=NULL,last_error_json=NULL,finished_at=NULL,version=automation.version+1
+      FROM baijiahao_automation_policies AS policy
+      WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
+        AND automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
+        AND automation.status='manual_required' AND policy.enabled
+        AND COALESCE(automation.last_error_json->>'code','') = ANY(
+          ${transaction.array([...RECOVERABLE_BAIJIAHAO_MANUAL_CODES], 25)}::text[]
+        )
+      RETURNING automation.id
+    `;
+    if (recoveredBaijiahaoRuns.length > 0) {
+      await transaction`
+        UPDATE baijiahao_daily_batch_items AS item SET
+          status='quality_check',content_version_id=${variant.currentContentVersionId}::uuid,
+          publish_job_id=NULL,scheduled_at=NULL,last_error_json=NULL
+        FROM baijiahao_automation_runs AS automation
+        WHERE item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+          AND automation.tenant_id=${tenantId}::uuid
+          AND automation.variant_id=${variantId}::uuid
+          AND automation.status='quality_pending'
+      `;
+    }
     const runtime = readQualityRuntime();
     const current = await requireContentVersion(
       transaction,
@@ -887,7 +936,7 @@ export class ContentApiService {
     const citations = current ? await selectCitations(client, scope, current.id) : [];
     const reports = await selectQualityReports(client, scope, variantId);
     const report = reports.find((candidate) => candidate.contentVersionId === current?.id) ?? null;
-    const automation = await selectOfficialSiteAutomationRun(client, scope, variantId);
+    const automation = await selectAutomationRun(client, scope, variantId);
     return {
       automation_run: automation ? snake(automation) : null,
       citations: citations.map(snake),
@@ -913,14 +962,10 @@ export class ContentApiService {
   }
 }
 
-async function selectOfficialSiteAutomationRun(
-  client: SqlClient,
-  scope: ContentScope,
-  variantId: string,
-) {
+async function selectAutomationRun(client: SqlClient, scope: ContentScope, variantId: string) {
   const rows = await client<
     {
-      contentVersionId: string;
+      contentVersionId: string | null;
       finishedAt: Date | string | null;
       id: string;
       lastError: Readonly<Record<string, unknown>> | null;
@@ -934,7 +979,17 @@ async function selectOfficialSiteAutomationRun(
       automation.status,automation.rewrite_count AS "rewriteCount",
       automation.publish_job_id AS "publishJobId",automation.last_error_json AS "lastError",
       automation.updated_at AS "updatedAt",automation.finished_at AS "finishedAt"
-    FROM official_site_automation_runs AS automation
+    FROM (
+      SELECT id,tenant_id,variant_id,content_version_id,status,rewrite_count,
+        publish_job_id,last_error_json,updated_at,finished_at
+      FROM official_site_automation_runs
+      WHERE tenant_id=${scope.tenantId}::uuid AND variant_id=${variantId}::uuid
+      UNION ALL
+      SELECT id,tenant_id,variant_id,content_version_id,status,rewrite_count,
+        publish_job_id,last_error_json,updated_at,finished_at
+      FROM baijiahao_automation_runs
+      WHERE tenant_id=${scope.tenantId}::uuid AND variant_id=${variantId}::uuid
+    ) AS automation
     JOIN content_variants AS variant
       ON variant.id=automation.variant_id AND variant.tenant_id=automation.tenant_id
     JOIN content_packages AS package

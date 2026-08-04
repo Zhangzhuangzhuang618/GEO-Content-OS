@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 
 import { listProjects } from '../know-02/source-upload-api';
@@ -56,8 +57,15 @@ export function BaijiahaoAutomationPanel({
         setSession(nextSession ?? nextPolicies[0]?.browser_session ?? null);
         setState('ready');
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setState('error');
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setMessage(
+            error instanceof PlatformAccountRequestError
+              ? `读取百家号配置失败（HTTP ${error.status}）。`
+              : '读取百家号配置失败。',
+          );
+          setState('error');
+        }
       });
     return () => controller.abort();
   }, [account.id, account.workspace_id]);
@@ -181,7 +189,7 @@ export function BaijiahaoAutomationPanel({
         <p className="mt-5 text-sm text-ink-500">正在读取策略与登录态…</p>
       ) : null}
       {state === 'error' ? (
-        <p className="mt-5 text-sm text-red-700">暂时无法读取百家号配置。</p>
+        <p className="mt-5 text-sm text-red-700">{message ?? '暂时无法读取百家号配置。'}</p>
       ) : null}
       {state === 'ready' || state === 'saving' ? (
         <>
@@ -355,15 +363,97 @@ function BatchSummary({ policy }: { readonly policy: BaijiahaoAutomationPolicy }
   const batch = policy.today_batch;
   if (!batch) return null;
   return (
-    <div className="mt-5 grid gap-3 rounded-xl border border-line p-4 text-sm sm:grid-cols-3">
-      <p>今日候选：{batch.attempted_count}</p>
-      <p>处理中：{batch.in_progress_count}</p>
-      <p>已排期：{batch.scheduled_count}</p>
-      <p>已发布：{batch.published_count}</p>
-      <p>已跳过：{batch.skipped_count}</p>
-      <p>需人工：{batch.manual_required_count}</p>
+    <div className="mt-5 rounded-xl border border-line p-4 text-sm">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <p>今日候选：{batch.attempted_count}</p>
+        <p>处理中：{batch.in_progress_count}</p>
+        <p>已排期：{batch.scheduled_count}</p>
+        <p>已发布：{batch.published_count}</p>
+        <p>已跳过：{batch.skipped_count}</p>
+        <p>需人工：{batch.manual_required_count}</p>
+      </div>
+      {batch.manual_items.length > 0 ? (
+        <section
+          className="mt-4 border-t border-line pt-4"
+          aria-labelledby="baijiahao-manual-title"
+        >
+          <h3 className="font-semibold text-ink-950" id="baijiahao-manual-title">
+            需要人工处理的内容
+          </h3>
+          <p className="mt-1 text-xs leading-5 text-ink-500">
+            请按失败阶段查看全文、质量报告或发布记录；内容问题需编辑后重新检查质量。
+          </p>
+          <div className="mt-3 space-y-3">
+            {batch.manual_items.map((item) => (
+              <article
+                className="rounded-xl border border-amber-200 bg-amber-50 p-4"
+                key={item.automation_run_id}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-ink-950">
+                      候选 {item.candidate_no} · {item.title ?? '未命名百家号内容'}
+                    </p>
+                    <p className="mt-1 text-xs text-ink-600">
+                      {item.source_mode === 'official_site_derived'
+                        ? '官网文章定向改写'
+                        : '独立生成'}
+                      {' · '}已重写 {item.rewrite_count}/3 次
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-amber-800">
+                    需人工
+                  </span>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-amber-950">
+                  {manualErrorSummary(item.last_error)}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {item.package_id ? (
+                    <Link className={primaryButton} href={`/cont-04?id=${item.package_id}`}>
+                      查看全文和处理
+                    </Link>
+                  ) : null}
+                  {item.variant_id && item.quality_report_id ? (
+                    <Link className={secondaryButton} href={`/qual-01?id=${item.variant_id}`}>
+                      查看质量报告
+                    </Link>
+                  ) : null}
+                  {item.publish_job_id ? (
+                    <Link className={secondaryButton} href={`/pub-03?id=${item.publish_job_id}`}>
+                      查看发布任务
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : batch.manual_required_count > 0 ? (
+        <p className="mt-4 border-t border-line pt-4 text-sm text-amber-900">
+          当前服务只返回了汇总数量，尚未返回明细。请确认 API 已更新后刷新页面。
+        </p>
+      ) : null}
     </div>
   );
+}
+
+function manualErrorSummary(value: Readonly<Record<string, unknown>> | null): string {
+  if (!value) return '未记录具体失败原因。';
+  const code = typeof value['code'] === 'string' ? value['code'] : 'UNKNOWN';
+  const rules = Array.isArray(value['blocking_rules'])
+    ? value['blocking_rules'].filter((item): item is string => typeof item === 'string')
+    : [];
+  const message = typeof value['message'] === 'string' ? value['message'] : '';
+  const label =
+    {
+      ADAPTATION_EXECUTION_FAILED: '自动改写连续执行失败',
+      QUALITY_CHECK_EXECUTION_FAILED: '机器质量检查执行失败',
+      QUALITY_GATE_FAILED_AFTER_MAX_REWRITES: '达到最大重写次数后仍未通过质量门禁',
+    }[code] ?? code;
+  return [label, rules.length ? `阻断规则：${rules.join('、')}` : '', message]
+    .filter(Boolean)
+    .join('；');
 }
 
 function normalizeTime(value: string): string | null {

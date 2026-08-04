@@ -11,6 +11,8 @@ import type { BaijiahaoBrowserGatewayClient } from './baijiahao-browser-gateway.
 import { PlatformAccountError } from './platform-account.errors.js';
 import type { PlatformAccountAudit, PlatformAccountScope } from './platform-account.types.js';
 
+type ManualItem = NonNullable<BaijiahaoAutomationPolicyView['today_batch']>['manual_items'][number];
+
 interface PolicyRow {
   readonly accountId: string;
   readonly attemptedCount: number | null;
@@ -33,6 +35,7 @@ interface PolicyRow {
   readonly independentFallbackEnabled: boolean;
   readonly inProgressCount: number | null;
   readonly manualRequiredCount: number | null;
+  readonly manualItems: readonly ManualItem[] | null;
   readonly maxRewrites: 3;
   readonly maxSourceSimilarity: number;
   readonly platformFitMin: 80;
@@ -225,7 +228,8 @@ export class BaijiahaoAutomationPolicyService {
         today.attempted_count AS "attemptedCount",today.in_progress_count AS "inProgressCount",
         today.scheduled_count AS "scheduledCount",today.published_count AS "publishedCount",
         today.skipped_count AS "skippedCount",
-        today.manual_required_count AS "manualRequiredCount"
+        today.manual_required_count AS "manualRequiredCount",
+        today.manual_items AS "manualItems"
       FROM baijiahao_automation_policies AS policy
       LEFT JOIN baijiahao_browser_sessions AS session
         ON session.tenant_id=policy.tenant_id AND session.account_id=policy.account_id
@@ -243,10 +247,34 @@ export class BaijiahaoAutomationPolicyService {
           count(item.id) FILTER (WHERE item.status='published')::integer AS published_count,
           count(item.id) FILTER (WHERE item.status='skipped')::integer AS skipped_count,
           count(item.id) FILTER (WHERE item.status='manual_required')::integer
-            AS manual_required_count
+            AS manual_required_count,
+          COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'automation_run_id',automation.id,
+                'candidate_no',item.candidate_no,
+                'content_version_id',COALESCE(automation.content_version_id,item.content_version_id),
+                'last_error',COALESCE(automation.last_error_json,item.last_error_json),
+                'package_id',item.package_id,
+                'publish_job_id',COALESCE(automation.publish_job_id,item.publish_job_id),
+                'quality_report_id',automation.last_quality_report_id,
+                'rewrite_count',automation.rewrite_count,
+                'source_mode',automation.source_mode,
+                'title',content.content_json->>'title',
+                'updated_at',item.updated_at,
+                'variant_id',COALESCE(automation.variant_id,item.variant_id)
+              ) ORDER BY item.candidate_no
+            ) FILTER (WHERE item.status='manual_required' AND automation.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS manual_items
         FROM baijiahao_daily_batches AS batch
         LEFT JOIN baijiahao_daily_batch_items AS item
           ON item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+        LEFT JOIN baijiahao_automation_runs AS automation
+          ON automation.tenant_id=item.tenant_id AND automation.id=item.automation_run_id
+        LEFT JOIN content_versions AS content
+          ON content.tenant_id=item.tenant_id
+          AND content.id=COALESCE(automation.content_version_id,item.content_version_id)
         WHERE batch.tenant_id=policy.tenant_id AND batch.policy_id=policy.id
           AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
         GROUP BY batch.id ORDER BY batch.attempt_no DESC LIMIT 1
@@ -329,6 +357,10 @@ function mapPolicy(row: PolicyRow): BaijiahaoAutomationPolicyView {
             business_date: dateOnly(row.batchBusinessDate),
             in_progress_count: row.inProgressCount ?? 0,
             last_error_message: row.batchLastErrorMessage,
+            manual_items: (row.manualItems ?? []).map((item) => ({
+              ...item,
+              updated_at: new Date(item.updated_at).toISOString(),
+            })),
             manual_required_count: row.manualRequiredCount ?? 0,
             published_count: row.publishedCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,

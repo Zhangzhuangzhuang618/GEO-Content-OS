@@ -229,6 +229,27 @@ export const BaijiahaoDailyBatchSummarySchema = z
     business_date: z.iso.date(),
     in_progress_count: z.number().int().min(0).max(30),
     last_error_message: z.string().nullable(),
+    manual_items: z
+      .array(
+        z
+          .object({
+            automation_run_id: UuidSchema,
+            candidate_no: z.number().int().min(1).max(30),
+            content_version_id: UuidSchema.nullable(),
+            last_error: z.record(z.string(), z.unknown()).nullable(),
+            package_id: UuidSchema.nullable(),
+            publish_job_id: UuidSchema.nullable(),
+            quality_report_id: UuidSchema.nullable(),
+            rewrite_count: z.number().int().min(0).max(3),
+            source_mode: z.enum(['official_site_derived', 'independent']),
+            title: z.string().trim().min(1).max(240).nullable(),
+            updated_at: IsoDateTimeSchema,
+            variant_id: UuidSchema.nullable(),
+          })
+          .strict(),
+      )
+      .max(30)
+      .default([]),
     manual_required_count: z.number().int().min(0).max(30),
     published_count: z.number().int().min(0).max(10),
     scheduled_count: z.number().int().min(0).max(10),

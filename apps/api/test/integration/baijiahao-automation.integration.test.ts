@@ -1,3 +1,4 @@
+import { BaijiahaoAutomationPolicyViewSchema } from '@geo-content-os/contracts';
 import {
   BaijiahaoAutomation,
   BaijiahaoDailyScheduler,
@@ -14,6 +15,10 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
+import { ContentApiService } from '../../src/modules/content/api/content-api.service.js';
+import type { IdentityAuthDatabase } from '../../src/modules/identity/auth/auth.database.js';
+import { OutboxWriter } from '../../src/modules/outbox/index.js';
+import { BaijiahaoAutomationPolicyService } from '../../src/modules/publishing/accounts/index.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000145';
 const TENANT_ID = '21000000-0000-4000-8000-000000000145';
@@ -256,6 +261,156 @@ describe('Baijiahao official-site derived automation', () => {
     await expect(automation.recoverGeneratedIndependentCandidates()).resolves.toBe(0);
 
     await expectIndependentQualityQueued(database);
+  });
+
+  it('lists manual-required items and resumes quality after user editing', async () => {
+    const database = requireClient(client);
+    const generatedHash = await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE content_variants SET status='quality_failed'
+      WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_automation_runs SET
+        content_version_id=${INDEPENDENT_VERSION_ID}::uuid,status='manual_required',
+        rewrite_count=3,last_error_json=${database.json({
+          blocking_rules: ['gate.question_coverage'],
+          code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+          schema_version: 'baijiahao-automation-error@1',
+        })},finished_at=now()
+      WHERE id=${INDEPENDENT_RUN_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_daily_batch_items SET
+        status='manual_required',content_version_id=${INDEPENDENT_VERSION_ID}::uuid,
+        last_error_json=${database.json({
+          code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+          schema_version: 'baijiahao-automation-error@1',
+        })}
+      WHERE id=${INDEPENDENT_ITEM_ID}::uuid
+    `;
+
+    const policies = new BaijiahaoAutomationPolicyService(database, {} as never);
+    const policy = (
+      await policies.list({ tenantId: TENANT_ID, userId: USER_ID }, BAIJIAHAO_ACCOUNT_ID)
+    )[0];
+    expect(() => BaijiahaoAutomationPolicyViewSchema.parse(policy)).not.toThrow();
+    const before = policy?.today_batch;
+    expect(before?.manual_items).toEqual([
+      expect.objectContaining({
+        automation_run_id: INDEPENDENT_RUN_ID,
+        candidate_no: 1,
+        content_version_id: INDEPENDENT_VERSION_ID,
+        package_id: PACKAGE_ID,
+        rewrite_count: 3,
+        source_mode: 'independent',
+        variant_id: INDEPENDENT_VARIANT_ID,
+      }),
+    ]);
+
+    const service = new ContentApiService(
+      { client: database } as IdentityAuthDatabase,
+      new OutboxWriter(database as never),
+    );
+    await expect(
+      service.getVariant(TENANT_ID, USER_ID, INDEPENDENT_VARIANT_ID),
+    ).resolves.toMatchObject({
+      automation_run: {
+        content_version_id: INDEPENDENT_VERSION_ID,
+        id: INDEPENDENT_RUN_ID,
+        rewrite_count: 3,
+        status: 'manual_required',
+      },
+    });
+    const previousEnvironment = {
+      model: process.env['QUALITY_CHECKER_MODEL_KEY'],
+      prompt: process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'],
+      version: process.env['QUALITY_CHECKER_SKILL_VERSION'],
+    };
+    process.env['QUALITY_CHECKER_MODEL_KEY'] = 'deepseek-v4-flash';
+    process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'] = QUALITY_PROMPT_ID;
+    process.env['QUALITY_CHECKER_SKILL_VERSION'] = '1.0.0';
+    try {
+      await database.begin((transaction) =>
+        service.requestQualityCheck(
+          transaction,
+          TENANT_ID,
+          USER_ID,
+          INDEPENDENT_VARIANT_ID,
+          generatedHash,
+          { requestId: 'baijiahao-manual-recovery' },
+        ),
+      );
+    } finally {
+      restoreEnvironment('QUALITY_CHECKER_MODEL_KEY', previousEnvironment.model);
+      restoreEnvironment('QUALITY_CHECKER_PROMPT_VERSION_ID', previousEnvironment.prompt);
+      restoreEnvironment('QUALITY_CHECKER_SKILL_VERSION', previousEnvironment.version);
+    }
+
+    expect(
+      await database<
+        { contentVersionId: string; itemStatus: string; rewriteCount: number; runStatus: string }[]
+      >`
+        SELECT automation.status AS "runStatus",automation.rewrite_count AS "rewriteCount",
+          automation.content_version_id AS "contentVersionId",item.status AS "itemStatus"
+        FROM baijiahao_automation_runs AS automation
+        JOIN baijiahao_daily_batch_items AS item
+          ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+        WHERE automation.id=${INDEPENDENT_RUN_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        contentVersionId: INDEPENDENT_VERSION_ID,
+        itemStatus: 'quality_check',
+        rewriteCount: 0,
+        runStatus: 'quality_pending',
+      },
+    ]);
+    expect(
+      (await policies.list({ tenantId: TENANT_ID, userId: USER_ID }, BAIJIAHAO_ACCOUNT_ID))[0]
+        ?.today_batch?.manual_items,
+    ).toEqual([]);
+  });
+
+  it('does not turn a browser publication ambiguity into a new quality check', async () => {
+    const database = requireClient(client);
+    const generatedHash = await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE content_variants SET status='quality_failed'
+      WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_automation_runs SET
+        content_version_id=${INDEPENDENT_VERSION_ID}::uuid,status='manual_required',
+        last_error_json=${database.json({ code: 'BROWSER_SUBMISSION_AMBIGUOUS' })},finished_at=now()
+      WHERE id=${INDEPENDENT_RUN_ID}::uuid
+    `;
+    const service = new ContentApiService(
+      { client: database } as IdentityAuthDatabase,
+      new OutboxWriter(database as never),
+    );
+
+    await expect(
+      database.begin((transaction) =>
+        service.requestQualityCheck(
+          transaction,
+          TENANT_ID,
+          USER_ID,
+          INDEPENDENT_VARIANT_ID,
+          generatedHash,
+          { requestId: 'baijiahao-browser-ambiguity' },
+        ),
+      ),
+    ).rejects.toMatchObject({
+      kind: 'state',
+      message: 'Baijiahao manual state must be resolved from its publication record',
+    });
+    expect(
+      await database<{ code: string; status: string }[]>`
+        SELECT status,last_error_json->>'code' AS code FROM baijiahao_automation_runs
+        WHERE id=${INDEPENDENT_RUN_ID}::uuid
+      `,
+    ).toEqual([{ code: 'BROWSER_SUBMISSION_AMBIGUOUS', status: 'manual_required' }]);
   });
 });
 
@@ -569,7 +724,7 @@ async function seedGeneratedIndependentCandidate(database: Sql): Promise<string>
       id,tenant_id,policy_id,business_date,status
     ) VALUES(
       ${INDEPENDENT_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
-      DATE '2026-08-04','running'
+      (now() AT TIME ZONE 'Asia/Shanghai')::date,'running'
     )
   `;
   await database`
@@ -649,4 +804,9 @@ function sha256(value: string): string {
 function requireClient(value: Sql | undefined): Sql {
   if (!value) throw new Error('Baijiahao automation PostgreSQL client was not initialized');
   return value;
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }

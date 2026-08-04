@@ -323,7 +323,7 @@ export function Dashboard() {
                   ? '包含已排期、发布中或发布失败的内容。'
                   : '当前没有需要处理的发布任务。'
               }
-              href="/pub-03"
+              href="/pub-02"
               label="发布任务"
               tone={publishingTodos.length ? 'attention' : 'neutral'}
             />
@@ -462,7 +462,7 @@ export function Dashboard() {
             {PUBLISH_ROLES.has(state.role) ? (
               <MetricCard
                 error={state.issues.packages}
-                href="/pub-03"
+                href="/pub-02"
                 label="发布任务"
                 onRetry={() => void retrySection('packages')}
                 value={state.issues.packages ? '暂时无法获取' : `${publishingTodos.length} 项`}

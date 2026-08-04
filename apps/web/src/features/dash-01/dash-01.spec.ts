@@ -154,7 +154,7 @@ test('shows only cards and actions allowed by the active role', async ({ page })
   );
   await expect(page.getByRole('link', { name: /发布任务/u }).first()).toHaveAttribute(
     'href',
-    '/pub-03',
+    '/pub-02',
   );
 
   await mockRole(page, 'viewer');

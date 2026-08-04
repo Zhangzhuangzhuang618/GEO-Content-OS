@@ -100,22 +100,29 @@ export const QualityReportSchema = z
   })
   .passthrough();
 
-export const OfficialSiteAutomationRunSchema = z
+export const AutomationRunSchema = z
   .object({
-    content_version_id: z.string().uuid(),
+    content_version_id: z.string().uuid().nullable(),
     finished_at: z.iso.datetime().nullable(),
     id: z.string().uuid(),
     last_error: z.record(z.string(), z.unknown()).nullable(),
     publish_job_id: z.string().uuid().nullable(),
     rewrite_count: z.number().int().min(0).max(3),
     status: z.enum([
+      'generation_pending',
+      'generating',
+      'adaptation_pending',
+      'adapting',
       'quality_pending',
       'rewrite_pending',
       'rewriting',
       'media_pending',
       'publish_pending',
+      'scheduled',
       'publishing',
+      'processing',
       'published',
+      'skipped',
       'manual_required',
       'publish_failed',
       'disabled',
@@ -142,7 +149,7 @@ export const ContentVariantDetailResponseSchema = z
   .object({
     data: z
       .object({
-        automation_run: OfficialSiteAutomationRunSchema.nullable(),
+        automation_run: AutomationRunSchema.nullable(),
         citations: z.array(CitationSchema),
         current_content: ContentVersionSchema.nullable(),
         locks: z.array(z.unknown()),
@@ -174,10 +181,10 @@ export type GenerationRun = z.infer<typeof GenerationRunSchema>;
 export type ContentVersion = z.infer<typeof ContentVersionSchema>;
 export type Citation = z.infer<typeof CitationSchema>;
 export type QualityReport = z.infer<typeof QualityReportSchema>;
-export type OfficialSiteAutomationRun = z.infer<typeof OfficialSiteAutomationRunSchema>;
+export type AutomationRun = z.infer<typeof AutomationRunSchema>;
 
 export interface VariantDetail {
-  readonly automationRun: OfficialSiteAutomationRun | null;
+  readonly automationRun: AutomationRun | null;
   readonly citations: readonly Citation[];
   readonly currentContent: ContentVersion | null;
   readonly qualityReport: QualityReport | null;
