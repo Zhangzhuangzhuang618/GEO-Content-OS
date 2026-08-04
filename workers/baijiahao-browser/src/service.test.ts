@@ -1,11 +1,14 @@
 import { hashBaijiahaoPayload } from '@geo-content-os/adapter-platforms/baijiahao/delivery';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
-import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
+import {
+  CredentialEnvelopeError,
+  type CredentialEnvelopeService,
+} from '@geo-content-os/security/credentials';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { BaijiahaoBrowserConfig } from './config.js';
 import { PageDriverError } from './page-driver.js';
-import { BaijiahaoBrowserService } from './service.js';
+import { BaijiahaoBrowserService, safeBrowserError } from './service.js';
 import type { PostgresBaijiahaoBrowserStore } from './store.js';
 import type { BaijiahaoPageDriver, BrowserSession, PublicationClaim } from './types.js';
 
@@ -55,6 +58,155 @@ describe('Baijiahao browser service', () => {
       qrExpiresAt: null,
       status: 'attention_required',
     });
+  });
+
+  it('marks an encrypted session for reauthentication when decryption fails', async () => {
+    const session = browserSession('authenticated');
+    const reauth = { ...session, status: 'reauth' as const, version: 2 };
+    const markSession = vi.fn(async () => reauth);
+    const markAccountReauth = vi.fn(async () => undefined);
+    const store = {
+      getSession: vi.fn(async () => session),
+      markAccountReauth,
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const credentials = {
+      decrypt: vi.fn(async () => {
+        throw new CredentialEnvelopeError('CREDENTIAL_DECRYPTION_FAILED');
+      }),
+    } as unknown as CredentialEnvelopeService;
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      {} as BaijiahaoPageDriver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'reauth',
+      version: 2,
+    });
+    expect(markAccountReauth).toHaveBeenCalledWith(ACCOUNT_ID, TENANT_ID);
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: {
+        code: 'CREDENTIAL_DECRYPTION_FAILED',
+        schema_version: 'baijiahao-browser-error@1',
+      },
+      status: 'reauth',
+    });
+    expect(errorLog).toHaveBeenCalledWith(
+      'Baijiahao browser session verification failed',
+      expect.objectContaining({ error_code: 'CREDENTIAL_DECRYPTION_FAILED' }),
+    );
+    errorLog.mockRestore();
+  });
+
+  it('persists an attention state for an unexpected browser runtime failure', async () => {
+    const session = browserSession('authenticated');
+    const attention = { ...session, status: 'attention_required' as const, version: 2 };
+    const markSession = vi.fn(async () => attention);
+    const store = {
+      getSession: vi.fn(async () => session),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      verifyAuthenticated: vi.fn(async () => {
+        throw new Error('Chromium failed token=browser-secret');
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+      version: 2,
+    });
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: { code: 'BROWSER_RUNTIME_FAILED', schema_version: 'baijiahao-browser-error@1' },
+      status: 'attention_required',
+    });
+    expect(errorLog).toHaveBeenCalledWith(
+      'Baijiahao browser session verification failed',
+      expect.objectContaining({
+        error: 'Error: Chromium failed token=[REDACTED]',
+        error_code: 'BROWSER_RUNTIME_FAILED',
+      }),
+    );
+    errorLog.mockRestore();
+  });
+
+  it('classifies a captcha encountered during real-time verification', async () => {
+    const session = browserSession('authenticated');
+    const attention = { ...session, status: 'attention_required' as const, version: 2 };
+    const markSession = vi.fn(async () => attention);
+    const store = {
+      getSession: vi.fn(async () => session),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      verifyAuthenticated: vi.fn(async () => {
+        throw new PageDriverError('CAPTCHA_REQUIRED', 'Baijiahao requested human verification');
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+    });
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: { code: 'CAPTCHA_REQUIRED', schema_version: 'baijiahao-browser-error@1' },
+      status: 'attention_required',
+    });
+    errorLog.mockRestore();
+  });
+
+  it('does not re-run browser verification after a concurrent poll changes the session state', async () => {
+    const authenticated = browserSession('authenticated');
+    const attention = { ...authenticated, status: 'attention_required' as const, version: 2 };
+    const verifyAuthenticated = vi.fn(async () => true);
+    const store = {
+      getSession: vi.fn().mockResolvedValueOnce(authenticated).mockResolvedValueOnce(attention),
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      { verifyAuthenticated } as unknown as BaijiahaoPageDriver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+      version: 2,
+    });
+    expect(verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('redacts browser secrets from diagnostics', () => {
+    expect(safeBrowserError(new Error('Cookie: SID=secret; password=hidden'))).toBe(
+      'Error: Cookie: [REDACTED]',
+    );
   });
 
   it('reports an immediate platform rejection instead of claiming the publication is processing', async () => {

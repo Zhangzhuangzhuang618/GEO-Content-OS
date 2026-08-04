@@ -1,7 +1,7 @@
 import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
 import { ALLOWED_COMPANY_NAME, findDisallowedCompanyNames } from '@geo-content-os/contracts';
 
-import type { JsonObject } from './generation.types.js';
+import { safeError } from './safe-error.js';
 
 export interface ArticleImageScene {
   readonly caption: string;
@@ -10,6 +10,7 @@ export interface ArticleImageScene {
 
 export interface ArticleImagePlan {
   readonly coverLabel: string;
+  readonly plannerFailure: string | null;
   readonly scenes: readonly [ArticleImageScene, ArticleImageScene];
   readonly source: 'deepseek' | 'template';
 }
@@ -27,29 +28,6 @@ export interface ArticleImagePlannerInput {
   };
   readonly signal?: AbortSignal;
 }
-
-const IMAGE_PLAN_SCHEMA = Object.freeze({
-  additionalProperties: false,
-  properties: {
-    cover_label: { maxLength: 24, minLength: 2, type: 'string' },
-    scenes: {
-      items: {
-        additionalProperties: false,
-        properties: {
-          caption: { maxLength: 80, minLength: 2, type: 'string' },
-          prompt: { maxLength: 1600, minLength: 20, type: 'string' },
-        },
-        required: ['caption', 'prompt'],
-        type: 'object',
-      },
-      maxItems: 2,
-      minItems: 2,
-      type: 'array',
-    },
-  },
-  required: ['cover_label', 'scenes'],
-  type: 'object',
-}) as JsonObject;
 
 export class ArticleImagePlanner {
   public constructor(
@@ -89,20 +67,15 @@ export class ArticleImagePlanner {
           },
         ],
         requestId: input.requestId,
-        responseFormat: {
-          name: 'article_image_plan',
-          schema: IMAGE_PLAN_SCHEMA,
-          strict: true,
-          type: 'json_schema',
-        },
+        responseFormat: { type: 'json_object' },
         ...(input.signal ? { signal: input.signal } : {}),
         temperature: 0.2,
       });
       await this.recordUsage(input.scope, result.usage);
       const plan = parsePlan(result.message.content);
-      return Object.freeze({ ...plan, source: 'deepseek' });
-    } catch {
-      return fallbackPlan(title, headings);
+      return Object.freeze({ ...plan, plannerFailure: null, source: 'deepseek' });
+    } catch (error) {
+      return fallbackPlan(title, headings, safeError(error));
     }
   }
 }
@@ -121,7 +94,7 @@ Hard rules for every English image prompt:
 The Chinese captions describe the illustrations and must not add facts. Return only the requested JSON.`;
 }
 
-function parsePlan(value: string | undefined): Omit<ArticleImagePlan, 'source'> {
+function parsePlan(value: string | undefined): Omit<ArticleImagePlan, 'plannerFailure' | 'source'> {
   if (!value) throw new Error('Image plan is empty');
   let parsed: unknown;
   try {
@@ -168,11 +141,16 @@ function parseScene(value: unknown): ArticleImageScene {
   return Object.freeze({ caption, prompt: hardenedPrompt });
 }
 
-function fallbackPlan(title: string, headings: readonly string[]): ArticleImagePlan {
+function fallbackPlan(
+  title: string,
+  headings: readonly string[],
+  plannerFailure: string,
+): ArticleImagePlan {
   const label = safeFallbackText(headings[0] || '实用指南', '实用指南', 24);
   const safeTitle = safeFallbackText(title, '内容指南', 60);
   return Object.freeze({
     coverLabel: label,
+    plannerFailure,
     scenes: Object.freeze([
       Object.freeze({ caption: `${safeTitle}准备事项示意`, prompt: '' }),
       Object.freeze({ caption: `${safeTitle}核对步骤示意`, prompt: '' }),

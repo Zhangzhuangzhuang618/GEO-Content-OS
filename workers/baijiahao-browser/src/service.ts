@@ -4,7 +4,10 @@ import { resolve, sep } from 'node:path';
 import { hashBaijiahaoPayload } from '@geo-content-os/adapter-platforms/baijiahao/delivery';
 import { BaijiahaoDeliveryInputSchema } from '@geo-content-os/adapter-platforms/baijiahao/delivery';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
-import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
+import {
+  CredentialEnvelopeError,
+  type CredentialEnvelopeService,
+} from '@geo-content-os/security/credentials';
 
 import { AccountLock } from './account-lock.js';
 import type { BaijiahaoBrowserConfig } from './config.js';
@@ -98,19 +101,40 @@ export class BaijiahaoBrowserService {
     if (session.status !== 'authenticated') return sessionView(session);
     return this.locks.run(accountId, async () => {
       const current = await this.store.getSession(accountId);
-      const storageState = await this.decryptState(current);
-      const authenticated = await this.driver.verifyAuthenticated(
-        accountId,
-        this.profilePath(current),
-        storageState,
-      );
-      if (!authenticated) return sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
-      const verified = await this.store.markSession(current, {
-        error: null,
-        lastVerifiedAt: new Date(),
-        status: 'authenticated',
-      });
-      return sessionView(verified);
+      if (current.status !== 'authenticated') return sessionView(current);
+      try {
+        const storageState = await this.decryptState(current);
+        const authenticated = await this.driver.verifyAuthenticated(
+          accountId,
+          this.profilePath(current),
+          storageState,
+        );
+        if (!authenticated) return sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
+        const verified = await this.store.markSession(current, {
+          error: null,
+          lastVerifiedAt: new Date(),
+          status: 'authenticated',
+        });
+        return sessionView(verified);
+      } catch (error) {
+        const code = sessionVerificationErrorCode(error);
+        console.error('Baijiahao browser session verification failed', {
+          account_id: accountId,
+          error: safeBrowserError(error),
+          error_code: code,
+        });
+        if (
+          error instanceof CredentialEnvelopeError ||
+          (error instanceof PageDriverError && error.code === 'AUTH_REQUIRED')
+        ) {
+          return sessionView(await this.requireReauth(current, code));
+        }
+        const attention = await this.store.markSession(current, {
+          error: { code, schema_version: 'baijiahao-browser-error@1' },
+          status: 'attention_required',
+        });
+        return sessionView(attention);
+      }
     });
   }
 
@@ -557,4 +581,34 @@ export function toGatewayError(error: unknown): BrowserGatewayError {
     return new BrowserGatewayError(status, error.code, error.message);
   }
   return new BrowserGatewayError(503, 'BROWSER_GATEWAY_UNAVAILABLE', 'Browser operation failed');
+}
+
+function sessionVerificationErrorCode(error: unknown): string {
+  if (error instanceof CredentialEnvelopeError) return error.code;
+  if (error instanceof PageDriverError) return error.code;
+  return 'BROWSER_RUNTIME_FAILED';
+}
+
+export function safeBrowserError(error: unknown): string {
+  const candidate = error as {
+    readonly code?: unknown;
+    readonly message?: unknown;
+    readonly name?: unknown;
+  };
+  const name = typeof candidate.name === 'string' ? candidate.name : 'Error';
+  const message =
+    typeof candidate.message === 'string' ? candidate.message : String(error ?? 'Unknown error');
+  const code = typeof candidate.code === 'string' ? ` (code=${candidate.code})` : '';
+  return `${name}: ${redactBrowserError(message)}${code}`.slice(0, 2_000);
+}
+
+function redactBrowserError(value: string): string {
+  return value
+    .replaceAll(/([a-z][a-z0-9+.-]*:\/\/)[^@\s/]+@/giu, '$1[REDACTED]@')
+    .replaceAll(/((?:set-cookie|cookie|authorization):\s*)[^\r\n]+/giu, '$1[REDACTED]')
+    .replaceAll(/Bearer\s+[^\s"']+/giu, 'Bearer [REDACTED]')
+    .replaceAll(
+      /((?:api[_-]?key|credential|password|secret|session|storage[_-]?state|token)\s*[:=]\s*)[^&\s,;)]+/giu,
+      '$1[REDACTED]',
+    );
 }

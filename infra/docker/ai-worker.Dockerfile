@@ -16,7 +16,8 @@ ENV NODE_ENV=production
 WORKDIR /workspace
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends fonts-noto-cjk \
+  && apt-get install -y --no-install-recommends fontconfig fonts-noto-cjk \
+  && fc-cache -f \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --chown=node:node --from=build /workspace /workspace

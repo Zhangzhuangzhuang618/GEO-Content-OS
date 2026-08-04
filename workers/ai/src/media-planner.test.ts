@@ -14,29 +14,31 @@ const SCOPE = Object.freeze({
 describe('ArticleImagePlanner', () => {
   it('hardens a valid two-scene plan before Cloudflare generation', async () => {
     const recordUsage = vi.fn(async () => undefined);
-    const planner = new ArticleImagePlanner(
-      adapter({
-        cover_label: '搬家验收指南',
-        scenes: [
-          {
-            caption: '逐项清点物品示意',
-            prompt: 'Editorial illustration of a family checking boxes in a clean home',
-          },
-          {
-            caption: '复核费用项目示意',
-            prompt: 'Editorial illustration of anonymous people reviewing a checklist indoors',
-          },
-        ],
-      }),
-      recordUsage,
-    );
+    const model = adapter({
+      cover_label: '搬家验收指南',
+      scenes: [
+        {
+          caption: '逐项清点物品示意',
+          prompt: 'Editorial illustration of a family checking boxes in a clean home',
+        },
+        {
+          caption: '复核费用项目示意',
+          prompt: 'Editorial illustration of anonymous people reviewing a checklist indoors',
+        },
+      ],
+    });
+    const planner = new ArticleImagePlanner(model, recordUsage);
 
     const plan = await planner.plan(input('广州搬家公司推荐：搬家后如何验收？'));
 
     expect(plan.source).toBe('deepseek');
+    expect(plan.plannerFailure).toBeNull();
     expect(plan.scenes).toHaveLength(2);
     expect(plan.scenes[0].prompt).toContain('no identifiable company');
     expect(recordUsage).toHaveBeenCalledOnce();
+    expect(model.generate).toHaveBeenCalledWith(
+      expect.objectContaining({ responseFormat: { type: 'json_object' } }),
+    );
   });
 
   it('falls back to anonymous templates when a model plan names another company', async () => {
@@ -60,8 +62,26 @@ describe('ArticleImagePlanner', () => {
     const plan = await planner.plan(input('广州家盛搬家有限公司服务介绍'));
 
     expect(plan.source).toBe('template');
+    expect(plan.plannerFailure).toContain('Image scene violates the deterministic prompt gate');
     expect(JSON.stringify(plan)).not.toContain('广州家盛搬家有限公司');
     expect(plan.scenes[0].caption).toContain('某公司');
+  });
+
+  it('redacts model credentials from a persisted planner fallback diagnostic', async () => {
+    const model = adapter({});
+    vi.mocked(model.generate).mockRejectedValueOnce(
+      Object.assign(new Error('request failed api_key=planner-secret'), {
+        code: 'UPSTREAM_FAILED',
+      }),
+    );
+    const planner = new ArticleImagePlanner(model, async () => undefined);
+
+    const plan = await planner.plan(input('搬家准备指南'));
+
+    expect(plan.source).toBe('template');
+    expect(plan.plannerFailure).toContain('code=UPSTREAM_FAILED');
+    expect(plan.plannerFailure).toContain('api_key=[REDACTED]');
+    expect(plan.plannerFailure).not.toContain('planner-secret');
   });
 });
 
