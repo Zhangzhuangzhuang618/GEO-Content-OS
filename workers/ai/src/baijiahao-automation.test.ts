@@ -54,6 +54,24 @@ describe('Baijiahao automation safeguards', () => {
     expect(diagnostics).toHaveLength(2);
   });
 
+  it('gives an actionable title repair when question coverage misses the frozen threshold', () => {
+    const diagnostics = buildBaijiahaoRewriteDiagnostics(
+      policy(),
+      {
+        ...gate(),
+        blocking_rules: ['gate.question_coverage'],
+        question_coverage: 72,
+        source_similarity: 0.5,
+      },
+      [],
+    );
+
+    expect(diagnostics).toEqual([expect.stringContaining('问题覆盖分为 72，最低要求 80')]);
+    expect(diagnostics[0]).toContain('明确问题式标题');
+    expect(diagnostics[0]).toContain('2—40 字');
+    expect(diagnostics[0]).toContain('不得虚构或填充');
+  });
+
   it('uses each future Shanghai schedule slot once before moving to the next day', () => {
     const now = new Date('2026-08-02T00:30:00.000Z');
     const first = new Date('2026-08-02T01:30:00.000Z');

@@ -127,6 +127,11 @@ interface QualityQueueInput {
   readonly workspaceId: string;
 }
 
+interface IndependentQualityHandoff extends QualityQueueInput {
+  readonly automationRunId: string;
+  readonly automationVersion: number;
+}
+
 export class BaijiahaoAutomation {
   public constructor(
     private readonly client: postgres.Sql,
@@ -150,7 +155,7 @@ export class BaijiahaoAutomation {
       FROM baijiahao_automation_runs AS automation
       JOIN baijiahao_automation_policies AS policy
         ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
-        AND policy.enabled AND policy.source_mode='independent'
+        AND policy.enabled
       JOIN content_variants AS variant
         ON variant.id=automation.variant_id AND variant.tenant_id=automation.tenant_id
         AND variant.id=${variantId}::uuid AND variant.platform_code='baijiahao'
@@ -158,28 +163,16 @@ export class BaijiahaoAutomation {
         ON account.id=policy.account_id AND account.tenant_id=policy.tenant_id
         AND account.status='active' AND account.publish_mode='api' AND account.deleted_at IS NULL
       WHERE automation.tenant_id=${event.tenantId}::uuid
+        AND automation.source_mode='independent'
         AND automation.status IN ('generation_pending','generating')
       FOR UPDATE OF automation,policy
     `;
     const row = rows[0];
     if (!row) return;
-    const changed = await transaction<{ id: string }[]>`
-      UPDATE baijiahao_automation_runs SET
-        content_version_id=${contentVersionId}::uuid,status='quality_pending',
-        source_similarity=NULL,last_error_json=NULL,version=version+1
-      WHERE id=${row.automationRunId}::uuid AND tenant_id=${event.tenantId}::uuid
-        AND version=${row.version}
-      RETURNING id
-    `;
-    if (changed.length !== 1) throw new Error('Independent Baijiahao automation lease was lost');
-    await transaction`
-      UPDATE baijiahao_daily_batch_items SET
-        status='quality_check',content_version_id=${contentVersionId}::uuid,last_error_json=NULL
-      WHERE tenant_id=${event.tenantId}::uuid
-        AND automation_run_id=${row.automationRunId}::uuid
-    `;
-    await this.enqueueQuality(transaction, {
+    await this.handoffIndependentQuality(transaction, {
       actorUserId: row.actorUserId,
+      automationRunId: row.automationRunId,
+      automationVersion: row.version,
       contentHash: generatedHash,
       contentVersionId,
       packageId: event.data.packageId,
@@ -188,6 +181,66 @@ export class BaijiahaoAutomation {
       tenantId: event.tenantId,
       variantId,
       workspaceId: event.data.workspaceId,
+    });
+  }
+
+  public async recoverGeneratedIndependentCandidates(): Promise<number> {
+    return this.client.begin(async (transaction) => {
+      const rows = await transaction<
+        {
+          actorUserId: string;
+          automationRunId: string;
+          automationVersion: number;
+          contentHash: string;
+          contentVersionId: string;
+          packageId: string;
+          projectId: string;
+          tenantId: string;
+          variantId: string;
+          workspaceId: string;
+        }[]
+      >`
+        SELECT
+          policy.created_by AS "actorUserId",automation.id AS "automationRunId",
+          automation.version AS "automationVersion",version.content_hash AS "contentHash",
+          version.id AS "contentVersionId",package.id AS "packageId",
+          package.project_id AS "projectId",automation.tenant_id AS "tenantId",
+          variant.id AS "variantId",package.workspace_id AS "workspaceId"
+        FROM baijiahao_automation_runs AS automation
+        JOIN baijiahao_automation_policies AS policy
+          ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
+          AND policy.enabled
+        JOIN platform_accounts AS account
+          ON account.id=policy.account_id AND account.tenant_id=policy.tenant_id
+          AND account.status='active' AND account.publish_mode='api'
+          AND account.deleted_at IS NULL
+        JOIN content_variants AS variant
+          ON variant.id=automation.variant_id AND variant.tenant_id=automation.tenant_id
+          AND variant.platform_code='baijiahao' AND variant.status='generated'
+          AND variant.current_content_version_id IS NOT NULL
+        JOIN content_packages AS package
+          ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+          AND package.deleted_at IS NULL
+        JOIN content_versions AS version
+          ON version.id=variant.current_content_version_id
+          AND version.tenant_id=variant.tenant_id AND version.package_id=package.id
+          AND version.variant_id=variant.id
+        JOIN baijiahao_daily_batch_items AS item
+          ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+          AND item.variant_id=variant.id AND item.status='generating'
+        WHERE automation.source_mode='independent'
+          AND automation.status IN ('generation_pending','generating')
+          AND automation.content_version_id IS NULL
+        ORDER BY automation.created_at,automation.id
+        FOR UPDATE OF automation SKIP LOCKED
+      `;
+      for (const row of rows) {
+        await this.handoffIndependentQuality(transaction, {
+          ...row,
+          requestId: boundedRequestId(`baijiahao-quality-recovery-${row.automationRunId}`),
+        });
+      }
+      return rows.length;
     });
   }
 
@@ -1019,6 +1072,30 @@ export class BaijiahaoAutomation {
     await insertOutbox(transaction, event);
   }
 
+  private async handoffIndependentQuality(
+    transaction: postgres.TransactionSql,
+    input: IndependentQualityHandoff,
+  ): Promise<void> {
+    const changed = await transaction<{ id: string }[]>`
+      UPDATE baijiahao_automation_runs SET
+        content_version_id=${input.contentVersionId}::uuid,status='quality_pending',
+        source_similarity=NULL,last_error_json=NULL,version=version+1
+      WHERE id=${input.automationRunId}::uuid AND tenant_id=${input.tenantId}::uuid
+        AND source_mode='independent' AND status IN ('generation_pending','generating')
+        AND version=${input.automationVersion}
+      RETURNING id
+    `;
+    if (changed.length !== 1) throw new Error('Independent Baijiahao automation lease was lost');
+    await transaction`
+      UPDATE baijiahao_daily_batch_items SET
+        status='quality_check',content_version_id=${input.contentVersionId}::uuid,
+        last_error_json=NULL
+      WHERE tenant_id=${input.tenantId}::uuid
+        AND automation_run_id=${input.automationRunId}::uuid
+    `;
+    await this.enqueueQuality(transaction, input);
+  }
+
   private async enqueueRewrite(
     transaction: postgres.TransactionSql,
     event: ValidatedQualityEvent,
@@ -1356,6 +1433,10 @@ export function buildBaijiahaoRewriteDiagnostics(
     if (rule === 'deterministic.baijiahao.source_similarity') {
       diagnostics.push(
         `来源相似度为 ${gate.source_similarity ?? '未知'}，必须低于 ${policy.maxSourceSimilarity}。重新组织标题、段落顺序、论证路径和信息重点，不能逐句近义词替换；不得改变事实和证据。`,
+      );
+    } else if (rule === 'gate.question_coverage') {
+      diagnostics.push(
+        `问题覆盖分为 ${gate.question_coverage}，最低要求 ${policy.questionCoverageMin}。把标题自然改成与正文一致的明确问题式标题，例如含“如何、怎么、哪些、是否、方法、指南”或问号；标题仍须控制在百家号 2—40 字范围内，不得虚构或填充正文没有回答的问题。`,
       );
     } else if (rule.startsWith('gate.')) {
       diagnostics.push(`未通过冻结门禁 ${rule}，必须针对本次质量报告修复，不得虚构或填充。`);

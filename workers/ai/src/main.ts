@@ -121,6 +121,13 @@ async function main(): Promise<void> {
   try {
     await database`SELECT 1`;
     await consumer.ready();
+    const recoveredBaijiahaoRuns =
+      await baijiahaoAutomation.recoverGeneratedIndependentCandidates();
+    if (recoveredBaijiahaoRuns > 0) {
+      console.warn('Recovered generated Baijiahao candidates for quality checks', {
+        count: recoveredBaijiahaoRuns,
+      });
+    }
     dailyScheduler.start();
     baijiahaoDailyScheduler.start();
     ready = true;

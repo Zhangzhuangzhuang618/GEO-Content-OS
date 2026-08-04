@@ -3,6 +3,7 @@ import {
   BaijiahaoDailyScheduler,
   contentHash,
   type GeneratedContent,
+  type ValidatedGenerationEvent,
 } from '@geo-content-os/worker-ai';
 import {
   startPostgresTestContainer,
@@ -27,6 +28,11 @@ const BAIJIAHAO_ACCOUNT_ID = '92000000-0000-4000-8000-000000000145';
 const PUBLISH_JOB_ID = 'a1000000-0000-4000-8000-000000000145';
 const POLICY_ID = 'a2000000-0000-4000-8000-000000000145';
 const DAILY_BATCH_ID = 'a2100000-0000-4000-8000-000000000145';
+const INDEPENDENT_BATCH_ID = 'a2200000-0000-4000-8000-000000000145';
+const INDEPENDENT_RUN_ID = 'a2300000-0000-4000-8000-000000000145';
+const INDEPENDENT_ITEM_ID = 'a2400000-0000-4000-8000-000000000145';
+const INDEPENDENT_VARIANT_ID = 'a2500000-0000-4000-8000-000000000145';
+const INDEPENDENT_VERSION_ID = 'a2600000-0000-4000-8000-000000000145';
 const BRAND_PROFILE_ID = 'a3000000-0000-4000-8000-000000000145';
 const RULE_ID = 'a4000000-0000-4000-8000-000000000145';
 const SOURCE_ID = 'a5000000-0000-4000-8000-000000000145';
@@ -222,6 +228,35 @@ describe('Baijiahao official-site derived automation', () => {
       },
     ]);
   });
+
+  it('queues quality for an independent fallback run owned by a derived-source policy', async () => {
+    const database = requireClient(client);
+    const generatedHash = await seedGeneratedIndependentCandidate(database);
+    const automation = createAutomation(database);
+
+    await database.begin((transaction) =>
+      automation.queueQualityAfterGeneration(
+        transaction,
+        independentGenerationEvent(),
+        INDEPENDENT_VARIANT_ID,
+        INDEPENDENT_VERSION_ID,
+        generatedHash,
+      ),
+    );
+
+    await expectIndependentQualityQueued(database);
+  });
+
+  it('recovers an already generated independent fallback exactly once', async () => {
+    const database = requireClient(client);
+    await seedGeneratedIndependentCandidate(database);
+    const automation = createAutomation(database);
+
+    await expect(automation.recoverGeneratedIndependentCandidates()).resolves.toBe(1);
+    await expect(automation.recoverGeneratedIndependentCandidates()).resolves.toBe(0);
+
+    await expectIndependentQualityQueued(database);
+  });
 });
 
 function createAutomation(database: Sql): BaijiahaoAutomation {
@@ -260,6 +295,35 @@ function publishedEvent() {
     occurred_at: '2026-08-02T00:10:00.000Z',
     tenant: { id: TENANT_ID },
   } as const;
+}
+
+function independentGenerationEvent(): ValidatedGenerationEvent {
+  return {
+    data: {
+      actorUserId: USER_ID,
+      inputHash: '1'.repeat(64),
+      masterRunId: 'b2000000-0000-4000-8000-000000000145',
+      modelKey: 'deepseek-v4-flash',
+      modelPolicy: 'quality',
+      packageId: PACKAGE_ID,
+      projectId: PROJECT_ID,
+      promptVersionId: WRITER_PROMPT_ID,
+      requestId: 't145-independent-generation',
+      skillVersion: '1.0.0',
+      variantRuns: [
+        {
+          platformCode: 'baijiahao',
+          runId: 'b2100000-0000-4000-8000-000000000145',
+          variantId: INDEPENDENT_VARIANT_ID,
+        },
+      ],
+      workspaceId: WORKSPACE_ID,
+      writerInput: {},
+    },
+    eventId: 'b2200000-0000-4000-8000-000000000145',
+    occurredAt: '2026-08-04T01:03:52.000Z',
+    tenantId: TENANT_ID,
+  };
 }
 
 async function reset(database: Sql): Promise<void> {
@@ -457,6 +521,94 @@ async function seed(database: Sql, content: GeneratedContent): Promise<void> {
       'service-record',${evidence},${CHUNK_ID}::uuid,${evidence},${sha256(evidence)}
     )
   `;
+}
+
+async function seedGeneratedIndependentCandidate(database: Sql): Promise<string> {
+  const content = Object.freeze({
+    ...ARTICLE,
+    platform_code: 'baijiahao' as const,
+    title: '广州搬家前如何系统准备',
+  });
+  const hash = contentHash(content);
+  await database`
+    UPDATE baijiahao_automation_policies SET independent_fallback_enabled=true
+    WHERE id=${POLICY_ID}::uuid
+  `;
+  await database`
+    INSERT INTO content_variants(
+      id,tenant_id,package_id,platform_code,platform_account_id,status,is_required
+    ) VALUES(
+      ${INDEPENDENT_VARIANT_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,
+      'baijiahao',${BAIJIAHAO_ACCOUNT_ID}::uuid,'generated',false
+    )
+  `;
+  await database`
+    INSERT INTO content_versions(
+      id,tenant_id,package_id,variant_id,version_no,schema_version,
+      content_json,content_hash,created_by
+    ) VALUES(
+      ${INDEPENDENT_VERSION_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,
+      ${INDEPENDENT_VARIANT_ID}::uuid,1,${content.schema_version},
+      ${database.json(content)},${hash},${USER_ID}::uuid
+    )
+  `;
+  await database`
+    UPDATE content_variants SET current_content_version_id=${INDEPENDENT_VERSION_ID}::uuid
+    WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+  `;
+  await database`
+    INSERT INTO baijiahao_automation_runs(
+      id,tenant_id,policy_id,source_mode,variant_id,status
+    ) VALUES(
+      ${INDEPENDENT_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      'independent',${INDEPENDENT_VARIANT_ID}::uuid,'generation_pending'
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_daily_batches(
+      id,tenant_id,policy_id,business_date,status
+    ) VALUES(
+      ${INDEPENDENT_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2026-08-04','running'
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,automation_run_id,brief_id,
+      package_id,variant_id,status
+    ) VALUES(
+      ${INDEPENDENT_ITEM_ID}::uuid,${TENANT_ID}::uuid,${INDEPENDENT_BATCH_ID}::uuid,1,
+      ${INDEPENDENT_RUN_ID}::uuid,${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
+      ${INDEPENDENT_VARIANT_ID}::uuid,'generating'
+    )
+  `;
+  return hash;
+}
+
+async function expectIndependentQualityQueued(database: Sql): Promise<void> {
+  expect(
+    await database<{ contentVersionId: string; itemStatus: string; runStatus: string }[]>`
+      SELECT automation.status AS "runStatus",item.status AS "itemStatus",
+        automation.content_version_id AS "contentVersionId"
+      FROM baijiahao_automation_runs AS automation
+      JOIN baijiahao_daily_batch_items AS item
+        ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+      WHERE automation.id=${INDEPENDENT_RUN_ID}::uuid
+    `,
+  ).toEqual([
+    {
+      contentVersionId: INDEPENDENT_VERSION_ID,
+      itemStatus: 'quality_check',
+      runStatus: 'quality_pending',
+    },
+  ]);
+  expect(
+    await database<{ count: number }[]>`
+      SELECT count(*)::integer AS count FROM outbox_events
+      WHERE event_type='content.variant.quality_check_requested.v1'
+        AND aggregate_id=${INDEPENDENT_VARIANT_ID}::uuid
+    `,
+  ).toEqual([{ count: 1 }]);
 }
 
 function article(): GeneratedContent {
