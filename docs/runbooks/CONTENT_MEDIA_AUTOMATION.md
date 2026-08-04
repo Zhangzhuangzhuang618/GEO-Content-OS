@@ -139,6 +139,14 @@ ORDER BY link.created_at DESC,link.role,link.position;
 docker compose --env-file .env -p geo-content-os -f infra/compose.yaml logs --since 24h outbox-relay ai-worker minio publisher-worker baijiahao-browser
 ```
 
+对象存储上传失败时，AI Worker 会输出 `Content media asset storage failed`。日志包含
+`mediaRunId`、`contentVersionId`、素材角色与位置，以及经过脱敏的底层 `cause`、网络错误码、HTTP 状态和
+S3 Request ID；相同信息也会写入 `content_media_runs.diagnostics_json.storage_failures`：
+
+```powershell
+docker compose --env-file .env -p geo-content-os -f infra/compose.yaml logs --since 24h ai-worker | Select-String 'Content media asset storage failed'
+```
+
 旧内容、旧质量报告和已经排期的任务不会自动补图。只对部署后新通过质量门禁的自动化版本生效。
 
 ## 降级与回滚
