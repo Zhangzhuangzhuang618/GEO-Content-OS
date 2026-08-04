@@ -218,14 +218,18 @@ export class DeepSeekModelAdapter implements ModelAdapter {
         false,
       );
     }
-    for (const value of input.messages) {
-      if (
-        ('content' in value && value.content !== undefined && !value.content.trim()) ||
-        (value.role === 'tool' && !identifier(value.toolCallId, 200))
-      ) {
+    for (const [index, value] of input.messages.entries()) {
+      if ('content' in value && value.content !== undefined && !value.content.trim()) {
         throw new DeepSeekAdapterError(
           'DEEPSEEK_INVALID_REQUEST',
-          'DeepSeek message is invalid',
+          `DeepSeek message ${index} (${value.role}) has empty content`,
+          false,
+        );
+      }
+      if (value.role === 'tool' && !identifier(value.toolCallId, 200)) {
+        throw new DeepSeekAdapterError(
+          'DEEPSEEK_INVALID_REQUEST',
+          `DeepSeek tool message ${index} has an invalid tool call id`,
           false,
         );
       }

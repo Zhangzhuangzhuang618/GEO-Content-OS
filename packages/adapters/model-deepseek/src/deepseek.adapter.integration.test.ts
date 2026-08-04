@@ -22,6 +22,17 @@ const request = {
 };
 
 describe('DeepSeekModelAdapter integration', () => {
+  it('identifies the invalid message without logging its content', async () => {
+    const adapter = new DeepSeekModelAdapter(configuration('http://127.0.0.1:1'));
+
+    const error = await adapter
+      .generate({ ...request, messages: [{ content: '   ', role: 'user' }] })
+      .catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({ code: 'DEEPSEEK_INVALID_REQUEST', retryable: false });
+    expect(String(error)).toContain('message 0 (user) has empty content');
+  });
+
   it('loads all provider identifiers and limits from configuration', () => {
     const configuration = loadDeepSeekAdapterConfiguration({
       DEEPSEEK_API_KEY: 'test-secret',

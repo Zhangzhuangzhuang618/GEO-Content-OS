@@ -51,6 +51,7 @@ export class ContentGenerationWorker {
         : await this.generateMaster(event, claimed.value, signal);
     } catch (error) {
       const failure = asGenerationFailure(error);
+      logGenerationFailure(event, event.data.masterRunId, null, 'master', error, failure);
       if (claimed.value.leaseVersion !== null) {
         await this.store.failMaster(event, claimed.value.leaseVersion, failure);
       }
@@ -137,7 +138,9 @@ export class ContentGenerationWorker {
       await this.store.saveVariant(event, claimed.value, content);
       return { disposition: 'succeeded' };
     } catch (error) {
-      await this.store.failVariant(event, claimed.value, asGenerationFailure(error));
+      const failure = asGenerationFailure(error);
+      logGenerationFailure(event, run.runId, run.variantId, 'variant', error, failure);
+      await this.store.failVariant(event, claimed.value, failure);
       return { disposition: 'failed' };
     }
   }
@@ -198,6 +201,38 @@ function writerContext(event: ValidatedGenerationEvent, runId: string, variantId
     variantId,
     workspaceId: event.data.workspaceId,
   });
+}
+
+function logGenerationFailure(
+  event: ValidatedGenerationEvent,
+  runId: string,
+  variantId: string | null,
+  stage: 'master' | 'variant',
+  error: unknown,
+  failure: ReturnType<typeof asGenerationFailure>,
+): void {
+  console.error('AI content generation failed', {
+    error_code: failure.code,
+    error_message: safeDiagnosticMessage(error),
+    error_type: error instanceof Error ? error.name : typeof error,
+    event_id: event.eventId,
+    generation_run_id: runId,
+    package_id: event.data.packageId,
+    request_id: event.data.requestId,
+    stage,
+    tenant_id: event.tenantId,
+    variant_id: variantId,
+  });
+}
+
+function safeDiagnosticMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Non-Error generation failure';
+  return message
+    .replace(/\bBearer\s+[A-Za-z0-9._-]+/giu, 'Bearer [REDACTED]')
+    .replace(/\bsk-[A-Za-z0-9_-]+/giu, 'sk-[REDACTED]')
+    .replace(/\b(password|passwd|api[_ -]?key)\s*[:=]\s*\S+/giu, '$1=[REDACTED]')
+    .replace(/[\r\n]+/gu, ' ')
+    .slice(0, 500);
 }
 
 async function concurrentMap<TInput, TOutput>(

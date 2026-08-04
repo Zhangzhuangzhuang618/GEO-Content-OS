@@ -12,8 +12,10 @@ import { PlatformAccountError } from './platform-account.errors.js';
 import type { PlatformAccountAudit, PlatformAccountScope } from './platform-account.types.js';
 
 type ManualItem = NonNullable<BaijiahaoAutomationPolicyView['today_batch']>['manual_items'][number];
+type ActiveItem = NonNullable<BaijiahaoAutomationPolicyView['today_batch']>['active_items'][number];
 
 interface PolicyRow {
+  readonly activeItems: readonly ActiveItem[] | null;
   readonly accountId: string;
   readonly attemptedCount: number | null;
   readonly batchBusinessDate: Date | string | null;
@@ -34,6 +36,7 @@ interface PolicyRow {
   readonly id: string;
   readonly independentFallbackEnabled: boolean;
   readonly inProgressCount: number | null;
+  readonly lastActivityAt: Date | string | null;
   readonly manualRequiredCount: number | null;
   readonly manualItems: readonly ManualItem[] | null;
   readonly maxRewrites: 3;
@@ -44,6 +47,7 @@ interface PolicyRow {
   readonly publishAttemptLimit: 3;
   readonly questionCoverageMin: 80;
   readonly readabilitySafetyMin: 85;
+  readonly retiredCount: number | null;
   readonly scheduledCount: number | null;
   readonly sessionAccountId: string | null;
   readonly sessionAuthenticatedAt: Date | string | null;
@@ -226,10 +230,11 @@ export class BaijiahaoAutomationPolicyService {
         today.business_date AS "batchBusinessDate",today.status AS "batchStatus",
         today.version AS "batchVersion",today.last_error_message AS "batchLastErrorMessage",
         today.attempted_count AS "attemptedCount",today.in_progress_count AS "inProgressCount",
+        today.last_activity_at AS "lastActivityAt",
         today.scheduled_count AS "scheduledCount",today.published_count AS "publishedCount",
-        today.skipped_count AS "skippedCount",
+        today.skipped_count AS "skippedCount",today.retired_count AS "retiredCount",
         today.manual_required_count AS "manualRequiredCount",
-        today.manual_items AS "manualItems"
+        today.active_items AS "activeItems",today.manual_items AS "manualItems"
       FROM baijiahao_automation_policies AS policy
       LEFT JOIN baijiahao_browser_sessions AS session
         ON session.tenant_id=policy.tenant_id AND session.account_id=policy.account_id
@@ -241,13 +246,45 @@ export class BaijiahaoAutomationPolicyService {
           count(item.id) FILTER (WHERE item.status IN (
             'pending','adapting','generating','quality_check','rewriting','media_pending',
             'qualified','processing'
+          ) AND automation.status IN (
+            'generation_pending','generating','adaptation_pending','adapting','quality_pending',
+            'rewrite_pending','rewriting','media_pending','publish_pending','scheduled',
+            'publishing','processing'
           ))::integer AS in_progress_count,
           count(item.id) FILTER (WHERE item.status IN ('scheduled','processing','published'))::integer
             AS scheduled_count,
           count(item.id) FILTER (WHERE item.status='published')::integer AS published_count,
           count(item.id) FILTER (WHERE item.status='skipped')::integer AS skipped_count,
+          count(item.id) FILTER (WHERE item.status='retired')::integer AS retired_count,
           count(item.id) FILTER (WHERE item.status='manual_required')::integer
             AS manual_required_count,
+          GREATEST(
+            batch.updated_at,
+            COALESCE(max(item.updated_at),batch.updated_at),
+            COALESCE(max(automation.updated_at),batch.updated_at)
+          ) AS last_activity_at,
+          COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'automation_run_id',automation.id,
+                'candidate_no',item.candidate_no,
+                'item_status',item.status,
+                'run_status',automation.status,
+                'title',content.content_json->>'title',
+                'updated_at',GREATEST(item.updated_at,automation.updated_at)
+              ) ORDER BY item.candidate_no
+            ) FILTER (
+              WHERE item.status IN (
+                'pending','adapting','generating','quality_check','rewriting','media_pending',
+                'qualified','processing'
+              ) AND automation.status IN (
+                'generation_pending','generating','adaptation_pending','adapting',
+                'quality_pending','rewrite_pending','rewriting','media_pending','publish_pending',
+                'scheduled','publishing','processing'
+              )
+            ),
+            '[]'::jsonb
+          ) AS active_items,
           COALESCE(
             jsonb_agg(
               jsonb_build_object(
@@ -353,9 +390,14 @@ function mapPolicy(row: PolicyRow): BaijiahaoAutomationPolicyView {
     today_batch:
       row.batchBusinessDate && row.batchStatus && row.batchVersion
         ? {
+            active_items: (row.activeItems ?? []).map((item) => ({
+              ...item,
+              updated_at: new Date(item.updated_at).toISOString(),
+            })),
             attempted_count: row.attemptedCount ?? 0,
             business_date: dateOnly(row.batchBusinessDate),
             in_progress_count: row.inProgressCount ?? 0,
+            last_activity_at: new Date(row.lastActivityAt ?? row.batchBusinessDate).toISOString(),
             last_error_message: row.batchLastErrorMessage,
             manual_items: (row.manualItems ?? []).map((item) => ({
               ...item,
@@ -363,6 +405,7 @@ function mapPolicy(row: PolicyRow): BaijiahaoAutomationPolicyView {
             })),
             manual_required_count: row.manualRequiredCount ?? 0,
             published_count: row.publishedCount ?? 0,
+            retired_count: row.retiredCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,
             skipped_count: row.skippedCount ?? 0,
             status: row.batchStatus,

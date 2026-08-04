@@ -89,6 +89,7 @@ export class BaijiahaoDailyScheduler {
   }
 
   public async tick(): Promise<void> {
+    await terminalizeRetiredAutomationRuns(this.client);
     await this.ensureTodayBatches();
     await this.expirePastBatches();
     const rows = await this.client<{ id: string }[]>`
@@ -198,6 +199,7 @@ export class BaijiahaoDailyScheduler {
       const batch = await lockBatch(transaction, batchId);
       if (!batch) return;
       await retireFailedCandidates(transaction, batch);
+      await terminalizeRetiredAutomationRuns(transaction, batch.id);
       const counts = await loadCounts(transaction, batch);
       if (counts.qualified >= batch.targetCount) return;
       if (counts.attempted >= batch.candidateLimit && counts.inProgress === 0) {
@@ -215,7 +217,16 @@ export class BaijiahaoDailyScheduler {
         MAX_ACTIVE_CANDIDATES - counts.inProgress,
       );
       if (required <= 0) return;
-      const seed = await loadCandidateSeed(transaction, batch);
+      let seed: CandidateSeed;
+      try {
+        seed = await loadCandidateSeed(transaction, batch);
+      } catch (error) {
+        if (error instanceof BaijiahaoDailyPrerequisiteError) {
+          await setAttentionRequired(transaction, batch, error.code, error.message);
+          return;
+        }
+        throw error;
+      }
       for (let offset = 1; offset <= required; offset += 1) {
         await createCandidate(
           transaction,
@@ -314,6 +325,31 @@ async function retireFailedCandidates(
     WHERE item.batch_id=${batch.id}::uuid AND item.tenant_id=${batch.tenantId}::uuid
       AND item.status='generating' AND variant.id=item.variant_id
       AND variant.tenant_id=item.tenant_id AND variant.status='generation_failed'
+  `;
+}
+
+async function terminalizeRetiredAutomationRuns(
+  client: postgres.Sql | postgres.TransactionSql,
+  batchId?: string,
+): Promise<void> {
+  await client`
+    UPDATE baijiahao_automation_runs AS automation SET
+      status='disabled',
+      last_error_json=jsonb_strip_nulls(
+        jsonb_build_object(
+          'code','CONTENT_GENERATION_FAILED_RETIRED',
+          'generation_error',automation.last_error_json,
+          'message','内容生成失败，候选已退出后台执行，调度器将按上限创建新候选补位。',
+          'schema_version','baijiahao-automation-error@1'
+        )
+      ),
+      finished_at=COALESCE(automation.finished_at,now()),
+      version=automation.version+1
+    FROM baijiahao_daily_batch_items AS item
+    WHERE item.tenant_id=automation.tenant_id AND item.automation_run_id=automation.id
+      AND item.status='retired'
+      AND automation.status IN ('generation_pending','generating')
+      AND (${batchId ?? null}::uuid IS NULL OR item.batch_id=${batchId ?? null}::uuid)
   `;
 }
 

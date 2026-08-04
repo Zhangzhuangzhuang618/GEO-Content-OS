@@ -225,9 +225,52 @@ export const BaijiahaoAutomationPolicyRequestSchema = z
   });
 export const BaijiahaoDailyBatchSummarySchema = z
   .object({
+    active_items: z
+      .array(
+        z
+          .object({
+            automation_run_id: UuidSchema,
+            candidate_no: z.number().int().min(1).max(30),
+            item_status: z.enum([
+              'pending',
+              'adapting',
+              'generating',
+              'quality_check',
+              'rewriting',
+              'media_pending',
+              'qualified',
+              'processing',
+            ]),
+            run_status: z.enum([
+              'generation_pending',
+              'generating',
+              'adaptation_pending',
+              'adapting',
+              'quality_pending',
+              'rewrite_pending',
+              'rewriting',
+              'media_pending',
+              'publish_pending',
+              'scheduled',
+              'publishing',
+              'processing',
+              'published',
+              'skipped',
+              'manual_required',
+              'publish_failed',
+              'disabled',
+            ]),
+            title: z.string().trim().min(1).max(240).nullable(),
+            updated_at: IsoDateTimeSchema,
+          })
+          .strict(),
+      )
+      .max(30)
+      .default([]),
     attempted_count: z.number().int().min(0).max(30),
     business_date: z.iso.date(),
     in_progress_count: z.number().int().min(0).max(30),
+    last_activity_at: IsoDateTimeSchema,
     last_error_message: z.string().nullable(),
     manual_items: z
       .array(
@@ -252,6 +295,7 @@ export const BaijiahaoDailyBatchSummarySchema = z
       .default([]),
     manual_required_count: z.number().int().min(0).max(30),
     published_count: z.number().int().min(0).max(10),
+    retired_count: z.number().int().min(0).max(30),
     scheduled_count: z.number().int().min(0).max(10),
     skipped_count: z.number().int().min(0).max(30),
     status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),

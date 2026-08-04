@@ -38,6 +38,10 @@ const INDEPENDENT_RUN_ID = 'a2300000-0000-4000-8000-000000000145';
 const INDEPENDENT_ITEM_ID = 'a2400000-0000-4000-8000-000000000145';
 const INDEPENDENT_VARIANT_ID = 'a2500000-0000-4000-8000-000000000145';
 const INDEPENDENT_VERSION_ID = 'a2600000-0000-4000-8000-000000000145';
+const OTHER_BRIEF_ID = 'a2700000-0000-4000-8000-000000000145';
+const OTHER_PACKAGE_ID = 'a2800000-0000-4000-8000-000000000145';
+const OTHER_VARIANT_ID = 'a2900000-0000-4000-8000-000000000145';
+const OTHER_RUN_ID = 'a2a00000-0000-4000-8000-000000000145';
 const BRAND_PROFILE_ID = 'a3000000-0000-4000-8000-000000000145';
 const RULE_ID = 'a4000000-0000-4000-8000-000000000145';
 const SOURCE_ID = 'a5000000-0000-4000-8000-000000000145';
@@ -188,6 +192,25 @@ describe('Baijiahao official-site derived automation', () => {
     ).toEqual([{ count: 0 }]);
   });
 
+  it('does not count an unfinished run as a completed daily target', async () => {
+    const database = requireClient(client);
+    await seedOtherInProgressAutomation(database);
+
+    await expect(
+      createAutomation(database).handlePublishedSource(publishedEvent()),
+    ).resolves.toEqual({ disposition: 'processed' });
+
+    expect(
+      await database<{ count: number; status: string }[]>`
+        SELECT status,count(*)::integer AS count
+        FROM baijiahao_automation_runs GROUP BY status ORDER BY status
+      `,
+    ).toEqual([
+      { count: 1, status: 'adaptation_pending' },
+      { count: 1, status: 'generation_pending' },
+    ]);
+  });
+
   it('expires a past running batch when both the batch and policy have version columns', async () => {
     const database = requireClient(client);
     await database`
@@ -250,6 +273,25 @@ describe('Baijiahao official-site derived automation', () => {
     );
 
     await expectIndependentQualityQueued(database);
+    const policy = (
+      await new BaijiahaoAutomationPolicyService(database, {} as never).list(
+        { tenantId: TENANT_ID, userId: USER_ID },
+        BAIJIAHAO_ACCOUNT_ID,
+      )
+    )[0];
+    expect(() => BaijiahaoAutomationPolicyViewSchema.parse(policy)).not.toThrow();
+    expect(policy?.today_batch).toMatchObject({
+      active_items: [
+        {
+          automation_run_id: INDEPENDENT_RUN_ID,
+          candidate_no: 1,
+          item_status: 'quality_check',
+          run_status: 'quality_pending',
+        },
+      ],
+      in_progress_count: 1,
+      retired_count: 0,
+    });
   });
 
   it('recovers an already generated independent fallback exactly once', async () => {
@@ -261,6 +303,51 @@ describe('Baijiahao official-site derived automation', () => {
     await expect(automation.recoverGeneratedIndependentCandidates()).resolves.toBe(0);
 
     await expectIndependentQualityQueued(database);
+  });
+
+  it('terminalizes a daily candidate after its content generation fails', async () => {
+    const database = requireClient(client);
+    await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE baijiahao_automation_policies SET daily_enabled=true
+      WHERE id=${POLICY_ID}::uuid
+    `;
+    await database`
+      UPDATE content_variants SET status='generation_failed'
+      WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+    `;
+    const scheduler = new BaijiahaoDailyScheduler(
+      database,
+      {
+        qualityModelKey: 'deepseek-v4-flash',
+        qualityPromptVersionId: QUALITY_PROMPT_ID,
+        qualitySkillVersion: '1.0.0',
+        rewriteModelKey: 'deepseek-v4-flash',
+        writerPromptVersionId: WRITER_PROMPT_ID,
+        writerSkillVersion: '1.0.0',
+      },
+      { tickMs: 30_000 },
+    );
+
+    await expect(scheduler.tick()).resolves.toBeUndefined();
+
+    expect(
+      await database<{ code: string; finished: boolean; itemStatus: string; runStatus: string }[]>`
+        SELECT automation.status AS "runStatus",automation.finished_at IS NOT NULL AS finished,
+          automation.last_error_json->>'code' AS code,item.status AS "itemStatus"
+        FROM baijiahao_automation_runs AS automation
+        JOIN baijiahao_daily_batch_items AS item
+          ON item.tenant_id=automation.tenant_id AND item.automation_run_id=automation.id
+        WHERE automation.id=${INDEPENDENT_RUN_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        code: 'CONTENT_GENERATION_FAILED_RETIRED',
+        finished: true,
+        itemStatus: 'retired',
+        runStatus: 'disabled',
+      },
+    ]);
   });
 
   it('lists manual-required items and resumes quality after user editing', async () => {
@@ -738,6 +825,44 @@ async function seedGeneratedIndependentCandidate(database: Sql): Promise<string>
     )
   `;
   return hash;
+}
+
+async function seedOtherInProgressAutomation(database: Sql): Promise<void> {
+  await database`
+    INSERT INTO briefs(
+      id,tenant_id,workspace_id,project_id,title,objective,audience,
+      platform_codes,constraints_json,created_by
+    ) VALUES(
+      ${OTHER_BRIEF_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      '百家号补位候选','awareness','有搬家计划并希望提前做好准备的广州用户',
+      ARRAY['baijiahao']::varchar[],
+      ${database.json({ schema_version: 'brief-constraints@1' })},${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO content_packages(
+      id,tenant_id,workspace_id,project_id,brief_id,status,created_by
+    ) VALUES(
+      ${OTHER_PACKAGE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      ${OTHER_BRIEF_ID}::uuid,'generating',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO content_variants(
+      id,tenant_id,package_id,platform_code,platform_account_id,status,is_required
+    ) VALUES(
+      ${OTHER_VARIANT_ID}::uuid,${TENANT_ID}::uuid,${OTHER_PACKAGE_ID}::uuid,
+      'baijiahao',${BAIJIAHAO_ACCOUNT_ID}::uuid,'generating',false
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_automation_runs(
+      id,tenant_id,policy_id,source_mode,variant_id,status
+    ) VALUES(
+      ${OTHER_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      'independent',${OTHER_VARIANT_ID}::uuid,'generation_pending'
+    )
+  `;
 }
 
 async function expectIndependentQualityQueued(database: Sql): Promise<void> {

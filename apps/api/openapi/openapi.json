@@ -24421,6 +24421,81 @@
                               {
                                 "type": "object",
                                 "properties": {
+                                  "active_items": {
+                                    "default": [],
+                                    "maxItems": 30,
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "properties": {
+                                        "automation_run_id": {
+                                          "type": "string",
+                                          "format": "uuid",
+                                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                        },
+                                        "candidate_no": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 30
+                                        },
+                                        "item_status": {
+                                          "type": "string",
+                                          "enum": [
+                                            "pending",
+                                            "adapting",
+                                            "generating",
+                                            "quality_check",
+                                            "rewriting",
+                                            "media_pending",
+                                            "qualified",
+                                            "processing"
+                                          ]
+                                        },
+                                        "run_status": {
+                                          "type": "string",
+                                          "enum": [
+                                            "generation_pending",
+                                            "generating",
+                                            "adaptation_pending",
+                                            "adapting",
+                                            "quality_pending",
+                                            "rewrite_pending",
+                                            "rewriting",
+                                            "media_pending",
+                                            "publish_pending",
+                                            "scheduled",
+                                            "publishing",
+                                            "processing",
+                                            "published",
+                                            "skipped",
+                                            "manual_required",
+                                            "publish_failed",
+                                            "disabled"
+                                          ]
+                                        },
+                                        "title": {
+                                          "anyOf": [
+                                            { "type": "string", "minLength": 1, "maxLength": 240 },
+                                            { "type": "null" }
+                                          ]
+                                        },
+                                        "updated_at": {
+                                          "type": "string",
+                                          "format": "date-time",
+                                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                        }
+                                      },
+                                      "required": [
+                                        "automation_run_id",
+                                        "candidate_no",
+                                        "item_status",
+                                        "run_status",
+                                        "title",
+                                        "updated_at"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  },
                                   "attempted_count": {
                                     "type": "integer",
                                     "minimum": 0,
@@ -24435,6 +24510,11 @@
                                     "type": "integer",
                                     "minimum": 0,
                                     "maximum": 30
+                                  },
+                                  "last_activity_at": {
+                                    "type": "string",
+                                    "format": "date-time",
+                                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                                   },
                                   "last_error_message": {
                                     "anyOf": [{ "type": "string" }, { "type": "null" }]
@@ -24564,6 +24644,11 @@
                                     "minimum": 0,
                                     "maximum": 10
                                   },
+                                  "retired_count": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 30
+                                  },
                                   "scheduled_count": {
                                     "type": "integer",
                                     "minimum": 0,
@@ -24599,9 +24684,11 @@
                                   "attempted_count",
                                   "business_date",
                                   "in_progress_count",
+                                  "last_activity_at",
                                   "last_error_message",
                                   "manual_required_count",
                                   "published_count",
+                                  "retired_count",
                                   "scheduled_count",
                                   "skipped_count",
                                   "status",
@@ -24948,6 +25035,81 @@
                             {
                               "type": "object",
                               "properties": {
+                                "active_items": {
+                                  "default": [],
+                                  "maxItems": 30,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "automation_run_id": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                      },
+                                      "candidate_no": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 30
+                                      },
+                                      "item_status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "pending",
+                                          "adapting",
+                                          "generating",
+                                          "quality_check",
+                                          "rewriting",
+                                          "media_pending",
+                                          "qualified",
+                                          "processing"
+                                        ]
+                                      },
+                                      "run_status": {
+                                        "type": "string",
+                                        "enum": [
+                                          "generation_pending",
+                                          "generating",
+                                          "adaptation_pending",
+                                          "adapting",
+                                          "quality_pending",
+                                          "rewrite_pending",
+                                          "rewriting",
+                                          "media_pending",
+                                          "publish_pending",
+                                          "scheduled",
+                                          "publishing",
+                                          "processing",
+                                          "published",
+                                          "skipped",
+                                          "manual_required",
+                                          "publish_failed",
+                                          "disabled"
+                                        ]
+                                      },
+                                      "title": {
+                                        "anyOf": [
+                                          { "type": "string", "minLength": 1, "maxLength": 240 },
+                                          { "type": "null" }
+                                        ]
+                                      },
+                                      "updated_at": {
+                                        "type": "string",
+                                        "format": "date-time",
+                                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                      }
+                                    },
+                                    "required": [
+                                      "automation_run_id",
+                                      "candidate_no",
+                                      "item_status",
+                                      "run_status",
+                                      "title",
+                                      "updated_at"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
                                 "attempted_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -24962,6 +25124,11 @@
                                   "type": "integer",
                                   "minimum": 0,
                                   "maximum": 30
+                                },
+                                "last_activity_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                                 },
                                 "last_error_message": {
                                   "anyOf": [{ "type": "string" }, { "type": "null" }]
@@ -25091,6 +25258,7 @@
                                   "minimum": 0,
                                   "maximum": 10
                                 },
+                                "retired_count": { "type": "integer", "minimum": 0, "maximum": 30 },
                                 "scheduled_count": {
                                   "type": "integer",
                                   "minimum": 0,
@@ -25118,9 +25286,11 @@
                                 "attempted_count",
                                 "business_date",
                                 "in_progress_count",
+                                "last_activity_at",
                                 "last_error_message",
                                 "manual_required_count",
                                 "published_count",
+                                "retired_count",
                                 "scheduled_count",
                                 "skipped_count",
                                 "status",

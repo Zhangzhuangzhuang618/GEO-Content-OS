@@ -323,16 +323,18 @@ export class BaijiahaoAutomation {
 
       const sourceContent = validateGeneratedContent(source.content, 'official_site');
       const reason = assessBaijiahaoSourceSuitability(sourceContent, source.objective);
-      const activeToday = await transaction<{ count: number }[]>`
+      const targetSatisfiedToday = await transaction<{ count: number }[]>`
         SELECT count(*)::integer AS count
         FROM baijiahao_automation_runs
         WHERE tenant_id=${event.tenantId}::uuid AND policy_id=${policy.id}::uuid
           AND (created_at AT TIME ZONE 'Asia/Shanghai')::date=
             (now() AT TIME ZONE 'Asia/Shanghai')::date
-          AND status NOT IN ('skipped','manual_required','publish_failed','disabled')
+          AND status IN (
+            'media_pending','publish_pending','scheduled','publishing','processing','published'
+          )
       `;
       const limitReason =
-        Number(activeToday[0]?.count ?? 0) >= policy.dailyTargetCount
+        Number(targetSatisfiedToday[0]?.count ?? 0) >= policy.dailyTargetCount
           ? 'daily_target_reached'
           : policy.candidateCount >= policy.dailyCandidateLimit
             ? 'daily_candidate_limit_reached'
@@ -950,7 +952,8 @@ export class BaijiahaoAutomation {
       const previous = record(rows[0]?.lastError) ? rows[0].lastError : {};
       const previousFailures = Number(previous['worker_failures']);
       const failures = Number.isSafeInteger(previousFailures) ? previousFailures + 1 : 1;
-      const terminal = failures >= 3;
+      const retryable = !record(error) || error['retryable'] !== false;
+      const terminal = !retryable || failures >= 3;
       await transaction`
         UPDATE generation_runs SET
           status=${terminal ? 'failed' : 'queued'},
@@ -974,6 +977,7 @@ export class BaijiahaoAutomation {
         code: terminal ? 'ADAPTATION_EXECUTION_FAILED' : 'ADAPTATION_EXECUTION_RETRY',
         message: safeError(error),
         prompt_issues: extractPromptIssues(previous),
+        retryable,
         schema_version: 'baijiahao-automation-error@1',
         worker_failures: failures,
       };

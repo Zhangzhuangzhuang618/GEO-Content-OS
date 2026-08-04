@@ -547,8 +547,18 @@ test('shows actionable Baijiahao manual-required items', async ({ page }) => {
   await expect
     .poll(() => requests)
     .toContain(`/api/v1/platform-accounts/${ACCOUNT_ID}/baijiahao-automation`);
-  expect(requests).toContain(`/api/v1/platform-accounts/${ACCOUNT_ID}/baijiahao-browser-session`);
+  expect(requests).not.toContain(
+    `/api/v1/platform-accounts/${ACCOUNT_ID}/baijiahao-browser-session`,
+  );
   expect(requests).toContain('/api/v1/projects');
+
+  await expect(page.getByText('任务正在运行')).toBeVisible();
+  await expect(page.getByText(/候选 2 · 正文尚未生成/u)).toBeVisible();
+  await expect(page.getByText(/生成正文/u)).toBeVisible();
+  await page.getByRole('button', { name: '实时核验登录态' }).click();
+  await expect
+    .poll(() => requests)
+    .toContain(`/api/v1/platform-accounts/${ACCOUNT_ID}/baijiahao-browser-session`);
 
   await expect(page.getByRole('heading', { name: '需要人工处理的内容' })).toBeVisible();
   await expect(page.getByText('广州搬家前如何系统准备')).toBeVisible();
@@ -656,9 +666,20 @@ function baijiahaoPolicy() {
     source_mode: 'official_site_derived',
     tenant_id: TENANT_ID,
     today_batch: {
-      attempted_count: 1,
+      active_items: [
+        {
+          automation_run_id: 'a5000000-0000-4000-8000-000000000001',
+          candidate_no: 2,
+          item_status: 'generating',
+          run_status: 'generation_pending',
+          title: null,
+          updated_at: '2026-08-04T00:20:00.000Z',
+        },
+      ],
+      attempted_count: 2,
       business_date: '2026-08-04',
-      in_progress_count: 0,
+      in_progress_count: 1,
+      last_activity_at: '2026-08-04T00:20:00.000Z',
       last_error_message: null,
       manual_items: [
         {
@@ -681,6 +702,7 @@ function baijiahaoPolicy() {
       ],
       manual_required_count: 1,
       published_count: 0,
+      retired_count: 0,
       scheduled_count: 0,
       skipped_count: 0,
       status: 'running',

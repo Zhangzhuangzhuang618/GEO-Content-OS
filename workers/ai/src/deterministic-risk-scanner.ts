@@ -88,7 +88,8 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
   {
     category: 'fact',
     message: '内容包含未在企业档案或证据中核验的详细地址。',
-    pattern: /(?:地址|位于|坐落于)[：:\s]*[^。；;\n]{3,40}(?:路|街|大道|巷|号|大厦|园区)/u,
+    pattern:
+      /(?:地址|位于|坐落于)[：:\s]*[^。；;\n]{3,40}(?:路|街|大道|巷|(?<![型编账序信口])号|大厦|园区)/u,
     ruleId: 'deterministic.fact.unsupported_address',
     suggestion: '删除详细地址，或先在已发布企业档案中确认。',
     support: 'brand_or_citation',

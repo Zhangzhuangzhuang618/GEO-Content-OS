@@ -77,6 +77,34 @@ describe('deterministic pre-publish risk scanner', () => {
     );
   });
 
+  it('does not mistake generic address guidance ending in 型号 for a detailed address', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [block('checklist', '记录搬运地址、搬入地址、物品名称、数量、品牌型号后再签字。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.fact.unsupported_address',
+    );
+  });
+
+  it('continues to block an unsupported detailed street address', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [block('address', '公司地址：广州市天河区体育西路123号。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toContain('deterministic.fact.unsupported_address');
+  });
+
   it('accepts an exact price from a cited grouped company quotation', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),

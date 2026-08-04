@@ -54,6 +54,34 @@ describe('ContentGenerationWorker official-site direct flow', () => {
     expect(genericMaster).not.toHaveBeenCalled();
     expect(genericVariant).not.toHaveBeenCalled();
   });
+
+  it('logs safe identifiers and the underlying variant error for diagnosis', async () => {
+    const store = new FakeStore();
+    const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const writer: ContentWriterPort = {
+      generateMaster: vi.fn(async () => CONTENT),
+      generateOfficialSiteMaster: vi.fn(async () => CONTENT),
+      generateOfficialSiteVariant: vi.fn(async () => {
+        throw new Error('provider rejected api_key=secret-value');
+      }),
+      generateVariant: vi.fn(async () => OFFICIAL_CONTENT),
+    };
+
+    const result = await new ContentGenerationWorker(store, writer, 1, 1_000).run(event());
+
+    expect(result).toMatchObject({ failed: 1, succeeded: 0 });
+    expect(logger).toHaveBeenCalledWith(
+      'AI content generation failed',
+      expect.objectContaining({
+        error_message: 'provider rejected api_key=[REDACTED]',
+        event_id: 'a0000000-0000-4000-8000-000000000053',
+        generation_run_id: '81000000-0000-4000-8000-000000000053',
+        stage: 'variant',
+        variant_id: '71000000-0000-4000-8000-000000000053',
+      }),
+    );
+    logger.mockRestore();
+  });
 });
 
 class FakeStore implements GenerationStorePort {

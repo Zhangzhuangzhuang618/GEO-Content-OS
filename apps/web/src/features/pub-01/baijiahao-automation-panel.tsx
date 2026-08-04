@@ -33,6 +33,7 @@ export function BaijiahaoAutomationPanel({
   const [session, setSession] = useState<BaijiahaoBrowserSession | null>(null);
   const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
   const [loginPending, setLoginPending] = useState(false);
+  const [sessionRefreshing, setSessionRefreshing] = useState(false);
   const loginInFlight = useRef(false);
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
   const [message, setMessage] = useState<string | null>(null);
@@ -47,14 +48,13 @@ export function BaijiahaoAutomationPanel({
     void Promise.all([
       listProjects(account.workspace_id, controller.signal),
       listBaijiahaoAutomationPolicies(account.id, controller.signal),
-      getBaijiahaoBrowserSession(account.id, controller.signal).catch(() => null),
     ])
-      .then(([nextProjects, nextPolicies, nextSession]) => {
+      .then(([nextProjects, nextPolicies]) => {
         if (controller.signal.aborted) return;
         setProjects(nextProjects);
         setPolicies(nextPolicies);
         setProjectId(nextPolicies[0]?.project_id ?? nextProjects[0]?.id ?? '');
-        setSession(nextSession ?? nextPolicies[0]?.browser_session ?? null);
+        setSession(nextPolicies[0]?.browser_session ?? null);
         setState('ready');
       })
       .catch((error: unknown) => {
@@ -85,6 +85,21 @@ export function BaijiahaoAutomationPanel({
     }, 3_000);
     return () => clearInterval(timer);
   }, [account.id, session?.status]);
+
+  async function refreshSession() {
+    if (sessionRefreshing) return;
+    setSessionRefreshing(true);
+    setMessage(null);
+    try {
+      const next = await getBaijiahaoBrowserSession(account.id);
+      setSession(next);
+      setMessage(`登录态已实时核验：${sessionLabel(next.status)}。`);
+    } catch {
+      setMessage('实时核验失败。请检查 API 与浏览器 Worker 日志；当前仍显示数据库中的最近状态。');
+    } finally {
+      setSessionRefreshing(false);
+    }
+  }
 
   async function beginLogin() {
     if (loginInFlight.current) return;
@@ -200,19 +215,32 @@ export function BaijiahaoAutomationPanel({
                 <p className="mt-1 text-sm text-ink-600">
                   状态：{sessionLabel(session?.status ?? 'login_required')}
                 </p>
+                <p className="mt-1 text-xs text-ink-500">
+                  最近核验：{formatDateTime(session?.last_verified_at)}
+                </p>
               </div>
-              <button
-                className={primaryButton}
-                disabled={loginPending}
-                onClick={() => void beginLogin()}
-                type="button"
-              >
-                {loginPending
-                  ? '正在启动…'
-                  : session?.status === 'reauth'
-                    ? '重新扫码'
-                    : '扫码登录'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className={secondaryButton}
+                  disabled={sessionRefreshing}
+                  onClick={() => void refreshSession()}
+                  type="button"
+                >
+                  {sessionRefreshing ? '正在核验…' : '实时核验登录态'}
+                </button>
+                <button
+                  className={primaryButton}
+                  disabled={loginPending}
+                  onClick={() => void beginLogin()}
+                  type="button"
+                >
+                  {loginPending
+                    ? '正在启动…'
+                    : session?.status === 'reauth'
+                      ? '重新扫码'
+                      : '扫码登录'}
+                </button>
+              </div>
             </div>
             {login?.qr_image_data_url ? (
               <div className="mt-4 flex flex-wrap items-center gap-5">
@@ -362,16 +390,59 @@ function Check({
 function BatchSummary({ policy }: { readonly policy: BaijiahaoAutomationPolicy }) {
   const batch = policy.today_batch;
   if (!batch) return null;
+  const state = batchState(batch.status, batch.in_progress_count);
   return (
     <div className="mt-5 rounded-xl border border-line p-4 text-sm">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-lg bg-surface-subtle p-3">
+        <div>
+          <p className="font-semibold text-ink-950">{state.title}</p>
+          <p className="mt-1 text-xs leading-5 text-ink-600">{state.description}</p>
+        </div>
+        <p className="text-xs text-ink-500">最后活动：{formatDateTime(batch.last_activity_at)}</p>
+      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <p>今日候选：{batch.attempted_count}</p>
         <p>处理中：{batch.in_progress_count}</p>
         <p>已排期：{batch.scheduled_count}</p>
         <p>已发布：{batch.published_count}</p>
         <p>已跳过：{batch.skipped_count}</p>
+        <p>生成失败退出：{batch.retired_count}</p>
         <p>需人工：{batch.manual_required_count}</p>
       </div>
+      {batch.last_error_message ? (
+        <p className="mt-3 rounded-lg bg-red-50 p-3 text-red-800">
+          批次错误：{batch.last_error_message}
+        </p>
+      ) : null}
+      {batch.active_items.length > 0 ? (
+        <section
+          className="mt-4 border-t border-line pt-4"
+          aria-labelledby="baijiahao-active-title"
+        >
+          <h3 className="font-semibold text-ink-950" id="baijiahao-active-title">
+            正在执行的候选
+          </h3>
+          <div className="mt-3 space-y-2">
+            {batch.active_items.map((item) => (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-brand-50 p-3"
+                key={item.automation_run_id}
+              >
+                <p className="text-ink-900">
+                  候选 {item.candidate_no} · {item.title ?? '正文尚未生成'}
+                </p>
+                <p className="text-xs text-ink-600">
+                  {activeItemLabel(item.item_status)} · 更新于 {formatDateTime(item.updated_at)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : (
+        <p className="mt-4 border-t border-line pt-4 text-xs leading-5 text-ink-500">
+          当前没有后台执行中的候选。
+        </p>
+      )}
       {batch.manual_items.length > 0 ? (
         <section
           className="mt-4 border-t border-line pt-4"
@@ -436,6 +507,60 @@ function BatchSummary({ policy }: { readonly policy: BaijiahaoAutomationPolicy }
       ) : null}
     </div>
   );
+}
+
+function batchState(
+  status: NonNullable<BaijiahaoAutomationPolicy['today_batch']>['status'],
+  inProgressCount: number,
+) {
+  if (status === 'running' && inProgressCount > 0) {
+    return { description: `当前有 ${inProgressCount} 个候选正在后台执行。`, title: '任务正在运行' };
+  }
+  if (status === 'running') {
+    return {
+      description: '批次仍开放，但当前没有执行中的候选；调度器会继续巡检并按候选上限补位。',
+      title: '等待下一次后台巡检',
+    };
+  }
+  return (
+    {
+      attention_required: {
+        description: '后台不会继续推进，请处理失败项或批次错误。',
+        title: '任务需要人工处理',
+      },
+      cancelled: { description: '该批次不会继续执行。', title: '任务已取消' },
+      completed: { description: '今日目标已经完成。', title: '任务已完成' },
+      scheduled: { description: '合格内容已进入发布排期，等待发布时刻。', title: '等待发布' },
+    } as const
+  )[status];
+}
+
+function activeItemLabel(
+  status: NonNullable<
+    BaijiahaoAutomationPolicy['today_batch']
+  >['active_items'][number]['item_status'],
+) {
+  return (
+    {
+      adapting: '官网文章定向改写',
+      generating: '生成正文',
+      media_pending: '生成配图',
+      pending: '等待执行',
+      processing: '发布处理中',
+      qualified: '已合格，等待排期',
+      quality_check: '机器质量检查',
+      rewriting: '自动重写',
+    } as const
+  )[status];
+}
+
+function formatDateTime(value: string | null | undefined): string {
+  if (!value) return '尚未核验';
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'short',
+    hour12: false,
+    timeStyle: 'medium',
+  }).format(new Date(value));
 }
 
 function manualErrorSummary(value: Readonly<Record<string, unknown>> | null): string {
