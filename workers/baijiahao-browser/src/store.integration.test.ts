@@ -88,6 +88,28 @@ describe('Postgres Baijiahao browser store', () => {
     expect(authenticated.status).toBe('authenticated');
   });
 
+  it('accepts a manual Baijiahao publish job for browser submission', async () => {
+    const database = requireClient(client);
+    await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+    await database`
+      INSERT INTO publish_jobs(
+        id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+        idempotency_key,payload_hash,status,origin,attempt_count,created_by
+      ) VALUES(
+        ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+        ${ACCOUNT_ID}::uuid,now(),'baijiahao-t145-publication',${CONTENT_HASH},
+        'publishing','manual',1,${USER_ID}::uuid
+      )
+    `;
+    const store = new PostgresBaijiahaoBrowserStore(database);
+    const session = await store.getOrCreateSession(ACCOUNT_ID);
+    await store.markSession(session, { status: 'authenticated' });
+
+    await expect(
+      store.preparePublication(ACCOUNT_ID, publishInput(), 'c'.repeat(64)),
+    ).resolves.toMatchObject({ publishJobId: JOB_ID, status: 'prepared' });
+  });
+
   it('loads only version-scoped images with a verified no-watermark result', async () => {
     const store = new PostgresBaijiahaoBrowserStore(requireClient(client));
     const session = await store.getOrCreateSession(ACCOUNT_ID);

@@ -128,6 +128,10 @@ async function main(): Promise<void> {
         count: recoveredBaijiahaoRuns,
       });
     }
+    const recoveredMediaRuns = await media.recoverStaleRuns();
+    if (recoveredMediaRuns > 0) {
+      console.warn('Recovered stale content media runs', { count: recoveredMediaRuns });
+    }
     dailyScheduler.start();
     baijiahaoDailyScheduler.start();
     ready = true;

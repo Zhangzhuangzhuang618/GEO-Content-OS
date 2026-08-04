@@ -9,8 +9,9 @@ import {
   type ImageProvider,
 } from '@geo-content-os/adapter-image';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
-import { findDisallowedCompanyNames } from '@geo-content-os/contracts';
+import { DomainEventEnvelopeSchema, findDisallowedCompanyNames } from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
+import { randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { BaijiahaoAutomation, BaijiahaoQualityGate } from './baijiahao-automation.js';
@@ -69,6 +70,20 @@ interface StoredQualityRow {
   readonly score: number;
 }
 
+interface RecoverableMediaRun {
+  readonly contentHash: string;
+  readonly contentVersionId: string;
+  readonly createdBy: string;
+  readonly id: string;
+  readonly packageId: string;
+  readonly platformCode: 'baijiahao' | 'official_site';
+  readonly projectId: string;
+  readonly qualityReportId: string;
+  readonly tenantId: string;
+  readonly variantId: string;
+  readonly workspaceId: string;
+}
+
 const AI_DISCLOSURE_LABEL = 'AI示意图';
 const AI_DISCLOSURE_STORAGE_VALUE = 'ai_generated';
 
@@ -83,6 +98,85 @@ export class ContentMediaWorker {
     private readonly config: ContentMediaAutomationConfig,
   ) {}
 
+  public recoverStaleRuns(staleBefore = new Date(Date.now() - 10 * 60_000)): Promise<number> {
+    return this.client.begin(async (transaction) => {
+      const rows = await transaction<RecoverableMediaRun[]>`
+        SELECT run.id,run.tenant_id AS "tenantId",run.workspace_id AS "workspaceId",
+          run.project_id AS "projectId",run.package_id AS "packageId",
+          run.variant_id AS "variantId",run.content_version_id AS "contentVersionId",
+          run.quality_report_id AS "qualityReportId",run.platform_code AS "platformCode",
+          run.created_by AS "createdBy",version.content_hash AS "contentHash"
+        FROM content_media_runs AS run
+        JOIN content_versions AS version
+          ON version.id=run.content_version_id AND version.tenant_id=run.tenant_id
+        WHERE run.status='running' AND run.updated_at < ${staleBefore}
+          AND (
+            (
+              run.platform_code='official_site' AND EXISTS (
+                SELECT 1 FROM official_site_automation_runs AS automation
+                WHERE automation.tenant_id=run.tenant_id
+                  AND automation.variant_id=run.variant_id
+                  AND automation.content_version_id=run.content_version_id
+                  AND automation.last_quality_report_id=run.quality_report_id
+                  AND automation.status='media_pending'
+              )
+            ) OR (
+              run.platform_code='baijiahao' AND EXISTS (
+                SELECT 1 FROM baijiahao_automation_runs AS automation
+                WHERE automation.tenant_id=run.tenant_id
+                  AND automation.variant_id=run.variant_id
+                  AND automation.content_version_id=run.content_version_id
+                  AND automation.last_quality_report_id=run.quality_report_id
+                  AND automation.status='media_pending'
+              )
+            )
+          )
+        ORDER BY run.updated_at,run.id
+        FOR UPDATE OF run SKIP LOCKED
+      `;
+      for (const row of rows) {
+        const recovered = await transaction<{ id: string }[]>`
+          UPDATE content_media_runs SET status='queued',started_at=NULL,finished_at=NULL,
+            last_error_json='{"code":"STALE_MEDIA_RUN_RECOVERED","schema_version":"content-media-error@1"}'::jsonb,
+            version=version+1
+          WHERE id=${row.id}::uuid AND tenant_id=${row.tenantId}::uuid AND status='running'
+          RETURNING id
+        `;
+        if (recovered.length !== 1) continue;
+        const event = DomainEventEnvelopeSchema.parse({
+          aggregate: { id: row.id, type: 'content_media_run' },
+          data: {
+            actor_user_id: row.createdBy,
+            content_hash: row.contentHash,
+            content_version_id: row.contentVersionId,
+            media_run_id: row.id,
+            package_id: row.packageId,
+            platform_code: row.platformCode,
+            project_id: row.projectId,
+            quality_report_id: row.qualityReportId,
+            request_id: `media-recovery-${row.id}`.slice(0, 80),
+            variant_id: row.variantId,
+            workspace_id: row.workspaceId,
+          },
+          event_id: randomUUID(),
+          event_type: 'content.variant.media_generation_requested.v1',
+          occurred_at: new Date().toISOString(),
+          tenant: { id: row.tenantId },
+        });
+        await transaction`
+          INSERT INTO outbox_events (
+            id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json
+          ) VALUES (
+            ${event.event_id}::uuid,${event.tenant.id}::uuid,${event.event_type},
+            ${event.aggregate.type},${event.aggregate.id}::uuid,
+            ${JSON.stringify(event)}::text::jsonb
+          )
+        `;
+      }
+      return rows.length;
+    });
+  }
+
   public async run(
     raw: unknown,
     signal?: AbortSignal,
@@ -91,61 +185,97 @@ export class ContentMediaWorker {
     const claim = await this.claim(event);
     if (!claim) return Object.freeze({ disposition: 'completed' });
 
-    const plan = await this.planner.plan({
-      content: claim.content,
-      platformCode: claim.platformCode,
-      requestId: event.data.requestId,
-      scope: scope(event),
-      ...(signal ? { signal } : {}),
-    });
-    if (plan.plannerFailure) {
-      console.error('Article image planning failed; using template fallback', {
-        contentVersionId: event.data.contentVersionId,
-        error: plan.plannerFailure,
-        mediaRunId: event.data.mediaRunId,
+    try {
+      const plan = await this.planner.plan({
+        content: claim.content,
         platformCode: claim.platformCode,
         requestId: event.data.requestId,
+        scope: scope(event),
+        ...(signal ? { signal } : {}),
       });
-    }
-    let prepared: Awaited<ReturnType<ContentMediaWorker['prepareAssets']>>;
-    try {
-      prepared = await this.prepareAssets(plan, claim, event.data.requestId, signal);
-    } catch (error) {
-      prepared = Object.freeze({
-        assets: Object.freeze([]),
-        externalCalls: 0,
-        providerErrors: Object.freeze([safeError(error)]),
-        usedFallback: true,
-      });
-    }
-    const stored: StoredAsset[] = [];
-    const storageErrors: string[] = [];
-    for (const asset of prepared.assets) {
-      try {
-        stored.push(await this.storeAsset(event.tenantId, event.data.contentVersionId, asset));
-      } catch (error) {
-        const failure = `${asset.role}[${asset.position}]: ${safeError(error)}`;
-        storageErrors.push(failure);
-        console.error('Content media asset storage failed', {
+      if (plan.plannerFailure) {
+        console.error('Article image planning failed; using template fallback', {
           contentVersionId: event.data.contentVersionId,
-          error: failure,
+          error: plan.plannerFailure,
           mediaRunId: event.data.mediaRunId,
           platformCode: claim.platformCode,
           requestId: event.data.requestId,
-          source: asset.source,
         });
       }
-    }
+      let prepared: Awaited<ReturnType<ContentMediaWorker['prepareAssets']>>;
+      try {
+        prepared = await this.prepareAssets(plan, claim, event.data.requestId, signal);
+      } catch (error) {
+        prepared = Object.freeze({
+          assets: Object.freeze([]),
+          externalCalls: 0,
+          providerErrors: Object.freeze([safeError(error)]),
+          usedFallback: true,
+        });
+      }
+      const stored: StoredAsset[] = [];
+      const storageErrors: string[] = [];
+      for (const asset of prepared.assets) {
+        try {
+          stored.push(await this.storeAsset(event.tenantId, event.data.contentVersionId, asset));
+        } catch (error) {
+          const failure = `${asset.role}[${asset.position}]: ${safeError(error)}`;
+          storageErrors.push(failure);
+          console.error('Content media asset storage failed', {
+            contentVersionId: event.data.contentVersionId,
+            error: failure,
+            mediaRunId: event.data.mediaRunId,
+            platformCode: claim.platformCode,
+            requestId: event.data.requestId,
+            source: asset.source,
+          });
+        }
+      }
 
-    const status: MediaStatus =
-      prepared.usedFallback || stored.length !== prepared.assets.length ? 'fallback' : 'succeeded';
-    await this.persistAndResume(event, claim, plan, stored, status, {
-      external_calls: prepared.externalCalls,
-      planner_failure: plan.plannerFailure,
-      provider_failures: prepared.providerErrors,
-      storage_failures: storageErrors,
-    });
-    return Object.freeze({ disposition: 'processed' });
+      const status: MediaStatus =
+        prepared.usedFallback || stored.length !== prepared.assets.length
+          ? 'fallback'
+          : 'succeeded';
+      await this.persistAndResume(event, claim, plan, stored, status, {
+        external_calls: prepared.externalCalls,
+        planner_failure: plan.plannerFailure,
+        provider_failures: prepared.providerErrors,
+        storage_failures: storageErrors,
+      });
+      return Object.freeze({ disposition: 'processed' });
+    } catch (error) {
+      try {
+        await this.releaseClaim(event, claim, error);
+      } catch (releaseError) {
+        console.error('Content media run lease release failed', {
+          contentVersionId: event.data.contentVersionId,
+          error: safeError(releaseError),
+          mediaRunId: event.data.mediaRunId,
+          platformCode: claim.platformCode,
+          requestId: event.data.requestId,
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async releaseClaim(
+    event: ReturnType<typeof validateMediaGenerationEvent>,
+    claim: MediaClaim,
+    error: unknown,
+  ): Promise<void> {
+    const released = await this.client<{ id: string }[]>`
+      UPDATE content_media_runs SET status='queued',started_at=NULL,finished_at=NULL,
+        last_error_json=${JSON.stringify({
+          code: 'CONTENT_MEDIA_RETRYABLE_FAILURE',
+          message: safeError(error),
+          schema_version: 'content-media-error@1',
+        })}::text::jsonb,version=version+1
+      WHERE id=${event.data.mediaRunId}::uuid AND tenant_id=${event.tenantId}::uuid
+        AND status='running' AND version=${claim.version}
+      RETURNING id
+    `;
+    if (released.length !== 1) throw new Error('Content media run lease was lost during release');
   }
 
   private claim(

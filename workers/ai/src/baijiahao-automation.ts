@@ -1324,7 +1324,7 @@ export class BaijiahaoAutomation {
           WHERE qualified.tenant_id=batch.tenant_id AND qualified.batch_id=batch.id
             AND qualified.status IN ('scheduled','processing','published')
         ) >= policy.daily_target_count THEN COALESCE(scheduled_at,now()) ELSE scheduled_at END,
-        version=version+1
+        version=batch.version+1
       FROM baijiahao_automation_policies AS policy
       WHERE batch.tenant_id=${event.tenantId}::uuid AND batch.status='running'
         AND policy.id=batch.policy_id AND policy.tenant_id=batch.tenant_id

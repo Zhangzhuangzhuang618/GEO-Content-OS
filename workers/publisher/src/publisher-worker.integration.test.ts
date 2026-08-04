@@ -393,6 +393,64 @@ describe('publisher worker', () => {
     ).toEqual([{ count: 1 }]);
   });
 
+  it('reconciles a manual Baijiahao browser submission without updating automation rows', async () => {
+    const database = requireClient(client);
+    await enableBaijiahaoAutomation(database, 'manual');
+    const platform = new FakePlatform(
+      {
+        externalId: 'baijiahao-manual-t145',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [
+        {
+          externalId: 'baijiahao-manual-t145',
+          status: 'published',
+          url: 'https://baijiahao.baidu.com/s?id=manual-t145',
+        },
+      ],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(
+      worker.reconcileBaijiahao(await latestReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(
+      await database<
+        {
+          automationStatus: string;
+          browserStatus: string;
+          itemStatus: string;
+          jobStatus: string;
+          variantStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          publication.status AS "browserStatus",item.status AS "itemStatus",
+          variant.status AS "variantStatus"
+        FROM publish_jobs AS job
+        JOIN baijiahao_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN baijiahao_browser_publications AS publication ON publication.publish_job_id=job.id
+        JOIN baijiahao_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN content_variants AS variant ON variant.id=job.variant_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'scheduled',
+        browserStatus: 'published',
+        itemStatus: 'scheduled',
+        jobStatus: 'published',
+        variantStatus: 'published',
+      },
+    ]);
+  });
+
   it('requires manual handling when review is still processing after twelve reconciliations', async () => {
     const database = requireClient(client);
     await enableBaijiahaoAutomation(database);
@@ -648,7 +706,10 @@ async function seedDailyPublishItem(database: Sql): Promise<void> {
   `;
 }
 
-async function enableBaijiahaoAutomation(database: Sql): Promise<void> {
+async function enableBaijiahaoAutomation(
+  database: Sql,
+  origin: 'baijiahao_automation' | 'manual' = 'baijiahao_automation',
+): Promise<void> {
   await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
   await database`
     UPDATE briefs SET platform_codes=ARRAY['official_site','baijiahao']::varchar[]
@@ -696,7 +757,7 @@ async function enableBaijiahaoAutomation(database: Sql): Promise<void> {
     ) VALUES(
       ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
       ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
-      ${CONTENT_HASH},'scheduled','baijiahao_automation',${USER_ID}::uuid
+      ${CONTENT_HASH},'scheduled',${origin},${USER_ID}::uuid
     )
   `;
   await database`

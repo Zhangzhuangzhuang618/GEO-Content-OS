@@ -288,7 +288,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
         status: 'succeeded',
       });
       if (delivery.mode === 'api' && deliveryStatus(delivery) === 'processing') {
-        if (claim.platformCode !== 'baijiahao' || row.origin !== 'baijiahao_automation') {
+        if (claim.platformCode !== 'baijiahao' || !isBaijiahaoBrowserOrigin(row.origin)) {
           throw stateInvalid();
         }
         const processing = await transaction<{ version: number }[]>`
@@ -313,17 +313,19 @@ export class PostgresPublisherStore implements PublisherStorePort {
           RETURNING id
         `;
         if (browserPublications.length !== 1) throw stateInvalid();
-        await transaction`
-          UPDATE baijiahao_automation_runs SET
-            status='processing', last_error_json=NULL, version=version+1
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND status IN ('scheduled','publishing')
-        `;
-        await transaction`
-          UPDATE baijiahao_daily_batch_items SET status='processing',last_error_json=NULL
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND status='scheduled'
-        `;
+        if (row.origin === 'baijiahao_automation') {
+          await transaction`
+            UPDATE baijiahao_automation_runs SET
+              status='processing', last_error_json=NULL, version=version+1
+            WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+              AND status IN ('scheduled','publishing')
+          `;
+          await transaction`
+            UPDATE baijiahao_daily_batch_items SET status='processing',last_error_json=NULL
+            WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+              AND status='scheduled'
+          `;
+        }
         await insertBaijiahaoReconcileEvent(transaction, event, claim, row, job.version, 5);
         await writeAudit(
           transaction,
@@ -661,7 +663,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
       if (row.jobVersion > event.jobVersion) return { kind: 'completed' } as const;
       if (
         row.jobVersion !== event.jobVersion ||
-        row.origin !== 'baijiahao_automation' ||
+        !isBaijiahaoBrowserOrigin(row.origin) ||
         row.publishMode !== 'api' ||
         row.variantStatus !== 'publishing' ||
         !row.externalId
@@ -701,7 +703,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
         return 'completed' as const;
       }
       if (
-        row.origin !== 'baijiahao_automation' ||
+        !isBaijiahaoBrowserOrigin(row.origin) ||
         row.variantStatus !== 'publishing' ||
         row.externalId !== claim.externalId ||
         result.externalId !== claim.externalId
@@ -770,13 +772,15 @@ export class PostgresPublisherStore implements PublisherStorePort {
         `;
         const job = updated[0];
         if (!job) throw leaseLost();
-        await completeBaijiahaoAutomationRun(
-          transaction,
-          claim.tenantId,
-          claim.jobId,
-          'published',
-          null,
-        );
+        if (row.origin === 'baijiahao_automation') {
+          await completeBaijiahaoAutomationRun(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'published',
+            null,
+          );
+        }
         const browserPublications = await transaction<{ id: string }[]>`
           UPDATE baijiahao_browser_publications SET
             status='published', external_url=${result.url}, last_reconciled_at=now(),
@@ -786,13 +790,15 @@ export class PostgresPublisherStore implements PublisherStorePort {
           RETURNING id
         `;
         if (browserPublications.length !== 1) throw stateInvalid();
-        await completeBaijiahaoDailyBatchItem(
-          transaction,
-          claim.tenantId,
-          claim.jobId,
-          'published',
-          null,
-        );
+        if (row.origin === 'baijiahao_automation') {
+          await completeBaijiahaoDailyBatchItem(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'published',
+            null,
+          );
+        }
         await transitionVariant(
           transaction,
           claim.tenantId,
@@ -853,24 +859,26 @@ export class PostgresPublisherStore implements PublisherStorePort {
         RETURNING id
       `;
       if (updated.length !== 1) throw leaseLost();
-      if (manualRequired) {
-        const automation = await transaction<{ id: string }[]>`
-          UPDATE baijiahao_automation_runs SET
-            status='manual_required', last_error_json=${JSON.stringify(error)}::text::jsonb,
-            finished_at=now(), version=version+1
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND status='processing'
-          RETURNING id
-        `;
-        if (automation.length !== 1) throw stateInvalid();
-      } else {
-        await completeBaijiahaoAutomationRun(
-          transaction,
-          claim.tenantId,
-          claim.jobId,
-          'publish_failed',
-          error,
-        );
+      if (row.origin === 'baijiahao_automation') {
+        if (manualRequired) {
+          const automation = await transaction<{ id: string }[]>`
+            UPDATE baijiahao_automation_runs SET
+              status='manual_required', last_error_json=${JSON.stringify(error)}::text::jsonb,
+              finished_at=now(), version=version+1
+            WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+              AND status='processing'
+            RETURNING id
+          `;
+          if (automation.length !== 1) throw stateInvalid();
+        } else {
+          await completeBaijiahaoAutomationRun(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'publish_failed',
+            error,
+          );
+        }
       }
       const browserPublications = await transaction<{ id: string }[]>`
         UPDATE baijiahao_browser_publications SET
@@ -882,13 +890,15 @@ export class PostgresPublisherStore implements PublisherStorePort {
         RETURNING id
       `;
       if (browserPublications.length !== 1) throw stateInvalid();
-      await completeBaijiahaoDailyBatchItem(
-        transaction,
-        claim.tenantId,
-        claim.jobId,
-        manualRequired ? 'manual_required' : 'publish_failed',
-        error,
-      );
+      if (row.origin === 'baijiahao_automation') {
+        await completeBaijiahaoDailyBatchItem(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          manualRequired ? 'manual_required' : 'publish_failed',
+          error,
+        );
+      }
       await transitionVariant(
         transaction,
         claim.tenantId,
@@ -951,7 +961,7 @@ function selectBaijiahaoReconcileRow(
       ON account.id=job.account_id AND account.tenant_id=job.tenant_id
       AND account.workspace_id=package.workspace_id AND account.platform_code='baijiahao'
     WHERE job.id=${event.jobId}::uuid AND job.tenant_id=${event.tenantId}::uuid
-      AND job.origin='baijiahao_automation'
+      AND job.origin IN ('manual','baijiahao_automation')
     ${lock ? transaction`FOR UPDATE OF job, variant, package, account` : transaction``}
   `;
 }
@@ -1031,6 +1041,12 @@ function deliveryStatus(
   delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>,
 ): 'processing' | 'published' {
   return delivery.response['status'] === 'processing' ? 'processing' : 'published';
+}
+
+function isBaijiahaoBrowserOrigin(
+  origin: CompletionRow['origin'],
+): origin is 'manual' | 'baijiahao_automation' {
+  return origin === 'manual' || origin === 'baijiahao_automation';
 }
 
 function automatedReadyStatus(origin: CompletionRow['origin']): 'approved' | 'quality_passed' {
