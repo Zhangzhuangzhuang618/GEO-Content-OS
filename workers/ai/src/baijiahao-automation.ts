@@ -127,10 +127,18 @@ interface QualityQueueInput {
   readonly workspaceId: string;
 }
 
-interface IndependentQualityHandoff extends QualityQueueInput {
+interface GenerationQualityHandoff extends QualityQueueInput {
   readonly automationRunId: string;
   readonly automationVersion: number;
+  readonly sourceSimilarity: number | null;
 }
+
+const REGENERATED_CONTENT_RECOVERY_CODES = Object.freeze([
+  'ADAPTATION_EXECUTION_FAILED',
+  'CONTENT_GENERATION_FAILED_RETIRED',
+  'QUALITY_CHECK_EXECUTION_FAILED',
+  'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+]);
 
 export class BaijiahaoAutomation {
   public constructor(
@@ -145,13 +153,21 @@ export class BaijiahaoAutomation {
     variantId: string,
     contentVersionId: string,
     generatedHash: string,
+    content: GeneratedContent,
   ): Promise<void> {
     const rows = await transaction<
-      { actorUserId: string; automationRunId: string; policyId: string; version: number }[]
+      {
+        actorUserId: string;
+        automationRunId: string;
+        sourceContent: unknown | null;
+        sourceMode: 'independent' | 'official_site_derived';
+        version: number;
+      }[]
     >`
       SELECT
-        policy.created_by AS "actorUserId",policy.id AS "policyId",
-        automation.id AS "automationRunId",automation.version
+        policy.created_by AS "actorUserId",automation.id AS "automationRunId",
+        automation.source_mode AS "sourceMode",source.content_json AS "sourceContent",
+        automation.version
       FROM baijiahao_automation_runs AS automation
       JOIN baijiahao_automation_policies AS policy
         ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
@@ -162,14 +178,32 @@ export class BaijiahaoAutomation {
       JOIN platform_accounts AS account
         ON account.id=policy.account_id AND account.tenant_id=policy.tenant_id
         AND account.status='active' AND account.publish_mode='api' AND account.deleted_at IS NULL
+      LEFT JOIN content_versions AS source
+        ON source.id=automation.source_content_version_id
+        AND source.tenant_id=automation.tenant_id
       WHERE automation.tenant_id=${event.tenantId}::uuid
-        AND automation.source_mode='independent'
-        AND automation.status IN ('generation_pending','generating')
+        AND automation.publish_job_id IS NULL
+        AND (
+          automation.status IN (
+            'generation_pending','generating','adaptation_pending','adapting',
+            'quality_pending','rewrite_pending','rewriting'
+          )
+          OR (
+            automation.status IN ('manual_required','disabled')
+            AND COALESCE(automation.last_error_json->>'code','') = ANY(
+              ${transaction.array([...REGENERATED_CONTENT_RECOVERY_CODES], 25)}::text[]
+            )
+          )
+        )
       FOR UPDATE OF automation,policy
     `;
     const row = rows[0];
     if (!row) return;
-    await this.handoffIndependentQuality(transaction, {
+    const similarity =
+      row.sourceMode === 'official_site_derived'
+        ? sourceSimilarity(validateGeneratedContent(row.sourceContent, 'official_site'), content)
+        : null;
+    await this.handoffGeneratedQuality(transaction, {
       actorUserId: row.actorUserId,
       automationRunId: row.automationRunId,
       automationVersion: row.version,
@@ -178,6 +212,7 @@ export class BaijiahaoAutomation {
       packageId: event.data.packageId,
       projectId: event.data.projectId,
       requestId: boundedRequestId(`baijiahao-quality-${event.eventId}`),
+      sourceSimilarity: similarity,
       tenantId: event.tenantId,
       variantId,
       workspaceId: event.data.workspaceId,
@@ -235,9 +270,10 @@ export class BaijiahaoAutomation {
         FOR UPDATE OF automation SKIP LOCKED
       `;
       for (const row of rows) {
-        await this.handoffIndependentQuality(transaction, {
+        await this.handoffGeneratedQuality(transaction, {
           ...row,
           requestId: boundedRequestId(`baijiahao-quality-recovery-${row.automationRunId}`),
+          sourceSimilarity: null,
         });
       }
       return rows.length;
@@ -1012,7 +1048,13 @@ export class BaijiahaoAutomation {
     tenantId: string,
     variantId: string,
   ): Promise<BaijiahaoAutomationPolicy | null> {
-    const rows = await client<BaijiahaoAutomationPolicy[]>`
+    const rows = await client<
+      (Omit<BaijiahaoAutomationPolicy, 'sourceSimilarity'> & {
+        currentContent: unknown;
+        sourceContent: unknown | null;
+        sourceMode: 'independent' | 'official_site_derived';
+      })[]
+    >`
       SELECT
         policy.id,policy.account_id AS "accountId",policy.created_by AS "createdBy",
         policy.geo_total_min AS "geoTotalMin",
@@ -1024,11 +1066,20 @@ export class BaijiahaoAutomation {
         policy.publish_attempt_limit AS "publishAttemptLimit",
         policy.max_source_similarity::float8 AS "maxSourceSimilarity",
         policy.daily_schedule_times::text[] AS "scheduleTimes",
-        automation.source_similarity::float8 AS "sourceSimilarity"
+        automation.source_mode AS "sourceMode",source.content_json AS "sourceContent",
+        current.content_json AS "currentContent"
       FROM baijiahao_automation_policies AS policy
       JOIN baijiahao_automation_runs AS automation
         ON automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
         AND automation.variant_id=${variantId}::uuid
+      JOIN content_variants AS variant
+        ON variant.id=automation.variant_id AND variant.tenant_id=automation.tenant_id
+        AND variant.current_content_version_id IS NOT NULL
+      JOIN content_versions AS current
+        ON current.id=variant.current_content_version_id AND current.tenant_id=variant.tenant_id
+      LEFT JOIN content_versions AS source
+        ON source.id=automation.source_content_version_id
+        AND source.tenant_id=automation.tenant_id
       JOIN platform_accounts AS account
         ON account.id=policy.account_id AND account.tenant_id=policy.tenant_id
         AND account.workspace_id=policy.workspace_id AND account.platform_code='baijiahao'
@@ -1036,7 +1087,19 @@ export class BaijiahaoAutomation {
       WHERE policy.tenant_id=${tenantId}::uuid AND policy.enabled
       LIMIT 1
     `;
-    return rows[0] ?? null;
+    const row = rows[0];
+    if (!row) return null;
+    const { currentContent, sourceContent, sourceMode, ...policy } = row;
+    return Object.freeze({
+      ...policy,
+      sourceSimilarity:
+        sourceMode === 'official_site_derived'
+          ? sourceSimilarity(
+              validateGeneratedContent(sourceContent, 'official_site'),
+              validateGeneratedContent(currentContent, 'baijiahao'),
+            )
+          : null,
+    });
   }
 
   private async enqueueQuality(
@@ -1076,20 +1139,21 @@ export class BaijiahaoAutomation {
     await insertOutbox(transaction, event);
   }
 
-  private async handoffIndependentQuality(
+  private async handoffGeneratedQuality(
     transaction: postgres.TransactionSql,
-    input: IndependentQualityHandoff,
+    input: GenerationQualityHandoff,
   ): Promise<void> {
     const changed = await transaction<{ id: string }[]>`
       UPDATE baijiahao_automation_runs SET
         content_version_id=${input.contentVersionId}::uuid,status='quality_pending',
-        source_similarity=NULL,last_error_json=NULL,version=version+1
+        source_similarity=${input.sourceSimilarity},rewrite_count=0,
+        last_quality_report_id=NULL,publish_job_id=NULL,last_error_json=NULL,
+        finished_at=NULL,version=version+1
       WHERE id=${input.automationRunId}::uuid AND tenant_id=${input.tenantId}::uuid
-        AND source_mode='independent' AND status IN ('generation_pending','generating')
         AND version=${input.automationVersion}
       RETURNING id
     `;
-    if (changed.length !== 1) throw new Error('Independent Baijiahao automation lease was lost');
+    if (changed.length !== 1) throw new Error('Baijiahao generation quality handoff was lost');
     await transaction`
       UPDATE baijiahao_daily_batch_items SET
         status='quality_check',content_version_id=${input.contentVersionId}::uuid,

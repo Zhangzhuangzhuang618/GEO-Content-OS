@@ -207,7 +207,9 @@ export function ContentEditor() {
 
   const editable = MANUAL_EDIT_STATUSES.has(detail.variant.status);
   const regeneratable =
-    detail.variant.is_required && REGENERATE_STATUSES.has(detail.variant.status);
+    REGENERATE_STATUSES.has(detail.variant.status) &&
+    (detail.variant.is_required ||
+      (detail.variant.platform_code === 'baijiahao' && Boolean(detail.automation_run)));
   const dirty = Boolean(
     draft &&
     (JSON.stringify(draft) !== JSON.stringify(detail.current_content?.content_json ?? null) ||

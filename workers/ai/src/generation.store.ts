@@ -305,6 +305,7 @@ export class PostgresGenerationStore implements GenerationStorePort {
           claim.run.variantId,
           versionId,
           contentHash(content),
+          content,
         );
       }
     });

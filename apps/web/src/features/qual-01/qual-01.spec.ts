@@ -64,6 +64,39 @@ test('starts a full recheck and submits only a passing current report', async ({
   expect(submitted).toEqual({ variant_ids: [VARIANT_ID] });
 });
 
+test('regenerates failed content directly from its quality report', async ({ page }) => {
+  let body: unknown;
+  let ifMatch: string | undefined;
+  const base = detail('block');
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, (route) =>
+    json(route, {
+      ...base,
+      automation_run: { id: '64000000-0000-4000-8000-000000000088' },
+      current_content: {
+        ...base.current_content,
+        content_json: { ...base.current_content.content_json, platform_code: 'baijiahao' },
+      },
+      variant: {
+        ...base.variant,
+        is_required: false,
+        platform_code: 'baijiahao',
+      },
+    }),
+  );
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}/regenerate`, async (route) => {
+    body = route.request().postDataJSON();
+    ifMatch = route.request().headers()['if-match'];
+    await json(route, { id: '63000000-0000-4000-8000-000000000088' }, 202);
+  });
+  await page.goto(`/qual-01?id=${VARIANT_ID}`);
+
+  await page.getByRole('button', { name: '重新生成内容' }).click();
+  await expect(page.getByText('重新生成已开始；生成成功后系统会自动继续质量检查。')).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新生成中…' })).toBeDisabled();
+  expect(body).toEqual({ locked_block_keys: [], model_policy: 'balanced' });
+  expect(ifMatch).toBe('"4"');
+});
+
 test('offers the first quality check instead of a dead-end empty report', async ({ page }) => {
   const base = detail('block');
   const withoutReport = {

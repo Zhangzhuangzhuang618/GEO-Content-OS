@@ -30,6 +30,28 @@ export async function requestQualityCheck(variantId: string, csrf: string): Prom
   });
 }
 
+export async function regenerateQualityVariant(
+  variantId: string,
+  variantVersion: number,
+  lockedBlockKeys: readonly string[],
+  csrf: string,
+): Promise<void> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/content-variants/${variantId}/regenerate`, {
+    body: JSON.stringify({ locked_block_keys: lockedBlockKeys, model_policy: 'balanced' }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `quality-regenerate-${createRequestUuid()}`,
+      'if-match': `"${variantVersion}"`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw new QualityReportRequestError(response.status);
+  const parsed = QualityMutationResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new QualityReportRequestError(502);
+}
+
 export async function submitQualityPassedVariant(
   packageId: string,
   variantId: string,

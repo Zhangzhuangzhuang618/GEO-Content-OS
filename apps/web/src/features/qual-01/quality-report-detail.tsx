@@ -10,6 +10,7 @@ import { TechnicalDetails } from '../human-readable';
 import {
   getQualityVariantDetail,
   QualityReportRequestError,
+  regenerateQualityVariant,
   requestQualityCheck,
   submitQualityPassedVariant,
 } from './quality-report-api';
@@ -17,6 +18,13 @@ import type { QualityIssue, QualityVariantDetail } from './quality-report.schema
 
 const WRITE_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'content_editor']);
 const RECHECK_STATUSES = new Set(['generated', 'quality_failed', 'quality_passed']);
+const REGENERATE_STATUSES = new Set([
+  'generated',
+  'generation_failed',
+  'quality_failed',
+  'quality_passed',
+  'review_rejected',
+]);
 
 export function QualityReportDetail() {
   const [detail, setDetail] = useState<QualityVariantDetail | null>(null);
@@ -24,6 +32,7 @@ export function QualityReportDetail() {
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
+  const [regenerationStarted, setRegenerationStarted] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -98,6 +107,24 @@ export function QualityReportDetail() {
     );
   }
 
+  async function regenerate() {
+    if (!detail) return;
+    const started = await mutate(
+      (csrf) =>
+        regenerateQualityVariant(
+          detail.variant.id,
+          detail.variant.version,
+          detail.locks.map((lock) => lock.block_key),
+          csrf,
+        ),
+      detail.variant.platform_code === 'official_site' ||
+        detail.variant.platform_code === 'baijiahao'
+        ? '重新生成已开始；生成成功后系统会自动继续质量检查。'
+        : '重新生成已开始；完成后请重新进行质量检查。',
+    );
+    if (started) setRegenerationStarted(true);
+  }
+
   async function copyHumanReviewRequest() {
     if (!detail?.quality_report) return;
     const report = detail.quality_report;
@@ -156,6 +183,11 @@ export function QualityReportDetail() {
     );
   const canWrite = Boolean(role && WRITE_ROLES.has(role));
   const canRecheck = canWrite && RECHECK_STATUSES.has(detail.variant.status);
+  const canRegenerate =
+    canWrite &&
+    REGENERATE_STATUSES.has(detail.variant.status) &&
+    (detail.variant.is_required ||
+      (detail.variant.platform_code === 'baijiahao' && Boolean(detail.automation_run)));
   if (!detail.quality_report)
     return (
       <section className="mt-8 rounded-2xl border border-line bg-white p-8 text-center shadow-panel">
@@ -225,6 +257,16 @@ export function QualityReportDetail() {
             >
               重新检查
             </button>
+            {report.decision !== 'pass' ? (
+              <button
+                className={secondaryButton}
+                disabled={busy || regenerationStarted || !canRegenerate}
+                onClick={() => void regenerate()}
+                type="button"
+              >
+                {regenerationStarted ? '重新生成中…' : '重新生成内容'}
+              </button>
+            ) : null}
             <button
               className={primaryButton}
               disabled={busy || !canSubmit}

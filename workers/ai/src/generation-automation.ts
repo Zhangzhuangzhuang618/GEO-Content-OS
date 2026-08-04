@@ -2,7 +2,7 @@ import type postgres from 'postgres';
 
 import type { BaijiahaoAutomation } from './baijiahao-automation.js';
 import type { OfficialSiteAutomation } from './official-site-automation.js';
-import type { ValidatedGenerationEvent } from './generation.types.js';
+import type { GeneratedContent, ValidatedGenerationEvent } from './generation.types.js';
 
 export interface GenerationAutomationPort {
   queueQualityAfterGeneration(
@@ -11,6 +11,7 @@ export interface GenerationAutomationPort {
     variantId: string,
     contentVersionId: string,
     generatedHash: string,
+    content: GeneratedContent,
   ): Promise<void>;
 }
 
@@ -26,6 +27,7 @@ export class GenerationAutomationCoordinator implements GenerationAutomationPort
     variantId: string,
     contentVersionId: string,
     generatedHash: string,
+    content: GeneratedContent,
   ): Promise<void> {
     await this.officialSite.queueQualityAfterGeneration(
       transaction,
@@ -40,6 +42,7 @@ export class GenerationAutomationCoordinator implements GenerationAutomationPort
       variantId,
       contentVersionId,
       generatedHash,
+      content,
     );
   }
 }

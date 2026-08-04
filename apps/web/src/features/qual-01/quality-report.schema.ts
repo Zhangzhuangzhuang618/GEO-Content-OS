@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { CitationSchema } from '../cont-04/content-package-detail.schema';
-import { ContentVersionSchema } from '../cont-05/content-editor.schema';
+import { BlockLockSchema, ContentVersionSchema } from '../cont-05/content-editor.schema';
 import { ContentVariantSchema } from '../cont-03/content-package-list.schema';
 
 export const QualityIssueSchema = z
@@ -60,7 +60,7 @@ export const QualityVariantDetailResponseSchema = z
         automation_run: z.unknown().nullable().optional(),
         citations: z.array(CitationSchema),
         current_content: ContentVersionSchema.nullable(),
-        locks: z.array(z.unknown()),
+        locks: z.array(BlockLockSchema),
         quality_report: QualityReportSchema.nullable(),
         quality_reports: z.array(QualityReportSchema).default([]),
         variant: ContentVariantSchema,

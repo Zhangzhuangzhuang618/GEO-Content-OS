@@ -48,8 +48,19 @@ type SqlClient = IdentityAuthDatabase['client'] | TransactionSql;
 
 const RECOVERABLE_BAIJIAHAO_MANUAL_CODES: readonly string[] = [
   'ADAPTATION_EXECUTION_FAILED',
+  'CONTENT_GENERATION_FAILED_RETIRED',
   'QUALITY_CHECK_EXECUTION_FAILED',
   'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES',
+];
+
+const RECOVERABLE_BAIJIAHAO_CONTENT_STATES: readonly string[] = [
+  'adaptation_pending',
+  'adapting',
+  'generation_pending',
+  'generating',
+  'quality_pending',
+  'rewrite_pending',
+  'rewriting',
 ];
 
 export interface ContentApiAudit {
@@ -648,16 +659,16 @@ export class ContentApiService {
       throw contentStateInvalid('Variant state does not permit a quality check');
     }
     await assertNoActiveVariantRun(transaction, tenantId, variantId);
-    const baijiahaoManualRuns = await transaction<{ errorCode: string | null }[]>`
+    const baijiahaoTerminalRuns = await transaction<{ errorCode: string | null }[]>`
       SELECT automation.last_error_json->>'code' AS "errorCode"
       FROM baijiahao_automation_runs AS automation
       JOIN baijiahao_automation_policies AS policy
         ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
       WHERE automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
-        AND automation.status='manual_required' AND policy.enabled
+        AND automation.status IN ('manual_required','disabled') AND policy.enabled
     `;
     if (
-      baijiahaoManualRuns.some(
+      baijiahaoTerminalRuns.some(
         ({ errorCode }) => !RECOVERABLE_BAIJIAHAO_MANUAL_CODES.includes(errorCode ?? ''),
       )
     ) {
@@ -683,9 +694,17 @@ export class ContentApiService {
       FROM baijiahao_automation_policies AS policy
       WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
         AND automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
-        AND automation.status='manual_required' AND policy.enabled
-        AND COALESCE(automation.last_error_json->>'code','') = ANY(
-          ${transaction.array([...RECOVERABLE_BAIJIAHAO_MANUAL_CODES], 25)}::text[]
+        AND policy.enabled AND automation.publish_job_id IS NULL
+        AND (
+          automation.status = ANY(
+            ${transaction.array([...RECOVERABLE_BAIJIAHAO_CONTENT_STATES], 25)}::text[]
+          )
+          OR (
+            automation.status IN ('manual_required','disabled')
+            AND COALESCE(automation.last_error_json->>'code','') = ANY(
+              ${transaction.array([...RECOVERABLE_BAIJIAHAO_MANUAL_CODES], 25)}::text[]
+            )
+          )
         )
       RETURNING automation.id
     `;
@@ -769,7 +788,14 @@ export class ContentApiService {
     const variant = await lockVariant(transaction, tenantId, variantId);
     if (!variant) throw contentNotFound();
     if (variant.version !== expectedVersion) throw contentVersionConflict();
-    if (!variant.isRequired || !canRegenerateContentVariant(variant.status)) {
+    const recoverableAutomationVariant =
+      !variant.isRequired &&
+      variant.platformCode === 'baijiahao' &&
+      (await hasRecoverableBaijiahaoAutomation(transaction, tenantId, variantId));
+    if (
+      (!variant.isRequired && !recoverableAutomationVariant) ||
+      !canRegenerateContentVariant(variant.status)
+    ) {
       throw contentStateInvalid('Variant state does not permit regeneration');
     }
     await assertNoActivePackageRuns(transaction, tenantId, variant.packageId);
@@ -1538,6 +1564,36 @@ async function assertNoActiveVariantRun(client: SqlClient, tenantId: string, var
       AND variant_id = ${variantId}::uuid AND status IN ('queued', 'running') LIMIT 1
   `;
   if (rows.length > 0) throw contentStateInvalid('Variant has an active generation run');
+}
+
+async function hasRecoverableBaijiahaoAutomation(
+  client: SqlClient,
+  tenantId: string,
+  variantId: string,
+): Promise<boolean> {
+  const rows = await client<{ id: string }[]>`
+    SELECT automation.id
+    FROM baijiahao_automation_runs AS automation
+    JOIN baijiahao_automation_policies AS policy
+      ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
+      AND policy.enabled
+    WHERE automation.tenant_id=${tenantId}::uuid
+      AND automation.variant_id=${variantId}::uuid
+      AND automation.publish_job_id IS NULL
+      AND (
+        automation.status = ANY(
+          ${client.array([...RECOVERABLE_BAIJIAHAO_CONTENT_STATES], 25)}::text[]
+        )
+        OR (
+          automation.status IN ('manual_required','disabled')
+          AND COALESCE(automation.last_error_json->>'code','') = ANY(
+            ${client.array([...RECOVERABLE_BAIJIAHAO_MANUAL_CODES], 25)}::text[]
+          )
+        )
+      )
+    LIMIT 1
+  `;
+  return rows.length === 1;
 }
 
 const MANUAL_EDIT_STATUSES = new Set<ContentVariantStatus>([

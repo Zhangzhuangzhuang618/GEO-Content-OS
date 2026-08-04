@@ -42,6 +42,7 @@ const OTHER_BRIEF_ID = 'a2700000-0000-4000-8000-000000000145';
 const OTHER_PACKAGE_ID = 'a2800000-0000-4000-8000-000000000145';
 const OTHER_VARIANT_ID = 'a2900000-0000-4000-8000-000000000145';
 const OTHER_RUN_ID = 'a2a00000-0000-4000-8000-000000000145';
+const DERIVED_REGENERATION_VERSION_ID = 'a2b00000-0000-4000-8000-000000000145';
 const BRAND_PROFILE_ID = 'a3000000-0000-4000-8000-000000000145';
 const RULE_ID = 'a4000000-0000-4000-8000-000000000145';
 const SOURCE_ID = 'a5000000-0000-4000-8000-000000000145';
@@ -269,6 +270,7 @@ describe('Baijiahao official-site derived automation', () => {
         INDEPENDENT_VARIANT_ID,
         INDEPENDENT_VERSION_ID,
         generatedHash,
+        independentArticle(),
       ),
     );
 
@@ -301,6 +303,199 @@ describe('Baijiahao official-site derived automation', () => {
 
     await expect(automation.recoverGeneratedIndependentCandidates()).resolves.toBe(1);
     await expect(automation.recoverGeneratedIndependentCandidates()).resolves.toBe(0);
+
+    await expectIndependentQualityQueued(database);
+  });
+
+  it('reattaches a regenerated derived candidate and recalculates source similarity', async () => {
+    const database = requireClient(client);
+    const automation = createAutomation(database);
+    await automation.handlePublishedSource(publishedEvent());
+    const runs = await database<{ id: string; variantId: string }[]>`
+      SELECT id,variant_id AS "variantId" FROM baijiahao_automation_runs
+      WHERE source_mode='official_site_derived'
+    `;
+    const run = runs[0];
+    if (!run) throw new Error('Derived Baijiahao automation run was not created');
+    const content = Object.freeze({ ...ARTICLE, platform_code: 'baijiahao' as const });
+    const hash = contentHash(content);
+    await database`
+      INSERT INTO content_versions(
+        id,tenant_id,package_id,variant_id,version_no,schema_version,
+        content_json,content_hash,created_by
+      ) VALUES(
+        ${DERIVED_REGENERATION_VERSION_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,
+        ${run.variantId}::uuid,1,${content.schema_version},
+        ${database.json(content)},${hash},${USER_ID}::uuid
+      )
+    `;
+    await database`
+      UPDATE content_variants SET
+        current_content_version_id=${DERIVED_REGENERATION_VERSION_ID}::uuid,status='generated'
+      WHERE id=${run.variantId}::uuid
+    `;
+
+    await database.begin((transaction) =>
+      automation.queueQualityAfterGeneration(
+        transaction,
+        independentGenerationEvent(),
+        run.variantId,
+        DERIVED_REGENERATION_VERSION_ID,
+        hash,
+        content,
+      ),
+    );
+
+    expect(
+      await database<
+        { contentVersionId: string; itemStatus: string; similarity: number; status: string }[]
+      >`
+        SELECT automation.status,automation.content_version_id AS "contentVersionId",
+          automation.source_similarity::float8 AS similarity,item.status AS "itemStatus"
+        FROM baijiahao_automation_runs AS automation
+        JOIN baijiahao_daily_batch_items AS item
+          ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+        WHERE automation.id=${run.id}::uuid
+      `,
+    ).toEqual([
+      {
+        contentVersionId: DERIVED_REGENERATION_VERSION_ID,
+        itemStatus: 'quality_check',
+        similarity: 1,
+        status: 'quality_pending',
+      },
+    ]);
+    await expect(
+      automation.loadGatePolicy(database, TENANT_ID, run.variantId),
+    ).resolves.toMatchObject({ sourceSimilarity: 1 });
+  });
+
+  it('reattaches a manually regenerated candidate retired after generation failure', async () => {
+    const database = requireClient(client);
+    const generatedHash = await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE baijiahao_automation_runs SET
+        status='disabled',last_error_json=${database.json({
+          code: 'CONTENT_GENERATION_FAILED_RETIRED',
+          schema_version: 'baijiahao-automation-error@1',
+        })},finished_at=now()
+      WHERE id=${INDEPENDENT_RUN_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_daily_batch_items SET status='retired'
+      WHERE id=${INDEPENDENT_ITEM_ID}::uuid
+    `;
+
+    await database.begin((transaction) =>
+      createAutomation(database).queueQualityAfterGeneration(
+        transaction,
+        independentGenerationEvent(),
+        INDEPENDENT_VARIANT_ID,
+        INDEPENDENT_VERSION_ID,
+        generatedHash,
+        independentArticle(),
+      ),
+    );
+
+    await expectIndependentQualityQueued(database);
+  });
+
+  it('allows a recoverable non-required automation candidate to be regenerated', async () => {
+    const database = requireClient(client);
+    await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE content_variants SET status='generation_failed'
+      WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_automation_runs SET
+        status='disabled',last_error_json=${database.json({
+          code: 'CONTENT_GENERATION_FAILED_RETIRED',
+          schema_version: 'baijiahao-automation-error@1',
+        })},finished_at=now()
+      WHERE id=${INDEPENDENT_RUN_ID}::uuid
+    `;
+    const variants = await database<{ version: number }[]>`
+      SELECT version FROM content_variants WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+    `;
+    const service = new ContentApiService(
+      { client: database } as IdentityAuthDatabase,
+      new OutboxWriter(database as never),
+    );
+    const previousEnvironment = {
+      model: process.env['CONTENT_MODEL_BALANCED_KEY'],
+      prompt: process.env['CONTENT_WRITER_PROMPT_VERSION_ID'],
+      version: process.env['CONTENT_WRITER_SKILL_VERSION'],
+    };
+    process.env['CONTENT_MODEL_BALANCED_KEY'] = 'deepseek-v4-flash';
+    process.env['CONTENT_WRITER_PROMPT_VERSION_ID'] = WRITER_PROMPT_ID;
+    process.env['CONTENT_WRITER_SKILL_VERSION'] = '1.0.0';
+    try {
+      await database.begin((transaction) =>
+        service.regenerateVariant(
+          transaction,
+          TENANT_ID,
+          USER_ID,
+          INDEPENDENT_VARIANT_ID,
+          variants[0]?.version ?? 0,
+          { locked_block_keys: [], model_policy: 'balanced' },
+          { requestId: 'baijiahao-non-required-regeneration' },
+        ),
+      );
+    } finally {
+      restoreEnvironment('CONTENT_MODEL_BALANCED_KEY', previousEnvironment.model);
+      restoreEnvironment('CONTENT_WRITER_PROMPT_VERSION_ID', previousEnvironment.prompt);
+      restoreEnvironment('CONTENT_WRITER_SKILL_VERSION', previousEnvironment.version);
+    }
+
+    expect(
+      await database<{ events: number; status: string }[]>`
+        SELECT variant.status,
+          (
+            SELECT count(*)::integer FROM outbox_events
+            WHERE event_type='content.package.generation_requested.v1'
+              AND aggregate_id=${PACKAGE_ID}::uuid
+          ) AS events
+        FROM content_variants AS variant WHERE variant.id=${INDEPENDENT_VARIANT_ID}::uuid
+      `,
+    ).toEqual([{ events: 1, status: 'generating' }]);
+  });
+
+  it('reattaches a stale automation run before a user-requested quality check', async () => {
+    const database = requireClient(client);
+    const generatedHash = await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE content_variants SET status='quality_failed'
+      WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
+    `;
+    const service = new ContentApiService(
+      { client: database } as IdentityAuthDatabase,
+      new OutboxWriter(database as never),
+    );
+    const previousEnvironment = {
+      model: process.env['QUALITY_CHECKER_MODEL_KEY'],
+      prompt: process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'],
+      version: process.env['QUALITY_CHECKER_SKILL_VERSION'],
+    };
+    process.env['QUALITY_CHECKER_MODEL_KEY'] = 'deepseek-v4-flash';
+    process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'] = QUALITY_PROMPT_ID;
+    process.env['QUALITY_CHECKER_SKILL_VERSION'] = '1.0.0';
+    try {
+      await database.begin((transaction) =>
+        service.requestQualityCheck(
+          transaction,
+          TENANT_ID,
+          USER_ID,
+          INDEPENDENT_VARIANT_ID,
+          generatedHash,
+          { requestId: 'baijiahao-stale-quality-recovery' },
+        ),
+      );
+    } finally {
+      restoreEnvironment('QUALITY_CHECKER_MODEL_KEY', previousEnvironment.model);
+      restoreEnvironment('QUALITY_CHECKER_PROMPT_VERSION_ID', previousEnvironment.prompt);
+      restoreEnvironment('QUALITY_CHECKER_SKILL_VERSION', previousEnvironment.version);
+    }
 
     await expectIndependentQualityQueued(database);
   });
@@ -766,11 +961,7 @@ async function seed(database: Sql, content: GeneratedContent): Promise<void> {
 }
 
 async function seedGeneratedIndependentCandidate(database: Sql): Promise<string> {
-  const content = Object.freeze({
-    ...ARTICLE,
-    platform_code: 'baijiahao' as const,
-    title: '广州搬家前如何系统准备',
-  });
+  const content = independentArticle();
   const hash = contentHash(content);
   await database`
     UPDATE baijiahao_automation_policies SET independent_fallback_enabled=true
@@ -825,6 +1016,14 @@ async function seedGeneratedIndependentCandidate(database: Sql): Promise<string>
     )
   `;
   return hash;
+}
+
+function independentArticle(): GeneratedContent {
+  return Object.freeze({
+    ...ARTICLE,
+    platform_code: 'baijiahao' as const,
+    title: '广州搬家前如何系统准备',
+  });
 }
 
 async function seedOtherInProgressAutomation(database: Sql): Promise<void> {
