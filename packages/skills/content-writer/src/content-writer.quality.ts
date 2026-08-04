@@ -56,9 +56,14 @@ export function assessContentWriterData(
   data: ContentWriterData,
   policy: ContentGenerationPolicy,
 ): ContentQualityAssessment {
-  const issues = [data.master_content, ...data.variants].flatMap((content) =>
-    assessContent(content, policy),
-  );
+  return assessContentWriterContents([data.master_content, ...data.variants], policy);
+}
+
+export function assessContentWriterContents(
+  contents: readonly ContentWriterContent[],
+  policy: ContentGenerationPolicy,
+): ContentQualityAssessment {
+  const issues = contents.flatMap((content) => assessContent(content, policy));
   return Object.freeze({ issues: Object.freeze(issues), passed: issues.length === 0 });
 }
 

@@ -16,6 +16,14 @@ import { createRuntimeModels } from './runtime-model.js';
 
 const MASTER_RUN = '70000000-0000-4000-8000-000000000061';
 const VARIANT_RUN = '71000000-0000-4000-8000-000000000061';
+const GENERIC_PLATFORM_CASES = [
+  ['baijiahao', 850],
+  ['toutiao', 850],
+  ['zhihu', 1_100],
+  ['xiaohongshu', 500],
+  ['wechat_mp', 1_300],
+  ['douyin', 420],
+] as const;
 
 describe('AI Worker runtime wiring', () => {
   it('runs Content Writer once and reuses its platform variants', async () => {
@@ -218,14 +226,7 @@ describe('AI Worker runtime wiring', () => {
     );
   });
 
-  it.each([
-    ['baijiahao', 850],
-    ['toutiao', 850],
-    ['zhihu', 1_100],
-    ['xiaohongshu', 500],
-    ['wechat_mp', 1_300],
-    ['douyin', 420],
-  ] as const)(
+  it.each(GENERIC_PLATFORM_CASES)(
     'keeps a short %s version and appends targeted expansion blocks',
     async (platformCode, minimumCharacters) => {
       const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
@@ -278,10 +279,51 @@ describe('AI Worker runtime wiring', () => {
     },
   );
 
+  it.each(GENERIC_PLATFORM_CASES)(
+    'does not block a single %s generation on the hidden master length target',
+    async (platformCode) => {
+      const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+      const data = multiPlatformContentData([platformCode], new Set(), true);
+      const adapter = new LooseMockAdapter([{ text: JSON.stringify(data) }], 'deepseek-v4-pro');
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-pro', adapter]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      );
+      const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, [platformCode]);
+      const qualityContext = {
+        ...context(MASTER_RUN, null),
+        modelKey: 'deepseek-v4-pro',
+        modelPolicy: 'quality' as const,
+      };
+      const master = await writer.generateMaster({
+        context: qualityContext,
+        requestId: `runtime-${platformCode}-hidden-master-0061`,
+        writerInput,
+      });
+      const variant = await writer.generateVariant({
+        context: { ...qualityContext, runId: VARIANT_RUN },
+        masterContent: master,
+        platformCode,
+        requestId: `runtime-${platformCode}-hidden-master-variant-0061`,
+        writerInput,
+      });
+
+      expect(readableContentCharacters(master)).toBeLessThan(1_300);
+      expect(variant.platform_code).toBe(platformCode);
+      expect(adapter.requests).toHaveLength(1);
+    },
+  );
+
   it('does not overwrite qualified variants while expanding another platform', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const platforms = ['baijiahao', 'xiaohongshu'] as const;
-    const data = multiPlatformContentData(platforms, new Set<ContentPlatformCode>(['baijiahao']));
+    const data = multiPlatformContentData(
+      platforms,
+      new Set<ContentPlatformCode>(['baijiahao']),
+      true,
+    );
     const qualifiedXiaohongshu = data.variants[1]!;
     const adapter = new LooseMockAdapter(
       [{ text: JSON.stringify(data) }, { text: JSON.stringify(platformExpansionDraft()) }],
@@ -319,6 +361,7 @@ describe('AI Worker runtime wiring', () => {
       writerInput,
     });
 
+    expect(readableContentCharacters(master)).toBeLessThan(1_300);
     expect(readableContentCharacters(baijiahao)).toBeGreaterThanOrEqual(850);
     expect(xiaohongshu).toMatchObject(qualifiedXiaohongshu);
     expect(adapter.requests).toHaveLength(2);
@@ -504,9 +547,10 @@ function multiPlatformWriterInput(
 function multiPlatformContentData(
   platformCodes: readonly ContentPlatformCode[],
   shortPlatforms: ReadonlySet<ContentPlatformCode>,
+  shortMaster = false,
 ) {
   return {
-    master_content: platformContent('master', false),
+    master_content: platformContent('master', shortMaster),
     variants: platformCodes.map((platformCode) =>
       platformContent(platformCode, shortPlatforms.has(platformCode)),
     ),

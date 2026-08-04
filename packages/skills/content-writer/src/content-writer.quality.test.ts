@@ -2,7 +2,7 @@ import type { ContentWriterContent, ContentWriterData } from '@geo-content-os/co
 import { describe, expect, it } from 'vitest';
 
 import { CONTENT_WRITER_CONTRACT_V1 } from '../contracts/v1.0.0/index.js';
-import { assessContentWriterData } from './content-writer.quality.js';
+import { assessContentWriterContents, assessContentWriterData } from './content-writer.quality.js';
 
 describe('Content Writer semantic quality gate', () => {
   it('rejects schema-valid but materially thin content', () => {
@@ -25,6 +25,20 @@ describe('Content Writer semantic quality gate', () => {
     };
 
     expect(assessContentWriterData(data, 'quality')).toEqual({ issues: [], passed: true });
+  });
+
+  it('can assess publishable variants without applying the hidden master length target', () => {
+    const shortMaster = complete('master', 1);
+    const publishable = complete('baijiahao', 75);
+
+    expect(
+      assessContentWriterData({ master_content: shortMaster, variants: [publishable] }, 'quality')
+        .issues,
+    ).toEqual(expect.arrayContaining([expect.stringContaining('master:正文仅')]));
+    expect(assessContentWriterContents([publishable], 'quality')).toEqual({
+      issues: [],
+      passed: true,
+    });
   });
 
   it('rejects unsupported outcome guarantees even when the article is long', () => {

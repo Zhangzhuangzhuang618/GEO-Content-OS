@@ -20,6 +20,7 @@ import {
 } from '@geo-content-os/contracts/skills';
 import {
   assessContentWriterData,
+  assessContentWriterContents,
   CONTENT_WRITER_SYSTEM_PROMPT_V1,
   ContentWriterSkill,
   type ContentWriterPublishedPrompt,
@@ -563,7 +564,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
     let output = result.output;
-    let assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+    let assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
     let companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
     if (companyIssues.length === 0 && (assessment.passed || input.context.modelPolicy === 'fast')) {
       return output;
@@ -571,7 +572,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     let shortfalls = contentLengthShortfalls(assessment.issues);
     if (companyIssues.length === 0 && shortfalls) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
-      assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+      assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
       companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
       if (assessment.passed && companyIssues.length === 0) return output;
       throw new GenerationWorkerError(
@@ -588,12 +589,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
       },
     });
     output = result.output;
-    assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+    assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
     companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
     shortfalls = contentLengthShortfalls(assessment.issues);
     if (companyIssues.length === 0 && shortfalls) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
-      assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+      assessment = assessContentWriterContents(output.data.variants, input.context.modelPolicy);
       companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
     }
     if (!assessment.passed || companyIssues.length > 0) {
