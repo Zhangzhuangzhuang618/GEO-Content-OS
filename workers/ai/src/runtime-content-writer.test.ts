@@ -10,7 +10,7 @@ import type postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
 
 import { readAiWorkerConfig } from './config.js';
-import type { ContentWriterRunContext, JsonObject } from './generation.types.js';
+import type { ContentWriterRunContext, GeneratedContent, JsonObject } from './generation.types.js';
 import { RuntimeContentWriter } from './runtime-content-writer.js';
 import { createRuntimeModels } from './runtime-model.js';
 
@@ -54,6 +54,49 @@ describe('AI Worker runtime wiring', () => {
     expect(master.platform_code).toBe('master');
     expect(variant.platform_code).toBe('xiaohongshu');
     expect(recordUsage).toHaveBeenCalledOnce();
+  });
+
+  it('includes trusted quality diagnostics in a generic platform rewrite', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(fixture.output.data) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const issue = '质量问题 BLOCK FORMAT_DIRECT_ANSWER；位置：intro；修改建议：首段直接回答';
+
+    await writer.generateMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-quality-rewrite-0061',
+      revision: {
+        candidate: {
+          master_content: {
+            ...fixture.output.data.master_content,
+            schema_version: 'content-writer-data@1',
+          } as unknown as GeneratedContent,
+          variants: fixture.output.data.variants.map(
+            (variant) =>
+              ({
+                ...variant,
+                schema_version: 'content-writer-data@1',
+              }) as unknown as GeneratedContent,
+          ),
+        },
+        contentVersionId: '82000000-0000-4000-8000-000000000061',
+        issues: [issue],
+        qualityReportId: '83000000-0000-4000-8000-000000000061',
+      },
+      writerInput: fixture.input as JsonObject,
+    });
+
+    expect(adapter.requests[0]?.messages.map((message) => message.content).join('\n')).toContain(
+      issue,
+    );
   });
 
   it('makes one fresh low-temperature attempt after structured output repair fails', async () => {
@@ -410,14 +453,17 @@ describe('AI Worker runtime wiring', () => {
       writerInput,
     });
 
-    await writer.rewriteOfficialSiteVariant({
+    await writer.generateOfficialSiteMaster({
       context: rewriteContext,
-      currentContent: variant,
-      issues: [
-        '质量问题 BLOCK fact.high_risk.unsupported；位置：claim:scope-detail；修改建议：删除无证据事实',
-      ],
-      masterContent: master,
       requestId: 'runtime-official-rewrite-0061',
+      revision: {
+        candidate: { master_content: master, variants: [variant] },
+        contentVersionId: '82000000-0000-4000-8000-000000000061',
+        issues: [
+          '质量问题 BLOCK fact.high_risk.unsupported；位置：claim:scope-detail；修改建议：删除无证据事实',
+        ],
+        qualityReportId: '83000000-0000-4000-8000-000000000061',
+      },
       writerInput,
     });
 

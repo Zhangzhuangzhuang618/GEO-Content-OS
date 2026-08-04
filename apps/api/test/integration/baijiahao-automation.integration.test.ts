@@ -43,6 +43,8 @@ const OTHER_PACKAGE_ID = 'a2800000-0000-4000-8000-000000000145';
 const OTHER_VARIANT_ID = 'a2900000-0000-4000-8000-000000000145';
 const OTHER_RUN_ID = 'a2a00000-0000-4000-8000-000000000145';
 const DERIVED_REGENERATION_VERSION_ID = 'a2b00000-0000-4000-8000-000000000145';
+const MANUAL_QUALITY_RUN_ID = 'a2c00000-0000-4000-8000-000000000145';
+const MANUAL_QUALITY_REPORT_ID = 'a2d00000-0000-4000-8000-000000000145';
 const BRAND_PROFILE_ID = 'a3000000-0000-4000-8000-000000000145';
 const RULE_ID = 'a4000000-0000-4000-8000-000000000145';
 const SOURCE_ID = 'a5000000-0000-4000-8000-000000000145';
@@ -415,6 +417,52 @@ describe('Baijiahao official-site derived automation', () => {
         })},finished_at=now()
       WHERE id=${INDEPENDENT_RUN_ID}::uuid
     `;
+    await database`
+      INSERT INTO generation_runs(
+        id,tenant_id,workspace_id,project_id,package_id,variant_id,
+        skill_name,skill_version,prompt_version_id,model_key,status,
+        input_hash,request_id,started_at,finished_at
+      ) VALUES(
+        ${MANUAL_QUALITY_RUN_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+        ${PROJECT_ID}::uuid,${PACKAGE_ID}::uuid,${INDEPENDENT_VARIANT_ID}::uuid,
+        'quality-checker','1.0.0',${WRITER_PROMPT_ID}::uuid,'deepseek-v4-flash','succeeded',
+        ${'e'.repeat(64)},'manual-quality-report',now(),now()
+      )
+    `;
+    await database`
+      INSERT INTO quality_reports(
+        id,tenant_id,variant_id,content_version_id,generation_run_id,
+        checker_version,score,decision,issues_json,geo_scores_json
+      ) VALUES(
+        ${MANUAL_QUALITY_REPORT_ID}::uuid,${TENANT_ID}::uuid,
+        ${INDEPENDENT_VARIANT_ID}::uuid,${INDEPENDENT_VERSION_ID}::uuid,
+        ${MANUAL_QUALITY_RUN_ID}::uuid,'1.0.0',72,'block',
+        ${database.json({
+          issues: [
+            {
+              category: 'format',
+              citation_ids: [],
+              location: 'intro',
+              message: '开头没有直接回答问题',
+              rule_id: 'FORMAT_DIRECT_ANSWER',
+              severity: 'BLOCK',
+              suggestion: '在首段直接回答标题问题。',
+            },
+          ],
+          schema_version: 'quality-checker-data@1',
+        })},
+        ${database.json({
+          answerability: 72,
+          entity: 90,
+          evidence: 90,
+          platform_fit: 80,
+          question: 72,
+          readability_safety: 90,
+          schema_version: 'geo-scores@1',
+          total: 72,
+        })}
+      )
+    `;
     const variants = await database<{ version: number }[]>`
       SELECT version FROM content_variants WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
     `;
@@ -438,7 +486,11 @@ describe('Baijiahao official-site derived automation', () => {
           USER_ID,
           INDEPENDENT_VARIANT_ID,
           variants[0]?.version ?? 0,
-          { locked_block_keys: [], model_policy: 'balanced' },
+          {
+            locked_block_keys: [],
+            model_policy: 'balanced',
+            quality_report_id: MANUAL_QUALITY_REPORT_ID,
+          },
           { requestId: 'baijiahao-non-required-regeneration' },
         ),
       );
@@ -459,6 +511,22 @@ describe('Baijiahao official-site derived automation', () => {
         FROM content_variants AS variant WHERE variant.id=${INDEPENDENT_VARIANT_ID}::uuid
       `,
     ).toEqual([{ events: 1, status: 'generating' }]);
+    const events = await database<{ revision: Record<string, unknown> }[]>`
+      SELECT payload_json->'data'->'revision' AS revision
+      FROM outbox_events
+      WHERE event_type='content.package.generation_requested.v1'
+        AND aggregate_id=${PACKAGE_ID}::uuid
+      ORDER BY created_at DESC LIMIT 1
+    `;
+    expect(events[0]?.revision).toMatchObject({
+      candidate: {
+        master_content: { platform_code: 'master' },
+        variants: [{ platform_code: 'baijiahao' }],
+      },
+      content_version_id: INDEPENDENT_VERSION_ID,
+      issues: [expect.stringContaining('FORMAT_DIRECT_ANSWER')],
+      quality_report_id: MANUAL_QUALITY_REPORT_ID,
+    });
   });
 
   it('reattaches a stale automation run before a user-requested quality check', async () => {

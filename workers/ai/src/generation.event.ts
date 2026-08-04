@@ -1,8 +1,13 @@
-import { DomainEventEnvelopeSchema, PLATFORM_CODES } from '@geo-content-os/contracts';
+import {
+  ContentDocumentSchema,
+  DomainEventEnvelopeSchema,
+  PLATFORM_CODES,
+} from '@geo-content-os/contracts';
 
 import { GenerationWorkerError } from './generation.errors.js';
 import type {
   GenerationEventData,
+  GeneratedContent,
   JsonObject,
   ValidatedGenerationEvent,
   VariantGenerationRun,
@@ -23,12 +28,15 @@ const DATA_KEYS = new Set([
   'project_id',
   'prompt_version_id',
   'request_id',
+  'revision',
   'skill_version',
   'variant_runs',
   'workspace_id',
   'writer_input',
 ]);
 const VARIANT_KEYS = new Set(['platform_code', 'run_id', 'variant_id']);
+const REVISION_KEYS = new Set(['candidate', 'content_version_id', 'issues', 'quality_report_id']);
+const REVISION_CANDIDATE_KEYS = new Set(['master_content', 'variants']);
 const PLATFORM_SET = new Set<string>(PLATFORM_CODES);
 
 export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent {
@@ -47,6 +55,7 @@ export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent 
   const packageId = string(data.package_id);
   const modelPolicy = data.model_policy === undefined ? 'balanced' : string(data.model_policy);
   const variantRuns = parseVariantRuns(data.variant_runs);
+  const revision = parseRevision(data.revision, variantRuns);
   const writerInput = data.writer_input;
   if (
     !UUID.test(packageId) ||
@@ -78,6 +87,7 @@ export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent 
     projectId: string(data.project_id),
     promptVersionId: string(data.prompt_version_id),
     requestId: string(data.request_id),
+    ...(revision ? { revision } : {}),
     skillVersion: string(data.skill_version),
     variantRuns: Object.freeze(variantRuns),
     workspaceId: string(data.workspace_id),
@@ -88,6 +98,52 @@ export function validateGenerationEvent(raw: unknown): ValidatedGenerationEvent 
     eventId: event.event_id,
     occurredAt: event.occurred_at,
     tenantId: event.tenant.id,
+  });
+}
+
+function parseRevision(
+  value: unknown,
+  variantRuns: readonly VariantGenerationRun[],
+): GenerationEventData['revision'] {
+  if (value === undefined) return undefined;
+  if (
+    !isRecord(value) ||
+    Object.keys(value).some((key) => !REVISION_KEYS.has(key)) ||
+    !UUID.test(string(value.quality_report_id)) ||
+    !UUID.test(string(value.content_version_id)) ||
+    !Array.isArray(value.issues) ||
+    value.issues.length < 1 ||
+    value.issues.length > 50 ||
+    value.issues.some(
+      (issue) => typeof issue !== 'string' || issue.trim().length < 1 || issue.length > 4_000,
+    ) ||
+    containsTenantId(value) ||
+    !isRecord(value.candidate) ||
+    Object.keys(value.candidate).some((key) => !REVISION_CANDIDATE_KEYS.has(key)) ||
+    variantRuns.length !== 1 ||
+    !Array.isArray(value.candidate.variants) ||
+    value.candidate.variants.length !== 1
+  ) {
+    throw invalidEvent();
+  }
+  const master = ContentDocumentSchema.safeParse(value.candidate.master_content);
+  const variant = ContentDocumentSchema.safeParse(value.candidate.variants[0]);
+  if (
+    !master.success ||
+    !variant.success ||
+    master.data.platform_code !== 'master' ||
+    variant.data.platform_code !== variantRuns[0]?.platformCode
+  ) {
+    throw invalidEvent();
+  }
+  return Object.freeze({
+    candidate: Object.freeze({
+      master_content: master.data as unknown as GeneratedContent,
+      variants: Object.freeze([variant.data as unknown as GeneratedContent]),
+    }),
+    contentVersionId: string(value.content_version_id),
+    issues: Object.freeze(value.issues.map((issue) => (issue as string).trim())),
+    qualityReportId: string(value.quality_report_id),
   });
 }
 

@@ -50,6 +50,74 @@ describe('Generation event validation', () => {
     });
   });
 
+  it('accepts one server-validated quality revision for the target platform', () => {
+    const event = {
+      ...EVENT,
+      data: {
+        ...EVENT.data,
+        revision: {
+          candidate: {
+            master_content: content('master'),
+            variants: [content('zhihu')],
+          },
+          content_version_id: '82000000-0000-4000-8000-000000000053',
+          issues: ['质量问题 BLOCK FORMAT；位置：intro；问题：缺少直接回答'],
+          quality_report_id: '83000000-0000-4000-8000-000000000053',
+        },
+      },
+    };
+
+    expect(validateGenerationEvent(event).data.revision).toMatchObject({
+      contentVersionId: '82000000-0000-4000-8000-000000000053',
+      qualityReportId: '83000000-0000-4000-8000-000000000053',
+    });
+  });
+
+  it('rejects a quality revision for a different platform', () => {
+    expect(() =>
+      validateGenerationEvent({
+        ...EVENT,
+        data: {
+          ...EVENT.data,
+          revision: {
+            candidate: {
+              master_content: content('master'),
+              variants: [content('baijiahao')],
+            },
+            content_version_id: '82000000-0000-4000-8000-000000000053',
+            issues: ['修复格式问题'],
+            quality_report_id: '83000000-0000-4000-8000-000000000053',
+          },
+        },
+      }),
+    ).toThrow('Generation event is invalid');
+  });
+
+  it('rejects tenant scope hidden inside a quality revision', () => {
+    expect(() =>
+      validateGenerationEvent({
+        ...EVENT,
+        data: {
+          ...EVENT.data,
+          revision: {
+            candidate: {
+              master_content: content('master'),
+              variants: [
+                {
+                  ...content('zhihu'),
+                  platform_meta: { tenant_id: EVENT.tenant.id },
+                },
+              ],
+            },
+            content_version_id: '82000000-0000-4000-8000-000000000053',
+            issues: ['修复格式问题'],
+            quality_report_id: '83000000-0000-4000-8000-000000000053',
+          },
+        },
+      }),
+    ).toThrow('Generation event is invalid');
+  });
+
   it('rejects model-visible tenant scope and unknown data fields', () => {
     expect(() =>
       validateGenerationEvent({
@@ -83,3 +151,17 @@ describe('Generation event validation', () => {
     ).toThrow('Generation event is invalid');
   });
 });
+
+function content(platformCode: 'baijiahao' | 'master' | 'zhihu') {
+  return {
+    blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '正文' }],
+    citation_map: [],
+    cta: null,
+    hashtags: [],
+    platform_code: platformCode,
+    platform_meta: {},
+    schema_version: 'content-writer-data@1',
+    summary: '摘要',
+    title: '质量报告重写测试',
+  };
+}

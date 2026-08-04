@@ -132,6 +132,7 @@ export const RegenerateVariantRequestSchema = z
   .object({
     locked_block_keys: UniqueBlockKeyListSchema.default([]),
     model_policy: z.enum(['fast', 'balanced', 'quality']).default('balanced'),
+    quality_report_id: UuidSchema.optional(),
   })
   .strict();
 

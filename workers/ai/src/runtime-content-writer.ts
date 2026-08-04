@@ -43,6 +43,7 @@ import { GenerationWorkerError } from './generation.errors.js';
 import type {
   ContentWriterPort,
   ContentWriterRunContext,
+  GenerationRevision,
   GeneratedContent,
   JsonObject,
 } from './generation.types.js';
@@ -82,6 +83,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
   public async generateMaster(input: {
     readonly context: ContentWriterRunContext;
     readonly requestId: string;
+    readonly revision?: GenerationRevision;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
@@ -127,10 +129,23 @@ export class RuntimeContentWriter implements ContentWriterPort {
   public async generateOfficialSiteMaster(input: {
     readonly context: ContentWriterRunContext;
     readonly requestId: string;
+    readonly revision?: GenerationRevision;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
-    const article = await this.executeOfficialSiteArticle(input);
+    const current = input.revision?.candidate.variants.find(
+      (candidate) => candidate.platform_code === 'official_site',
+    );
+    if (input.revision && !current) {
+      throw new GenerationWorkerError(
+        'GENERATED_CONTENT_INVALID',
+        'Official-site quality rewrite is missing current content',
+      );
+    }
+    const article = await this.executeOfficialSiteArticle(
+      input,
+      current && input.revision ? { candidate: current, issues: input.revision.issues } : undefined,
+    );
     return officialSiteArticleContent(article, 'master', input.writerInput);
   }
 
@@ -488,6 +503,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
   private start(input: {
     readonly context: ContentWriterRunContext;
     readonly requestId: string;
+    readonly revision?: GenerationRevision;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): CachedRun {
@@ -499,7 +515,20 @@ export class RuntimeContentWriter implements ContentWriterPort {
     }
     const platforms = requestedPlatforms(input.writerInput);
     const cached: CachedRun = {
-      output: this.execute(input),
+      output: this.execute(
+        input,
+        input.revision
+          ? {
+              candidate: {
+                master_content: input.revision.candidate
+                  .master_content as unknown as ContentWriterData['master_content'],
+                variants: input.revision.candidate
+                  .variants as unknown as ContentWriterData['variants'],
+              },
+              issues: input.revision.issues,
+            }
+          : undefined,
+      ),
       remaining: new Set(platforms),
     };
     this.runs.set(input.context.batchKey, cached);

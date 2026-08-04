@@ -55,6 +55,46 @@ describe('ContentGenerationWorker official-site direct flow', () => {
     expect(genericVariant).not.toHaveBeenCalled();
   });
 
+  it('passes quality diagnostics through the staged official-site writer', async () => {
+    const store = new FakeStore();
+    const genericMaster = vi.fn(async () => CONTENT);
+    const genericVariant = vi.fn(async () => OFFICIAL_CONTENT);
+    const directMaster = vi.fn(async () => CONTENT);
+    const writer: ContentWriterPort = {
+      generateMaster: genericMaster,
+      generateOfficialSiteMaster: directMaster,
+      generateVariant: genericVariant,
+    };
+    const baseEvent = event();
+    const qualityEvent = {
+      ...baseEvent,
+      data: {
+        ...baseEvent.data,
+        revision: {
+          candidate: {
+            master_content: CONTENT,
+            variants: [OFFICIAL_CONTENT],
+          },
+          content_version_id: '82000000-0000-4000-8000-000000000053',
+          issues: ['质量问题 BLOCK FORMAT；位置：intro；问题：格式不符'],
+          quality_report_id: '83000000-0000-4000-8000-000000000053',
+        },
+      },
+    };
+
+    await new ContentGenerationWorker(store, writer, 1, 1_000).run(qualityEvent);
+
+    expect(genericMaster).not.toHaveBeenCalled();
+    expect(directMaster).toHaveBeenCalledWith(
+      expect.objectContaining({
+        revision: expect.objectContaining({
+          issues: ['质量问题 BLOCK FORMAT；位置：intro；问题：格式不符'],
+          qualityReportId: '83000000-0000-4000-8000-000000000053',
+        }),
+      }),
+    );
+  });
+
   it('logs safe identifiers and the underlying variant error for diagnosis', async () => {
     const store = new FakeStore();
     const logger = vi.spyOn(console, 'error').mockImplementation(() => undefined);

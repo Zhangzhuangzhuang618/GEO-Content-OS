@@ -1,13 +1,14 @@
-import type {
-  ContentDocument as ApiContentDocument,
-  ContentPackageQuery,
-  ContentVariantStatus,
-  CreateContentPackageRequest,
-  DomainEventEnvelope,
-  GenerateContentRequest,
-  PlatformCode,
-  RegenerateVariantRequest,
-  ReopenVariantsRequest,
+import {
+  ContentDocumentSchema,
+  type ContentDocument as ApiContentDocument,
+  type ContentPackageQuery,
+  type ContentVariantStatus,
+  type CreateContentPackageRequest,
+  type DomainEventEnvelope,
+  type GenerateContentRequest,
+  type PlatformCode,
+  type RegenerateVariantRequest,
+  type ReopenVariantsRequest,
 } from '@geo-content-os/contracts';
 import {
   createEmbeddingAdapter,
@@ -95,6 +96,15 @@ interface QualityReportRow {
   readonly score: string;
   readonly tenantId: string;
   readonly variantId: string;
+}
+
+interface QualityRewriteSource {
+  readonly content: ApiContentDocument;
+  readonly report: QualityReportRow;
+}
+
+interface QualityRewriteRow extends QualityReportRow {
+  readonly content: unknown;
 }
 
 interface GenerationRuntime {
@@ -808,9 +818,25 @@ export class ContentApiService {
       input.locked_block_keys,
       [variant.platformCode],
     );
+    const revision = input.quality_report_id
+      ? await loadQualityRewriteSource(
+          transaction,
+          tenantId,
+          variantId,
+          variant.currentContentVersionId,
+          variant.platformCode,
+          input.quality_report_id,
+        )
+      : null;
     const targetAccountId = generationTargetAccountId(writerInput, variant.platformCode);
     const inputHash = sha256(
-      canonicalJson({ locks, runtime, variant_id: variantId, writer_input: writerInput }),
+      canonicalJson({
+        locks,
+        revision: revision?.eventData ?? null,
+        runtime,
+        variant_id: variantId,
+        writer_input: writerInput,
+      }),
     );
     const master = await insertGenerationRun(transaction, {
       inputHash,
@@ -870,6 +896,7 @@ export class ContentApiService {
           project_id: scope.projectId,
           prompt_version_id: runtime.promptVersionId,
           request_id: audit.requestId,
+          ...(revision ? { revision: revision.eventData } : {}),
           skill_version: runtime.skillVersion,
           variant_runs: [
             { platform_code: variant.platformCode, run_id: run.id, variant_id: variantId },
@@ -890,7 +917,10 @@ export class ContentApiService {
       'content_variant',
       variantId,
       variant,
-      { generation_run_id: run.id },
+      {
+        generation_run_id: run.id,
+        ...(input.quality_report_id ? { quality_report_id: input.quality_report_id } : {}),
+      },
       null,
       audit,
     );
@@ -1880,6 +1910,114 @@ async function selectQualityReports(client: SqlClient, scope: ContentScope, vari
     ORDER BY report.created_at DESC, report.id DESC
   `;
   return rows;
+}
+
+async function loadQualityRewriteSource(
+  client: SqlClient,
+  tenantId: string,
+  variantId: string,
+  currentContentVersionId: string | null,
+  platformCode: PlatformCode,
+  qualityReportId: string,
+) {
+  if (!currentContentVersionId) {
+    throw contentStateInvalid('A current content version is required for quality-guided rewrite');
+  }
+  const rows = await client<QualityRewriteRow[]>`
+    SELECT report.id, report.tenant_id AS "tenantId", report.variant_id AS "variantId",
+      report.content_version_id AS "contentVersionId", report.generation_run_id AS "generationRunId",
+      report.checker_version AS "checkerVersion", report.score::text AS score, report.decision,
+      report.issues_json AS "issuesJson", report.geo_scores_json AS "geoScoresJson",
+      report.automation_gate_json AS "automationGateJson", report.created_at AS "createdAt",
+      version.content_json AS content
+    FROM quality_reports AS report
+    JOIN content_versions AS version
+      ON version.id=report.content_version_id AND version.tenant_id=report.tenant_id
+    WHERE report.id=${qualityReportId}::uuid
+      AND report.tenant_id=${tenantId}::uuid
+      AND report.variant_id=${variantId}::uuid
+      AND report.content_version_id=${currentContentVersionId}::uuid
+      AND report.id=(
+        SELECT latest.id FROM quality_reports AS latest
+        WHERE latest.tenant_id=${tenantId}::uuid
+          AND latest.variant_id=${variantId}::uuid
+          AND latest.content_version_id=${currentContentVersionId}::uuid
+        ORDER BY latest.created_at DESC, latest.id DESC
+        LIMIT 1
+      )
+    LIMIT 1
+  `;
+  const row = rows[0];
+  if (!row) {
+    throw contentStateInvalid(
+      'Quality report must be the latest report for the current content version',
+    );
+  }
+  if (row.decision === 'pass' && row.automationGateJson?.['passed'] !== false) {
+    throw contentStateInvalid('Passing quality report does not require a guided rewrite');
+  }
+  const parsedContent = ContentDocumentSchema.safeParse(row.content);
+  if (!parsedContent.success || parsedContent.data.platform_code !== platformCode) {
+    throw contentStateInvalid('Quality report content does not match the target platform');
+  }
+  const source: QualityRewriteSource = {
+    content: parsedContent.data,
+    report: row,
+  };
+  const issues = qualityRewriteDiagnostics(source.report);
+  if (issues.length === 0) {
+    throw contentStateInvalid('Quality report has no actionable rewrite diagnostics');
+  }
+  return {
+    eventData: {
+      candidate: {
+        master_content: { ...source.content, platform_code: 'master' },
+        variants: [source.content],
+      },
+      content_version_id: source.report.contentVersionId,
+      issues,
+      quality_report_id: source.report.id,
+    } as Record<string, JsonValue>,
+  };
+}
+
+function qualityRewriteDiagnostics(report: QualityReportRow): readonly string[] {
+  const diagnostics = (report.issuesJson.issues ?? [])
+    .filter(isRecord)
+    .map((issue) =>
+      [
+        `质量问题 ${readString(issue['severity'])} ${readString(issue['rule_id'])}`.trim(),
+        `位置：${readString(issue['location']) || '未指定'}`,
+        `问题：${readString(issue['message'])}`,
+        readString(issue['suggestion']) ? `修改建议：${readString(issue['suggestion'])}` : '',
+      ]
+        .filter((part) => part.length > 0 && part !== '问题：')
+        .join('；'),
+    )
+    .filter((issue) => issue.length > 0);
+  const gate = report.automationGateJson;
+  const blockingRules = Array.isArray(gate?.['blocking_rules'])
+    ? gate['blocking_rules'].filter((value): value is string => typeof value === 'string')
+    : [];
+  for (const rule of blockingRules) {
+    const metric = rule.startsWith('gate.') ? rule.slice('gate.'.length) : null;
+    const current = metric ? gate?.[metric] : undefined;
+    diagnostics.push(
+      `质量门禁 ${rule} 未通过${typeof current === 'number' ? `，当前值为 ${current}` : ''}；必须针对该门禁和本报告问题修复，不得虚构事实或降低门槛。`,
+    );
+  }
+  if (diagnostics.length === 0 && report.decision !== 'pass') {
+    diagnostics.push(`质量报告结论为 ${report.decision}；必须修复报告结论后再提交质检。`);
+  }
+  return Object.freeze(diagnostics.slice(0, 50).map((diagnostic) => diagnostic.slice(0, 4_000)));
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }
 
 async function requireContentVersion(client: SqlClient, tenantId: string, id: string) {

@@ -30,18 +30,23 @@ export async function requestQualityCheck(variantId: string, csrf: string): Prom
   });
 }
 
-export async function regenerateQualityVariant(
+export async function rewriteQualityVariant(
   variantId: string,
   variantVersion: number,
+  qualityReportId: string,
   lockedBlockKeys: readonly string[],
   csrf: string,
 ): Promise<void> {
   const response = await fetch(`${API_ORIGIN}/api/v1/content-variants/${variantId}/regenerate`, {
-    body: JSON.stringify({ locked_block_keys: lockedBlockKeys, model_policy: 'balanced' }),
+    body: JSON.stringify({
+      locked_block_keys: lockedBlockKeys,
+      model_policy: 'balanced',
+      quality_report_id: qualityReportId,
+    }),
     credentials: 'include',
     headers: {
       'content-type': 'application/json',
-      'idempotency-key': `quality-regenerate-${createRequestUuid()}`,
+      'idempotency-key': `quality-rewrite-${createRequestUuid()}`,
       'if-match': `"${variantVersion}"`,
       'x-csrf-token': csrf,
     },

@@ -93,6 +93,7 @@ export class ContentGenerationWorker {
         return generate({
           context: writerContext(event, event.data.masterRunId, null),
           requestId: `generation-${event.eventId}-master`,
+          ...(event.data.revision ? { revision: event.data.revision } : {}),
           ...(signal ? { signal } : {}),
           writerInput: event.data.writerInput,
         });

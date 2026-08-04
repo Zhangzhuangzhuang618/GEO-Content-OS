@@ -10,9 +10,9 @@ import { TechnicalDetails } from '../human-readable';
 import {
   getQualityVariantDetail,
   QualityReportRequestError,
-  regenerateQualityVariant,
   requestQualityCheck,
   submitQualityPassedVariant,
+  rewriteQualityVariant,
 } from './quality-report-api';
 import type { QualityIssue, QualityVariantDetail } from './quality-report.schema';
 
@@ -32,7 +32,7 @@ export function QualityReportDetail() {
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission'>('loading');
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
-  const [regenerationStarted, setRegenerationStarted] = useState(false);
+  const [rewriteStarted, setRewriteStarted] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -107,22 +107,24 @@ export function QualityReportDetail() {
     );
   }
 
-  async function regenerate() {
-    if (!detail) return;
+  async function rewriteFromReport() {
+    if (!detail?.quality_report) return;
+    const qualityReportId = detail.quality_report.id;
     const started = await mutate(
       (csrf) =>
-        regenerateQualityVariant(
+        rewriteQualityVariant(
           detail.variant.id,
           detail.variant.version,
+          qualityReportId,
           detail.locks.map((lock) => lock.block_key),
           csrf,
         ),
       detail.variant.platform_code === 'official_site' ||
         detail.variant.platform_code === 'baijiahao'
-        ? '重新生成已开始；生成成功后系统会自动继续质量检查。'
-        : '重新生成已开始；完成后请重新进行质量检查。',
+        ? '已按当前质量报告开始重写；生成成功后系统会自动继续质量检查。'
+        : '已按当前质量报告开始重写；完成后请重新进行质量检查。',
     );
-    if (started) setRegenerationStarted(true);
+    if (started) setRewriteStarted(true);
   }
 
   async function copyHumanReviewRequest() {
@@ -260,11 +262,11 @@ export function QualityReportDetail() {
             {report.decision !== 'pass' ? (
               <button
                 className={secondaryButton}
-                disabled={busy || regenerationStarted || !canRegenerate}
-                onClick={() => void regenerate()}
+                disabled={busy || rewriteStarted || !canRegenerate}
+                onClick={() => void rewriteFromReport()}
                 type="button"
               >
-                {regenerationStarted ? '重新生成中…' : '重新生成内容'}
+                {rewriteStarted ? '按报告重写中…' : '按质检报告重写'}
               </button>
             ) : null}
             <button

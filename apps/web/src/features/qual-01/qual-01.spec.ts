@@ -64,7 +64,7 @@ test('starts a full recheck and submits only a passing current report', async ({
   expect(submitted).toEqual({ variant_ids: [VARIANT_ID] });
 });
 
-test('regenerates failed content directly from its quality report', async ({ page }) => {
+test('rewrites failed content directly from its quality report', async ({ page }) => {
   let body: unknown;
   let ifMatch: string | undefined;
   const base = detail('block');
@@ -90,10 +90,16 @@ test('regenerates failed content directly from its quality report', async ({ pag
   });
   await page.goto(`/qual-01?id=${VARIANT_ID}`);
 
-  await page.getByRole('button', { name: '重新生成内容' }).click();
-  await expect(page.getByText('重新生成已开始；生成成功后系统会自动继续质量检查。')).toBeVisible();
-  await expect(page.getByRole('button', { name: '重新生成中…' })).toBeDisabled();
-  expect(body).toEqual({ locked_block_keys: [], model_policy: 'balanced' });
+  await page.getByRole('button', { name: '按质检报告重写' }).click();
+  await expect(
+    page.getByText('已按当前质量报告开始重写；生成成功后系统会自动继续质量检查。'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: '按报告重写中…' })).toBeDisabled();
+  expect(body).toEqual({
+    locked_block_keys: [],
+    model_policy: 'balanced',
+    quality_report_id: '92000000-0000-4000-8000-000000000088',
+  });
   expect(ifMatch).toBe('"4"');
 });
 

@@ -36,10 +36,21 @@ export interface GenerationEventData {
   readonly projectId: string;
   readonly promptVersionId: string;
   readonly requestId: string;
+  readonly revision?: GenerationRevision;
   readonly skillVersion: string;
   readonly variantRuns: readonly VariantGenerationRun[];
   readonly workspaceId: string;
   readonly writerInput: JsonObject;
+}
+
+export interface GenerationRevision {
+  readonly candidate: {
+    readonly master_content: GeneratedContent;
+    readonly variants: readonly GeneratedContent[];
+  };
+  readonly contentVersionId: string;
+  readonly issues: readonly string[];
+  readonly qualityReportId: string;
 }
 
 export interface ValidatedGenerationEvent {
@@ -53,6 +64,7 @@ export interface ContentWriterPort {
   generateMaster(input: {
     readonly context: ContentWriterRunContext;
     readonly requestId: string;
+    readonly revision?: GenerationRevision;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent>;
@@ -67,6 +79,7 @@ export interface ContentWriterPort {
   generateOfficialSiteMaster?(input: {
     readonly context: ContentWriterRunContext;
     readonly requestId: string;
+    readonly revision?: GenerationRevision;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent>;
