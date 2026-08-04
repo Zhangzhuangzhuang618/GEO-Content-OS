@@ -92,6 +92,24 @@ export async function copyContentPackage(item: ContentPackage, csrf: string) {
   return parsed.data.data;
 }
 
+export async function abandonContentPackage(item: ContentPackage, reason: string, csrf: string) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/content-packages/${item.id}/abandon`, {
+    body: JSON.stringify({ reason }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `content-package-abandon-${createRequestUuid()}`,
+      'if-match': `"${item.version}"`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw new ContentPackageListRequestError(response.status);
+  const parsed = ContentPackageResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new ContentPackageListRequestError(502);
+  return parsed.data.data;
+}
+
 async function loadSettledCosts(signal?: AbortSignal) {
   const query = new URLSearchParams({
     from: '1970-01-01',

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
 import {
+  abandonContentPackage,
   ContentPackageListRequestError,
   copyContentPackage,
   listContentPackages,
@@ -34,6 +35,7 @@ export function ContentPackageList() {
   );
   const [retryAfterSeconds, setRetryAfterSeconds] = useState<number | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [abandoningId, setAbandoningId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ readonly id?: string; readonly text: string } | null>(
     null,
   );
@@ -77,6 +79,42 @@ export function ContentPackageList() {
     return () => controller.abort();
   }, [filters, load]);
 
+  const hasActiveGeneration = items.some(
+    (item) =>
+      item.package.status === 'generating' ||
+      item.variants.some((variant) => variant.status === 'generating'),
+  );
+
+  useEffect(() => {
+    if (state !== 'ready' || !hasActiveGeneration) return;
+    const controller = new AbortController();
+    let refreshing = false;
+    const refresh = async () => {
+      if (refreshing || document.visibilityState !== 'visible') return;
+      refreshing = true;
+      try {
+        const page = await listContentPackages(filters, false, controller.signal);
+        if (controller.signal.aborted) return;
+        setItems((current) =>
+          page.items.map((fresh) => {
+            const existing = current.find((item) => item.package.id === fresh.package.id);
+            return existing ? { ...fresh, costs: existing.costs } : fresh;
+          }),
+        );
+        setNextCursor(page.nextCursor);
+      } catch {
+        // Background refresh failures must not replace already loaded content.
+      } finally {
+        refreshing = false;
+      }
+    };
+    const interval = window.setInterval(() => void refresh(), GENERATION_REFRESH_INTERVAL_MS);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [filters, hasActiveGeneration, state]);
+
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -114,6 +152,45 @@ export function ContentPackageList() {
       setMessage({ text: '复制失败，请确认当前角色仍有内容生产权限。' });
     } finally {
       setCopyingId(null);
+    }
+  }
+
+  async function abandon(item: PackageListItem) {
+    const reason = window.prompt('请输入放弃原因（将写入审计日志）。')?.trim() ?? '';
+    if (!reason) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage({ text: '安全令牌尚未就绪，请刷新页面后重试。' });
+      return;
+    }
+    setAbandoningId(item.package.id);
+    setMessage(null);
+    try {
+      const updated = await abandonContentPackage(item.package, reason, csrf);
+      setItems((current) =>
+        current.map((entry) =>
+          entry.package.id === item.package.id
+            ? {
+                ...entry,
+                package: updated,
+                variants: entry.variants.map((variant) => ({
+                  ...variant,
+                  status: 'cancelled' as const,
+                })),
+              }
+            : entry,
+        ),
+      );
+      setMessage({ text: '任务已放弃，不会再继续生成。' });
+    } catch (error) {
+      setMessage({
+        text:
+          errorStatus(error) === 409
+            ? '任务状态已经变化，请刷新页面后再决定是否放弃。'
+            : '放弃失败，请确认任务已经停止生成且当前角色有内容生产权限。',
+      });
+    } finally {
+      setAbandoningId(null);
     }
   }
 
@@ -224,12 +301,14 @@ export function ContentPackageList() {
         <div className="mt-5 grid gap-4">
           {visibleItems.map((item) => (
             <ContentCard
+              abandoning={abandoningId === item.package.id}
               canCopy={canCopy}
               copying={copyingId === item.package.id}
               currentUserId={currentUserId}
               item={item}
               key={item.package.id}
               onCopy={copy}
+              onAbandon={abandon}
             />
           ))}
         </div>
@@ -252,16 +331,20 @@ export function ContentPackageList() {
 }
 
 function ContentCard({
+  abandoning,
   canCopy,
   copying,
   currentUserId,
   item,
+  onAbandon,
   onCopy,
 }: {
+  readonly abandoning: boolean;
   readonly canCopy: boolean;
   readonly copying: boolean;
   readonly currentUserId: string;
   readonly item: PackageListItem;
+  readonly onAbandon: (item: PackageListItem) => Promise<void>;
   readonly onCopy: (item: PackageListItem) => Promise<void>;
 }) {
   const scored = item.variants.flatMap((variant) =>
@@ -270,6 +353,9 @@ function ContentCard({
   const produced = item.variants.filter((variant) => !UNPRODUCED.has(variant.status)).length;
   const progress =
     item.variants.length === 0 ? 0 : Math.round((produced / item.variants.length) * 100);
+  const generating =
+    item.package.status === 'generating' ||
+    item.variants.some((variant) => variant.status === 'generating');
   return (
     <article className="rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-6">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -293,25 +379,41 @@ function ContentCard({
 
           <div className="mt-5">
             <div className="flex items-center justify-between gap-4 text-sm">
-              <span className="font-medium text-ink-700">平台内容进度</span>
+              <span className="font-medium text-ink-700">生成进度</span>
               <span className="text-ink-500">
                 {item.detailState === 'ready'
-                  ? `已生成 ${produced}/${item.variants.length}`
+                  ? generationProgressText(item, produced)
                   : item.detailState === 'loading'
                     ? '正在读取'
                     : '暂不可用'}
               </span>
             </div>
             <div
-              aria-label={`平台内容进度 ${progress}%`}
-              className="mt-2 h-2 overflow-hidden rounded-full bg-surface-subtle"
+              aria-label="生成进度"
+              aria-valuetext={generationProgressText(item, produced)}
+              className="relative mt-2 h-2 overflow-hidden rounded-full bg-surface-subtle"
               role="progressbar"
               aria-valuemax={100}
               aria-valuemin={0}
               aria-valuenow={progress}
             >
               <div className="h-full rounded-full bg-brand-600" style={{ width: `${progress}%` }} />
+              {generating ? (
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-y-0 animate-pulse rounded-full bg-brand-500/55"
+                  style={{
+                    left: `${progress}%`,
+                    width: `${Math.max(12, Math.min(34, 100 - progress))}%`,
+                  }}
+                />
+              ) : null}
             </div>
+            {generating ? (
+              <p className="mt-2 text-xs text-ink-500">
+                模型不会返回准确百分比；页面每 15 秒刷新一次已完成平台数。
+              </p>
+            ) : null}
             <ul aria-label="平台状态" className="mt-3 flex flex-wrap gap-2">
               {item.variants.map((variant) => (
                 <li className={platformStatusClass(variant.status)} key={variant.id}>
@@ -340,6 +442,16 @@ function ContentCard({
             type="button"
           >
             {copying ? '正在复制' : '复制为新任务'}
+          </button>
+        ) : null}
+        {canCopy && item.package.status === 'all_failed' ? (
+          <button
+            className={dangerButton}
+            disabled={abandoning}
+            onClick={() => void onAbandon(item)}
+            type="button"
+          >
+            {abandoning ? '正在放弃' : '放弃任务'}
           </button>
         ) : null}
       </div>
@@ -381,7 +493,7 @@ const PLATFORM_OPTIONS = [
   ['douyin', '抖音'],
 ] as const satisfies readonly (readonly [PlatformCode, string])[];
 const STATUS_OPTIONS = [
-  ['draft', '准备生成'],
+  ['draft', '等待开始'],
   ['generating', '正在生成'],
   ['generated', '等待质量检查'],
   ['all_failed', '生成失败'],
@@ -414,7 +526,8 @@ function statusLabel(code: ContentPackageStatus) {
   return STATUS_OPTIONS.find(([value]) => value === code)?.[1] ?? code;
 }
 function actionLabel(code: ContentPackageStatus) {
-  if (['draft', 'all_failed'].includes(code)) return '继续生成';
+  if (code === 'draft') return '开始生成';
+  if (code === 'all_failed') return '重新生成';
   if (code === 'generating') return '查看生成进度';
   if (['generated', 'editing', 'rejected'].includes(code)) return '继续完善内容';
   if (code === 'in_review') return '查看审核进度';
@@ -428,7 +541,7 @@ function nextStepText(code: ContentPackageStatus) {
     approved: '内容已通过审核，可以安排发布。',
     archived: '内容已归档，仍可查看历史记录。',
     cancelled: '任务已取消，仍可查看已有内容。',
-    draft: '内容任务已经建立，下一步是开始生成平台内容。',
+    draft: '任务已经建立，尚未开始生成。',
     editing: '内容正在完善中，可以继续编辑并检查质量。',
     generated: '平台内容已经生成，下一步是检查质量并完善内容。',
     generating: '系统正在生成平台内容，可以进入任务查看实时进度。',
@@ -452,12 +565,26 @@ function statusClass(code: ContentPackageStatus) {
   return `${base} bg-amber-50 text-amber-800`;
 }
 function variantStatusLabel(code: string) {
-  if (code === 'draft') return '待生成';
-  if (['generating', 'publishing'].includes(code)) return '进行中';
-  if (['generation_failed', 'quality_failed', 'review_rejected', 'publish_failed'].includes(code))
-    return '需处理';
+  if (code === 'draft') return '等待开始';
+  if (code === 'generating') return '正在生成';
+  if (code === 'generation_failed') return '生成失败';
+  if (code === 'quality_failed') return '质检未通过';
+  if (code === 'review_rejected') return '审核退回';
+  if (code === 'publishing') return '正在发布';
+  if (code === 'publish_failed') return '发布失败';
   if (code === 'cancelled') return '已取消';
   return '已生成';
+}
+function generationProgressText(item: PackageListItem, produced: number) {
+  const total = item.variants.length;
+  if (item.package.status === 'draft') return `尚未开始 · ${produced}/${total}`;
+  if (
+    item.package.status === 'generating' ||
+    item.variants.some((variant) => variant.status === 'generating')
+  )
+    return `正在生成 · 已完成 ${produced}/${total}`;
+  if (item.package.status === 'all_failed') return `生成失败 · 已完成 ${produced}/${total}`;
+  return `已生成 ${produced}/${total}`;
 }
 function platformStatusClass(code: string) {
   const base = 'rounded-full px-2.5 py-1 text-xs font-medium';
@@ -592,3 +719,6 @@ const primaryButton =
   'inline-flex h-11 items-center justify-center rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-50';
 const secondaryButton =
   'h-11 rounded-control border border-line px-4 text-sm font-semibold text-ink-700 disabled:opacity-50';
+const dangerButton =
+  'h-11 rounded-control border border-red-200 px-4 text-sm font-semibold text-red-700 disabled:opacity-50';
+const GENERATION_REFRESH_INTERVAL_MS = 15_000;

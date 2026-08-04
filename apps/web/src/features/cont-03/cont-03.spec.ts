@@ -54,7 +54,7 @@ test.beforeEach(async ({ context, page }) => {
 test('shows a human-readable topic, progress and next action without UUIDs', async ({ page }) => {
   await page.goto('/cont-03');
   await expect(page.getByRole('heading', { name: '广州搬家公司怎么选' })).toBeVisible();
-  await expect(page.getByText('已生成 2/3')).toBeVisible();
+  await expect(page.getByText('正在生成 · 已完成 2/3')).toBeVisible();
   await expect(page.getByText('85 分')).toBeVisible();
   await expect(page.getByText('CNY 12.34')).toBeVisible();
   await expect(page.getByText('由你创建')).toBeVisible();
@@ -64,6 +64,88 @@ test('shows a human-readable topic, progress and next action without UUIDs', asy
     'href',
     `/cont-04?id=${PACKAGE_ID}`,
   );
+});
+
+test('distinguishes a task that has not started from active generation', async ({ page }) => {
+  await page.unroute('**/api/v1/content-packages?*');
+  const item = contentPackageListItem(PACKAGE_ID);
+  item.status = 'draft';
+  item.variants = [
+    variant(PACKAGE_ID, 'baijiahao', 'draft', null, '83000000-0000-4000-8000-000000000084'),
+  ];
+  await page.route('**/api/v1/content-packages?*', (route) =>
+    json(route, [item], { next_cursor: null, request_id: 'packages' }),
+  );
+
+  await page.goto('/cont-03');
+  await expect(page.getByRole('article').getByText('等待开始', { exact: true })).toBeVisible();
+  await expect(page.getByText('任务已经建立，尚未开始生成。')).toBeVisible();
+  await expect(page.getByText('尚未开始 · 0/1')).toBeVisible();
+  await expect(page.getByRole('link', { name: '开始生成' })).toBeVisible();
+});
+
+test('shows honest active generation feedback without inventing a percentage', async ({ page }) => {
+  await page.unroute('**/api/v1/content-packages?*');
+  const item = contentPackageListItem(PACKAGE_ID);
+  item.status = 'generating';
+  item.variants = [
+    variant(PACKAGE_ID, 'baijiahao', 'generating', null, '83000000-0000-4000-8000-000000000084'),
+  ];
+  await page.route('**/api/v1/content-packages?*', (route) =>
+    json(route, [item], { next_cursor: null, request_id: 'packages' }),
+  );
+
+  await page.goto('/cont-03');
+  await expect(page.getByText('正在生成 · 已完成 0/1')).toBeVisible();
+  await expect(
+    page.getByText('模型不会返回准确百分比；页面每 15 秒刷新一次已完成平台数。'),
+  ).toBeVisible();
+  await expect(page.getByRole('progressbar', { name: '生成进度' })).toHaveAttribute(
+    'aria-valuetext',
+    '正在生成 · 已完成 0/1',
+  );
+  await expect(page.getByText('百家号 · 正在生成')).toBeVisible();
+});
+
+test('allows a producer to abandon an all-failed task from the list', async ({ page }) => {
+  await page.unroute('**/api/v1/content-packages?*');
+  const item = contentPackageListItem(PACKAGE_ID);
+  item.status = 'all_failed';
+  item.variants = [
+    variant(
+      PACKAGE_ID,
+      'baijiahao',
+      'generation_failed',
+      35,
+      '83000000-0000-4000-8000-000000000084',
+    ),
+  ];
+  await page.route('**/api/v1/content-packages?*', (route) =>
+    json(route, [item], { next_cursor: null, request_id: 'packages' }),
+  );
+  let request: { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
+  await page.route(`**/api/v1/content-packages/${PACKAGE_ID}/abandon`, async (route) => {
+    request = {
+      body: route.request().postDataJSON(),
+      headers: route.request().headers(),
+    };
+    await json(
+      route,
+      { ...contentPackage(PACKAGE_ID), status: 'cancelled', version: 2 },
+      { request_id: 'abandon' },
+    );
+  });
+  page.on('dialog', (dialog) => dialog.accept('不再继续生成'));
+
+  await page.goto('/cont-03');
+  await page.getByRole('button', { name: '放弃任务' }).click();
+
+  await expect(page.getByText('任务已放弃，不会再继续生成。')).toBeVisible();
+  await expect(page.getByRole('article').getByText('已取消', { exact: true })).toBeVisible();
+  expect(request?.body).toEqual({ reason: '不再继续生成' });
+  expect(request?.headers['if-match']).toBe('"1"');
+  expect(request?.headers['idempotency-key']).toMatch(/^content-package-abandon-/u);
+  expect(request?.headers['x-csrf-token']).toBe('x'.repeat(43));
 });
 
 test('keeps each page within the rate-limit-safe package count', async ({ page }) => {
