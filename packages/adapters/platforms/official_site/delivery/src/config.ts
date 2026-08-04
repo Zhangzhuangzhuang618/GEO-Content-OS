@@ -8,6 +8,7 @@ const ApiPathSchema = z
 const EndpointSchema = z
   .object({
     capabilities: ApiPathSchema.default('/capabilities'),
+    media: ApiPathSchema.default('/media'),
     metrics: ApiPathSchema.default('/metrics'),
     publish: ApiPathSchema.default('/publish'),
     status: ApiPathSchema.default('/status'),
@@ -22,6 +23,7 @@ export const OfficialSiteDeliveryConfigSchema = z.discriminatedUnion('mode', [
       bearer_token: z.string().trim().min(1),
       endpoints: EndpointSchema.default({
         capabilities: '/capabilities',
+        media: '/media',
         metrics: '/metrics',
         publish: '/publish',
         status: '/status',

@@ -27,8 +27,33 @@ export const OfficialSiteDeliveryInputSchema = z
 export const OfficialSiteCapabilityResponseSchema = z
   .object({
     get_status: z.boolean(),
+    media_upload: z.boolean().optional().default(false),
     metrics: z.boolean(),
     publish: z.boolean(),
+  })
+  .strict();
+
+export const OfficialSiteMediaUploadInputSchema = z
+  .object({
+    asset_id: z.string().uuid(),
+    body: z
+      .instanceof(Uint8Array)
+      .refine((value) => value.byteLength > 0 && value.byteLength <= 10_000_000),
+    content_hash: z.string().regex(/^[a-f0-9]{64}$/u),
+    content_type: z.literal('image/jpeg'),
+    content_version_id: z.string().uuid(),
+    idempotency_key: z.string().regex(/^[A-Za-z0-9._:-]{1,128}$/u),
+    role: z.enum(['body', 'cover']),
+  })
+  .strict();
+
+export const OfficialSiteMediaUploadResponseSchema = z
+  .object({
+    asset_id: z.string().uuid(),
+    content_hash: z.string().regex(/^[a-f0-9]{64}$/u),
+    content_type: z.literal('image/jpeg'),
+    size_bytes: z.number().int().positive().max(10_000_000),
+    url: z.url(),
   })
   .strict();
 

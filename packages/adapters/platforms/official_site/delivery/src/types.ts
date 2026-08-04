@@ -1,16 +1,35 @@
 import type { OfficialSitePayload } from '../../render/src/types.js';
 
-export const OFFICIAL_SITE_DELIVERY_VERSION = 'official-site-delivery@1.0.0' as const;
+export const OFFICIAL_SITE_DELIVERY_VERSION = 'official-site-delivery@1.1.0' as const;
 export const OFFICIAL_SITE_EXPORT_SCHEMA_VERSION = 'official-site-export@1' as const;
 export const ZHIYUAN_NEWS_PAYLOAD_SCHEMA_VERSION = 'zhiyuan-news-payload@1' as const;
 
 export interface OfficialSiteCapabilities {
   readonly export: true;
   readonly get_status: boolean;
+  readonly media_upload: boolean;
   readonly metrics: boolean;
   readonly publish: boolean;
   readonly version: typeof OFFICIAL_SITE_DELIVERY_VERSION;
   readonly warnings: readonly ('CAPABILITY_PROBE_FAILED' | 'EXPORT_ONLY')[];
+}
+
+export interface OfficialSiteMediaUploadInput {
+  readonly asset_id: string;
+  readonly body: Uint8Array;
+  readonly content_hash: string;
+  readonly content_type: 'image/jpeg';
+  readonly content_version_id: string;
+  readonly idempotency_key: string;
+  readonly role: 'body' | 'cover';
+}
+
+export interface OfficialSiteMediaUploadResult {
+  readonly asset_id: string;
+  readonly content_hash: string;
+  readonly content_type: 'image/jpeg';
+  readonly size_bytes: number;
+  readonly url: string;
 }
 
 export interface OfficialSiteDeliveryInput {
@@ -70,7 +89,7 @@ export type OfficialSiteDeliveryResult =
   | { readonly export: OfficialSiteExportBundle; readonly mode: 'export' };
 
 export interface OfficialSiteHttpRequest {
-  readonly body?: unknown;
+  readonly body?: Uint8Array | unknown;
   readonly headers: Readonly<Record<string, string>>;
   readonly method: 'GET' | 'POST';
   readonly signal?: AbortSignal;

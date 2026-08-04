@@ -214,14 +214,19 @@ export class PostgresPublisherStore implements PublisherStorePort {
       const mediaAssets = await transaction<
         {
           altText: string;
+          contentHash: string;
           id: string;
+          mimeType: string;
+          objectUri: string;
           position: number;
           publicUrl: string | null;
           role: 'body' | 'cover';
+          sizeBytes: string;
         }[]
       >`
-        SELECT asset.id,link.role,link.position,link.alt_text AS "altText",
-          link.public_url AS "publicUrl"
+        SELECT asset.id,asset.object_uri AS "objectUri",asset.content_hash AS "contentHash",
+          asset.mime_type AS "mimeType",asset.size_bytes::text AS "sizeBytes",
+          link.role,link.position,link.alt_text AS "altText",link.public_url AS "publicUrl"
         FROM content_media_assets AS link
         JOIN media_assets AS asset
           ON asset.id=link.media_asset_id AND asset.tenant_id=link.tenant_id
@@ -245,7 +250,11 @@ export class PostgresPublisherStore implements PublisherStorePort {
           credentialKeyVersion: row.credentialKeyVersion,
           idempotencyKey: row.idempotencyKey,
           jobId: row.id,
-          mediaAssets: Object.freeze(mediaAssets.map((asset) => Object.freeze(asset))),
+          mediaAssets: Object.freeze(
+            mediaAssets.map((asset) =>
+              Object.freeze({ ...asset, sizeBytes: Number(asset.sizeBytes) }),
+            ),
+          ),
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,
           publishMode: row.publishMode,

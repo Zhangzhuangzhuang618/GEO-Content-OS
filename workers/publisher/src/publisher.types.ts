@@ -29,10 +29,14 @@ export interface PublishCitationLink {
 
 export interface PublishMediaAsset {
   readonly altText: string;
+  readonly contentHash: string;
   readonly id: string;
+  readonly mimeType: string;
+  readonly objectUri: string;
   readonly position: number;
   readonly publicUrl: string | null;
   readonly role: 'body' | 'cover';
+  readonly sizeBytes: number;
 }
 
 export interface PublishClaim {

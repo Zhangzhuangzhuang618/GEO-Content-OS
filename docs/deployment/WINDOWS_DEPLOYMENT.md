@@ -203,6 +203,18 @@ CONTENT_MODEL_BALANCED_KEY=deepseek-v4-flash
 CONTENT_MODEL_QUALITY_KEY=deepseek-v4-pro
 QUALITY_CHECKER_MODEL_KEY=deepseek-v4-pro
 
+IMAGE_AUTOMATION_ENABLED=true
+IMAGE_PLANNER_MODEL_KEY=deepseek-v4-flash
+IMAGE_GENERATION_DRIVER=cloudflare
+IMAGE_GENERATION_STEPS=4
+IMAGE_PROVIDER_TIMEOUT_MS=120000
+CLOUDFLARE_ACCOUNT_ID=<Cloudflare Account ID>
+CLOUDFLARE_API_TOKEN=<Workers AI Token>
+CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-1-schnell
+CLOUDFLARE_IMAGE_QA_MODEL=@cf/meta/llama-3.2-11b-vision-instruct
+# Windows MinIO 保持私有；官网发布时上传图片，因此这里必须留空。
+GENERATED_MEDIA_PUBLIC_BASE_URL=
+
 PUBLISHING_CREDENTIAL_KEY_BASE64=<32字节随机值的Base64>
 PUBLISHING_CREDENTIAL_KEY_VERSION=local-v1
 BAIJIAHAO_BROWSER_GATEWAY_TOKEN=<至少32位随机内部密钥>
@@ -213,6 +225,11 @@ TRUST_PROXY_HOPS=1
 RATE_LIMIT_MAX=300
 RATE_LIMIT_WINDOW_MS=60000
 ```
+
+自动配图生成后先保存在 Compose 内部 MinIO。官网平台账号的 `/capabilities` 返回
+`media_upload=true` 时，Publisher Worker 会在发布文章前将图片文件上传至官网并使用官网返回的 HTTPS
+地址；Windows 不需要固定公网 IP、MinIO 域名或 Cloudflare Tunnel。官网平台账号 URL 与 Bearer Token
+通过“发布管理 → 平台账号”保存到加密凭证中，不写入 Windows `.env`。
 
 PowerShell 生成 32 字节平台凭证加密密钥：
 

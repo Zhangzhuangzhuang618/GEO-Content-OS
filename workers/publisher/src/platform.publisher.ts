@@ -17,11 +17,14 @@ import {
 import {
   hashOfficialSitePayload,
   OfficialSiteDeliveryAdapter,
+  OfficialSiteDeliveryError,
 } from '@geo-content-os/adapter-platforms/official_site/delivery';
 import {
   OFFICIAL_SITE_RENDER_RULE_VERSION,
   renderOfficialSite,
 } from '@geo-content-os/adapter-platforms/official_site/render';
+import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import { createHash } from 'node:crypto';
 import {
   hashToutiaoPayload,
   ToutiaoDeliveryAdapter,
@@ -87,6 +90,8 @@ type DeliveryResult =
   | { readonly export: unknown; readonly mode: 'export' };
 
 export class SevenPlatformPublisher implements PublisherPlatformPort {
+  public constructor(private readonly storage?: Pick<ObjectStorageAdapter, 'getObject'>) {}
+
   public async getBaijiahaoStatus(
     claim: BaijiahaoReconcileClaim,
     credential: Readonly<Record<string, unknown>>,
@@ -103,7 +108,7 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
     });
   }
 
-  public deliver(
+  public async deliver(
     claim: PublishClaim,
     credential: Readonly<Record<string, unknown>> | null,
     signal?: AbortSignal,
@@ -111,26 +116,50 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
     const config = deliveryConfig(claim, credential);
     const content = platformRenderContent(claim.content);
     switch (claim.platformCode) {
-      case 'official_site':
+      case 'official_site': {
+        const adapter = new OfficialSiteDeliveryAdapter(config);
+        const capabilities =
+          claim.publishMode === 'api' ? await adapter.capabilities(signal) : undefined;
+        if (capabilities && !capabilities.publish) {
+          throw new OfficialSiteDeliveryError(
+            'CAPABILITY_UNAVAILABLE',
+            'Configured official site API does not currently support publication',
+          );
+        }
+        const prepared = capabilities
+          ? await prepareOfficialSiteMedia(
+              claim,
+              adapter,
+              this.storage,
+              capabilities.media_upload,
+              signal,
+            )
+          : existingOfficialSiteMedia(claim.mediaAssets ?? []);
+        const rendered = renderOfficialSite({
+          citations: claim.citations,
+          content,
+          media_assets: prepared.assets,
+          rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
+        });
+        if (claim.publishMode !== 'api') {
+          return execute(
+            claim,
+            signal,
+            rendered,
+            hashOfficialSitePayload,
+            (input) => adapter.deliver(input, signal),
+            prepared.diagnostics,
+          );
+        }
         return execute(
           claim,
           signal,
-          renderOfficialSite({
-            citations: claim.citations,
-            content,
-            media_assets: (claim.mediaAssets ?? [])
-              .filter((asset) => asset.publicUrl !== null)
-              .map((asset) => ({
-                alt_text: asset.altText,
-                position: asset.position,
-                role: asset.role,
-                url: asset.publicUrl as string,
-              })),
-            rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
-          }),
+          rendered,
           hashOfficialSitePayload,
-          (input) => new OfficialSiteDeliveryAdapter(config).deliver(input, signal),
+          async (input) => ({ mode: 'api', publish: await adapter.publish(input, signal) }),
+          prepared.diagnostics,
         );
+      }
       case 'baijiahao':
         return execute(
           claim,
@@ -253,6 +282,7 @@ async function execute<TPayload>(
     readonly payload: TPayload;
     readonly payload_hash: string;
   }) => Promise<DeliveryResult>,
+  responseDetails?: Readonly<Record<string, unknown>>,
 ): Promise<PlatformDelivery> {
   void signal;
   if (!rendered.ok) {
@@ -278,10 +308,160 @@ async function execute<TPayload>(
     payloadHash,
     response: Object.freeze({
       ...(result.publish.published_at ? { published_at: result.publish.published_at } : {}),
+      ...(responseDetails ?? {}),
       status: result.publish.status,
     }),
     url: result.publish.url,
   });
+}
+
+interface PreparedOfficialSiteMedia {
+  readonly assets: readonly {
+    readonly alt_text: string;
+    readonly position: number;
+    readonly role: 'body' | 'cover';
+    readonly url: string;
+  }[];
+  readonly diagnostics: Readonly<Record<string, unknown>>;
+}
+
+async function prepareOfficialSiteMedia(
+  claim: PublishClaim,
+  adapter: OfficialSiteDeliveryAdapter,
+  storage: Pick<ObjectStorageAdapter, 'getObject'> | undefined,
+  mediaUploadAvailable: boolean,
+  signal?: AbortSignal,
+): Promise<PreparedOfficialSiteMedia> {
+  const sourceAssets = claim.mediaAssets ?? [];
+  if (sourceAssets.length === 0) {
+    return Object.freeze({ assets: Object.freeze([]), diagnostics: Object.freeze({}) });
+  }
+  if (!mediaUploadAvailable || !storage) {
+    return Object.freeze({
+      assets: existingOfficialSiteMedia(sourceAssets).assets,
+      diagnostics: Object.freeze({
+        media_upload: Object.freeze({
+          available: mediaUploadAvailable && Boolean(storage),
+          skipped: sourceAssets.length,
+          uploaded: Object.freeze([]),
+        }),
+      }),
+    });
+  }
+  const uploaded: { readonly asset_id: string; readonly url: string }[] = [];
+  const publishedAssets: {
+    readonly alt_text: string;
+    readonly position: number;
+    readonly role: 'body' | 'cover';
+    readonly url: string;
+  }[] = [];
+  let skipped = 0;
+  for (const asset of sourceAssets) {
+    try {
+      requireUploadableAsset(asset);
+      const body = await storage.getObject(storageKey(asset.objectUri));
+      if (body.byteLength !== asset.sizeBytes || sha256(body) !== asset.contentHash) {
+        throw new Error('Stored image does not match its immutable metadata');
+      }
+      const result = await adapter.uploadMedia(
+        {
+          asset_id: asset.id,
+          body,
+          content_hash: asset.contentHash,
+          content_type: 'image/jpeg',
+          content_version_id: claim.contentVersionId,
+          idempotency_key: `official-site-media:${asset.id}`,
+          role: asset.role,
+        },
+        signal,
+      );
+      uploaded.push(Object.freeze({ asset_id: asset.id, url: result.url }));
+      publishedAssets.push(
+        Object.freeze({
+          alt_text: asset.altText,
+          position: asset.position,
+          role: asset.role,
+          url: result.url,
+        }),
+      );
+    } catch (error) {
+      skipped += 1;
+      console.warn('Official site media upload skipped', {
+        assetId: asset.id,
+        code:
+          error instanceof OfficialSiteDeliveryError
+            ? error.code
+            : 'MEDIA_ASSET_INVALID_OR_UNAVAILABLE',
+        contentVersionId: claim.contentVersionId,
+      });
+      if (asset.publicUrl) {
+        publishedAssets.push(
+          Object.freeze({
+            alt_text: asset.altText,
+            position: asset.position,
+            role: asset.role,
+            url: asset.publicUrl,
+          }),
+        );
+      }
+    }
+  }
+  return Object.freeze({
+    assets: Object.freeze(publishedAssets),
+    diagnostics: Object.freeze({
+      media_upload: Object.freeze({
+        available: true,
+        skipped,
+        uploaded: Object.freeze(uploaded),
+      }),
+    }),
+  });
+}
+
+function existingOfficialSiteMedia(
+  assets: readonly NonNullable<PublishClaim['mediaAssets']>[number][],
+): PreparedOfficialSiteMedia {
+  return Object.freeze({
+    assets: Object.freeze(
+      assets
+        .filter((asset) => asset.publicUrl !== null)
+        .map((asset) =>
+          Object.freeze({
+            alt_text: asset.altText,
+            position: asset.position,
+            role: asset.role,
+            url: asset.publicUrl as string,
+          }),
+        ),
+    ),
+    diagnostics: Object.freeze({}),
+  });
+}
+
+function requireUploadableAsset(asset: NonNullable<PublishClaim['mediaAssets']>[number]): void {
+  if (
+    asset.mimeType !== 'image/jpeg' ||
+    !Number.isSafeInteger(asset.sizeBytes) ||
+    asset.sizeBytes < 1 ||
+    asset.sizeBytes > 10_000_000 ||
+    !/^[a-f0-9]{64}$/u.test(asset.contentHash)
+  ) {
+    throw new Error('Official site image metadata is invalid');
+  }
+}
+
+function storageKey(uri: string): string {
+  const match = /^(?:s3|memory):\/\/[^/]+\/(.+)$/u.exec(uri);
+  if (!match?.[1]) throw new Error('Official site image object URI is invalid');
+  const key = decodeURIComponent(match[1]);
+  if (!key || key.startsWith('/') || key.includes('..')) {
+    throw new Error('Official site image object key is invalid');
+  }
+  return key;
+}
+
+function sha256(value: Uint8Array): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function deliveryConfig(

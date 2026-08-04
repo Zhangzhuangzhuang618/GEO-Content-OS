@@ -6,6 +6,8 @@ import { exportOfficialSite, hashOfficialSitePayload, toOfficialSiteApiPayload }
 import {
   OfficialSiteCapabilityResponseSchema,
   OfficialSiteDeliveryInputSchema,
+  OfficialSiteMediaUploadInputSchema,
+  OfficialSiteMediaUploadResponseSchema,
   OfficialSiteMetricsResponseSchema,
   OfficialSitePublishResponseSchema,
   OfficialSiteStatusResponseSchema,
@@ -19,6 +21,8 @@ import {
   type OfficialSiteExportBundle,
   type OfficialSiteHttpResponse,
   type OfficialSiteHttpTransport,
+  type OfficialSiteMediaUploadInput,
+  type OfficialSiteMediaUploadResult,
   type OfficialSiteMetricsResult,
   type OfficialSitePublishResult,
   type OfficialSiteStatusResult,
@@ -55,6 +59,7 @@ export class OfficialSiteDeliveryAdapter {
       return Object.freeze({
         export: true,
         get_status: parsed.data.get_status,
+        media_upload: parsed.data.media_upload,
         metrics: parsed.data.metrics,
         publish: parsed.data.publish,
         version: OFFICIAL_SITE_DELIVERY_VERSION,
@@ -63,6 +68,64 @@ export class OfficialSiteDeliveryAdapter {
     } catch {
       return exportOnlyCapabilities('CAPABILITY_PROBE_FAILED');
     }
+  }
+
+  public async uploadMedia(
+    input: unknown,
+    signal?: AbortSignal,
+  ): Promise<OfficialSiteMediaUploadResult> {
+    const configuration = this.requireApi('publish');
+    const parsed = OfficialSiteMediaUploadInputSchema.parse(input) as OfficialSiteMediaUploadInput;
+    let response: OfficialSiteHttpResponse;
+    try {
+      response = await this.requestApi(
+        configuration,
+        'POST',
+        configuration.endpoints.media,
+        signal,
+        parsed.body,
+        parsed.idempotency_key,
+        parsed.idempotency_key,
+        {
+          'content-type': parsed.content_type,
+          'x-content-sha256': parsed.content_hash,
+          'x-content-version-id': parsed.content_version_id,
+          'x-media-asset-id': parsed.asset_id,
+          'x-media-role': parsed.role,
+        },
+      );
+    } catch {
+      throw new OfficialSiteDeliveryError(
+        'MEDIA_UPLOAD_STATE_UNKNOWN',
+        'Official site media upload ended without a conclusive response',
+      );
+    }
+    if (response.status_code >= 500) {
+      throw new OfficialSiteDeliveryError(
+        'MEDIA_UPLOAD_STATE_UNKNOWN',
+        'Official site media upload may have reached the remote system',
+      );
+    }
+    if (!isSuccess(response.status_code)) {
+      throw new OfficialSiteDeliveryError(
+        'MEDIA_UPLOAD_REJECTED',
+        'Official site rejected media upload',
+      );
+    }
+    const result = OfficialSiteMediaUploadResponseSchema.safeParse(response.body);
+    if (
+      !result.success ||
+      result.data.asset_id !== parsed.asset_id ||
+      result.data.content_hash !== parsed.content_hash ||
+      result.data.content_type !== parsed.content_type ||
+      result.data.size_bytes !== parsed.body.byteLength
+    ) {
+      throw new OfficialSiteDeliveryError(
+        'MEDIA_UPLOAD_STATE_UNKNOWN',
+        'Official site accepted media but returned an invalid response',
+      );
+    }
+    return result.data as OfficialSiteMediaUploadResult;
   }
 
   public async deliver(input: unknown, signal?: AbortSignal): Promise<OfficialSiteDeliveryResult> {
@@ -178,15 +241,19 @@ export class OfficialSiteDeliveryAdapter {
     body?: unknown,
     idempotencyKey?: string,
     requestId?: string,
+    extraHeaders?: Readonly<Record<string, string>>,
   ): Promise<OfficialSiteHttpResponse> {
     return this.transport.request({
       ...(body === undefined ? {} : { body }),
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${configuration.bearer_token}`,
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...(body === undefined || body instanceof Uint8Array
+          ? {}
+          : { 'content-type': 'application/json' }),
         ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         ...(requestId ? { 'x-request-id': requestId } : {}),
+        ...extraHeaders,
       },
       method,
       ...(signal ? { signal } : {}),
@@ -201,6 +268,7 @@ function exportOnlyCapabilities(
   return Object.freeze({
     export: true,
     get_status: false,
+    media_upload: false,
     metrics: false,
     publish: false,
     version: OFFICIAL_SITE_DELIVERY_VERSION,

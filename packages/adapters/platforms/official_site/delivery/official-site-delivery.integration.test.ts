@@ -92,6 +92,48 @@ describe('official_site delivery integration', () => {
     expect(transport.requests).toHaveLength(1);
   });
 
+  it('uploads immutable JPEG bytes to the configured official-site media endpoint', async () => {
+    const body = Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]);
+    const contentHash = sha256Bytes(body);
+    const assetId = '30000000-0000-4000-8000-000000000204';
+    const transport = new FakeTransport([
+      response(201, {
+        asset_id: assetId,
+        content_hash: contentHash,
+        content_type: 'image/jpeg',
+        size_bytes: body.byteLength,
+        url: 'https://cms.example.com/upload/geo/ab/image.jpg',
+      }),
+    ]);
+
+    const result = await apiAdapter(transport).uploadMedia({
+      asset_id: assetId,
+      body,
+      content_hash: contentHash,
+      content_type: 'image/jpeg',
+      content_version_id: '30000000-0000-4000-8000-000000000104',
+      idempotency_key: `official-site-media:${assetId}`,
+      role: 'cover',
+    });
+
+    expect(result.url).toBe('https://cms.example.com/upload/geo/ab/image.jpg');
+    expect(transport.requests).toHaveLength(1);
+    expect(transport.requests[0]).toMatchObject({
+      body,
+      headers: {
+        authorization: 'Bearer test-secret',
+        'content-type': 'image/jpeg',
+        'idempotency-key': `official-site-media:${assetId}`,
+        'x-content-sha256': contentHash,
+        'x-content-version-id': '30000000-0000-4000-8000-000000000104',
+        'x-media-asset-id': assetId,
+        'x-media-role': 'cover',
+      },
+      method: 'POST',
+      url: 'https://cms.example.com/api/media',
+    });
+  });
+
   it('does not retry or export after a publish request enters an unknown state', async () => {
     const transport = new FakeTransport([
       response(200, { get_status: true, metrics: true, publish: true }),
@@ -280,5 +322,9 @@ function bundleHash(value: unknown): string {
 }
 
 function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function sha256Bytes(value: Uint8Array): string {
   return createHash('sha256').update(value).digest('hex');
 }

@@ -612,7 +612,7 @@ function ConnectForm({
               />
               <span className="mt-2 block text-xs leading-5 text-ink-500">
                 {platformCode === 'official_site'
-                  ? '系统会在该地址下调用 capabilities、publish、status 和 metrics。'
+                  ? '系统会在该地址下调用 capabilities、media、publish、status 和 metrics。'
                   : '由平台或你的中转服务提供；必须是 HTTPS。'}
               </span>
             </label>
@@ -759,8 +759,8 @@ function ConnectionGuide({
         <li>专用发布令牌；它不是官网后台账号密码</li>
       </ol>
       <p className="mt-3 text-xs leading-5 text-ink-500">
-        保存时系统会测试 capabilities；发布时使用 publish、status 和 metrics。生产环境必须使用
-        HTTPS，本机联调允许 localhost 或 127.0.0.1。
+        保存时系统会测试 capabilities；配图随文上传使用 media，发布与回查使用 publish、status 和
+        metrics。生产环境必须使用 HTTPS，本机联调允许 localhost 或 127.0.0.1。
       </p>
     </div>
   );

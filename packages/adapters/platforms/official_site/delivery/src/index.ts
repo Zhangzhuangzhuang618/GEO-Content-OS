@@ -16,6 +16,8 @@ export {
   OfficialSiteApiPayloadSchema,
   OfficialSiteDeliveryInputSchema,
   OfficialSiteMetricsResponseSchema,
+  OfficialSiteMediaUploadInputSchema,
+  OfficialSiteMediaUploadResponseSchema,
   OfficialSitePublishResponseSchema,
   OfficialSiteStatusResponseSchema,
 } from './schema.js';
@@ -34,6 +36,8 @@ export {
   type OfficialSiteHttpResponse,
   type OfficialSiteHttpTransport,
   type OfficialSiteMetricsResult,
+  type OfficialSiteMediaUploadInput,
+  type OfficialSiteMediaUploadResult,
   type OfficialSitePublishResult,
   type OfficialSiteStatusResult,
 } from './types.js';

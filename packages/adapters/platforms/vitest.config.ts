@@ -1,3 +1,5 @@
 import { createNodeVitestConfig } from '../../testkit/vitest/node.mjs';
 
-export default createNodeVitestConfig({ include: ['**/*.test.ts'] });
+export default createNodeVitestConfig({
+  include: ['{baijiahao,douyin,official_site,toutiao,wechat_mp,xiaohongshu,zhihu}/**/*.test.ts'],
+});

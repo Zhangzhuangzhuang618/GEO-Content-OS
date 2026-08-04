@@ -12,10 +12,11 @@ import { PublisherQueueConsumer } from './queue.consumer.js';
 async function main(): Promise<void> {
   const config = readPublisherWorkerConfig();
   const database = postgres(config.databaseUrl, { max: 5, prepare: false });
+  const storage = createStorageAdapter(readStorageConfiguration());
   const publisher = new PublisherWorker(
     {
-      platform: new SevenPlatformPublisher(),
-      storage: createStorageAdapter(readStorageConfiguration()),
+      platform: new SevenPlatformPublisher(storage),
+      storage,
       store: new PostgresPublisherStore(database, config.staleAfterMs),
     },
     createPublisherCredentialService(),

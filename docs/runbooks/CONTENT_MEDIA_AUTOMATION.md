@@ -4,10 +4,11 @@
 
 1. Cloudflare 账号已开通 Workers AI，并由账号所有者接受
    `@cf/meta/llama-3.2-11b-vision-instruct` 的使用许可。
-2. AI Worker 可访问 Cloudflare API 和对象存储。
-3. `GENERATED_MEDIA_PUBLIC_BASE_URL` 指向对象键的持久 HTTPS/CDN 前缀。未配置时官网不展示图片，
-   百家号仍可从私有对象存储上传图片。
-4. 不配置 Gemini；本链路没有 Gemini 环境变量或调用。
+2. AI Worker、Publisher Worker 和百家号浏览器进程均可访问私有 MinIO。
+3. 推荐让官网发布 API 返回 `media_upload=true`：Publisher 会在发文前把 MinIO 中的 JPEG 二进制上传到
+   官网，使用官网返回的 HTTPS 地址，不要求 Windows 或 MinIO 具备公网入口。
+4. `GENERATED_MEDIA_PUBLIC_BASE_URL` 仅用于旧版公开 CDN 回退。采用官网随文上传时必须留空。
+5. 不配置 Gemini；本链路没有 Gemini 环境变量或调用。
 
 ## 推荐配置
 
@@ -21,7 +22,7 @@ CLOUDFLARE_ACCOUNT_ID=<cloudflare-account-id>
 CLOUDFLARE_API_TOKEN=<workers-ai-token>
 CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-1-schnell
 CLOUDFLARE_IMAGE_QA_MODEL=@cf/meta/llama-3.2-11b-vision-instruct
-GENERATED_MEDIA_PUBLIC_BASE_URL=https://cdn.example.com
+GENERATED_MEDIA_PUBLIC_BASE_URL=
 ```
 
 ## 状态与诊断
@@ -130,8 +131,11 @@ ORDER BY link.created_at DESC,link.role,link.position;
 5. 配图长期为 `running`：检查 AI Worker 的规划、Cloudflare、视觉质检或对象存储错误。
 6. 配图为 `fallback`：读取 `provider_failures`、`storage_failures` 和素材的 `source`；这表示已降级，
    不等于文章失败。
-7. 配图为 `succeeded/fallback` 且官网不显示：检查 `public_url`、`GENERATED_MEDIA_PUBLIC_BASE_URL` 和
-   对象是否能从公网访问。百家号不依赖公开 URL，但只有文章质检、配图和排期全部完成后才会上传。
+7. 配图为 `succeeded/fallback` 且官网不显示：先检查官网 `/capabilities` 是否返回
+   `media_upload=true`，再检查 Publisher Worker 日志中的 `Official site media upload skipped` 和官网
+   `public/upload/geo/` 写权限。采用随文上传时 `public_url` 为空是正常状态。
+8. 发布尝试的 `response_json.media_upload` 记录官网媒体能力、成功素材 URL 和跳过数量；成功上传后图片
+   由官网持久保存，Windows 离线不影响已发布图片。
 
 容器日志按完整链路查看：
 
