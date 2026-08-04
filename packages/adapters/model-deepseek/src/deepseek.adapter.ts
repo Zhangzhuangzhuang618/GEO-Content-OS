@@ -219,7 +219,10 @@ export class DeepSeekModelAdapter implements ModelAdapter {
       );
     }
     for (const [index, value] of input.messages.entries()) {
-      if ('content' in value && value.content !== undefined && !value.content.trim()) {
+      const hasContent =
+        'content' in value && typeof value.content === 'string' && value.content.trim().length > 0;
+      const hasToolCalls = value.role === 'assistant' && (value.toolCalls?.length ?? 0) > 0;
+      if (!hasContent && !hasToolCalls) {
         throw new DeepSeekAdapterError(
           'DEEPSEEK_INVALID_REQUEST',
           `DeepSeek message ${index} (${value.role}) has empty content`,
@@ -438,7 +441,7 @@ function message(value: ModelMessage): JsonObject {
   }
   if (value.role === 'assistant') {
     return {
-      content: value.content ?? null,
+      content: value.content?.trim() ? value.content : null,
       role: value.role,
       ...(value.toolCalls?.length
         ? {

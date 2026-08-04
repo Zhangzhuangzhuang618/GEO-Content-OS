@@ -206,20 +206,41 @@ describe('ContentWriterSkill', () => {
   });
 
   it('runs through the real DeepSeek Adapter using JSON mode and authorized tools', async () => {
-    let requestBody: Record<string, unknown> | undefined;
+    const requestBodies: Record<string, unknown>[] = [];
     const baseUrl = await serve(async (incoming, outgoing) => {
-      requestBody = JSON.parse(await body(incoming)) as Record<string, unknown>;
+      requestBodies.push(JSON.parse(await body(incoming)) as Record<string, unknown>);
       outgoing.writeHead(200, { 'Content-Type': 'application/json' });
       outgoing.end(
         JSON.stringify({
           choices: [
-            {
-              finish_reason: 'stop',
-              index: 0,
-              message: { content: JSON.stringify(fixture.output.data), role: 'assistant' },
-            },
+            requestBodies.length === 1
+              ? {
+                  finish_reason: 'tool_calls',
+                  index: 0,
+                  message: {
+                    content: '   ',
+                    role: 'assistant',
+                    tool_calls: [
+                      {
+                        function: {
+                          arguments: JSON.stringify({
+                            brand_profile_id: '20000000-0000-4000-8000-000000000061',
+                          }),
+                          name: 'get_strategy_version',
+                        },
+                        id: 'strategy-call-1',
+                        type: 'function',
+                      },
+                    ],
+                  },
+                }
+              : {
+                  finish_reason: 'stop',
+                  index: 0,
+                  message: { content: JSON.stringify(fixture.output.data), role: 'assistant' },
+                },
           ],
-          id: 'content-writer-provider-request',
+          id: `content-writer-provider-request-${requestBodies.length}`,
           model: 'configured-provider-model',
           usage: { completion_tokens: 260, prompt_tokens: 420, total_tokens: 680 },
         }),
@@ -238,13 +259,14 @@ describe('ContentWriterSkill', () => {
 
     await expect(
       skill(adapter).run({ context, input: fixture.input, recordUsage: () => undefined }),
-    ).resolves.toMatchObject({ output: { skill_name: 'content-writer' } });
-    expect(requestBody).toMatchObject({
+    ).resolves.toMatchObject({ output: { skill_name: 'content-writer' }, toolCallCount: 1 });
+    expect(requestBodies).toHaveLength(2);
+    expect(requestBodies[0]).toMatchObject({
       response_format: { type: 'json_object' },
       stream: false,
       temperature: 0.4,
     });
-    expect(requestBody?.['tools']).toEqual([
+    expect(requestBodies[0]?.['tools']).toEqual([
       expect.objectContaining({
         function: expect.objectContaining({ name: 'get_strategy_version' }),
       }),
@@ -252,6 +274,12 @@ describe('ContentWriterSkill', () => {
         function: expect.objectContaining({ name: 'get_platform_rules' }),
       }),
     ]);
+    const secondMessages = requestBodies[1]?.['messages'] as readonly Record<string, unknown>[];
+    expect(secondMessages[11]).toMatchObject({
+      content: null,
+      role: 'assistant',
+      tool_calls: [expect.objectContaining({ id: 'strategy-call-1', type: 'function' })],
+    });
   });
 });
 

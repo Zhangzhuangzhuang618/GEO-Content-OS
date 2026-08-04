@@ -33,6 +33,50 @@ describe('DeepSeekModelAdapter integration', () => {
     expect(String(error)).toContain('message 0 (user) has empty content');
   });
 
+  it('accepts blank assistant content only when it carries a tool call', async () => {
+    let receivedBody: Record<string, unknown> | undefined;
+    const baseUrl = await serve(async (incoming, outgoing) => {
+      receivedBody = JSON.parse(await body(incoming)) as Record<string, unknown>;
+      json(outgoing, completion({ content: '{"answer":"verified"}' }));
+    });
+    const adapter = new DeepSeekModelAdapter(configuration(baseUrl));
+    const toolCall = {
+      arguments: { query: 'GEO' },
+      id: 'call-1',
+      name: 'search_knowledge',
+    } as const;
+    const tools = [
+      {
+        description: 'Search scoped knowledge',
+        inputSchema: { properties: { query: { type: 'string' } }, type: 'object' },
+        name: 'search_knowledge',
+      },
+    ] as const;
+
+    await expect(
+      adapter.generate({
+        ...request,
+        messages: [
+          request.messages[0]!,
+          { content: '   ', role: 'assistant', toolCalls: [toolCall] },
+          { content: '{"facts":[]}', role: 'tool', toolCallId: toolCall.id },
+        ],
+        tools,
+      }),
+    ).resolves.toMatchObject({ message: { content: '{"answer":"verified"}' } });
+
+    const messages = receivedBody?.['messages'] as readonly Record<string, unknown>[];
+    expect(messages[1]).toMatchObject({ content: null, role: 'assistant' });
+    expect(messages[1]?.['tool_calls']).toHaveLength(1);
+    await expect(
+      adapter.generate({
+        ...request,
+        messages: [{ content: '   ', role: 'assistant' }],
+        tools,
+      }),
+    ).rejects.toMatchObject({ code: 'DEEPSEEK_INVALID_REQUEST', retryable: false });
+  });
+
   it('loads all provider identifiers and limits from configuration', () => {
     const configuration = loadDeepSeekAdapterConfiguration({
       DEEPSEEK_API_KEY: 'test-secret',
