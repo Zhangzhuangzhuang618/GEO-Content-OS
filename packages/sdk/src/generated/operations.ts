@@ -791,6 +791,13 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session',
   },
+  job_media_create: {
+    idempotency: 'key+version',
+    method: 'POST',
+    path: '/publish-jobs/{id}/media',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   job_retry: {
     idempotency: 'key+version',
     method: 'POST',

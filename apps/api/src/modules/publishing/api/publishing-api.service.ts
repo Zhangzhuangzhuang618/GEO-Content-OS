@@ -5,11 +5,15 @@ import type {
   PublishJobDetail,
   PublishJobQuery,
   PublishJobView,
+  PublishMediaRun,
+  PublishMediaState,
   SignedDownloadView,
 } from '@geo-content-os/contracts';
 import { PublishJobParamsSchema } from '@geo-content-os/contracts';
+import type postgres from 'postgres';
 
 import { resolveDatabaseClient, type DatabaseClientSource } from '../../../database/index.js';
+import { OutboxWriter } from '../../outbox/index.js';
 import { PublishingApiError } from './publishing-api.errors.js';
 
 export interface PublishingApiScope {
@@ -70,11 +74,48 @@ interface ArtifactRow {
   readonly variantId: string;
 }
 
+interface PublishMediaConfig {
+  readonly enabled: boolean;
+  readonly generationModel: string | null;
+  readonly inspectionModel: string | null;
+  readonly plannerModelKey: string;
+  readonly provider: 'cloudflare' | null;
+}
+
+interface MediaStateRow {
+  readonly assetCount: number;
+  readonly platformCode: string;
+  readonly runId: string | null;
+  readonly runStatus: 'queued' | 'running' | 'succeeded' | 'fallback' | 'cancelled' | null;
+}
+
+interface MediaRequestRow {
+  readonly assetCount: number;
+  readonly contentHash: string;
+  readonly contentVersionId: string;
+  readonly currentContentVersionId: string | null;
+  readonly packageId: string;
+  readonly platformCode: string;
+  readonly projectId: string;
+  readonly qualityReportId: string | null;
+  readonly qualityReportPassed: boolean;
+  readonly status: PublishJobView['status'];
+  readonly variantId: string;
+  readonly version: number;
+  readonly workspaceId: string;
+}
+
 export class PublishingApiService {
+  private readonly outbox: OutboxWriter;
+
   public constructor(
     private readonly databaseSource: DatabaseClientSource,
     private readonly storage: ObjectStorageAdapter,
-  ) {}
+    outbox?: OutboxWriter,
+    private readonly mediaConfig: PublishMediaConfig = readPublishMediaConfig(),
+  ) {
+    this.outbox = outbox ?? new OutboxWriter(resolveDatabaseClient(databaseSource));
+  }
 
   private get database() {
     return resolveDatabaseClient(this.databaseSource);
@@ -132,15 +173,27 @@ export class PublishingApiService {
 
   public async detail(scope: PublishingApiScope, jobId: string): Promise<PublishJobDetail> {
     const job = await this.requireJob(scope, jobId);
-    const [attempts, artifact] = await Promise.all([
+    const [attempts, artifact, media] = await Promise.all([
       this.attemptRows(scope, jobId),
       this.latestArtifact(scope, jobId),
+      this.mediaState(scope, jobId),
     ]);
     return {
       attempts: attempts.map(mapAttempt),
       export_artifact: artifact ? mapArtifact(artifact) : null,
       job: mapJob(job),
+      media,
     };
+  }
+
+  public requestMedia(
+    transaction: postgres.TransactionSql,
+    scope: PublishingApiScope,
+    jobId: string,
+    expectedVersion: number,
+    requestId: string,
+  ): Promise<PublishMediaRun> {
+    return this.requestMediaInTransaction(transaction, scope, jobId, expectedVersion, requestId);
   }
 
   public async attempts(
@@ -230,6 +283,212 @@ export class PublishingApiService {
       ORDER BY created_at DESC,id DESC LIMIT 1
     `;
     return rows[0];
+  }
+
+  private async mediaState(scope: PublishingApiScope, jobId: string): Promise<PublishMediaState> {
+    const rows = await this.database<MediaStateRow[]>`
+      SELECT variant.platform_code AS "platformCode",
+        COALESCE((
+          SELECT count(*)::integer FROM content_media_assets AS link
+          JOIN media_assets AS asset
+            ON asset.id=link.media_asset_id AND asset.tenant_id=link.tenant_id
+            AND asset.asset_type='image' AND asset.deleted_at IS NULL
+          WHERE link.tenant_id=job.tenant_id
+            AND link.content_version_id=job.content_version_id
+            AND link.quality_json->>'decision'='pass'
+        ),0)::integer AS "assetCount",
+        media.id AS "runId",media.status AS "runStatus"
+      FROM publish_jobs AS job
+      JOIN content_variants AS variant
+        ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
+      JOIN content_packages AS package
+        ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+      LEFT JOIN LATERAL (
+        SELECT id,status FROM content_media_runs
+        WHERE tenant_id=job.tenant_id AND variant_id=job.variant_id
+          AND content_version_id=job.content_version_id
+        ORDER BY created_at DESC,id DESC LIMIT 1
+      ) AS media ON true
+      WHERE job.id=${jobId}::uuid AND job.tenant_id=${scope.tenantId}::uuid
+        AND has_project_scope_access(
+          package.tenant_id,package.workspace_id,package.project_id,${scope.userId}::uuid
+        )
+      LIMIT 1
+    `;
+    const row = rows[0];
+    if (!row) throw new PublishingApiError('PUBLISHING_NOT_FOUND', 'Publish job was not found');
+    const supported = this.mediaConfig.enabled && isMediaPlatform(row.platformCode);
+    const status =
+      row.assetCount > 0
+        ? 'ready'
+        : row.runStatus === 'queued' || row.runStatus === 'running'
+          ? row.runStatus
+          : 'none';
+    return Object.freeze({
+      asset_count: row.assetCount,
+      run_id: row.runId,
+      status,
+      supported,
+    });
+  }
+
+  private async requestMediaInTransaction(
+    transaction: postgres.TransactionSql,
+    scope: PublishingApiScope,
+    jobId: string,
+    expectedVersion: number,
+    requestId: string,
+  ): Promise<PublishMediaRun> {
+    const rows = await transaction<MediaRequestRow[]>`
+      SELECT job.status,job.version,job.variant_id AS "variantId",
+        job.content_version_id AS "contentVersionId",variant.platform_code AS "platformCode",
+        variant.current_content_version_id AS "currentContentVersionId",
+        package.id AS "packageId",package.workspace_id AS "workspaceId",
+        package.project_id AS "projectId",content.content_hash AS "contentHash",
+        report.id AS "qualityReportId",
+        COALESCE((
+          report.decision='pass'
+          AND (report.automation_gate_json IS NULL OR report.automation_gate_json->>'passed'='true')
+        ),false) AS "qualityReportPassed",
+        COALESCE((
+          SELECT count(*)::integer FROM content_media_assets AS link
+          JOIN media_assets AS asset
+            ON asset.id=link.media_asset_id AND asset.tenant_id=link.tenant_id
+            AND asset.asset_type='image' AND asset.deleted_at IS NULL
+          WHERE link.tenant_id=job.tenant_id
+            AND link.content_version_id=job.content_version_id
+            AND link.quality_json->>'decision'='pass'
+        ),0)::integer AS "assetCount"
+      FROM publish_jobs AS job
+      JOIN content_variants AS variant
+        ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
+      JOIN content_packages AS package
+        ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+      JOIN content_versions AS content
+        ON content.id=job.content_version_id AND content.tenant_id=job.tenant_id
+        AND content.package_id=package.id AND content.variant_id=variant.id
+      LEFT JOIN LATERAL (
+        SELECT id,decision,automation_gate_json FROM quality_reports
+        WHERE tenant_id=job.tenant_id AND variant_id=job.variant_id
+          AND content_version_id=job.content_version_id
+        ORDER BY created_at DESC,id DESC LIMIT 1
+      ) AS report ON true
+      WHERE job.id=${jobId}::uuid AND job.tenant_id=${scope.tenantId}::uuid
+        AND has_project_scope_access(
+          package.tenant_id,package.workspace_id,package.project_id,${scope.userId}::uuid
+        )
+      LIMIT 1
+      FOR UPDATE OF job
+    `;
+    const row = rows[0];
+    if (!row) throw new PublishingApiError('PUBLISHING_NOT_FOUND', 'Publish job was not found');
+    if (row.version !== expectedVersion) {
+      throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Publish job version changed');
+    }
+    if (!this.mediaConfig.enabled) {
+      throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Image generation is disabled');
+    }
+    if (row.status !== 'scheduled') {
+      throw new PublishingApiError(
+        'PUBLISHING_STATE_INVALID',
+        'Only scheduled publish jobs can generate images',
+      );
+    }
+    if (!isMediaPlatform(row.platformCode)) {
+      throw new PublishingApiError(
+        'PUBLISHING_STATE_INVALID',
+        'The target publisher cannot attach generated images',
+      );
+    }
+    if (
+      row.currentContentVersionId !== row.contentVersionId ||
+      !row.qualityReportId ||
+      !row.qualityReportPassed
+    ) {
+      throw new PublishingApiError(
+        'PUBLISHING_STATE_INVALID',
+        'The scheduled content does not have a passing current quality report',
+      );
+    }
+    if (row.assetCount > 0) {
+      throw new PublishingApiError(
+        'PUBLISHING_STATE_INVALID',
+        'The scheduled content already has generated images',
+      );
+    }
+
+    const existing = await transaction<
+      { id: string; status: 'queued' | 'running' | 'succeeded' | 'fallback' | 'cancelled' }[]
+    >`
+      SELECT id,status FROM content_media_runs
+      WHERE tenant_id=${scope.tenantId}::uuid AND quality_report_id=${row.qualityReportId}::uuid
+      FOR UPDATE
+    `;
+    const active = existing[0];
+    if (active?.status === 'queued' || active?.status === 'running') {
+      return Object.freeze({ id: active.id, status: active.status });
+    }
+    const mediaRuns = active
+      ? await transaction<{ id: string; status: 'queued' }[]>`
+          UPDATE content_media_runs SET status='queued',planner_model_key=${this.mediaConfig.plannerModelKey},
+            provider=${this.mediaConfig.provider},generation_model=${this.mediaConfig.generationModel},
+            inspection_model=${this.mediaConfig.inspectionModel},plan_json=NULL,
+            diagnostics_json='{}'::jsonb,last_error_json=NULL,created_by=${scope.userId}::uuid,
+            started_at=NULL,finished_at=NULL,version=version+1
+          WHERE id=${active.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+          RETURNING id,status
+        `
+      : await transaction<{ id: string; status: 'queued' }[]>`
+          INSERT INTO content_media_runs (
+            tenant_id,workspace_id,project_id,package_id,variant_id,content_version_id,
+            quality_report_id,platform_code,planner_model_key,provider,generation_model,
+            inspection_model,created_by
+          ) VALUES (
+            ${scope.tenantId}::uuid,${row.workspaceId}::uuid,${row.projectId}::uuid,
+            ${row.packageId}::uuid,${row.variantId}::uuid,${row.contentVersionId}::uuid,
+            ${row.qualityReportId}::uuid,${row.platformCode},${this.mediaConfig.plannerModelKey},
+            ${this.mediaConfig.provider},${this.mediaConfig.generationModel},
+            ${this.mediaConfig.inspectionModel},${scope.userId}::uuid
+          ) RETURNING id,status
+        `;
+    const mediaRun = mediaRuns[0];
+    if (!mediaRun) {
+      throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Image generation was not queued');
+    }
+    await this.outbox.enqueue(
+      {
+        aggregateId: mediaRun.id,
+        aggregateType: 'content_media_run',
+        data: {
+          actor_user_id: scope.userId,
+          content_hash: row.contentHash,
+          content_version_id: row.contentVersionId,
+          media_run_id: mediaRun.id,
+          package_id: row.packageId,
+          platform_code: row.platformCode,
+          project_id: row.projectId,
+          publish_job_id: jobId,
+          quality_report_id: row.qualityReportId,
+          request_id: boundedRequestId(`publish-media-${requestId}`),
+          variant_id: row.variantId,
+          workspace_id: row.workspaceId,
+        },
+        eventType: 'content.variant.media_generation_requested.v1',
+        tenantId: scope.tenantId,
+      },
+      transaction,
+    );
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,request_id
+      ) VALUES (
+        ${scope.tenantId}::uuid,${scope.userId}::uuid,'publish_job.media_requested',
+        'publish_job',${jobId}::uuid,NULL,
+        ${JSON.stringify({ content_version_id: row.contentVersionId, media_run_id: mediaRun.id })}::text::jsonb,
+        ${requestId}
+      )
+    `;
+    return Object.freeze(mediaRun);
   }
 }
 
@@ -343,4 +602,33 @@ function objectKey(uri: string): string {
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readPublishMediaConfig(environment: NodeJS.ProcessEnv = process.env): PublishMediaConfig {
+  const driver = environment['IMAGE_GENERATION_DRIVER']?.trim().toLowerCase() ?? 'disabled';
+  return Object.freeze({
+    enabled: (environment['IMAGE_AUTOMATION_ENABLED']?.trim().toLowerCase() ?? 'true') !== 'false',
+    generationModel:
+      driver === 'cloudflare'
+        ? (environment['CLOUDFLARE_IMAGE_MODEL']?.trim() ?? '@cf/black-forest-labs/flux-1-schnell')
+        : null,
+    inspectionModel:
+      driver === 'cloudflare'
+        ? (environment['CLOUDFLARE_IMAGE_QA_MODEL']?.trim() ??
+          '@cf/meta/llama-3.2-11b-vision-instruct')
+        : null,
+    plannerModelKey:
+      environment['IMAGE_PLANNER_MODEL_KEY']?.trim() ??
+      environment['CONTENT_MODEL_BALANCED_KEY']?.trim() ??
+      'deepseek-v4-flash',
+    provider: driver === 'cloudflare' ? 'cloudflare' : null,
+  });
+}
+
+function isMediaPlatform(value: string): value is 'baijiahao' | 'official_site' {
+  return value === 'baijiahao' || value === 'official_site';
+}
+
+function boundedRequestId(value: string): string {
+  return value.slice(0, 80);
 }

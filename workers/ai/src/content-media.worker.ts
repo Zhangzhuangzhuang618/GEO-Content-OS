@@ -35,6 +35,7 @@ interface MediaClaim {
   readonly generationRunId: string;
   readonly generationModel: string | null;
   readonly inspectionModel: string | null;
+  readonly manualPublishJobId: string | null;
   readonly platformCode: 'baijiahao' | 'official_site';
   readonly provider: string | null;
   readonly version: number;
@@ -183,6 +184,28 @@ export class ContentMediaWorker {
       if (row.status === 'running' && Date.now() - row.updatedAt.getTime() < 120_000) {
         throw new Error('Content media generation is already running');
       }
+      if (event.data.publishJobId) {
+        const jobs = await transaction<{ id: string }[]>`
+          SELECT id FROM publish_jobs
+          WHERE id=${event.data.publishJobId}::uuid AND tenant_id=${event.tenantId}::uuid
+            AND variant_id=${event.data.variantId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND payload_hash=${event.data.contentHash} AND status='scheduled'
+          FOR UPDATE
+        `;
+        if (!jobs[0]) {
+          await transaction`
+            UPDATE content_media_runs SET status='cancelled',finished_at=now(),
+              last_error_json=${JSON.stringify({
+                code: 'PUBLISH_JOB_NO_LONGER_SCHEDULED',
+                message: 'The publish job is no longer scheduled',
+              })}::text::jsonb,version=version+1
+            WHERE id=${event.data.mediaRunId}::uuid AND tenant_id=${event.tenantId}::uuid
+              AND status IN ('queued','running')
+          `;
+          return null;
+        }
+      }
       const changed = await transaction<{ version: number }[]>`
         UPDATE content_media_runs SET status='running',started_at=COALESCE(started_at,now()),
           finished_at=NULL,last_error_json=NULL,version=version+1
@@ -199,6 +222,7 @@ export class ContentMediaWorker {
         generationModel: row.generationModel,
         generationRunId: row.generationRunId,
         inspectionModel: row.inspectionModel,
+        manualPublishJobId: event.data.publishJobId,
         platformCode: row.platformCode,
         provider: row.provider,
         version: lease.version,
@@ -347,8 +371,12 @@ export class ContentMediaWorker {
         throw new Error('Stored quality report scope is invalid');
       }
       const result = parseQualityResult(storedQuality);
-      const gate = parseQualityGate(storedQuality.automationGate, claim.platformCode);
-      if (!gate.passed) throw new Error('Stored quality gate did not pass');
+      const gate = claim.manualPublishJobId
+        ? null
+        : parseQualityGate(storedQuality.automationGate, claim.platformCode);
+      if (claim.manualPublishJobId && storedQuality.decision !== 'pass') {
+        throw new Error('Stored quality report did not pass');
+      }
 
       for (const asset of assets) {
         const metadata = {
@@ -404,6 +432,26 @@ export class ContentMediaWorker {
         RETURNING id
       `;
       if (completed.length !== 1) throw new Error('Content media run lease was lost');
+
+      if (claim.manualPublishJobId) {
+        await transaction`
+          INSERT INTO audit_events (
+            tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,request_id
+          ) VALUES (
+            ${event.tenantId}::uuid,${event.data.actorUserId}::uuid,
+            'publish_job.media_generated','publish_job',${claim.manualPublishJobId}::uuid,NULL,
+            ${JSON.stringify({
+              asset_count: assets.length,
+              content_version_id: event.data.contentVersionId,
+              media_run_id: event.data.mediaRunId,
+              status,
+            })}::text::jsonb,${event.data.requestId}
+          )
+        `;
+        return;
+      }
+
+      if (!gate) throw new Error('Stored quality gate is unavailable');
 
       const qualityEvent: ValidatedQualityEvent = Object.freeze({
         data: Object.freeze({

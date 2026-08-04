@@ -4,6 +4,7 @@ import {
   CreatePublishJobRequestSchema,
   DisablePlatformAccountRequestSchema,
   ERROR_DEFINITIONS,
+  GeneratePublishMediaRequestSchema,
   PlatformAccountParamsSchema,
   PlatformAccountQuerySchema,
   OfficialSiteAutomationPolicyRequestSchema,
@@ -641,6 +642,41 @@ export class PublishJobController {
             version,
             parsedBody.data,
           ),
+        HttpStatus.OK,
+        undefined,
+        version,
+      );
+      await sendVersioned(reply, result.response.statusCode, result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/media')
+  @RequirePermissions('publishing.manage')
+  public async generateMedia(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PublishJobParamsSchema.safeParse(params);
+    const parsedBody = GeneratePublishMediaRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
+    const scope = requireScope(request);
+    try {
+      const version = parseIfMatch(request.headers['if-match']);
+      const route = `/publish-jobs/${parsed.data.id}/media`;
+      const result = await idempotent(
+        this.idempotency,
+        request,
+        scope,
+        route,
+        {},
+        (transaction) =>
+          this.api.requestMedia(transaction, scope, parsed.data.id, version, request.id),
         HttpStatus.OK,
         undefined,
         version,

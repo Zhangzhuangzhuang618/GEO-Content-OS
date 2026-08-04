@@ -34,6 +34,7 @@ const ACCOUNT_ID = '10000000-0000-4000-8000-000000000006';
 const ATTEMPT_ID = '10000000-0000-4000-8000-000000000007';
 const ARTIFACT_ID = '10000000-0000-4000-8000-000000000008';
 const REQUEST_ID = '10000000-0000-4000-8000-000000000009';
+const MEDIA_RUN_ID = '10000000-0000-4000-8000-000000000013';
 const PROJECT_ID = '10000000-0000-4000-8000-000000000010';
 const POLICY_ID = '10000000-0000-4000-8000-000000000011';
 const NOW = '2026-07-16T08:00:00.000Z';
@@ -90,6 +91,7 @@ const detail: PublishJobDetail = {
     variant_id: VARIANT_ID,
   },
   job,
+  media: { asset_count: 0, run_id: null, status: 'none', supported: true },
 };
 
 const download: SignedDownloadView = {
@@ -160,6 +162,7 @@ describe('publishing API mock E2E', () => {
     attempts: vi.fn(async () => [attempt]),
     detail: vi.fn(async () => detail),
     listJobs,
+    requestMedia: vi.fn(async () => ({ id: MEDIA_RUN_ID, status: 'queued' as const })),
     signedExport: vi.fn(async () => download),
   };
   const jobs = {
@@ -298,6 +301,25 @@ describe('publishing API mock E2E', () => {
       JOB_ID,
       3,
       'Editorial calendar changed',
+    );
+  });
+
+  it('queues image generation for a versioned scheduled job', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'publish-media-0001', 'if-match': '"3"' },
+      method: 'POST',
+      payload: {},
+      url: `/publish-jobs/${JOB_ID}/media`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract('job.media.create').responseSchema.parse(response.json());
+    expect(api.requestMedia).toHaveBeenCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      JOB_ID,
+      3,
+      REQUEST_ID,
     );
   });
 

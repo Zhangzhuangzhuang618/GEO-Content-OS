@@ -33365,9 +33365,36 @@
                             "version"
                           ],
                           "additionalProperties": false
+                        },
+                        "media": {
+                          "type": "object",
+                          "properties": {
+                            "asset_count": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "run_id": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                { "type": "null" }
+                              ]
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": ["none", "queued", "running", "ready"]
+                            },
+                            "supported": { "type": "boolean" }
+                          },
+                          "required": ["asset_count", "run_id", "status", "supported"],
+                          "additionalProperties": false
                         }
                       },
-                      "required": ["attempts", "export_artifact", "job"],
+                      "required": ["attempts", "export_artifact", "job", "media"],
                       "additionalProperties": false
                     },
                     "meta": {
@@ -34074,6 +34101,163 @@
           }
         },
         "security": [{ "sessionCookie": [] }]
+      }
+    },
+    "/publish-jobs/{id}/media": {
+      "post": {
+        "operationId": "job_media_create",
+        "tags": ["Publish Jobs"],
+        "x-contract-key": "job.media.create",
+        "x-idempotency": "key+version",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": ["queued", "running", "succeeded", "fallback"]
+                        }
+                      },
+                      "required": ["id", "status"],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "PublishMediaRun"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
       }
     },
     "/publish-jobs/{id}/retry": {

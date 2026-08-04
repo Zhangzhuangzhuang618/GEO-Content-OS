@@ -13,6 +13,7 @@ const DATA_KEYS = new Set([
   'package_id',
   'platform_code',
   'project_id',
+  'publish_job_id',
   'quality_report_id',
   'request_id',
   'variant_id',
@@ -28,6 +29,7 @@ export interface ValidatedMediaGenerationEvent {
     readonly packageId: string;
     readonly platformCode: 'baijiahao' | 'official_site';
     readonly projectId: string;
+    readonly publishJobId: string | null;
     readonly qualityReportId: string;
     readonly requestId: string;
     readonly variantId: string;
@@ -57,6 +59,7 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
     packageId: string(event.data.package_id),
     platformCode: string(event.data.platform_code),
     projectId: string(event.data.project_id),
+    publishJobId: optionalString(event.data.publish_job_id),
     qualityReportId: string(event.data.quality_report_id),
     requestId: string(event.data.request_id),
     variantId: string(event.data.variant_id),
@@ -73,6 +76,7 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
       data.mediaRunId,
       data.packageId,
       data.projectId,
+      ...(data.publishJobId ? [data.publishJobId] : []),
       data.qualityReportId,
       data.variantId,
       data.workspaceId,
@@ -96,6 +100,10 @@ function record(value: unknown): value is Readonly<Record<string, unknown>> {
 
 function string(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 function invalid(): GenerationWorkerError {

@@ -9,6 +9,7 @@ import { TechnicalDetails } from '../human-readable';
 import type { PublishJob } from '../pub-02/publishing-calendar.schema';
 import {
   cancelUnexecutedPublishJob,
+  generatePublishJobMedia,
   getPublishJobDetail,
   getSignedExport,
   PublishJobDetailRequestError,
@@ -30,7 +31,9 @@ export function PublishJobDetailView() {
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error' | 'permission'>(
     'loading',
   );
-  const [busy, setBusy] = useState<'retry' | 'reschedule' | 'cancel' | 'download' | null>(null);
+  const [busy, setBusy] = useState<'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | null>(
+    null,
+  );
   const [message, setMessage] = useState<string | null>(null);
   const [download, setDownload] = useState<SignedDownload | null>(null);
 
@@ -65,6 +68,24 @@ export function PublishJobDetailView() {
     void load(jobId, controller.signal);
     return () => controller.abort();
   }, [jobId, load]);
+
+  useEffect(() => {
+    if (!jobId || (detail?.media.status !== 'queued' && detail?.media.status !== 'running')) return;
+    const controller = new AbortController();
+    const timer = window.setInterval(() => {
+      void getPublishJobDetail(jobId, controller.signal)
+        .then((value) => {
+          setDetail(value);
+          if (value.media.status === 'ready') setMessage('配图已生成，将随文章一起发布。');
+          if (value.media.status === 'none') setMessage('本次配图未生成，可以重新尝试。');
+        })
+        .catch(() => undefined);
+    }, 2_000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [detail?.media.status, jobId]);
 
   async function runAction(action: 'retry' | 'reschedule' | 'cancel') {
     if (!detail) return;
@@ -130,6 +151,26 @@ export function PublishJobDetailView() {
     }
   }
 
+  async function generateMedia() {
+    if (!detail) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy('media');
+    setMessage(null);
+    try {
+      await generatePublishJobMedia(detail.job, csrf);
+      setMessage('配图生成已排队，页面会自动更新结果。');
+      setDetail(await getPublishJobDetail(detail.job.id));
+    } catch {
+      setMessage('配图生成未能启动；任务状态、内容版本或质量报告可能已经变化。');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="mt-8">
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
@@ -174,6 +215,7 @@ export function PublishJobDetailView() {
           detail={detail}
           onAction={runAction}
           onDownload={prepareDownload}
+          onGenerateMedia={generateMedia}
         />
       )}
     </section>
@@ -185,11 +227,13 @@ function DetailContent({
   detail,
   onAction,
   onDownload,
+  onGenerateMedia,
 }: {
-  readonly busy: 'retry' | 'reschedule' | 'cancel' | 'download' | null;
+  readonly busy: 'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | null;
   readonly detail: PublishJobDetail;
   readonly onAction: (action: 'retry' | 'reschedule' | 'cancel') => Promise<void>;
   readonly onDownload: () => Promise<void>;
+  readonly onGenerateMedia: () => Promise<void>;
 }) {
   const { job } = detail;
   const externalUrl = safeHttpUrl(job.external_url);
@@ -205,6 +249,25 @@ function DetailContent({
             <p className="mt-2 text-sm text-ink-500">排期：{formatDate(job.scheduled_at)}</p>
           </div>
           <div className="flex flex-wrap gap-3">
+            {job.status === 'scheduled' &&
+            detail.media.supported &&
+            detail.media.status === 'none' ? (
+              <button
+                className={primaryButton}
+                disabled={busy !== null}
+                onClick={() => void onGenerateMedia()}
+                type="button"
+              >
+                {busy === 'media' ? '正在提交…' : '生成配图'}
+              </button>
+            ) : null}
+            {job.status === 'scheduled' &&
+            detail.media.supported &&
+            (detail.media.status === 'queued' || detail.media.status === 'running') ? (
+              <button className={primaryButton} disabled type="button">
+                配图生成中…
+              </button>
+            ) : null}
             {job.status === 'failed' && !retryLimitReached ? (
               <button
                 className={primaryButton}
@@ -242,6 +305,13 @@ function DetailContent({
           <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
             官网自动发布已尝试 3
             次，已停止继续请求。请检查官网接口或账号配置后重新生成内容，或联系管理员处理。
+          </p>
+        ) : null}
+
+        {detail.media.status === 'ready' ? (
+          <p className="mt-5 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-900">
+            已生成 {detail.media.asset_count} 张配图
+            {job.status === 'scheduled' ? '，将随文章一起发布。' : '。'}
           </p>
         ) : null}
 

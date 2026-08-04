@@ -4,12 +4,14 @@ import type { z } from 'zod';
 import { buildPublishingOpenApiDocument } from './openapi.js';
 import {
   CreatePublishJobRequestSchema,
+  GeneratePublishMediaRequestSchema,
   PublishAttemptPageSchema,
   PublishJobDetailResponseSchema,
   PublishJobPageSchema,
   PublishJobParamsSchema,
   PublishJobQuerySchema,
   PublishJobResponseSchema,
+  PublishMediaRunResponseSchema,
   RetryPublishRequestSchema,
   SignedDownloadResponseSchema,
 } from './job-schemas.js';
@@ -323,6 +325,18 @@ const contracts = [
     'RetryPublishRequest',
     'PublishJobView',
     PublishJobResponseSchema,
+  ),
+  contract(
+    'job.media.create',
+    'POST',
+    '/publish-jobs/{id}/media',
+    'key+version',
+    GeneratePublishMediaRequestSchema,
+    null,
+    PublishJobParamsSchema,
+    'GeneratePublishMediaRequest',
+    'PublishMediaRun',
+    PublishMediaRunResponseSchema,
   ),
   contract(
     'job.attempts',

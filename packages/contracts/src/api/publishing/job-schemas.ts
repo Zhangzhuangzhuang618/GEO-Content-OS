@@ -12,6 +12,7 @@ import {
 import { PLATFORM_CODES } from '../../platforms.js';
 
 export const PublishJobParamsSchema = z.object({ id: UuidSchema }).strict();
+export const GeneratePublishMediaRequestSchema = z.object({}).strict();
 export const CreatePublishJobRequestSchema = z
   .object({
     account_id: UuidSchema,
@@ -102,11 +103,26 @@ export const ExportArtifactViewSchema = z
     variant_id: UuidSchema,
   })
   .strict();
+export const PublishMediaStateSchema = z
+  .object({
+    asset_count: z.number().int().nonnegative(),
+    run_id: UuidSchema.nullable(),
+    status: z.enum(['none', 'queued', 'running', 'ready']),
+    supported: z.boolean(),
+  })
+  .strict();
+export const PublishMediaRunSchema = z
+  .object({
+    id: UuidSchema,
+    status: z.enum(['queued', 'running', 'succeeded', 'fallback']),
+  })
+  .strict();
 export const PublishJobDetailSchema = z
   .object({
     attempts: z.array(PublishAttemptViewSchema),
     export_artifact: ExportArtifactViewSchema.nullable(),
     job: PublishJobViewSchema,
+    media: PublishMediaStateSchema,
   })
   .strict();
 export const SignedDownloadViewSchema = z
@@ -124,6 +140,7 @@ export const PublishJobPageSchema = z
 export const PublishJobDetailResponseSchema = z
   .object({ data: PublishJobDetailSchema, meta: RequestMetaSchema })
   .strict();
+export const PublishMediaRunResponseSchema = createDataResponseSchema(PublishMediaRunSchema);
 export const PublishAttemptPageSchema = z
   .object({ data: z.array(PublishAttemptViewSchema), meta: RequestMetaSchema })
   .strict();
@@ -136,4 +153,6 @@ export type PublishJobQuery = z.infer<typeof PublishJobQuerySchema>;
 export type PublishAttemptView = z.infer<typeof PublishAttemptViewSchema>;
 export type ExportArtifactView = z.infer<typeof ExportArtifactViewSchema>;
 export type PublishJobDetail = z.infer<typeof PublishJobDetailSchema>;
+export type PublishMediaRun = z.infer<typeof PublishMediaRunSchema>;
+export type PublishMediaState = z.infer<typeof PublishMediaStateSchema>;
 export type SignedDownloadView = z.infer<typeof SignedDownloadViewSchema>;

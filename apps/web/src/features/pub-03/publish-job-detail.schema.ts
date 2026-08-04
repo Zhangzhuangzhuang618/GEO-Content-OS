@@ -36,6 +36,15 @@ export const ExportArtifactSchema = z
 
 const ResponseMetaSchema = z.object({ request_id: z.string().min(1) }).passthrough();
 
+export const PublishMediaStateSchema = z
+  .object({
+    asset_count: z.number().int().nonnegative(),
+    run_id: z.string().uuid().nullable(),
+    status: z.enum(['none', 'queued', 'running', 'ready']),
+    supported: z.boolean(),
+  })
+  .strict();
+
 export const PublishJobDetailResponseSchema = z
   .object({
     data: z
@@ -43,6 +52,7 @@ export const PublishJobDetailResponseSchema = z
         attempts: z.array(PublishAttemptSchema),
         export_artifact: ExportArtifactSchema.nullable(),
         job: PublishJobSchema,
+        media: PublishMediaStateSchema,
       })
       .strict(),
     meta: ResponseMetaSchema,
@@ -51,6 +61,18 @@ export const PublishJobDetailResponseSchema = z
 
 export const PublishJobResponseSchema = z
   .object({ data: PublishJobSchema, meta: ResponseMetaSchema })
+  .strict();
+
+export const PublishMediaRunResponseSchema = z
+  .object({
+    data: z
+      .object({
+        id: z.string().uuid(),
+        status: z.enum(['queued', 'running', 'succeeded', 'fallback']),
+      })
+      .strict(),
+    meta: ResponseMetaSchema,
+  })
   .strict();
 
 export const SignedDownloadResponseSchema = z

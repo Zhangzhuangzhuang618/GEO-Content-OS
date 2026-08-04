@@ -71,12 +71,13 @@ import {
         new PublishJobService(database, outbox),
     },
     {
-      inject: [IdentityAuthDatabase, PUBLISHING_STORAGE],
+      inject: [IdentityAuthDatabase, PUBLISHING_STORAGE, OutboxWriter],
       provide: PublishingApiService,
       useFactory: (
         database: IdentityAuthDatabase,
         storage: ReturnType<typeof createStorageAdapter>,
-      ) => new PublishingApiService(database, storage),
+        outbox: OutboxWriter,
+      ) => new PublishingApiService(database, storage, outbox),
     },
   ],
 })

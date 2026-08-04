@@ -89,6 +89,48 @@ test('cancels only an unexecuted scheduled task with optimistic versioning', asy
   expect(writes[0]?.headers['idempotency-key']).toBeUndefined();
 });
 
+test('queues missing images for a scheduled job and follows progress to completion', async ({
+  page,
+}) => {
+  const currentJob = job({ attemptCount: 0, status: 'scheduled', version: 4 });
+  let media = { asset_count: 0, run_id: null as string | null, status: 'none', supported: true };
+  let mediaWrites = 0;
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'POST' && path.endsWith('/media')) {
+      mediaWrites += 1;
+      expect(request.headers()['if-match']).toBe('"4"');
+      expect(request.headers()['idempotency-key']).toMatch(
+        new RegExp(`^publish-media-${JOB_ID}-[0-9a-f-]{36}$`, 'u'),
+      );
+      media = {
+        asset_count: 0,
+        run_id: '90000000-0000-4000-8000-000000000093',
+        status: 'running',
+        supported: true,
+      };
+      await json(route, {
+        data: { id: media.run_id, status: 'queued' },
+        meta: { request_id: 'publish-media' },
+      });
+      return;
+    }
+    if (request.method() === 'GET' && media.status === 'running') {
+      media = { ...media, asset_count: 3, status: 'ready' };
+    }
+    await json(route, {
+      ...detail(currentJob, []),
+      data: { ...detail(currentJob, []).data, media },
+    });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await page.getByRole('button', { name: '生成配图' }).click();
+  await expect(page.getByText('已生成 3 张配图，将随文章一起发布。')).toBeVisible();
+  expect(mediaWrites).toBe(1);
+});
+
 test('restores a cancelled task by rescheduling the same publish job', async ({ page }) => {
   let currentJob = job({ attemptCount: 0, status: 'cancelled', version: 5 });
   const writes: { body: unknown; headers: Record<string, string>; path: string }[] = [];
@@ -178,7 +220,12 @@ function detail(
   exportArtifact: Record<string, unknown> | null = null,
 ) {
   return {
-    data: { attempts, export_artifact: exportArtifact, job: currentJob },
+    data: {
+      attempts,
+      export_artifact: exportArtifact,
+      job: currentJob,
+      media: { asset_count: 0, run_id: null, status: 'none', supported: true },
+    },
     meta: { request_id: 'publish-detail' },
   };
 }

@@ -4,6 +4,7 @@ import type { PublishJob } from '../pub-02/publishing-calendar.schema';
 import {
   PublishJobDetailResponseSchema,
   PublishJobResponseSchema,
+  PublishMediaRunResponseSchema,
   SignedDownloadResponseSchema,
   type PublishJobDetail,
   type SignedDownload,
@@ -63,6 +64,18 @@ export async function getSignedExport(jobId: string): Promise<SignedDownload> {
   const parsed = SignedDownloadResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PublishJobDetailRequestError(502);
   return parsed.data.data;
+}
+
+export async function generatePublishJobMedia(job: PublishJob, csrf: string): Promise<void> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/media`, {
+    body: JSON.stringify({}),
+    credentials: 'include',
+    headers: writeHeaders(csrf, job.version, `publish-media-${job.id}`),
+    method: 'POST',
+  });
+  if (!response.ok) throw new PublishJobDetailRequestError(response.status);
+  const parsed = PublishMediaRunResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PublishJobDetailRequestError(502);
 }
 
 export class PublishJobDetailRequestError extends Error {
