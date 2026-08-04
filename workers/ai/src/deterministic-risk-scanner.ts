@@ -98,7 +98,7 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
     category: 'fact',
     message: '内容包含未在企业档案或证据中核验的企业规模或经营数量。',
     pattern:
-      /(?:(?:自有|拥有|配备|现有|累计)[^。；;\n]{0,24}?|(?:员工|师傅|车辆|车队|客户)(?:数量|规模|总数|累计)?(?:达到|超过|约|近|共|为|达|有)?\s*)(?:\d+(?:\.\d+)?(?:\+|余|多|以上)?|数十|近百|上百|数百)\s*(?:台|辆|人|名|家|个|单|次|年)/u,
+      /(?:(?:自有|拥有|现有|累计)[^。；;\n]{0,24}?|(?:公司|企业|团队|车队)[^。；;\n]{0,16}?配备[^。；;\n]{0,12}?|(?:员工|师傅|车辆|车队|客户)(?:数量|规模|总数|累计)?(?:达到|超过|约|近|共|为|达|有)?\s*)(?:\d+(?:\.\d+)?(?:\+|余|多|以上)?|数十|近百|上百|数百)\s*(?:台|辆|人|名|家|个|单|次|年)/u,
     ruleId: 'deterministic.fact.unsupported_scale',
     suggestion: '删除数量，或使表述与已发布企业档案、知识证据精确一致。',
     support: 'brand_or_citation',
@@ -287,14 +287,53 @@ function addBaijiahaoPlatformIssues(
 export function mergeDeterministicRiskIssues(
   assessment: QualityCheckerData,
   deterministicIssues: readonly QualityIssue[],
+  content?: Readonly<Record<string, unknown>>,
 ): QualityCheckerData {
-  if (deterministicIssues.length === 0) return assessment;
-  const issues = deduplicate([...assessment.issues, ...deterministicIssues]);
+  const modelIssues = content
+    ? assessment.issues.filter((item) => keepModelIssue(item, content))
+    : assessment.issues;
+  const issues = deduplicate([...modelIssues, ...deterministicIssues]);
+  const removedBlockingIssue =
+    modelIssues.length !== assessment.issues.length &&
+    assessment.issues.some((item) => item.severity === 'BLOCK' && !modelIssues.includes(item));
+  const decision = issues.some((item) => item.severity === 'BLOCK')
+    ? 'block'
+    : removedBlockingIssue && assessment.decision === 'block'
+      ? issues.length === 0
+        ? 'pass'
+        : 'revise'
+      : assessment.decision;
+  if (
+    deterministicIssues.length === 0 &&
+    modelIssues.length === assessment.issues.length &&
+    decision === assessment.decision
+  ) {
+    return assessment;
+  }
   return Object.freeze({
     ...assessment,
-    decision: issues.some((item) => item.severity === 'BLOCK') ? 'block' : assessment.decision,
+    decision,
     issues: Object.freeze(issues),
   });
+}
+
+function keepModelIssue(issue: QualityIssue, content: Readonly<Record<string, unknown>>): boolean {
+  if (issue.rule_id !== 'brand.other_company_name') return true;
+  const quotedNames = [...issue.message.matchAll(/[“"]([^”"]{2,80})[”"]/gu)].map((match) =>
+    match[1]!.trim(),
+  );
+  if (quotedNames.length === 0) return true;
+  const contentText = flattenStrings(content).join('\n');
+  return quotedNames.some((name) => !isAllowedCompanyReference(name) && contentText.includes(name));
+}
+
+function isAllowedCompanyReference(value: string): boolean {
+  return (
+    value === ALLOWED_COMPANY_NAME ||
+    value === '某公司' ||
+    value === '某搬家公司' ||
+    value === '其他服务商'
+  );
 }
 
 function addCompanyNameIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
@@ -516,7 +555,15 @@ function contentSections(content: Readonly<Record<string, unknown>>): readonly L
     sections.push({ location: `blocks.${key}`, text });
   }
   collectObjectStrings(content['platform_meta'], 'platform_meta', sections);
-  return sections;
+  return sections.filter((section) => !isTechnicalMetadataLocation(section.location));
+}
+
+function isTechnicalMetadataLocation(location: string): boolean {
+  return (
+    location === 'platform_meta.slug' ||
+    location === 'platform_meta.schema_org.@context' ||
+    location === 'platform_meta.schema_org.@type'
+  );
 }
 
 function collectObjectStrings(value: unknown, path: string, output: LocatedText[]): void {

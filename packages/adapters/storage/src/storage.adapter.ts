@@ -309,8 +309,14 @@ function validatePutObject(input: PutObjectInput): void {
     throw new Error('Object contentType must be a valid lowercase MIME type');
   }
   for (const [key, value] of Object.entries(input.metadata ?? {})) {
-    if (!/^[a-z0-9][a-z0-9_-]{0,62}$/u.test(key) || !value || value.length > 1_024) {
-      throw new Error('Object metadata contains an invalid key or value');
+    if (!/^[a-z0-9][a-z0-9_-]{0,62}$/u.test(key)) {
+      throw new Error('Object metadata contains an invalid key');
+    }
+    if (!value || value.length > 1_024) {
+      throw new Error(`Object metadata "${key}" contains an invalid value`);
+    }
+    if (!/^[\x20-\x7E]+$/u.test(value)) {
+      throw new Error(`Object metadata "${key}" must contain visible ASCII characters only`);
     }
   }
 }

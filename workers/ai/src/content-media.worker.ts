@@ -65,6 +65,9 @@ interface StoredQualityRow {
   readonly score: number;
 }
 
+const AI_DISCLOSURE_LABEL = 'AI示意图';
+const AI_DISCLOSURE_STORAGE_VALUE = 'ai_generated';
+
 export class ContentMediaWorker {
   public constructor(
     private readonly client: postgres.Sql,
@@ -290,7 +293,8 @@ export class ContentMediaWorker {
       contentType: 'image/jpeg',
       key,
       metadata: {
-        ai_disclosure: 'AI示意图',
+        // S3 user metadata is serialized as HTTP headers, so values must remain ASCII-safe.
+        ai_disclosure: AI_DISCLOSURE_STORAGE_VALUE,
         content_version_id: contentVersionId,
         promotional_watermark: 'false',
         source: asset.source,
@@ -335,7 +339,7 @@ export class ContentMediaWorker {
 
       for (const asset of assets) {
         const metadata = {
-          ai_disclosure: 'AI示意图',
+          ai_disclosure: AI_DISCLOSURE_LABEL,
           ai_generated: true,
           content_version_id: event.data.contentVersionId,
           height: asset.height,

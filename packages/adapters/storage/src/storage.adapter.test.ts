@@ -71,6 +71,30 @@ describe('object storage adapters', () => {
     await expect(storage.createDownloadUrl('source.txt', 3_601)).rejects.toThrow(/between 1/u);
   });
 
+  it('rejects metadata values that cannot be serialized as S3 HTTP headers', async () => {
+    const storage = new InMemoryStorageAdapter();
+
+    await expect(
+      storage.putObject({
+        body: BODY,
+        contentHash: HASH,
+        contentType: 'text/plain',
+        key: 'source.txt',
+        metadata: { ai_disclosure: 'AI示意图' },
+      }),
+    ).rejects.toThrow(/metadata "ai_disclosure" must contain visible ASCII/u);
+
+    await expect(
+      storage.putObject({
+        body: BODY,
+        contentHash: HASH,
+        contentType: 'text/plain',
+        key: 'source.txt',
+        metadata: { ai_disclosure: 'ai_generated' },
+      }),
+    ).resolves.toMatchObject({ key: 'source.txt' });
+  });
+
   it('maps uploads to PutObject without exposing credentials in errors', async () => {
     const sent: unknown[] = [];
     const client = {

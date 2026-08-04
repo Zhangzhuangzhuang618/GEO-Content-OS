@@ -49,6 +49,7 @@ describe('Baijiahao automation safeguards', () => {
     ]);
 
     expect(diagnostics.join('\n')).toContain('删除金额');
+    expect(diagnostics.join('\n')).toContain('不得只改标点、运算符、数字写法或同义词');
     expect(diagnostics.join('\n')).toContain('必须低于 0.82');
     expect(diagnostics.join('\n')).toContain('不得改变事实和证据');
     expect(diagnostics).toHaveLength(2);

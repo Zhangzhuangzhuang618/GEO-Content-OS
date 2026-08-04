@@ -129,6 +129,7 @@ export class QualityCheckWorker {
           content: context.content,
           platformCode: context.platformCode,
         }),
+        context.content,
       );
       const policy = await this.automation?.loadGatePolicy(
         this.client,

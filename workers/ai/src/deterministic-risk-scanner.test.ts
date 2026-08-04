@@ -62,6 +62,32 @@ describe('deterministic pre-publish risk scanner', () => {
     expect(issues[0]?.message).not.toContain('30余台');
   });
 
+  it('does not mistake per-vehicle crew configuration for enterprise scale', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [block('vehicle-plan', '面包车套餐配备2人，厢式货车套餐配备3人。')],
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.fact.unsupported_scale',
+    );
+  });
+
+  it('continues to block an unsupported enterprise staffing scale', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({ blocks: [block('scale', '公司目前配备80名专职员工。')] }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toContain('deterministic.fact.unsupported_scale');
+  });
+
   it('does not treat a numbered fee explanation as a concrete unsupported price', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),
@@ -171,6 +197,26 @@ describe('deterministic pre-publish risk scanner', () => {
     ).toHaveLength(3);
   });
 
+  it('does not scan an opaque official-site slug as a telephone number', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        platform_meta: {
+          faq: [{ answer: '先确认服务范围。', question: '搬家前准备什么？' }],
+          meta_description: '仓库搬迁执行指南。',
+          schema_org: { '@context': 'https://schema.org', '@type': 'Article' },
+          slug: 'news-0f3b039983025147',
+        },
+      }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.fact.unsupported_phone',
+    );
+  });
+
   it('treats yuan and colloquial kuai as the same quoted currency unit', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),
@@ -265,6 +311,130 @@ describe('deterministic pre-publish risk scanner', () => {
         'deterministic.official_site.slug_required',
       ]),
     );
+  });
+
+  it.each([
+    ['广州志远搬家服务有限公司', '内容中出现禁止的公司名称“广州志远搬家服务有限公司”。'],
+    ['某公司', '内容中出现禁止的公司名称“某公司”。'],
+    ['某搬家公司', '内容中出现禁止的公司名称“某搬家公司”。'],
+  ])('drops an unsupported model company-name block for allowed reference %s', (name, message) => {
+    const candidate = content({ blocks: [block('company', `${name}建议先核对合同。`)] });
+    const merged = mergeDeterministicRiskIssues(
+      {
+        ...assessment(),
+        decision: 'block',
+        issues: [
+          {
+            category: 'brand',
+            citation_ids: [],
+            location: 'blocks.company',
+            message,
+            rule_id: 'brand.other_company_name',
+            severity: 'BLOCK',
+            suggestion: '删除公司名称。',
+          },
+        ],
+        score: 35,
+      },
+      [],
+      candidate,
+    );
+
+    expect(merged.issues).toEqual([]);
+    expect(merged.decision).toBe('pass');
+    expect(merged.score).toBe(35);
+  });
+
+  it.each([
+    'official_site',
+    'baijiahao',
+    'toutiao',
+    'zhihu',
+    'xiaohongshu',
+    'wechat_mp',
+    'douyin',
+  ] as const)('reconciles the same false model company-name block for %s', (platformCode) => {
+    const candidate = content({
+      blocks: [block('company', '广州志远搬家服务有限公司建议先核对合同。')],
+      platform_code: platformCode,
+    });
+    const merged = mergeDeterministicRiskIssues(
+      {
+        ...assessment(),
+        decision: 'block',
+        issues: [
+          {
+            category: 'brand',
+            citation_ids: [],
+            location: 'blocks.company',
+            message: '内容中出现禁止的公司名称“广州志远搬家服务有限公司”。',
+            rule_id: 'brand.other_company_name',
+            severity: 'BLOCK',
+            suggestion: '删除公司名称。',
+          },
+        ],
+        score: 35,
+      },
+      [],
+      candidate,
+    );
+
+    expect(merged.decision).toBe('pass');
+    expect(merged.issues).toEqual([]);
+  });
+
+  it('keeps a model company-name block when the named third-party brand is present', () => {
+    const candidate = content({ blocks: [block('company', '可通过货拉拉安排运输。')] });
+    const merged = mergeDeterministicRiskIssues(
+      {
+        ...assessment(),
+        decision: 'block',
+        issues: [
+          {
+            category: 'brand',
+            citation_ids: [],
+            location: 'blocks.company',
+            message: '内容包含禁止的第三方品牌“货拉拉”。',
+            rule_id: 'brand.other_company_name',
+            severity: 'BLOCK',
+            suggestion: '改为匿名表述。',
+          },
+        ],
+        score: 35,
+      },
+      [],
+      candidate,
+    );
+
+    expect(merged.issues).toHaveLength(1);
+    expect(merged.decision).toBe('block');
+  });
+
+  it('keeps an unquoted model company-name block because it cannot be disproved safely', () => {
+    const candidate = content({ blocks: [block('company', '建议先核对服务合同。')] });
+    const merged = mergeDeterministicRiskIssues(
+      {
+        ...assessment(),
+        decision: 'block',
+        issues: [
+          {
+            category: 'brand',
+            citation_ids: [],
+            location: 'blocks.company',
+            message: '内容疑似包含不允许公开的第三方品牌。',
+            rule_id: 'brand.other_company_name',
+            severity: 'BLOCK',
+            suggestion: '核对并匿名化第三方名称。',
+          },
+        ],
+        score: 35,
+      },
+      [],
+      candidate,
+    );
+
+    expect(merged.issues).toHaveLength(1);
+    expect(merged.decision).toBe('block');
   });
 
   it('blocks Baijiahao diversion fields and invalid platform structure deterministically', () => {

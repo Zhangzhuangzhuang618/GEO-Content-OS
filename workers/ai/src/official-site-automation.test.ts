@@ -208,6 +208,7 @@ describe('official-site automation', () => {
 
     expect(diagnostics[0]).toContain('位置：claim:service-scope');
     expect(diagnostics[0]).toContain('修改建议：删除该事实');
+    expect(diagnostics[0]).toContain('不得只改标点、运算符、数字写法或同义词');
     expect(diagnostics).toEqual(
       expect.arrayContaining([
         expect.stringContaining('当前 55，最低要求 90'),

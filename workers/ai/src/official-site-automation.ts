@@ -947,6 +947,7 @@ export function buildOfficialSiteRewriteDiagnostics(
       `位置：${issue.location ?? '未指定'}`,
       `问题：${issue.message}`,
       issue.suggestion ? `修改建议：${issue.suggestion}` : '',
+      unsupportedFactRewriteInstruction(issue),
     ]
       .filter(Boolean)
       .join('；'),
@@ -955,6 +956,17 @@ export function buildOfficialSiteRewriteDiagnostics(
     officialSiteGateRewriteDiagnostic(rule, policy, gate),
   );
   return Object.freeze([...issueDiagnostics, ...gateDiagnostics].slice(0, 50));
+}
+
+function unsupportedFactRewriteInstruction(issue: QualityIssue): string {
+  if (
+    !issue.rule_id.startsWith('deterministic.fact.unsupported_') &&
+    !issue.rule_id.startsWith('fact.external_claim.unsupported') &&
+    !issue.rule_id.startsWith('fact.high_risk.unsupported')
+  ) {
+    return '';
+  }
+  return '执行要求：仅当现有输入证据能直接支持该事实时才可保留；否则删除命中数值或整项声明。不得只改标点、运算符、数字写法或同义词后保留同一事实。';
 }
 
 function officialSiteGateRewriteDiagnostic(
