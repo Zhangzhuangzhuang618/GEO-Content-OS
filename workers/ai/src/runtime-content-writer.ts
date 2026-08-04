@@ -55,6 +55,13 @@ const OFFICIAL_SITE_BODY_MINIMUM = 1_300;
 const OFFICIAL_SITE_BODY_TARGET = 1_700;
 const OFFICIAL_SITE_BODY_MAXIMUM = 2_500;
 const OFFICIAL_SITE_EXPANSION_ROUNDS = 2;
+const CONTENT_WRITER_EXPANSION_ROUNDS = 2;
+const CONTENT_WRITER_EXPANSION_TARGET_FACTOR = 1.3;
+
+interface ContentLengthShortfall {
+  readonly minimumCharacters: number;
+  readonly platformCode: ContentWriterContent['platform_code'];
+}
 
 export class RuntimeContentWriter implements ContentWriterPort {
   private readonly runs = new Map<string, CachedRun>();
@@ -336,6 +343,91 @@ export class RuntimeContentWriter implements ContentWriterPort {
     ).output;
   }
 
+  private async expandContentWriterLengthShortfalls(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    prompt: ContentWriterPublishedPrompt,
+    output: ContentWriterOutput,
+    shortfalls: readonly ContentLengthShortfall[],
+  ): Promise<ContentWriterOutput> {
+    let data = output.data;
+    for (const shortfall of shortfalls) {
+      let content = contentWriterContent(data, shortfall.platformCode);
+      const targetCharacters = Math.ceil(
+        shortfall.minimumCharacters * CONTENT_WRITER_EXPANSION_TARGET_FACTOR,
+      );
+      for (
+        let round = 1;
+        round <= CONTENT_WRITER_EXPANSION_ROUNDS &&
+        contentWriterCharacterCount(content) < shortfall.minimumCharacters;
+        round += 1
+      ) {
+        const expansion = await this.executeContentWriterExpansion(
+          input,
+          prompt,
+          content,
+          shortfall.minimumCharacters,
+          targetCharacters,
+          round,
+        );
+        content = mergeContentWriterExpansion(
+          content,
+          expansion,
+          round,
+          targetCharacters,
+          input.writerInput,
+        );
+        data = replaceContentWriterContent(data, content);
+      }
+    }
+    return Object.freeze({ ...output, data });
+  }
+
+  private async executeContentWriterExpansion(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    prompt: ContentWriterPublishedPrompt,
+    content: ContentWriterContent,
+    minimumCharacters: number,
+    targetCharacters: number,
+    round: number,
+  ): Promise<OfficialSiteArticleExpansionDraft> {
+    const currentCharacters = contentWriterCharacterCount(content);
+    const requiredCharacters = Math.max(0, targetCharacters - currentCharacters);
+    return (
+      await runDirectWithStructuredOutputRetry<OfficialSiteArticleExpansionDraft>(
+        this.directRunner(input.context),
+        directInvocation({
+          context: input.context,
+          input: input.writerInput,
+          maxOutputTokens: this.directMaxOutputTokens(input.context, 4_096),
+          messages: contentWriterExpansionMessages(
+            input.writerInput,
+            prompt,
+            content,
+            currentCharacters,
+            minimumCharacters,
+            targetCharacters,
+            requiredCharacters,
+          ),
+          outputSchema: OFFICIAL_SITE_ARTICLE_EXPANSION_DRAFT_SCHEMA,
+          recordUsage: (usage) => this.recordUsage(input.context, usage),
+          requestId: `${input.requestId}-${content.platform_code}-expansion-${round}`,
+          ...(input.signal ? { signal: input.signal } : {}),
+        }),
+        2,
+      )
+    ).output;
+  }
+
   private async executeOfficialSiteFaq(
     input: {
       readonly context: ContentWriterRunContext;
@@ -470,31 +562,47 @@ export class RuntimeContentWriter implements ContentWriterPort {
           'Content Writer returned failed status',
       );
     }
-    const firstAssessment = assessContentWriterData(result.output.data, input.context.modelPolicy);
-    const firstCompanyIssues = companyNamePolicyIssues(result.output.data, 'content-writer');
-    if (
-      firstCompanyIssues.length === 0 &&
-      (firstAssessment.passed || input.context.modelPolicy === 'fast')
-    ) {
-      return result.output;
+    let output = result.output;
+    let assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+    let companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
+    if (companyIssues.length === 0 && (assessment.passed || input.context.modelPolicy === 'fast')) {
+      return output;
+    }
+    let shortfalls = contentLengthShortfalls(assessment.issues);
+    if (companyIssues.length === 0 && shortfalls) {
+      output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
+      assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+      companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
+      if (assessment.passed && companyIssues.length === 0) return output;
+      throw new GenerationWorkerError(
+        'CONTENT_QUALITY_INSUFFICIENT',
+        [...assessment.issues, ...companyIssues].join('; '),
+      );
     }
 
     result = await runWithStructuredOutputRetry(skill, {
       ...invocation,
       revision: {
-        candidate: result.output.data,
-        issues: Object.freeze([...firstAssessment.issues, ...firstCompanyIssues]),
+        candidate: output.data,
+        issues: Object.freeze([...assessment.issues, ...companyIssues]),
       },
     });
-    const finalAssessment = assessContentWriterData(result.output.data, input.context.modelPolicy);
-    const finalCompanyIssues = companyNamePolicyIssues(result.output.data, 'content-writer');
-    if (!finalAssessment.passed || finalCompanyIssues.length > 0) {
+    output = result.output;
+    assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+    companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
+    shortfalls = contentLengthShortfalls(assessment.issues);
+    if (companyIssues.length === 0 && shortfalls) {
+      output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
+      assessment = assessContentWriterData(output.data, input.context.modelPolicy);
+      companyIssues = companyNamePolicyIssues(output.data, 'content-writer');
+    }
+    if (!assessment.passed || companyIssues.length > 0) {
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
-        [...finalAssessment.issues, ...finalCompanyIssues].join('; '),
+        [...assessment.issues, ...companyIssues].join('; '),
       );
     }
-    return result.output;
+    return output;
   }
 
   private async getPrompt(context: ContentWriterRunContext): Promise<ContentWriterPublishedPrompt> {
@@ -737,6 +845,47 @@ Add 2-5 distinct blocks that deepen missing decision criteria, execution steps, 
   ]);
 }
 
+function contentWriterExpansionMessages(
+  writerInput: JsonObject,
+  prompt: ContentWriterPublishedPrompt,
+  content: ContentWriterContent,
+  currentCharacters: number,
+  minimumCharacters: number,
+  targetCharacters: number,
+  requiredCharacters: number,
+): readonly ModelMessage[] {
+  return Object.freeze([
+    {
+      content: `${CONTENT_WRITER_SYSTEM_PROMPT_V1}
+
+Published multi-platform content policy:
+${prompt.systemPrompt}
+
+This is a continuation stage for one completed platform version. Keep its title, summary, existing blocks, citation map, CTA, hashtags, and platform metadata unchanged. Return only new substantive paragraph or list blocks to append. Do not rewrite, summarize, or repeat existing text.`,
+      role: 'system',
+    },
+    {
+      content: `${prompt.taskTemplate}
+
+The ${content.platform_code} version currently has ${currentCharacters} readable Chinese characters after excluding whitespace, punctuation, and symbols. It must contain at least ${minimumCharacters}. Add approximately ${requiredCharacters}-${requiredCharacters + 250} effective characters so the completed version reaches about ${targetCharacters} and has a safety margin above the unchanged quality threshold.
+
+Add 2-5 distinct blocks that fit the existing platform style and deepen missing decision criteria, execution steps, practical checks, or risk boundaries. Every block must provide new information. Do not repeat existing wording, add a conclusion-only block, pad the text, change the topic, add a CTA, or invent facts. Do not add authority, ranking, or guarantee phrases such as “权威榜单”“全网第一”“行业第一”“百分之百”“100%”“基本不会踩坑”“基本不会踩雷” or “保证不会”. citation_ids may contain only IDs supplied in content_writer_input.citations and only when the cited quote directly supports the new block. Return only {"blocks":[{"block_type":"paragraph|list","text":"...","citation_ids":[]}]} without Markdown or commentary.`,
+      role: 'user',
+    },
+    {
+      content: JSON.stringify({
+        completed_content_to_extend: content,
+        content_writer_input: writerInput,
+        minimum_total_effective_characters: minimumCharacters,
+        platform_code: content.platform_code,
+        required_new_effective_characters: requiredCharacters,
+        target_total_effective_characters: targetCharacters,
+      }),
+      role: 'user',
+    },
+  ]);
+}
+
 function officialSiteFaqMessages(
   article: GeneratedContent,
   prompt: ContentWriterPublishedPrompt,
@@ -813,6 +962,27 @@ function onlyOfficialSiteLengthShortfall(issues: readonly string[]): boolean {
   return issues.length > 0 && issues.every((issue) => /正文(?:主体)?仅 .*至少需要/u.test(issue));
 }
 
+function contentLengthShortfalls(
+  issues: readonly string[],
+): readonly ContentLengthShortfall[] | null {
+  if (issues.length === 0) return null;
+  const shortfalls: ContentLengthShortfall[] = [];
+  for (const issue of issues) {
+    const matched =
+      /^(master|official_site|baijiahao|toutiao|zhihu|xiaohongshu|wechat_mp|douyin):正文仅 \d+ 个有效字符，至少需要 (\d+) 个$/u.exec(
+        issue,
+      );
+    if (!matched) return null;
+    shortfalls.push(
+      Object.freeze({
+        minimumCharacters: Number(matched[2]),
+        platformCode: matched[1] as ContentWriterContent['platform_code'],
+      }),
+    );
+  }
+  return Object.freeze(shortfalls);
+}
+
 function officialSiteBodyCharacterCount(article: OfficialSiteArticleDraft): number {
   return article.blocks
     .filter((block) => block.block_type !== 'heading')
@@ -849,6 +1019,110 @@ function mergeOfficialSiteExpansion(
     blocks: Object.freeze(blocks),
     summary: article.summary,
     title: article.title,
+  });
+}
+
+function contentWriterContent(
+  data: ContentWriterData,
+  platformCode: ContentWriterContent['platform_code'],
+): ContentWriterContent {
+  const content =
+    platformCode === 'master'
+      ? data.master_content
+      : data.variants.find((candidate) => candidate.platform_code === platformCode);
+  if (!content) {
+    throw new GenerationWorkerError(
+      'GENERATED_CONTENT_INVALID',
+      `Content Writer omitted ${platformCode} during targeted expansion`,
+    );
+  }
+  return content;
+}
+
+function replaceContentWriterContent(
+  data: ContentWriterData,
+  content: ContentWriterContent,
+): ContentWriterData {
+  return content.platform_code === 'master'
+    ? Object.freeze({ master_content: content, variants: data.variants })
+    : Object.freeze({
+        master_content: data.master_content,
+        variants: Object.freeze(
+          data.variants.map((candidate) =>
+            candidate.platform_code === content.platform_code ? content : candidate,
+          ),
+        ),
+      });
+}
+
+function contentWriterCharacterCount(content: ContentWriterContent): number {
+  return content.blocks.reduce((total, block) => total + readableCharacterCount(block.text), 0);
+}
+
+function mergeContentWriterExpansion(
+  content: ContentWriterContent,
+  expansion: OfficialSiteArticleExpansionDraft,
+  round: number,
+  targetCharacters: number,
+  writerInput: JsonObject,
+): ContentWriterContent {
+  const supplied = suppliedCitationIds(writerInput);
+  const unknownCitationIds = [
+    ...new Set(
+      expansion.blocks.flatMap((block) =>
+        block.citation_ids.filter((citationId) => !supplied.has(citationId)),
+      ),
+    ),
+  ];
+  if (unknownCitationIds.length > 0) {
+    throw new GenerationWorkerError(
+      'CONTENT_QUALITY_INSUFFICIENT',
+      `${content.platform_code}:定向续写使用了 ${unknownCitationIds.length} 个未提供的引用 ID`,
+    );
+  }
+
+  const blocks = [...content.blocks];
+  const citationMap = [...content.citation_map];
+  const existingKeys = new Set(blocks.map((block) => block.block_key));
+  const existingText = new Set(blocks.map((block) => normalizeContentText(block.text)));
+  let characters = contentWriterCharacterCount(content);
+  for (const [index, block] of expansion.blocks.entries()) {
+    const text = block.text.trim();
+    const normalized = normalizeContentText(text);
+    const addedCharacters = readableCharacterCount(text);
+    if (!normalized || existingText.has(normalized) || addedCharacters === 0) continue;
+    const baseKey = `length-${content.platform_code}-${round}-${index + 1}`;
+    let blockKey = baseKey;
+    let suffix = 2;
+    while (existingKeys.has(blockKey)) {
+      blockKey = `${baseKey}-${suffix}`;
+      suffix += 1;
+    }
+    blocks.push(
+      Object.freeze({
+        block_key: blockKey,
+        block_type: block.block_type,
+        text,
+      }),
+    );
+    if (block.citation_ids.length > 0) {
+      citationMap.push(
+        Object.freeze({
+          citation_ids: Object.freeze([...block.citation_ids]),
+          claim_key: blockKey,
+          claim_text: text,
+        }),
+      );
+    }
+    existingKeys.add(blockKey);
+    existingText.add(normalized);
+    characters += addedCharacters;
+    if (characters >= targetCharacters) break;
+  }
+  return Object.freeze({
+    ...content,
+    blocks: Object.freeze(blocks),
+    citation_map: Object.freeze(citationMap),
   });
 }
 

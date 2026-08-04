@@ -4,6 +4,7 @@ import {
   type ModelRequest,
   type ModelResult,
 } from '@geo-content-os/adapter-model';
+import type { ContentPlatformCode } from '@geo-content-os/contracts/skills';
 import { CONTENT_WRITER_CONTRACT_V1 } from '@geo-content-os/skills/content-writer';
 import type postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
@@ -217,6 +218,112 @@ describe('AI Worker runtime wiring', () => {
     );
   });
 
+  it.each([
+    ['baijiahao', 850],
+    ['toutiao', 850],
+    ['zhihu', 1_100],
+    ['xiaohongshu', 500],
+    ['wechat_mp', 1_300],
+    ['douyin', 420],
+  ] as const)(
+    'keeps a short %s version and appends targeted expansion blocks',
+    async (platformCode, minimumCharacters) => {
+      const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+      const data = multiPlatformContentData([platformCode], new Set([platformCode]));
+      const original = data.variants[0]!;
+      const adapter = new LooseMockAdapter(
+        [{ text: JSON.stringify(data) }, { text: JSON.stringify(platformExpansionDraft()) }],
+        'deepseek-v4-pro',
+      );
+      const recordUsage = vi.fn();
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-pro', adapter]]),
+        recordUsage,
+        async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      );
+      const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, [platformCode]);
+      const qualityContext = {
+        ...context(MASTER_RUN, null),
+        modelKey: 'deepseek-v4-pro',
+        modelPolicy: 'quality' as const,
+      };
+      const master = await writer.generateMaster({
+        context: qualityContext,
+        requestId: `runtime-${platformCode}-length-repair-0061`,
+        writerInput,
+      });
+      const variant = await writer.generateVariant({
+        context: {
+          ...qualityContext,
+          runId: VARIANT_RUN,
+          variantId: '72000000-0000-4000-8000-000000000061',
+        },
+        masterContent: master,
+        platformCode,
+        requestId: `runtime-${platformCode}-variant-0061`,
+        writerInput,
+      });
+
+      expect(variant.blocks.slice(0, original.blocks.length)).toEqual(original.blocks);
+      expect(readableContentCharacters(variant)).toBeGreaterThanOrEqual(minimumCharacters);
+      expect(variant.blocks.length).toBeGreaterThan(original.blocks.length);
+      expect(adapter.requests).toHaveLength(2);
+      expect(recordUsage).toHaveBeenCalledTimes(2);
+      const expansionPrompt = adapter.requests[1]!.messages.map((message) => message.content).join(
+        '\n',
+      );
+      expect(expansionPrompt).toContain(`The ${platformCode} version currently has`);
+      expect(expansionPrompt).toContain('required_new_effective_characters');
+    },
+  );
+
+  it('does not overwrite qualified variants while expanding another platform', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const platforms = ['baijiahao', 'xiaohongshu'] as const;
+    const data = multiPlatformContentData(platforms, new Set<ContentPlatformCode>(['baijiahao']));
+    const qualifiedXiaohongshu = data.variants[1]!;
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(data) }, { text: JSON.stringify(platformExpansionDraft()) }],
+      'deepseek-v4-pro',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-pro', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, platforms);
+    const qualityContext = {
+      ...context(MASTER_RUN, null),
+      modelKey: 'deepseek-v4-pro',
+      modelPolicy: 'quality' as const,
+    };
+    const master = await writer.generateMaster({
+      context: qualityContext,
+      requestId: 'runtime-multiplatform-length-repair-0061',
+      writerInput,
+    });
+    const baijiahao = await writer.generateVariant({
+      context: { ...qualityContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'baijiahao',
+      requestId: 'runtime-multiplatform-baijiahao-0061',
+      writerInput,
+    });
+    const xiaohongshu = await writer.generateVariant({
+      context: { ...qualityContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'xiaohongshu',
+      requestId: 'runtime-multiplatform-xiaohongshu-0061',
+      writerInput,
+    });
+
+    expect(readableContentCharacters(baijiahao)).toBeGreaterThanOrEqual(850);
+    expect(xiaohongshu).toMatchObject(qualifiedXiaohongshu);
+    expect(adapter.requests).toHaveLength(2);
+  });
+
   it('keeps the final direct-flow instruction in rewrite mode', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const article = officialSiteArticleDraft();
@@ -370,6 +477,101 @@ function officialSiteWriterInput(input: JsonObject): JsonObject {
     },
     platform_rules_by_code: { official_site: rule },
   };
+}
+
+function multiPlatformWriterInput(
+  input: JsonObject,
+  platformCodes: readonly ContentPlatformCode[],
+): JsonObject {
+  const brief = input['brief'] as JsonObject;
+  const rule = (input['platform_rules_by_code'] as JsonObject)['xiaohongshu'] as JsonObject;
+  return {
+    ...input,
+    brief: {
+      ...brief,
+      constraints: {},
+      platform_codes: platformCodes,
+      title: '搬家前如何核对服务细节',
+    },
+    citations: [],
+    locked_blocks: [],
+    platform_rules_by_code: Object.fromEntries(
+      platformCodes.map((platformCode) => [platformCode, rule]),
+    ),
+  };
+}
+
+function multiPlatformContentData(
+  platformCodes: readonly ContentPlatformCode[],
+  shortPlatforms: ReadonlySet<ContentPlatformCode>,
+) {
+  return {
+    master_content: platformContent('master', false),
+    variants: platformCodes.map((platformCode) =>
+      platformContent(platformCode, shortPlatforms.has(platformCode)),
+    ),
+  } as const;
+}
+
+function platformContent(platformCode: 'master' | ContentPlatformCode, short: boolean) {
+  const structure = PLATFORM_STRUCTURES[platformCode];
+  const blocks = Array.from({ length: structure.blocks }, (_, index) => {
+    const blockType =
+      index < structure.headings ? 'heading' : index === structure.headings ? 'list' : 'paragraph';
+    const sentence =
+      blockType === 'heading'
+        ? `第${index + 1}步核对`
+        : `第${index + 1}项应核对服务范围、现场条件、书面约定和异常处理步骤，并保留双方确认记录。`;
+    return {
+      block_key: `section-${index + 1}`,
+      block_type: blockType,
+      text: blockType === 'heading' || short ? sentence : sentence.repeat(12),
+    } as const;
+  });
+  return {
+    blocks,
+    citation_map: [],
+    cta: null,
+    hashtags: [],
+    platform_code: platformCode,
+    platform_meta: {},
+    summary: '文章说明搬家前可执行的服务核对步骤与风险边界。',
+    title: '搬家前如何核对服务细节',
+  } as const;
+}
+
+const PLATFORM_STRUCTURES = {
+  master: { blocks: 8, headings: 3 },
+  official_site: { blocks: 8, headings: 3 },
+  baijiahao: { blocks: 7, headings: 2 },
+  toutiao: { blocks: 7, headings: 2 },
+  zhihu: { blocks: 8, headings: 3 },
+  xiaohongshu: { blocks: 7, headings: 2 },
+  wechat_mp: { blocks: 8, headings: 3 },
+  douyin: { blocks: 8, headings: 2 },
+} as const;
+
+function platformExpansionDraft() {
+  const text = (label: string) =>
+    `${label}应结合实际物品、现场条件和双方书面约定逐项判断，说明核对方法、记录方式、责任边界与出现差异后的处理步骤。`.repeat(
+      7,
+    );
+  return {
+    blocks: Array.from({ length: 5 }, (_, index) => ({
+      block_type: index === 1 ? ('list' as const) : ('paragraph' as const),
+      citation_ids: [],
+      text: text(`补充第${index + 1}项时`),
+    })),
+  } as const;
+}
+
+function readableContentCharacters(content: {
+  readonly blocks: readonly { readonly text: string }[];
+}) {
+  return content.blocks
+    .map((block) => block.text)
+    .join('')
+    .replace(/[\s\p{P}\p{S}]/gu, '').length;
 }
 
 function officialSiteArticleDraft(repeatCount = 12) {
