@@ -19,6 +19,7 @@ type SubmittedPublication = {
 describe('Baijiahao local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
+  let manageStartsAtHome = false;
   let profileRoot = '';
   let server: ReturnType<typeof createServer>;
   let submitted: SubmittedPublication | null = null;
@@ -27,6 +28,7 @@ describe('Baijiahao local browser simulator', () => {
 
   beforeEach(async () => {
     duplicateRows = false;
+    manageStartsAtHome = false;
     submitted = null;
     validEditorSignature = true;
     validManageSignature = true;
@@ -39,6 +41,7 @@ describe('Baijiahao local browser simulator', () => {
         () => duplicateRows,
         () => validEditorSignature,
         () => validManageSignature,
+        () => manageStartsAtHome,
         (value) => {
           submitted = value;
         },
@@ -203,6 +206,39 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
+  it('opens content management from the authenticated home page before reconciling', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      submitted = {
+        aiGenerated: true,
+        bodyImagesUploaded: 0,
+        coverUploaded: true,
+        fingerprint: 'a'.repeat(64),
+        title: '首页跳转后的核验测试',
+      };
+      manageStartsAtHome = true;
+
+      await expect(
+        driver.reconcile(
+          accountId,
+          profilePath,
+          {
+            contentFingerprint: 'a'.repeat(64),
+            submittedAfter: new Date(Date.now() - 60_000),
+            title: '首页跳转后的核验测试',
+          },
+          await driver.exportStorageState(accountId),
+        ),
+      ).resolves.toMatchObject({ externalId: 'simulator-145', status: 'processing' });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops when an empty management page no longer has the frozen list signature', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';
@@ -252,6 +288,7 @@ function route(
   readDuplicateRows: () => boolean,
   hasEditorSignature: () => boolean,
   hasManageSignature: () => boolean,
+  manageStartsAtHome: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
   if (request.url === '/v2/api/qrcode') {
@@ -370,22 +407,51 @@ function route(
     return;
   }
   if (request.url === '/manage') {
-    const item = readSubmitted();
-    const row = item
-      ? `<div data-publication-row data-title="${escapeHtml(item.title)}" data-content-fingerprint="${item.fingerprint}" data-submitted-at="${new Date().toISOString()}" data-external-id="simulator-145" data-status="processing"><a href="/article/id=simulator-145">${escapeHtml(item.title)}</a>审核中</div>`
-      : '';
-    return html(
-      response,
-      `
+    if (manageStartsAtHome()) {
+      return html(
+        response,
+        `
+        <nav data-testid="authenticated-home">
+          <button>发布作品</button>
+          <button data-testid="content-management-entry">内容管理</button>
+          <a data-testid="publication-list-entry" href="/manage-list" style="display:none">作品管理</a>
+          <span>个人中心</span>
+        </nav>
+        <script>
+          document.querySelector('[data-testid=content-management-entry]').onclick=()=>{
+            document.querySelector('[data-testid=publication-list-entry]').style.display='inline';
+          };
+        </script>
+      `,
+      );
+    }
+    return contentList(response, readSubmitted(), readDuplicateRows(), hasManageSignature());
+  }
+  if (request.url === '/manage-list') {
+    return contentList(response, readSubmitted(), readDuplicateRows(), hasManageSignature());
+  }
+  response.writeHead(404).end();
+}
+
+function contentList(
+  response: ServerResponse,
+  item: SubmittedPublication | null,
+  duplicateRows: boolean,
+  hasManageSignature: boolean,
+): void {
+  const row = item
+    ? `<div data-publication-row data-title="${escapeHtml(item.title)}" data-content-fingerprint="${item.fingerprint}" data-submitted-at="${new Date().toISOString()}" data-external-id="simulator-145" data-status="processing"><a href="/article/id=simulator-145">${escapeHtml(item.title)}</a>审核中</div>`
+    : '';
+  html(
+    response,
+    `
       <div data-testid="account-menu" style="display:none">已登录</div>
-      <div ${hasManageSignature() ? 'data-testid="content-list"' : ''}>
-        ${row}${readDuplicateRows() ? row.replaceAll('simulator-145', 'simulator-146') : ''}
+      <div ${hasManageSignature ? 'data-testid="content-list"' : ''}>
+        ${row}${duplicateRows ? row.replaceAll('simulator-145', 'simulator-146') : ''}
       </div>
       <script>if(localStorage.getItem('simulator-auth')==='yes') document.querySelector('[data-testid=account-menu]').style.display='block'</script>
     `,
-    );
-  }
-  response.writeHead(404).end();
+  );
 }
 
 function html(response: ServerResponse, body: string): void {

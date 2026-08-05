@@ -23,7 +23,9 @@ const SELECTORS = Object.freeze({
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
   category: 'select[data-field="category"], select[name*="category"]',
   contentList:
-    '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list, table, text=/内容管理|作品管理|我的内容|暂无内容/u',
+    '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list',
+  contentListEmpty: 'text=/暂无内容/u',
+  contentTable: 'table',
   contentRow:
     '[data-publication-row], [class*="client_pages_content_v2_components_articleItem"], .content-item, tr',
   cover:
@@ -42,6 +44,8 @@ const SELECTORS = Object.freeze({
 });
 
 const AUTHENTICATED_HOME_MARKERS = Object.freeze(['发布作品', '内容管理', '个人中心']);
+const CONTENT_MANAGEMENT_ENTRY = '内容管理';
+const CONTENT_MANAGEMENT_DESTINATIONS = Object.freeze(['作品管理', '我的内容']);
 
 export class PageDriverError extends Error {
   public constructor(
@@ -299,22 +303,17 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     const page = await this.page(accountId, profilePath, storageStateJson);
     await page.goto(this.config.manageUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
+    await this.openContentManagement(page);
+    await this.rejectCaptcha(page);
     await this.requireAuthenticated(page);
-    const rows = page.locator(SELECTORS.contentRow);
-    const count = Math.min(await rows.count(), 100);
-    if (
-      count === 0 &&
-      !(await page
-        .locator(SELECTORS.contentList)
-        .first()
-        .isVisible()
-        .catch(() => false))
-    ) {
+    if (!(await this.isContentManagementPage(page))) {
       throw new PageDriverError(
         'PAGE_SIGNATURE_CHANGED',
-        'Baijiahao content list no longer matches the frozen page signature',
+        'Baijiahao content management entry did not open a verifiable content list',
       );
     }
+    const rows = page.locator(SELECTORS.contentRow);
+    const count = Math.min(await rows.count(), 100);
     const matches: RemotePublication[] = [];
     for (let index = 0; index < count; index += 1) {
       const row = rows.nth(index);
@@ -412,6 +411,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       return;
     }
     if (await this.isAuthenticatedEditor(page)) return;
+    if (await this.isAuthenticatedAccountPage(page)) return;
     if (!(await this.verifyViaLoginPage(page))) {
       throw new PageDriverError('AUTH_REQUIRED', 'Baijiahao login has expired');
     }
@@ -419,6 +419,57 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       'PAGE_SIGNATURE_CHANGED',
       'Baijiahao session is active but the requested page is not available',
     );
+  }
+
+  private async openContentManagement(page: Page): Promise<void> {
+    if (await this.isContentManagementPage(page)) return;
+    if (!(await this.isAuthenticatedAccountPage(page))) return;
+
+    const entry = page.getByText(CONTENT_MANAGEMENT_ENTRY, { exact: true }).first();
+    if (!(await entry.isVisible().catch(() => false))) return;
+    await entry.click();
+
+    const clickedDestinations = new Set<string>();
+    const expiresAt = Date.now() + this.config.navigationTimeoutMs;
+    while (Date.now() < expiresAt) {
+      await this.rejectCaptcha(page);
+      if (await this.isContentManagementPage(page)) return;
+      for (const label of CONTENT_MANAGEMENT_DESTINATIONS) {
+        if (clickedDestinations.has(label)) continue;
+        const destination = page.getByText(label, { exact: true }).first();
+        if (!(await destination.isVisible().catch(() => false))) continue;
+        clickedDestinations.add(label);
+        await destination.click();
+        break;
+      }
+      await page.waitForTimeout(100);
+    }
+  }
+
+  private async isContentManagementPage(page: Page): Promise<boolean> {
+    if ((await page.locator(SELECTORS.contentList).count()) > 0) return true;
+    if (
+      await page
+        .locator(SELECTORS.contentListEmpty)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return true;
+    }
+    if ((await page.locator(SELECTORS.contentTable).count()) === 0) return false;
+    for (const label of CONTENT_MANAGEMENT_DESTINATIONS) {
+      if (
+        await page
+          .getByText(label, { exact: true })
+          .first()
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private async verifyViaLoginPage(page: Page): Promise<boolean> {
