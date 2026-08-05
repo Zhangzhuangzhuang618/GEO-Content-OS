@@ -25,6 +25,8 @@ const ACCOUNT_ID = '91000000-0000-4000-8000-000000000124';
 const AUTO_JOB_ID = 'a1000000-0000-4000-8000-000000000124';
 const POLICY_ID = 'a2000000-0000-4000-8000-000000000124';
 const AUTOMATION_RUN_ID = 'a3000000-0000-4000-8000-000000000124';
+const BROWSER_SESSION_ID = 'a4000000-0000-4000-8000-000000000124';
+const BROWSER_PUBLICATION_ID = 'a5000000-0000-4000-8000-000000000124';
 const CONTENT_HASH = 'a'.repeat(64);
 const SCHEDULED_AT = '2027-01-02T03:04:05.000Z';
 
@@ -239,6 +241,76 @@ describe('publish jobs', () => {
     expect(state).toEqual([{ status: 'failed', version: 2 }]);
   });
 
+  it('resets a verified missing Baijiahao publication and requeues without changing its unknown attempt', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    const job = await seedBaijiahaoUnknown(database, service);
+
+    const resolved = await service.resolveUnknown(
+      { ...SCOPE, requestId: 'req-baijiahao-not-published-124' },
+      job.id,
+      2,
+      { resolution: 'not_published' },
+    );
+
+    expect(resolved).toMatchObject({ attempt_count: 1, status: 'scheduled', version: 3 });
+    const publications = await database<
+      { externalPostId: string | null; status: string; submittedAt: Date | null }[]
+    >`
+      SELECT status,external_post_id AS "externalPostId",submitted_at AS "submittedAt"
+      FROM baijiahao_browser_publications WHERE id=${BROWSER_PUBLICATION_ID}::uuid
+    `;
+    expect(publications).toEqual([{ externalPostId: null, status: 'prepared', submittedAt: null }]);
+    const attempts = await database<{ attemptNo: number; status: string }[]>`
+      SELECT attempt_no AS "attemptNo",status FROM publish_attempts
+      WHERE publish_job_id=${job.id}::uuid ORDER BY attempt_no
+    `;
+    expect(attempts).toEqual([{ attemptNo: 1, status: 'unknown' }]);
+    await expect(auditActions(database, job.id)).resolves.toContain(
+      'publish_job.unknown_resolved_not_published',
+    );
+  });
+
+  it('records a verified Baijiahao article as published while preserving the unknown attempt', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    const job = await seedBaijiahaoUnknown(database, service);
+
+    const resolved = await service.resolveUnknown(
+      { ...SCOPE, requestId: 'req-baijiahao-published-124' },
+      job.id,
+      2,
+      {
+        external_post_id: 'baijiahao-post-124',
+        external_url: 'https://baijiahao.baidu.com/s?id=124',
+        resolution: 'published',
+      },
+    );
+
+    expect(resolved).toMatchObject({
+      external_post_id: 'baijiahao-post-124',
+      external_url: 'https://baijiahao.baidu.com/s?id=124',
+      status: 'published',
+      version: 3,
+    });
+    await expect(contentState(database)).resolves.toMatchObject({
+      packageStatus: 'published',
+      variantStatus: 'published',
+    });
+    const publication = await database<{ externalPostId: string; status: string }[]>`
+      SELECT status,external_post_id AS "externalPostId"
+      FROM baijiahao_browser_publications WHERE id=${BROWSER_PUBLICATION_ID}::uuid
+    `;
+    expect(publication).toEqual([{ externalPostId: 'baijiahao-post-124', status: 'published' }]);
+    const attempts = await database<{ status: string }[]>`
+      SELECT status FROM publish_attempts WHERE publish_job_id=${job.id}::uuid
+    `;
+    expect(attempts).toEqual([{ status: 'unknown' }]);
+    await expect(auditActions(database, job.id)).resolves.toContain(
+      'publish_job.unknown_resolved_published',
+    );
+  });
+
   it('cancels and restores a queued website automation without replacing its job', async () => {
     const database = requireClient(client);
     await seedAutomationJob(database, 'scheduled', 0);
@@ -382,6 +454,40 @@ async function markFailed(
       )
     `;
   });
+}
+
+async function seedBaijiahaoUnknown(database: Sql, service: PublishJobService) {
+  await database`
+    UPDATE briefs SET platform_codes=ARRAY['baijiahao']::varchar[] WHERE id=${BRIEF_ID}::uuid
+  `;
+  await database`
+    UPDATE content_variants SET platform_code='baijiahao' WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    UPDATE platform_accounts SET platform_code='baijiahao',display_name='Baijiahao'
+    WHERE id=${ACCOUNT_ID}::uuid
+  `;
+  const job = await schedule(service);
+  await markFailed(database, job.id, 'unknown');
+  await database`
+    INSERT INTO baijiahao_browser_sessions(
+      id,tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+    ) VALUES(
+      ${BROWSER_SESSION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,'authenticated',
+      'baijiahao/test/account-124',now(),now()
+    )
+  `;
+  await database`
+    INSERT INTO baijiahao_browser_publications(
+      id,tenant_id,session_id,account_id,publish_job_id,content_version_id,
+      idempotency_key,payload_hash,content_fingerprint,title,status,submitted_at
+    ) VALUES(
+      ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${BROWSER_SESSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,${job.id}::uuid,${VERSION_ID}::uuid,${job.idempotency_key},
+      ${CONTENT_HASH},${'b'.repeat(64)},'百家号未知发布测试','submitting',now()
+    )
+  `;
+  return job;
 }
 
 async function contentState(database: Sql) {

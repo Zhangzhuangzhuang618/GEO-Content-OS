@@ -36,6 +36,7 @@ interface JobRow {
   readonly lastError: Readonly<Record<string, unknown>> | null;
   readonly origin: PublishJobView['origin'];
   readonly payloadHash: string;
+  readonly platformCode: string;
   readonly publishedAt: DatabaseDate | null;
   readonly scheduledAt: DatabaseDate;
   readonly status: PublishJobView['status'];
@@ -134,7 +135,7 @@ export class PublishingApiService {
         job.payload_hash AS "payloadHash", job.status,
         job.attempt_count AS "attemptCount", job.external_post_id AS "externalPostId",
         job.external_url AS "externalUrl", job.last_error_json AS "lastError", job.origin,
-        job.published_at AS "publishedAt",
+        job.published_at AS "publishedAt", variant.platform_code AS "platformCode",
         job.created_by AS "createdBy", job.created_at AS "createdAt",
         job.updated_at AS "updatedAt", job.version
       FROM publish_jobs AS job
@@ -183,6 +184,7 @@ export class PublishingApiService {
       export_artifact: artifact ? mapArtifact(artifact) : null,
       job: mapJob(job),
       media,
+      unknown_resolution: unknownResolution(job, attempts),
     };
   }
 
@@ -243,7 +245,7 @@ export class PublishingApiService {
         job.payload_hash AS "payloadHash",job.status,job.attempt_count AS "attemptCount",
         job.external_post_id AS "externalPostId",job.external_url AS "externalUrl",
         job.last_error_json AS "lastError",job.origin,job.published_at AS "publishedAt",
-        job.created_by AS "createdBy",
+        job.created_by AS "createdBy",variant.platform_code AS "platformCode",
         job.created_at AS "createdAt",job.updated_at AS "updatedAt",job.version
       FROM publish_jobs AS job
       JOIN content_variants AS variant ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
@@ -513,6 +515,21 @@ function mapJob(row: JobRow): PublishJobView {
     updated_at: isoDate(row.updatedAt),
     variant_id: row.variantId,
     version: row.version,
+  };
+}
+
+function unknownResolution(
+  job: JobRow,
+  attempts: readonly AttemptRow[],
+): PublishJobDetail['unknown_resolution'] {
+  const latest = attempts.at(-1);
+  if (job.status !== 'failed' || job.platformCode !== 'baijiahao' || latest?.status !== 'unknown') {
+    return null;
+  }
+  return {
+    can_retry: job.attemptCount < (job.origin === 'manual' ? 20 : 3),
+    latest_attempt_no: latest.attemptNo,
+    platform_code: 'baijiahao',
   };
 }
 

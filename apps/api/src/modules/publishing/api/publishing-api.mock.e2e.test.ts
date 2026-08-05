@@ -92,6 +92,7 @@ const detail: PublishJobDetail = {
   },
   job,
   media: { asset_count: 0, run_id: null, status: 'none', supported: true },
+  unknown_resolution: null,
 };
 
 const download: SignedDownloadView = {
@@ -168,6 +169,12 @@ describe('publishing API mock E2E', () => {
   const jobs = {
     cancel: vi.fn(async () => ({ ...job, status: 'cancelled' as const, version: 4 })),
     createInTransaction: vi.fn(async () => job),
+    resolveUnknownInTransaction: vi.fn(async () => ({
+      ...job,
+      scheduled_at: NOW,
+      status: 'scheduled' as const,
+      version: 4,
+    })),
     retryInTransaction: vi.fn(async () => job),
   };
   const automation = {
@@ -320,6 +327,34 @@ describe('publishing API mock E2E', () => {
       JOB_ID,
       3,
       REQUEST_ID,
+    );
+  });
+
+  it('resolves a Baijiahao unknown state through an idempotent versioned route', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'resolve-unknown-0001', 'if-match': '"3"' },
+      method: 'POST',
+      payload: { resolution: 'not_published' },
+      url: `/publish-jobs/${JOB_ID}/resolve-unknown`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract('job.unknown.resolve').responseSchema.parse(response.json());
+    expect(jobs.resolveUnknownInTransaction).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ tenantId: TENANT_ID, userId: USER_ID }),
+      JOB_ID,
+      3,
+      { resolution: 'not_published' },
+    );
+    expect(idempotency.execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fingerprint: expect.objectContaining({
+          path: `/publish-jobs/${JOB_ID}/resolve-unknown`,
+        }),
+        idempotencyKey: 'resolve-unknown-0001',
+      }),
+      expect.any(Function),
     );
   });
 

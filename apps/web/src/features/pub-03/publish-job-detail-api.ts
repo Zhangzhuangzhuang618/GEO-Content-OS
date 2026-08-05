@@ -41,6 +41,26 @@ export async function retryPublishJob(
   return parseJob(response);
 }
 
+export async function resolveUnknownPublishJob(
+  job: PublishJob,
+  csrf: string,
+  input:
+    | { readonly resolution: 'not_published' }
+    | {
+        readonly external_post_id?: string;
+        readonly external_url: string;
+        readonly resolution: 'published';
+      },
+): Promise<PublishJob> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/resolve-unknown`, {
+    body: JSON.stringify(input),
+    credentials: 'include',
+    headers: writeHeaders(csrf, job.version, `publish-resolve-unknown-${job.id}`),
+    method: 'POST',
+  });
+  return parseJob(response);
+}
+
 export async function cancelUnexecutedPublishJob(
   job: PublishJob,
   reason: string,

@@ -189,6 +189,16 @@ describe('baijiahao delivery integration', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('allows the browser gateway enough time to complete a normal page flow by default', () => {
+    expect(
+      BaijiahaoDeliveryConfigSchema.parse({
+        base_url: 'https://publisher.example.com',
+        bearer_token: 'secret',
+        mode: 'api',
+      }).timeout_ms,
+    ).toBe(60_000);
+  });
 });
 
 interface ExportGolden {

@@ -20,7 +20,7 @@ test('retries idempotently and preserves prior attempts while appending the next
   page,
 }) => {
   let currentJob = job({ attemptCount: 2, status: 'failed', version: 1 });
-  let currentAttempts = [attempt(1, 'failed'), attempt(2, 'unknown')];
+  let currentAttempts = [attempt(1, 'failed'), attempt(2, 'failed')];
   const writes: { body: unknown; headers: Record<string, string>; path: string }[] = [];
   await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
     const request = route.request();
@@ -87,6 +87,93 @@ test('cancels only an unexecuted scheduled task with optimistic versioning', asy
   expect(writes[0]?.body).toEqual({ reason: '排期撤销' });
   expect(writes[0]?.headers['if-match']).toBe('"4"');
   expect(writes[0]?.headers['idempotency-key']).toBeUndefined();
+});
+
+test('requires manual verification before retrying an unknown Baijiahao publication', async ({
+  page,
+}) => {
+  let currentJob: Record<string, unknown> = {
+    ...job({ attemptCount: 4, status: 'failed', version: 12 }),
+    last_error: { code: 'PUBLISH_STATE_UNKNOWN' },
+  };
+  const currentAttempts = [{ ...attempt(4, 'unknown'), adapter_code: 'baijiahao-delivery@1.1.0' }];
+  let unknownResolution: Record<string, unknown> | null = {
+    can_retry: true,
+    latest_attempt_no: 4,
+    platform_code: 'baijiahao',
+  };
+  const writes: { body: unknown; headers: Record<string, string>; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(route, detail(currentJob, currentAttempts, null, unknownResolution));
+      return;
+    }
+    writes.push({ body: request.postDataJSON() as unknown, headers: request.headers(), path });
+    currentJob = job({ attemptCount: 4, status: 'scheduled', version: 13 });
+    unknownResolution = null;
+    await json(route, { data: currentJob, meta: { request_id: 'unknown-resolved' } });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '确认未发布并重试' }).click();
+
+  await expect(page.getByText('已确认百家号未创建该文章，发布重试已排队。')).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.path).toBe(`/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`);
+  expect(writes[0]?.body).toEqual({ resolution: 'not_published' });
+  expect(writes[0]?.headers['if-match']).toBe('"12"');
+  expect(writes[0]?.headers['idempotency-key']).toMatch(
+    new RegExp(`^publish-resolve-unknown-${JOB_ID}-[0-9a-f-]{36}$`, 'u'),
+  );
+});
+
+test('records a manually verified Baijiahao publication with its public link', async ({ page }) => {
+  let currentJob: Record<string, unknown> = {
+    ...job({ attemptCount: 4, status: 'failed', version: 12 }),
+    last_error: { code: 'PUBLISH_STATE_UNKNOWN' },
+  };
+  let unknownResolution: Record<string, unknown> | null = {
+    can_retry: true,
+    latest_attempt_no: 4,
+    platform_code: 'baijiahao',
+  };
+  const writes: { body: unknown; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(route, detail(currentJob, [attempt(4, 'unknown')], null, unknownResolution));
+      return;
+    }
+    writes.push({ body: request.postDataJSON() as unknown, path });
+    currentJob = {
+      ...job({ attemptCount: 4, status: 'published', version: 13 }),
+      external_post_id: '123456',
+      external_url: 'https://baijiahao.baidu.com/s?id=123456',
+    };
+    unknownResolution = null;
+    await json(route, { data: currentJob, meta: { request_id: 'unknown-published' } });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  page.once('dialog', (dialog) => dialog.accept('https://baijiahao.baidu.com/s?id=123456'));
+  await page.getByRole('button', { name: '确认已经发布' }).click();
+
+  await expect(page.getByText('已按人工核实结果记录为已发布。')).toBeVisible();
+  expect(writes).toEqual([
+    {
+      body: {
+        external_post_id: '123456',
+        external_url: 'https://baijiahao.baidu.com/s?id=123456',
+        resolution: 'published',
+      },
+      path: `/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`,
+    },
+  ]);
 });
 
 test('loads and labels a Baijiahao automation publish job', async ({ page }) => {
@@ -233,6 +320,7 @@ function detail(
   currentJob: Record<string, unknown>,
   attempts: readonly Record<string, unknown>[],
   exportArtifact: Record<string, unknown> | null = null,
+  unknownResolution: Record<string, unknown> | null = null,
 ) {
   return {
     data: {
@@ -240,6 +328,7 @@ function detail(
       export_artifact: exportArtifact,
       job: currentJob,
       media: { asset_count: 0, run_id: null, status: 'none', supported: true },
+      unknown_resolution: unknownResolution,
     },
     meta: { request_id: 'publish-detail' },
   };

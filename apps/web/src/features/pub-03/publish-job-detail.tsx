@@ -13,6 +13,7 @@ import {
   getPublishJobDetail,
   getSignedExport,
   PublishJobDetailRequestError,
+  resolveUnknownPublishJob,
   retryPublishJob,
 } from './publish-job-detail-api';
 import type {
@@ -24,6 +25,7 @@ import type {
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+type BusyAction = 'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | 'resolve';
 
 export function PublishJobDetailView() {
   const [jobId] = useState(readJobId);
@@ -31,9 +33,7 @@ export function PublishJobDetailView() {
   const [state, setState] = useState<'loading' | 'ready' | 'empty' | 'error' | 'permission'>(
     'loading',
   );
-  const [busy, setBusy] = useState<'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | null>(
-    null,
-  );
+  const [busy, setBusy] = useState<BusyAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [download, setDownload] = useState<SignedDownload | null>(null);
 
@@ -171,6 +171,60 @@ export function PublishJobDetailView() {
     }
   }
 
+  async function resolveUnknown(resolution: 'not_published' | 'published') {
+    if (!detail?.unknown_resolution) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    let input:
+      | { readonly resolution: 'not_published' }
+      | {
+          readonly external_post_id?: string;
+          readonly external_url: string;
+          readonly resolution: 'published';
+        };
+    if (resolution === 'not_published') {
+      if (
+        !window.confirm(
+          '请确认已在百家号内容管理中按标题核对，确实没有创建该文章。确认后系统会立即重新发布。',
+        )
+      ) {
+        return;
+      }
+      input = { resolution };
+    } else {
+      const value = window.prompt('请粘贴已经发布的百家号文章公开链接。')?.trim();
+      const externalUrl = value ? safeHttpUrl(value) : null;
+      if (!externalUrl) {
+        setMessage('确认失败：必须提供有效的 HTTP 或 HTTPS 公开链接。');
+        return;
+      }
+      const externalPostId = externalIdFromUrl(externalUrl);
+      input = {
+        ...(externalPostId ? { external_post_id: externalPostId } : {}),
+        external_url: externalUrl,
+        resolution,
+      };
+    }
+    setBusy('resolve');
+    setMessage(null);
+    try {
+      await resolveUnknownPublishJob(detail.job, csrf, input);
+      setMessage(
+        resolution === 'published'
+          ? '已按人工核实结果记录为已发布。'
+          : '已确认百家号未创建该文章，发布重试已排队。',
+      );
+      await load(detail.job.id);
+    } catch {
+      setMessage('处置失败；任务版本、登录态、尝试上限或外部发布记录可能已经变化。');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="mt-8">
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
@@ -216,6 +270,7 @@ export function PublishJobDetailView() {
           onAction={runAction}
           onDownload={prepareDownload}
           onGenerateMedia={generateMedia}
+          onResolveUnknown={resolveUnknown}
         />
       )}
     </section>
@@ -228,17 +283,18 @@ function DetailContent({
   onAction,
   onDownload,
   onGenerateMedia,
+  onResolveUnknown,
 }: {
-  readonly busy: 'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | null;
+  readonly busy: BusyAction | null;
   readonly detail: PublishJobDetail;
   readonly onAction: (action: 'retry' | 'reschedule' | 'cancel') => Promise<void>;
   readonly onDownload: () => Promise<void>;
   readonly onGenerateMedia: () => Promise<void>;
+  readonly onResolveUnknown: (resolution: 'not_published' | 'published') => Promise<void>;
 }) {
   const { job } = detail;
   const externalUrl = safeHttpUrl(job.external_url);
-  const retryLimitReached =
-    job.attempt_count >= (job.origin === 'official_site_automation' ? 3 : 20);
+  const retryLimitReached = job.attempt_count >= (job.origin === 'manual' ? 20 : 3);
   return (
     <>
       <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
@@ -268,7 +324,7 @@ function DetailContent({
                 配图生成中…
               </button>
             ) : null}
-            {job.status === 'failed' && !retryLimitReached ? (
+            {job.status === 'failed' && detail.unknown_resolution === null && !retryLimitReached ? (
               <button
                 className={primaryButton}
                 disabled={busy !== null}
@@ -301,10 +357,46 @@ function DetailContent({
           </div>
         </div>
 
+        {detail.unknown_resolution ? (
+          <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+            <h3 className="font-semibold">百家号发布结果需要人工核实</h3>
+            <p className="mt-2 leading-6">
+              第 {detail.unknown_resolution.latest_attempt_no}{' '}
+              次提交没有取得确定结果。请先在百家号内容管理中按标题核对；系统会保留这次未知尝试，不会覆盖历史记录。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {detail.unknown_resolution.can_retry ? (
+                <button
+                  className={primaryButton}
+                  disabled={busy !== null}
+                  onClick={() => void onResolveUnknown('not_published')}
+                  type="button"
+                >
+                  {busy === 'resolve' ? '正在处理…' : '确认未发布并重试'}
+                </button>
+              ) : null}
+              <button
+                className={secondaryButton}
+                disabled={busy !== null}
+                onClick={() => void onResolveUnknown('published')}
+                type="button"
+              >
+                {busy === 'resolve' ? '正在处理…' : '确认已经发布'}
+              </button>
+            </div>
+            {!detail.unknown_resolution.can_retry ? (
+              <p className="mt-3 text-xs leading-5 text-amber-800">
+                当前自动化任务已达到 3 次发布上限，不能继续请求百家号；仍可在核实后确认已经发布。
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {job.status === 'failed' && retryLimitReached ? (
           <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
-            官网自动发布已尝试 3
-            次，已停止继续请求。请检查官网接口或账号配置后重新生成内容，或联系管理员处理。
+            {job.origin === 'manual'
+              ? '人工发布已达到 20 次尝试上限，不能继续重试。'
+              : '自动发布已达到 3 次尝试上限，不能继续请求外部平台。'}
           </p>
         ) : null}
 
@@ -522,6 +614,12 @@ function safeHttpUrl(value: string | null): string | null {
   }
 }
 
+function externalIdFromUrl(value: string): string | null {
+  const url = new URL(value);
+  const externalId = url.searchParams.get('id') ?? url.searchParams.get('nid');
+  return externalId && externalId.length <= 240 ? externalId : null;
+}
+
 function toIso(value: string | null): string | null {
   if (!value?.trim()) return null;
   const date = new Date(value);
@@ -578,5 +676,7 @@ const STATUS_LABELS: Readonly<Record<PublishJob['status'], string>> = {
 
 const primaryButton =
   'inline-flex h-11 items-center justify-center rounded-control bg-brand-600 px-5 text-sm font-semibold text-white focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
+const secondaryButton =
+  'inline-flex h-11 items-center justify-center rounded-control border border-line bg-white px-5 text-sm font-semibold text-ink-800 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';
 const dangerButton =
   'h-11 rounded-control border border-red-200 bg-white px-4 text-sm font-semibold text-red-700 focus:outline-2 focus:outline-offset-2 disabled:opacity-60';

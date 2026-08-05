@@ -4,6 +4,7 @@ import type {
   CreatePublishJobRequest,
   PlatformCode,
   PublishJobView,
+  ResolveUnknownPublishRequest,
   RetryPublishRequest,
 } from '@geo-content-os/contracts';
 import {
@@ -76,6 +77,16 @@ interface JobRow {
 interface ProjectionRow {
   readonly isRequired: boolean;
   readonly status: ContentVariantStatus;
+}
+
+interface LatestAttemptRow {
+  readonly attemptNo: number;
+  readonly status: 'failed' | 'running' | 'succeeded' | 'unknown';
+}
+
+interface BrowserPublicationRow {
+  readonly externalPostId: string | null;
+  readonly id: string;
 }
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/u;
@@ -277,6 +288,169 @@ export class PublishJobService {
     );
   }
 
+  public resolveUnknown(
+    scope: PublishJobScope,
+    jobId: string,
+    expectedVersion: number,
+    input: ResolveUnknownPublishRequest,
+  ): Promise<PublishJobView> {
+    assertVersion(expectedVersion);
+    return this.database.begin((transaction) =>
+      this.resolveUnknownInTransaction(transaction, scope, jobId, expectedVersion, input),
+    );
+  }
+
+  public async resolveUnknownInTransaction(
+    transaction: TransactionSql,
+    scope: PublishJobScope,
+    jobId: string,
+    expectedVersion: number,
+    input: ResolveUnknownPublishRequest,
+  ): Promise<PublishJobView> {
+    assertVersion(expectedVersion);
+    const before = await loadJob(transaction, scope, jobId);
+    if (before.version !== expectedVersion) throw versionConflict();
+    if (before.platformCode !== 'baijiahao') {
+      throw stateInvalid('Only Baijiahao unknown publications can be resolved here');
+    }
+    if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
+      throw stateInvalid('Publish job is not waiting for unknown-state resolution');
+    }
+    if (before.variantCurrentContentVersionId !== before.contentVersionId) {
+      throw stateInvalid('The publish job no longer points to the current content version');
+    }
+    const latestAttempt = await loadLatestAttempt(transaction, scope.tenantId, before.id);
+    if (latestAttempt?.status !== 'unknown') {
+      throw stateInvalid('Latest publish attempt is not unknown');
+    }
+    const publications = await transaction<BrowserPublicationRow[]>`
+      SELECT id,external_post_id AS "externalPostId"
+      FROM baijiahao_browser_publications
+      WHERE tenant_id=${scope.tenantId}::uuid AND publish_job_id=${before.id}::uuid
+      FOR UPDATE
+    `;
+    const publication = publications[0];
+
+    if (input.resolution === 'not_published') {
+      if (publication?.externalPostId) {
+        throw stateInvalid('A remote publication is already linked to this publish job');
+      }
+      if (publication) {
+        const reset = await transaction<{ id: string }[]>`
+          UPDATE baijiahao_browser_publications SET
+            status='prepared',external_post_id=NULL,external_url=NULL,
+            review_reason='人工核实百家号后台未创建内容，允许使用原幂等键重试。',
+            submitted_at=NULL,last_reconciled_at=now(),version=version+1
+          WHERE id=${publication.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+            AND status IN ('submitting','unknown','processing','manual_required')
+          RETURNING id
+        `;
+        if (reset.length !== 1) throw stateInvalid('Baijiahao publication state changed');
+      }
+      return this.retryInTransaction(
+        transaction,
+        scope,
+        jobId,
+        expectedVersion,
+        {},
+        new Date(),
+        latestAttempt.attemptNo,
+      );
+    }
+
+    if (
+      publication?.externalPostId &&
+      input.external_post_id &&
+      publication.externalPostId !== input.external_post_id
+    ) {
+      throw stateInvalid('Confirmed remote publication does not match the linked publication');
+    }
+    const externalPostId = input.external_post_id ?? publication?.externalPostId ?? null;
+    if (publication) {
+      const linked = await transaction<{ id: string }[]>`
+        UPDATE baijiahao_browser_publications SET
+          status='published',external_post_id=${externalPostId},external_url=${input.external_url},
+          review_reason='人工核实百家号内容已经发布。',last_reconciled_at=now(),version=version+1
+        WHERE id=${publication.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+          AND status IN ('submitting','unknown','processing','manual_required')
+        RETURNING id
+      `;
+      if (linked.length !== 1) throw stateInvalid('Baijiahao publication state changed');
+    }
+    const publishedAt = new Date();
+    const rows = await transaction<JobRow[]>`
+      UPDATE publish_jobs SET
+        status='published',external_post_id=${externalPostId},external_url=${input.external_url},
+        published_at=${publishedAt.toISOString()}::timestamptz,last_error_json=NULL,version=version+1
+      WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND version=${expectedVersion} AND status='failed'
+      RETURNING
+        id,tenant_id AS "tenantId",variant_id AS "variantId",
+        content_version_id AS "contentVersionId",account_id AS "accountId",
+        scheduled_at AS "scheduledAt",idempotency_key AS "idempotencyKey",
+        payload_hash AS "payloadHash",status,attempt_count AS "attemptCount",
+        external_post_id AS "externalPostId",external_url AS "externalUrl",
+        last_error_json AS "lastError",origin,published_at AS "publishedAt",
+        created_by AS "createdBy",version,created_at AS "createdAt",updated_at AS "updatedAt"
+    `;
+    const after = requireChangedJob(rows, before);
+    assertContentVariantTransition({ from: 'publish_failed', to: 'publishing' });
+    await updateVariant(
+      transaction,
+      scope.tenantId,
+      before.variantId,
+      before.variantVersion,
+      'publish_failed',
+      'publishing',
+    );
+    assertContentVariantTransition({ from: 'publishing', to: 'published' });
+    await updateVariant(
+      transaction,
+      scope.tenantId,
+      before.variantId,
+      before.variantVersion + 1,
+      'publishing',
+      'published',
+    );
+    if (before.origin === 'baijiahao_automation') {
+      await confirmBaijiahaoAutomationPublished(
+        transaction,
+        scope.tenantId,
+        before.id,
+        publishedAt,
+      );
+    }
+    await projectPackage(
+      transaction,
+      this.projector,
+      scope.tenantId,
+      before.packageId,
+      before.packageStatus,
+      before.packageVersion,
+    );
+    await supersedePendingExecution(transaction, scope.tenantId, before.id);
+    await this.audit.record(transaction, {
+      action: 'publish_job.unknown_resolved_published',
+      actorId: scope.userId,
+      after: {
+        ...safeJob(after),
+        unknown_resolution: {
+          external_post_id: externalPostId,
+          external_url: input.external_url,
+          latest_attempt_no: latestAttempt.attemptNo,
+          resolution: 'published',
+        },
+      },
+      before: safeJob(before),
+      ip: scope.ip ?? null,
+      requestId: scope.requestId,
+      resourceId: after.id,
+      resourceType: 'publish_job',
+      tenantId: scope.tenantId,
+    });
+    return mapJob(after);
+  }
+
   public async retryInTransaction(
     transaction: TransactionSql,
     scope: PublishJobScope,
@@ -284,6 +458,7 @@ export class PublishJobService {
     expectedVersion: number,
     input: RetryPublishRequest,
     scheduledAt = input.scheduled_at ? parseDate(input.scheduled_at) : new Date(),
+    resolvedUnknownAttemptNo?: number,
   ): Promise<PublishJobView> {
     assertVersion(expectedVersion);
     const before = await loadJob(transaction, scope, jobId);
@@ -320,6 +495,7 @@ export class PublishJobService {
     }
     if (
       before.status !== 'scheduled' &&
+      resolvedUnknownAttemptNo === undefined &&
       (await latestAttemptIsUnknown(transaction, scope.tenantId, before.id))
     ) {
       throw stateInvalid('Unknown external publish state requires manual resolution');
@@ -409,9 +585,23 @@ export class PublishJobService {
     await supersedePendingExecution(transaction, scope.tenantId, before.id);
     await enqueueExecution(transaction, this.outbox, scope, after, scheduledAt);
     await this.audit.record(transaction, {
-      action: before.status === 'failed' ? 'publish_job.retried' : 'publish_job.rescheduled',
+      action:
+        resolvedUnknownAttemptNo === undefined
+          ? before.status === 'failed'
+            ? 'publish_job.retried'
+            : 'publish_job.rescheduled'
+          : 'publish_job.unknown_resolved_not_published',
       actorId: scope.userId,
-      after: safeJob(after),
+      after:
+        resolvedUnknownAttemptNo === undefined
+          ? safeJob(after)
+          : {
+              ...safeJob(after),
+              unknown_resolution: {
+                latest_attempt_no: resolvedUnknownAttemptNo,
+                resolution: 'not_published',
+              },
+            },
       before: safeJob(before),
       ip: scope.ip ?? null,
       requestId: scope.requestId,
@@ -620,12 +810,58 @@ async function latestAttemptIsUnknown(
   tenantId: string,
   jobId: string,
 ): Promise<boolean> {
-  const rows = await transaction<{ status: string }[]>`
-    SELECT status FROM publish_attempts
+  return (await loadLatestAttempt(transaction, tenantId, jobId))?.status === 'unknown';
+}
+
+async function loadLatestAttempt(
+  transaction: TransactionSql,
+  tenantId: string,
+  jobId: string,
+): Promise<LatestAttemptRow | undefined> {
+  const rows = await transaction<LatestAttemptRow[]>`
+    SELECT attempt_no AS "attemptNo",status FROM publish_attempts
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
     ORDER BY attempt_no DESC LIMIT 1
   `;
-  return rows[0]?.status === 'unknown';
+  return rows[0];
+}
+
+async function confirmBaijiahaoAutomationPublished(
+  transaction: TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  publishedAt: Date,
+): Promise<void> {
+  const runs = await transaction<{ id: string }[]>`
+    UPDATE baijiahao_automation_runs SET
+      status='published',last_error_json=NULL,finished_at=${publishedAt.toISOString()}::timestamptz,
+      version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publishing','processing','manual_required','publish_failed')
+    RETURNING id
+  `;
+  if (runs.length !== 1) throw stateInvalid('Baijiahao automation run is inconsistent');
+  const items = await transaction<{ batchId: string }[]>`
+    UPDATE baijiahao_daily_batch_items SET
+      status='published',published_at=${publishedAt.toISOString()}::timestamptz,last_error_json=NULL
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','processing','manual_required','publish_failed')
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  await transaction`
+    UPDATE baijiahao_daily_batches AS batch SET
+      status='completed',completed_at=${publishedAt.toISOString()}::timestamptz,
+      last_error_json=NULL,version=version+1
+    WHERE batch.id=${batchId}::uuid AND batch.tenant_id=${tenantId}::uuid
+      AND batch.status IN ('running','scheduled','attention_required')
+      AND NOT EXISTS (
+        SELECT 1 FROM baijiahao_daily_batch_items AS item
+        WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+          AND item.status NOT IN ('published','skipped','reserve','retired')
+      )
+  `;
 }
 
 async function disableAutomationRun(

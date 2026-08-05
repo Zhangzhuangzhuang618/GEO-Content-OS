@@ -23,6 +23,22 @@ export const CreatePublishJobRequestSchema = z
 export const RetryPublishRequestSchema = z
   .object({ scheduled_at: IsoDateTimeSchema.optional() })
   .strict();
+const PublishExternalUrlSchema = z
+  .url()
+  .max(2_048)
+  .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
+    message: 'external_url must use HTTP or HTTPS',
+  });
+export const ResolveUnknownPublishRequestSchema = z.discriminatedUnion('resolution', [
+  z
+    .object({
+      external_post_id: z.string().trim().min(1).max(240).optional(),
+      external_url: PublishExternalUrlSchema,
+      resolution: z.literal('published'),
+    })
+    .strict(),
+  z.object({ resolution: z.literal('not_published') }).strict(),
+]);
 export const PublishJobQuerySchema = z
   .object({
     account_id: UuidSchema.optional(),
@@ -123,6 +139,14 @@ export const PublishJobDetailSchema = z
     export_artifact: ExportArtifactViewSchema.nullable(),
     job: PublishJobViewSchema,
     media: PublishMediaStateSchema,
+    unknown_resolution: z
+      .object({
+        can_retry: z.boolean(),
+        latest_attempt_no: z.number().int().min(1).max(20),
+        platform_code: z.literal('baijiahao'),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export const SignedDownloadViewSchema = z
@@ -148,6 +172,7 @@ export const SignedDownloadResponseSchema = createDataResponseSchema(SignedDownl
 
 export type CreatePublishJobRequest = z.infer<typeof CreatePublishJobRequestSchema>;
 export type RetryPublishRequest = z.infer<typeof RetryPublishRequestSchema>;
+export type ResolveUnknownPublishRequest = z.infer<typeof ResolveUnknownPublishRequestSchema>;
 export type PublishJobView = z.infer<typeof PublishJobViewSchema>;
 export type PublishJobQuery = z.infer<typeof PublishJobQuerySchema>;
 export type PublishAttemptView = z.infer<typeof PublishAttemptViewSchema>;

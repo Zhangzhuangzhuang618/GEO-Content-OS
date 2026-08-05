@@ -15,6 +15,7 @@ const ACCOUNT_ID = '60000000-0000-4000-8000-000000000130';
 const PACKAGE_ID = '70000000-0000-4000-8000-000000000130';
 const EVENT_ID = '80000000-0000-4000-8000-000000000130';
 const AUTOMATION_ID = '90000000-0000-4000-8000-000000000130';
+const PUBLICATION_ID = '91000000-0000-4000-8000-000000000130';
 const RESCHEDULED_AT = '2026-08-01T02:30:00.000Z';
 
 const SCOPE: PublishJobScope = {
@@ -121,6 +122,74 @@ describe('PublishJobService rescheduling', () => {
       expect.objectContaining({ action: 'publish_job.rescheduled' }),
     );
   });
+
+  it('keeps the unknown attempt immutable and safely retries after a not-published confirmation', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 3,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      platformCode: 'baijiahao',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'not_published');
+    const { audit, outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      resolution: 'not_published',
+    });
+
+    expect(result).toMatchObject({ status: 'scheduled', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_browser_publications') &&
+          sql.includes("status='prepared'") &&
+          sql.includes('submitted_at=NULL'),
+      ),
+    ).toBe(true);
+    expect(sqlStatements.some((sql) => sql.includes('UPDATE publish_attempts'))).toBe(false);
+    expect(outbox.enqueue).toHaveBeenCalledOnce();
+    expect(audit.record).toHaveBeenCalledWith(
+      transaction,
+      expect.objectContaining({ action: 'publish_job.unknown_resolved_not_published' }),
+    );
+  });
+
+  it('confirms an externally verified Baijiahao article without rewriting the unknown attempt', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 3,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      platformCode: 'baijiahao',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'published');
+    const { audit, outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      external_post_id: 'baijiahao-post-130',
+      external_url: 'https://baijiahao.baidu.com/s?id=130',
+      resolution: 'published',
+    });
+
+    expect(result).toMatchObject({
+      external_post_id: 'baijiahao-post-130',
+      external_url: 'https://baijiahao.baidu.com/s?id=130',
+      status: 'published',
+      version: 2,
+    });
+    expect(sqlStatements.filter((sql) => sql.includes('UPDATE content_variants'))).toHaveLength(2);
+    expect(sqlStatements.some((sql) => sql.includes('UPDATE publish_attempts'))).toBe(false);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      transaction,
+      expect.objectContaining({ action: 'publish_job.unknown_resolved_published' }),
+    );
+  });
 });
 
 function createService() {
@@ -142,7 +211,7 @@ function createTransaction(before: ReturnType<typeof jobRow>, sqlStatements: str
     const sql = strings.join('?');
     sqlStatements.push(sql);
     if (sql.includes('FROM publish_jobs AS job')) return [before];
-    if (sql.includes('SELECT status FROM publish_attempts')) return [];
+    if (sql.includes('FROM publish_attempts')) return [];
     if (sql.includes('UPDATE publish_jobs SET')) {
       return [
         {
@@ -163,17 +232,62 @@ function createTransaction(before: ReturnType<typeof jobRow>, sqlStatements: str
   }) as unknown as TransactionSql;
 }
 
+function createUnknownResolutionTransaction(
+  before: ReturnType<typeof jobRow>,
+  sqlStatements: string[],
+  resolution: 'not_published' | 'published',
+) {
+  return vi.fn(async (strings: TemplateStringsArray) => {
+    const sql = strings.join('?');
+    sqlStatements.push(sql);
+    if (sql.includes('FROM publish_jobs AS job')) return [before];
+    if (sql.includes('FROM publish_attempts')) return [{ attemptNo: 3, status: 'unknown' }];
+    if (sql.includes('FROM baijiahao_browser_publications') && sql.includes('FOR UPDATE')) {
+      return [{ externalPostId: null, id: PUBLICATION_ID }];
+    }
+    if (sql.includes('UPDATE baijiahao_browser_publications')) return [{ id: PUBLICATION_ID }];
+    if (sql.includes('UPDATE publish_jobs SET')) {
+      return [
+        {
+          ...before,
+          externalPostId: resolution === 'published' ? 'baijiahao-post-130' : null,
+          externalUrl: resolution === 'published' ? 'https://baijiahao.baidu.com/s?id=130' : null,
+          publishedAt: resolution === 'published' ? new Date() : null,
+          scheduledAt: resolution === 'not_published' ? new Date() : before.scheduledAt,
+          status: resolution === 'published' ? 'published' : 'scheduled',
+          version: before.version + 1,
+        },
+      ];
+    }
+    if (sql.includes('UPDATE content_variants')) return [{ id: VARIANT_ID }];
+    if (sql.includes('FROM content_variants') && sql.includes('is_required')) {
+      return [
+        {
+          isRequired: true,
+          status: resolution === 'published' ? 'published' : 'scheduled',
+        },
+      ];
+    }
+    if (sql.includes('UPDATE content_packages')) return [{ id: PACKAGE_ID }];
+    return [];
+  }) as unknown as TransactionSql;
+}
+
 function jobRow({
+  attemptCount = 0,
   origin,
   packageStatus = 'scheduled',
+  platformCode = 'official_site',
   status,
   variantStatus,
   variantVersion = 2,
 }: {
-  origin: 'manual' | 'official_site_automation';
-  packageStatus?: 'generated' | 'scheduled';
-  status: 'cancelled' | 'scheduled';
-  variantStatus: 'quality_passed' | 'scheduled';
+  attemptCount?: number;
+  origin: 'baijiahao_automation' | 'manual' | 'official_site_automation';
+  packageStatus?: 'generated' | 'publish_failed' | 'scheduled';
+  platformCode?: 'baijiahao' | 'official_site';
+  status: 'cancelled' | 'failed' | 'scheduled';
+  variantStatus: 'publish_failed' | 'quality_passed' | 'scheduled';
   variantVersion?: number;
 }) {
   return {
@@ -183,7 +297,7 @@ function jobRow({
     accountPublishMode: 'api' as const,
     accountStatus: 'active' as const,
     accountTokenExpiresAt: null,
-    attemptCount: 0,
+    attemptCount,
     contentVersionId: CONTENT_VERSION_ID,
     createdAt: '2026-07-30T00:00:00.000Z',
     createdBy: USER_ID,
@@ -198,7 +312,7 @@ function jobRow({
     packageStatus,
     packageVersion: 2,
     payloadHash: 'a'.repeat(64),
-    platformCode: 'official_site' as const,
+    platformCode,
     publishedAt: null,
     scheduledAt: '2026-07-31T02:30:00.000Z',
     status,

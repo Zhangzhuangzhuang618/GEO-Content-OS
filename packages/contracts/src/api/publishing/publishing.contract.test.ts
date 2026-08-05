@@ -7,14 +7,15 @@ import {
   PUBLISHING_API_CONTRACTS,
   PUBLISHING_OPENAPI_DOCUMENT,
   PublishJobQuerySchema,
+  ResolveUnknownPublishRequestSchema,
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all twenty-five publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(25);
+  it('contains all twenty-six publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(26);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(25);
+    ).toBe(26);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -25,7 +26,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(25);
+    expect(operations).toHaveLength(26);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -34,6 +35,27 @@ describe('Publishing API frozen contract', () => {
       expect(operation['x-permission']).toBe(contract.permission);
       expect(operation['x-policy']).toBe(contract.policy);
     }
+  });
+
+  it('requires evidence before confirming an unknown publish as published', () => {
+    expect(
+      ResolveUnknownPublishRequestSchema.safeParse({ resolution: 'not_published' }).success,
+    ).toBe(true);
+    expect(
+      ResolveUnknownPublishRequestSchema.safeParse({
+        external_url: 'https://baijiahao.baidu.com/s?id=123',
+        resolution: 'published',
+      }).success,
+    ).toBe(true);
+    expect(ResolveUnknownPublishRequestSchema.safeParse({ resolution: 'published' }).success).toBe(
+      false,
+    );
+    expect(
+      ResolveUnknownPublishRequestSchema.safeParse({
+        external_url: 'javascript:alert(1)',
+        resolution: 'published',
+      }).success,
+    ).toBe(false);
   });
 
   it('requires an optimistic batch version when restarting today', () => {

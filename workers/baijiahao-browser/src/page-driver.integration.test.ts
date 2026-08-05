@@ -21,11 +21,13 @@ describe('Baijiahao local browser simulator', () => {
   let profileRoot = '';
   let server: ReturnType<typeof createServer>;
   let submitted: SubmittedPublication | null = null;
+  let validEditorSignature = true;
   let validManageSignature = true;
 
   beforeEach(async () => {
     duplicateRows = false;
     submitted = null;
+    validEditorSignature = true;
     validManageSignature = true;
     profileRoot = await mkdtemp(join(tmpdir(), 'geo-baijiahao-e2e-'));
     server = createServer((request, response) =>
@@ -34,6 +36,7 @@ describe('Baijiahao local browser simulator', () => {
         response,
         () => submitted,
         () => duplicateRows,
+        () => validEditorSignature,
         () => validManageSignature,
         (value) => {
           submitted = value;
@@ -164,6 +167,27 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
+  it('keeps an authenticated session when the editor signature is temporarily unavailable', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      validEditorSignature = false;
+
+      await expect(
+        driver.verifyAuthenticated(
+          accountId,
+          profilePath,
+          await driver.exportStorageState(accountId),
+        ),
+      ).resolves.toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops when an empty management page no longer has the frozen list signature', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';
@@ -211,6 +235,7 @@ function route(
   response: ServerResponse,
   readSubmitted: () => SubmittedPublication | null,
   readDuplicateRows: () => boolean,
+  hasEditorSignature: () => boolean,
   hasManageSignature: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
@@ -226,9 +251,14 @@ function route(
       response,
       `
       <canvas width="1440" height="1755"></canvas>
+      <div data-testid="account-menu" style="display:none">已登录</div>
       <button data-testid="bjh-login-btn">登录</button>
       <img data-testid="login-qr" style="display:none" src="/v2/api/qrcode">
       <script>
+        if(localStorage.getItem('simulator-auth')==='yes') {
+          document.querySelector('[data-testid=account-menu]').style.display='block';
+          document.querySelector('[data-testid=bjh-login-btn]').style.display='none';
+        }
         document.querySelector('[data-testid=bjh-login-btn]').onclick=()=>{
           document.querySelector('[data-testid=login-qr]').style.display='block';
           setTimeout(()=>{localStorage.setItem('simulator-auth','yes');location.href='/login-complete'},500);
@@ -241,6 +271,7 @@ function route(
     return html(response, '<main>登录完成</main>');
   }
   if (request.url === '/editor') {
+    if (!hasEditorSignature()) return html(response, '<main>编辑器暂时不可用</main>');
     return html(
       response,
       `

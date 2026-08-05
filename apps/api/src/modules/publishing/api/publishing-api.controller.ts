@@ -14,6 +14,7 @@ import {
   PublishJobQuerySchema,
   ReasonRequestSchema,
   RefreshAccountRequestSchema,
+  ResolveUnknownPublishRequestSchema,
   RetryPublishRequestSchema,
   UpdatePlatformAccountRequestSchema,
 } from '@geo-content-os/contracts';
@@ -636,6 +637,47 @@ export class PublishJobController {
         parsedBody.data as JsonValue,
         (transaction) =>
           this.jobs.retryInTransaction(
+            transaction,
+            publishScope(scope, request),
+            parsedParams.data.id,
+            version,
+            parsedBody.data,
+          ),
+        HttpStatus.OK,
+        undefined,
+        version,
+      );
+      await sendVersioned(reply, result.response.statusCode, result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/resolve-unknown')
+  @RequirePermissions('publishing.manage')
+  public async resolveUnknown(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PublishJobParamsSchema.safeParse(params);
+    const parsedBody = ResolveUnknownPublishRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    const scope = requireScope(request);
+    try {
+      const version = parseIfMatch(request.headers['if-match']);
+      const route = `/publish-jobs/${parsedParams.data.id}/resolve-unknown`;
+      const result = await idempotent(
+        this.idempotency,
+        request,
+        scope,
+        route,
+        parsedBody.data as JsonValue,
+        (transaction) =>
+          this.jobs.resolveUnknownInTransaction(
             transaction,
             publishScope(scope, request),
             parsedParams.data.id,

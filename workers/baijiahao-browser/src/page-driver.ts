@@ -151,7 +151,8 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     const page = await this.page(accountId, profilePath, storageStateJson);
     await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
-    return this.isAuthenticatedEditor(page);
+    if (await this.isAuthenticatedEditor(page)) return true;
+    return this.verifyViaLoginPage(page);
   }
 
   public async exportStorageState(accountId: string): Promise<string> {
@@ -354,9 +355,38 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     ) {
       return;
     }
-    if (!(await this.isAuthenticatedEditor(page))) {
+    if (await this.isAuthenticatedEditor(page)) return;
+    if (!(await this.verifyViaLoginPage(page))) {
       throw new PageDriverError('AUTH_REQUIRED', 'Baijiahao login has expired');
     }
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao session is active but the requested page is not available',
+    );
+  }
+
+  private async verifyViaLoginPage(page: Page): Promise<boolean> {
+    await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
+    await this.rejectCaptcha(page);
+    if (
+      await page
+        .locator(SELECTORS.authenticated)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return true;
+    }
+    const loginRequired = await page
+      .locator(`${SELECTORS.loginTrigger}, ${SELECTORS.qr}`)
+      .first()
+      .isVisible()
+      .catch(() => false);
+    if (loginRequired) return false;
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao login page no longer exposes an authenticated or login-required state',
+    );
   }
 
   private async isAuthenticatedEditor(page: Page): Promise<boolean> {

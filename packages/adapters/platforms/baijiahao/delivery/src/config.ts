@@ -28,7 +28,7 @@ export const BaijiahaoDeliveryConfigSchema = z.discriminatedUnion('mode', [
         status: '/status',
       }),
       mode: z.literal('api'),
-      timeout_ms: z.number().int().min(100).max(60_000).default(10_000),
+      timeout_ms: z.number().int().min(100).max(60_000).default(60_000),
     })
     .strict(),
 ]);

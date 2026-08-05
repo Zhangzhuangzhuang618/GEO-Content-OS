@@ -798,6 +798,13 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  job_unknown_resolve: {
+    idempotency: 'key+version',
+    method: 'POST',
+    path: '/publish-jobs/{id}/resolve-unknown',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   job_retry: {
     idempotency: 'key+version',
     method: 'POST',

@@ -53,6 +53,14 @@ export const PublishJobDetailResponseSchema = z
         export_artifact: ExportArtifactSchema.nullable(),
         job: PublishJobSchema,
         media: PublishMediaStateSchema,
+        unknown_resolution: z
+          .object({
+            can_retry: z.boolean(),
+            latest_attempt_no: z.number().int().min(1).max(20),
+            platform_code: z.literal('baijiahao'),
+          })
+          .strict()
+          .nullable(),
       })
       .strict(),
     meta: ResponseMetaSchema,

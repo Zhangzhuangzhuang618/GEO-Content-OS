@@ -68,9 +68,9 @@ function verifyCatalogAgainstControllers(): void {
       `Controller/contract drift. Missing controllers: ${missingControllers.join(', ') || '-'}; missing contracts: ${missingContracts.join(', ') || '-'}`,
     );
   }
-  if (catalogRoutes.length !== 144) {
+  if (catalogRoutes.length !== 145) {
     throw new Error(
-      `Expected the executable ADR baseline of 144 business endpoints, got ${catalogRoutes.length}`,
+      `Expected the executable ADR baseline of 145 business endpoints, got ${catalogRoutes.length}`,
     );
   }
 }
