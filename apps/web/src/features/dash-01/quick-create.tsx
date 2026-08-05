@@ -1,12 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { getAccountSession } from '../app-shell/account-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
 import type { BriefObjective, PlatformCode } from '../cont-01/brief-list.schema';
-import { createContentPackage, saveBrief } from '../cont-02/brief-editor-api';
+import {
+  BriefEditorRequestError,
+  createContentPackage,
+  saveBrief,
+} from '../cont-02/brief-editor-api';
 import type { BriefSaveInput } from '../cont-02/brief-editor.schema';
 import { generatePackage, getContentPackageDetail } from '../cont-04/content-package-detail-api';
 import { listSources } from '../know-01/source-api';
@@ -78,6 +82,7 @@ export function QuickCreate({
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<Recovery>(null);
+  const submitInFlight = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -112,9 +117,13 @@ export function QuickCreate({
   const canCreate = CREATOR_ROLES.has(role);
   const canPrepareKeywords = role === 'tenant_owner' || role === 'tenant_admin';
   const selectedAll = platforms.length === ALL_PLATFORMS.length;
+  const compatibleKeywords = useMemo(
+    () => keywords.filter((item) => keywordSupportsPlatforms(item, platforms)),
+    [keywords, platforms],
+  );
   const selectedKeyword = useMemo(
-    () => keywords.find((item) => item.id === keywordId) ?? keywords[0],
-    [keywordId, keywords],
+    () => compatibleKeywords.find((item) => item.id === keywordId) ?? compatibleKeywords[0],
+    [compatibleKeywords, keywordId],
   );
 
   async function changeWorkspace(nextWorkspaceId: string) {
@@ -166,6 +175,7 @@ export function QuickCreate({
   }
 
   async function submit(form: HTMLFormElement) {
+    if (submitInFlight.current) return;
     const data = new FormData(form);
     const title = String(data.get('title') ?? '').trim();
     if (title.length < 2) return setStatus('请用至少两个字说明想创作什么。');
@@ -174,67 +184,77 @@ export function QuickCreate({
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setStatus('登录安全令牌尚未就绪，请刷新页面后重试。');
 
-    let resolvedKeyword = selectedKeyword;
-    if (!resolvedKeyword && canPrepareKeywords) {
-      try {
-        setBusy(true);
-        setStatus('正在根据主题准备核心关键词…');
-        const setId =
-          keywordSetId ?? (await createKeywordSet({ name: '快速创作关键词', projectId }, csrf)).id;
-        const created = await upsertKeywords(
-          setId,
-          [
-            {
-              intents: ['informational'],
-              platform_scope: [...platforms],
-              priority: 50,
-              status: 'active',
-              synonyms: [],
-              term: title,
-            },
-          ],
-          csrf,
-        );
-        resolvedKeyword = created.find((item) => item.term === title) ?? created[0];
-        if (!resolvedKeyword) throw new Error('Keyword creation returned no result');
-        setKeywordSetId(setId);
-        setKeywords(created);
-      } catch {
-        setBusy(false);
-        return setStatus('无法准备核心关键词，请到“品牌与选题 → 关键词管理”完成配置后重试。');
-      }
-    }
-    if (!resolvedKeyword) return setStatus('当前项目还没有可用关键词，请联系管理员添加关键词。');
-
-    const audience = String(data.get('audience') ?? '').trim();
-    const input: BriefSaveInput = {
-      audience: audience || '对该主题感兴趣的潜在读者与客户',
-      constraints: {
-        additional_instructions: optionalText(data.get('instructions')),
-        cta: optionalText(data.get('cta')),
-        schema_version: 'brief-constraints@1',
-      },
-      due_at: null,
-      keyword_ids: [resolvedKeyword.id],
-      objective,
-      platform_codes: [...platforms],
-      primary_keyword_id: resolvedKeyword.id,
-      project_id: projectId,
-      source_ids: [...selectedSourceIds],
-      title,
-      workspace_id: workspaceId,
-    };
-
+    submitInFlight.current = true;
     setBusy(true);
-    setRecovery(null);
-    setStatus('正在保存创作要求…');
     try {
+      let resolvedKeyword = selectedKeyword;
+      if (!resolvedKeyword && canPrepareKeywords) {
+        setStatus('正在根据主题准备核心关键词…');
+        try {
+          const setId =
+            keywordSetId ??
+            (await createKeywordSet({ name: '快速创作关键词', projectId }, csrf)).id;
+          const created = await upsertKeywords(
+            setId,
+            [
+              {
+                intents: ['informational'],
+                platform_scope: [...platforms],
+                priority: 50,
+                status: 'active',
+                synonyms: [],
+                term: title,
+              },
+            ],
+            csrf,
+          );
+          resolvedKeyword = created.find((item) => item.term === title) ?? created[0];
+          if (!resolvedKeyword || !keywordSupportsPlatforms(resolvedKeyword, platforms)) {
+            throw new Error('Keyword creation returned no platform-compatible result');
+          }
+          setKeywordSetId(setId);
+          setKeywords((current) => [
+            ...current.filter((item) => !created.some((next) => next.id === item.id)),
+            ...created,
+          ]);
+        } catch {
+          return setStatus(
+            '无法准备适用于所选平台的关键词，请到“品牌与选题 → 关键词管理”完成配置后重试。',
+          );
+        }
+      }
+      if (!resolvedKeyword || !keywordSupportsPlatforms(resolvedKeyword, platforms)) {
+        return setStatus('当前项目没有适用于所选平台的关键词，请联系管理员添加关键词。');
+      }
+
+      const audience = String(data.get('audience') ?? '').trim();
+      const input: BriefSaveInput = {
+        audience: audience || '对该主题感兴趣的潜在读者与客户',
+        constraints: {
+          additional_instructions: optionalText(data.get('instructions')),
+          cta: optionalText(data.get('cta')),
+          schema_version: 'brief-constraints@1',
+        },
+        due_at: null,
+        keyword_ids: [resolvedKeyword.id],
+        objective,
+        platform_codes: [...platforms],
+        primary_keyword_id: resolvedKeyword.id,
+        project_id: projectId,
+        source_ids: [...selectedSourceIds],
+        title,
+        workspace_id: workspaceId,
+      };
+
+      setRecovery(null);
+      setStatus('正在保存创作要求…');
       const brief = await saveBrief(input, csrf);
       setRecovery({ brief, step: 'package' });
       await createAndGenerate(brief, csrf);
-    } catch {
-      setStatus('创作要求保存失败，请检查登录状态后重试。');
+    } catch (error) {
+      setStatus(briefSaveErrorMessage(error));
     } finally {
+      submitInFlight.current = false;
       setBusy(false);
     }
   }
@@ -497,9 +517,13 @@ export function QuickCreate({
               <option value="awareness">提升品牌认知</option>
               <option value="conversion">促进转化</option>
             </Select>
-            <Select label="核心关键词（不选则自动使用）" value={keywordId} onChange={setKeywordId}>
+            <Select
+              label="核心关键词（不选则自动使用）"
+              value={compatibleKeywords.some((item) => item.id === keywordId) ? keywordId : ''}
+              onChange={setKeywordId}
+            >
               <option value="">自动选择</option>
-              {keywords.map((item) => (
+              {compatibleKeywords.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.term}
                 </option>
@@ -567,13 +591,13 @@ export function QuickCreate({
         {configState === 'error' ? (
           <p className="mt-4 text-sm text-red-700">项目配置暂时无法加载，请刷新后重试。</p>
         ) : null}
-        {configState === 'ready' && projectId && keywords.length === 0 ? (
+        {configState === 'ready' && projectId && compatibleKeywords.length === 0 ? (
           <p className="mt-4 rounded-control bg-amber-50 p-3 text-sm text-amber-800">
             {canPrepareKeywords ? (
-              <>当前项目还没有关键词。首次生成时，系统会自动使用你填写的主题创建关键词。</>
+              <>当前项目没有适用于所选平台的关键词。生成时系统会根据主题自动创建。</>
             ) : (
               <>
-                当前项目还没有可用关键词，请联系管理员或前往
+                当前项目没有适用于所选平台的关键词，请联系管理员或前往
                 <Link
                   className="mx-1 font-semibold underline"
                   href={`/str-04?project_id=${projectId}`}
@@ -615,7 +639,7 @@ export function QuickCreate({
               busy ||
               configState !== 'ready' ||
               !projectId ||
-              (keywords.length === 0 && !canPrepareKeywords) ||
+              (compatibleKeywords.length === 0 && !canPrepareKeywords) ||
               (!hasPublishedBrand && !canPrepareKeywords)
             }
             type="submit"
@@ -701,6 +725,26 @@ async function loadGenerationContext(projectId: string, workspaceId: string, sig
     hasPublishedBrand: publishedProfiles.some((item) => item.workspace_id === workspaceId),
     sources: sourcePage.items,
   };
+}
+
+function keywordSupportsPlatforms(keyword: Keyword, platforms: readonly PlatformCode[]): boolean {
+  return keyword.platform_scope.some((platform) => platforms.includes(platform));
+}
+
+function briefSaveErrorMessage(error: unknown): string {
+  if (!(error instanceof BriefEditorRequestError)) {
+    return '创作要求保存失败，请检查网络连接后重试。';
+  }
+  if (error.status === 401) return '登录已失效，请重新登录后再试。';
+  if (error.status === 403) return '当前账号没有创建内容的权限。';
+  if (error.status === 409 && error.code === 'STATE_TRANSITION_INVALID') {
+    return '当前项目、关键词或参考资料与所选平台不匹配，请刷新配置后重试。';
+  }
+  if (error.status === 409 && error.code === 'IDEMPOTENCY_CONFLICT') {
+    return '本次创建请求与先前请求冲突，请重新提交。';
+  }
+  if (error.status === 422) return '创作要求未通过校验，请检查填写内容后重试。';
+  return `创作要求保存失败（HTTP ${error.status}），请稍后重试。`;
 }
 
 function Select({

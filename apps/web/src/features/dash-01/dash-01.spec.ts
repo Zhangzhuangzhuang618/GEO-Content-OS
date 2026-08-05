@@ -5,6 +5,7 @@ const WORKSPACE_ID = '20000000-0000-4000-8000-000000000073';
 const PROJECT_ID = '30000000-0000-4000-8000-000000000073';
 const KEYWORD_SET_ID = '60000000-0000-4000-8000-000000000073';
 const KEYWORD_ID = '61000000-0000-4000-8000-000000000073';
+const BAIJIAHAO_KEYWORD_ID = '62000000-0000-4000-8000-000000000073';
 const BRIEF_ID = '70000000-0000-4000-8000-000000000073';
 const PACKAGE_ID = '80000000-0000-4000-8000-000000000073';
 const OWNER_ID = '90000000-0000-4000-8000-000000000073';
@@ -435,7 +436,7 @@ test('creates and starts all-platform content from one human-friendly form', asy
   await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
   await expect(page.getByRole('navigation', { name: '主导航' })).toBeVisible();
   await page.getByText('选择参考资料和补充要求').click();
-  await expect(page.getByText('系统会自动使用你填写的主题创建关键词')).toBeVisible();
+  await expect(page.getByText('当前项目没有适用于所选平台的关键词。')).toBeVisible();
   await expect(page.getByText('系统会建立一份基础策略')).toBeVisible();
   await page.getByLabel('想创作什么内容？').fill('企业如何通过 GEO 提升品牌可见度');
   await page.getByRole('checkbox', { name: '全部平台' }).check();
@@ -477,6 +478,101 @@ test('creates and starts all-platform content from one human-friendly form', asy
     model_policy: 'balanced',
     platform_codes: platforms,
   });
+});
+
+test('creates a compatible keyword instead of submitting an official-site keyword to Baijiahao', async ({
+  page,
+}) => {
+  const topic = '广州工厂搬迁如何做到安全高效';
+  let briefBody: Record<string, unknown> | undefined;
+  let keywordBody: Record<string, unknown> | undefined;
+  const baijiahaoKeyword = {
+    ...keyword(),
+    id: BAIJIAHAO_KEYWORD_ID,
+    platform_scope: ['baijiahao'],
+    priority: 50,
+    term: topic,
+  };
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/keywords`, async (route) => {
+    keywordBody = route.request().postDataJSON() as Record<string, unknown>;
+    await response(route, [baijiahaoKeyword]);
+  });
+  await page.route('**/api/v1/briefs', async (route) => {
+    briefBody = route.request().postDataJSON() as Record<string, unknown>;
+    await response(
+      route,
+      {
+        ...brief(['baijiahao']),
+        keyword_ids: [BAIJIAHAO_KEYWORD_ID],
+        platform_codes: ['baijiahao'],
+        primary_keyword_id: BAIJIAHAO_KEYWORD_ID,
+        title: topic,
+      },
+      201,
+    );
+  });
+  await page.route('**/api/v1/content-packages', (route) => route.fulfill({ status: 503 }));
+
+  await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
+  await page.getByLabel('想创作什么内容？').fill(topic);
+  await page.getByRole('checkbox', { name: '百家号' }).check();
+  await page.getByRole('checkbox', { name: '官网' }).uncheck();
+  await page.getByText('选择参考资料和补充要求').click();
+
+  await expect(page.getByLabel('核心关键词（不选则自动使用）')).not.toContainText('GEO 品牌可见度');
+  await expect(page.getByText('当前项目没有适用于所选平台的关键词。')).toBeVisible();
+  await page.getByRole('button', { name: '生成内容' }).click();
+
+  await expect.poll(() => briefBody).toBeDefined();
+  expect(keywordBody).toEqual({
+    keywords: [
+      {
+        intents: ['informational'],
+        platform_scope: ['baijiahao'],
+        priority: 50,
+        status: 'active',
+        synonyms: [],
+        term: topic,
+      },
+    ],
+  });
+  expect(briefBody).toMatchObject({
+    keyword_ids: [BAIJIAHAO_KEYWORD_ID],
+    platform_codes: ['baijiahao'],
+    primary_keyword_id: BAIJIAHAO_KEYWORD_ID,
+  });
+});
+
+test('shows the Brief conflict reason and prevents duplicate submissions', async ({ page }) => {
+  let briefRequests = 0;
+  await page.route('**/api/v1/briefs', async (route) => {
+    briefRequests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await route.fulfill({
+      body: JSON.stringify({
+        error: {
+          code: 'STATE_TRANSITION_INVALID',
+          message: '状态转换不允许',
+          request_id: 'brief-conflict',
+        },
+      }),
+      contentType: 'application/json',
+      status: 409,
+    });
+  });
+
+  await page.goto(`/dash-01?workspace_id=${WORKSPACE_ID}`);
+  await page.getByLabel('想创作什么内容？').fill('重复提交保护测试');
+  await page.locator('#create-content form').evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+    (form as HTMLFormElement).requestSubmit();
+  });
+
+  await expect(page.getByRole('status')).toContainText(
+    '当前项目、关键词或参考资料与所选平台不匹配',
+  );
+  expect(briefRequests).toBe(1);
+  await expect(page.getByRole('status')).not.toContainText('登录');
 });
 
 test('keeps the created task and retries when generation cannot start', async ({ page }) => {

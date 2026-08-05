@@ -66,22 +66,38 @@ export async function createContentPackage(brief: Brief, csrf: string): Promise<
     },
     method: 'POST',
   });
-  if (!response.ok) throw new BriefEditorRequestError(response.status);
+  if (!response.ok) throw await briefEditorRequestError(response);
   const parsed = ContentPackageResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new BriefEditorRequestError(502);
   return parsed.data.data.id;
 }
 
 async function parseBrief(response: Response): Promise<Brief> {
-  if (!response.ok) throw new BriefEditorRequestError(response.status);
+  if (!response.ok) throw await briefEditorRequestError(response);
   const parsed = BriefResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new BriefEditorRequestError(502);
   return parsed.data.data;
 }
 
 export class BriefEditorRequestError extends Error {
-  public constructor(public readonly status: number) {
+  public constructor(
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
     super('Brief editor request failed');
     this.name = 'BriefEditorRequestError';
+  }
+}
+
+async function briefEditorRequestError(response: Response): Promise<BriefEditorRequestError> {
+  try {
+    const body = (await response.json()) as { readonly error?: { readonly code?: unknown } };
+    const code = body.error?.code;
+    return new BriefEditorRequestError(
+      response.status,
+      typeof code === 'string' ? code : undefined,
+    );
+  } catch {
+    return new BriefEditorRequestError(response.status);
   }
 }
