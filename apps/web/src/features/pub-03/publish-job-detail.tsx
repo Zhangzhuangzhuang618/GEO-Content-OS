@@ -316,12 +316,7 @@ function DetailContent({
         ) : null}
 
         <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field
-            label="任务来源"
-            value={
-              job.origin === 'official_site_automation' ? '官网机器质检通过后自动创建' : '人工创建'
-            }
-          />
+          <Field label="任务来源" value={originLabel(job.origin)} />
           <Field label="尝试次数" value={String(job.attempt_count)} />
           <Field
             label="实际发布时间"
@@ -373,6 +368,12 @@ function DetailContent({
       />
     </>
   );
+}
+
+function originLabel(origin: PublishJob['origin']) {
+  if (origin === 'official_site_automation') return '官网机器质检通过后自动创建';
+  if (origin === 'baijiahao_automation') return '百家号自动化创建';
+  return '人工创建';
 }
 
 function AttemptHistory({ attempts }: { readonly attempts: readonly PublishAttempt[] }) {

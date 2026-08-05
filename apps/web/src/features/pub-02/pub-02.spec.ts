@@ -52,6 +52,25 @@ test('provides platform account entry points from publishing', async ({ page }) 
   );
 });
 
+test('loads and labels Baijiahao automation publish jobs', async ({ page }) => {
+  await page.route('**/api/v1/publish-jobs**', (route) =>
+    json(route, {
+      data: [
+        {
+          ...job({ id: JOB_IDS[0], scheduledAt: '2026-08-05T02:00:00.000Z' }),
+          origin: 'baijiahao_automation',
+        },
+      ],
+      meta: { next_cursor: null, request_id: 'calendar-baijiahao-list' },
+    }),
+  );
+
+  await page.goto('/pub-02');
+
+  await expect(page.getByText('百家号自动化发布')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无法加载发布日历' })).toHaveCount(0);
+});
+
 test('guides the user to configure an account when none is available', async ({ page }) => {
   await page.unroute('**/api/v1/platform-accounts**');
   await page.route('**/api/v1/platform-accounts**', (route) =>
@@ -76,7 +95,13 @@ test('shows approved articles in publishing and lets the user select one', async
   await page.unroute('**/api/v1/content-packages?*');
   await page.route('**/api/v1/content-packages?*', (route) =>
     json(route, {
-      data: [contentPackage()],
+      data: [
+        {
+          ...contentPackage(),
+          brief_title: '广州搬家公司怎么选',
+          variants: [variant('approved')],
+        },
+      ],
       meta: { next_cursor: null, request_id: 'approved-content' },
     }),
   );

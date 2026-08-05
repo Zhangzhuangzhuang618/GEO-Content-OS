@@ -488,9 +488,7 @@ function JobRow({
       <td className="p-4">{formatDate(job.scheduled_at)}</td>
       <td className="p-4">{account ? platformLabel(account.platform_code) : '账号不可用'}</td>
       <td className="p-4">{account?.display_name ?? '账号不可用'}</td>
-      <td className="p-4">
-        {job.origin === 'official_site_automation' ? '官网机器质检通过后自动发布' : '人工审核内容'}
-      </td>
+      <td className="p-4">{originLabel(job.origin)}</td>
       <td className="p-4">
         <StatusBadge status={job.status} />
       </td>
@@ -545,6 +543,12 @@ function JobRow({
       </td>
     </tr>
   );
+}
+
+function originLabel(origin: PublishJob['origin']) {
+  if (origin === 'official_site_automation') return '官网机器质检通过后自动发布';
+  if (origin === 'baijiahao_automation') return '百家号自动化发布';
+  return '人工审核内容';
 }
 
 function DateField({

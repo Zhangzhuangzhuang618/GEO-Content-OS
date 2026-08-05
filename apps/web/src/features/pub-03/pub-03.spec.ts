@@ -89,6 +89,21 @@ test('cancels only an unexecuted scheduled task with optimistic versioning', asy
   expect(writes[0]?.headers['idempotency-key']).toBeUndefined();
 });
 
+test('loads and labels a Baijiahao automation publish job', async ({ page }) => {
+  const currentJob = {
+    ...job({ attemptCount: 0, status: 'scheduled', version: 1 }),
+    origin: 'baijiahao_automation',
+  };
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, (route) =>
+    json(route, detail(currentJob, [])),
+  );
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+
+  await expect(page.getByText('百家号自动化创建')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无法加载发布任务' })).toHaveCount(0);
+});
+
 test('queues missing images for a scheduled job and follows progress to completion', async ({
   page,
 }) => {
