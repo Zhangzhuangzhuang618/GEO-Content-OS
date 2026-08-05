@@ -631,7 +631,15 @@ async function fillBody(
   await body.click();
   await body.press('ControlOrMeta+A');
   await body.pressSequentially(value, { timeout: timeoutMs });
-  if (normalizeText(await body.innerText()) !== normalizeText(value)) {
+  const actual = normalizeEditorText(await body.innerText());
+  const expected = normalizeEditorText(value);
+  const expectedAutoLists = normalizeEditorText(value.replace(/^1\.\s+/gmu, ''));
+  const expectedListCount = [...value.matchAll(/^1\.\s+/gmu)].length;
+  const actualListCount = await body.locator('ol').count();
+  if (
+    actual !== expected &&
+    !(actual === expectedAutoLists && actualListCount === expectedListCount)
+  ) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
       'Baijiahao editor did not preserve the complete body text',
@@ -648,6 +656,10 @@ async function fillBody(
       );
     }
   }
+}
+
+function normalizeEditorText(value: string): string {
+  return normalizeText(value.replace(/\p{Cf}/gu, ''));
 }
 
 async function uploadImages(

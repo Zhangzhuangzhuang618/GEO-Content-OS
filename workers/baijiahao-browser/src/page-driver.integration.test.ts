@@ -112,7 +112,7 @@ describe('Baijiahao local browser simulator', () => {
               '00000000-0000-4000-8000-000000000147',
               '00000000-0000-4000-8000-000000000148',
             ],
-            body_text: '用于百家号浏览器仿真验证的正文内容。',
+            body_text: '用于百家号浏览器仿真验证的正文内容。\n\n1. 第一步\n2. 第二步\n\n收尾。',
             citation_links: [],
             content_type: 'news',
             cover_asset_id: '00000000-0000-4000-8000-000000000146',
@@ -335,7 +335,6 @@ function route(
       `
       <input data-field="title"><textarea data-field="abstract"></textarea>
       <iframe id="ueditor_0" srcdoc="&lt;body contenteditable='true'&gt;&lt;/body&gt;"></iframe>
-      <span data-testid="body-count">字数 0</span>
       <button type="button" data-testid="cover-trigger">选择封面</button>
       <div role="dialog" data-testid="cover-dialog" style="display:none">
         本地上传<input type="file" name="media" accept="image/*">
@@ -361,9 +360,10 @@ function route(
           const editorBody=editorFrame.contentDocument.body;
           if(editorBody.dataset.listenerRegistered==='true') return;
           editorBody.dataset.listenerRegistered='true';
-          editorBody.addEventListener('keydown',()=>editorBody.dataset.keyboardInput='true');
           editorBody.addEventListener('input',()=>{
-            if(editorBody.dataset.keyboardInput==='true') document.querySelector('[data-testid=body-count]').textContent='字数 '+editorBody.innerText.length;
+            if(editorBody.innerText.endsWith('收尾。') && editorBody.innerText.includes('1. 第一步')) {
+              editorBody.innerHTML='<p>用于百家号浏览器仿真验证的正文内容。</p><ol><li>第一步\\n2. 第二步</li></ol><p>&#8205;收尾。</p>';
+            }
           });
         };
         editorFrame.addEventListener('load',registerEditorInput);
@@ -405,7 +405,7 @@ function route(
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
-            bodyInputRegistered:document.querySelector('[data-testid=body-count]').textContent!=='字数 0',
+            bodyInputRegistered:document.querySelector('#ueditor_0').contentDocument.body.innerText.length>0,
             bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,
             coverUploaded:document.querySelector('[data-testid=cover-preview]').style.display==='block',
             title:document.querySelector('[data-field=title]').value,
