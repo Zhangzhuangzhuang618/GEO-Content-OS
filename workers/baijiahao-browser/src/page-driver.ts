@@ -30,6 +30,7 @@ const SELECTORS = Object.freeze({
     '[data-publication-row], [class*="client_pages_content_v2_components_articleItem"], .content-item, tr',
   cover:
     'input[type="file"][data-field="cover"], input[type="file"][name*="cover"], input[type="file"][name="media"][accept*="image"]',
+  coverPreview: '[data-testid="cover-preview"], [class*="coverWrapper"] img[class*="coverImg"]',
   coverTrigger: 'text="选择封面"',
   fingerprint: 'input[data-field="fingerprint"]',
   loginTrigger: '[data-testid="bjh-login-btn"], button:has-text("登录/注册百家号")',
@@ -577,6 +578,7 @@ async function uploadCover(
     .first();
   if ((await direct.count()) > 0) {
     await setImageFiles(direct, images);
+    await waitForCoverPreview(page, timeoutMs);
     return;
   }
   const trigger = page.locator(SELECTORS.coverTrigger).first();
@@ -598,6 +600,21 @@ async function uploadCover(
   }
   await setImageFiles(locator, images);
   await confirmCoverUpload(dialog, images.length, timeoutMs);
+  await waitForCoverPreview(page, timeoutMs);
+}
+
+async function waitForCoverPreview(page: Page, timeoutMs: number): Promise<void> {
+  try {
+    await page
+      .locator(SELECTORS.coverPreview)
+      .first()
+      .waitFor({ state: 'visible', timeout: timeoutMs });
+  } catch {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao cover upload did not produce a ready preview',
+    );
+  }
 }
 
 async function fillOptional(page: Page, selector: string, value: string): Promise<void> {

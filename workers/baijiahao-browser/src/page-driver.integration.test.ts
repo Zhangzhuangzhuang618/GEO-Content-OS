@@ -336,6 +336,7 @@ function route(
         本地上传<input type="file" name="media" accept="image/*">
         <button type="button" data-testid="cover-confirm" data-ready="false">确定</button>
       </div>
+      <div data-testid="cover-preview" style="display:none">封面已就绪</div>
       <button type="button" data-function="insertimage">插入正文图片</button>
       <div role="dialog" data-testid="body-image-dialog" style="display:none">
         本地图片
@@ -361,6 +362,7 @@ function route(
         document.querySelector('[data-testid=cover-confirm]').onclick=(event)=>{
           if(event.currentTarget.dataset.ready!=='true') return;
           document.querySelector('[data-testid=cover-dialog]').style.display='none';
+          setTimeout(()=>document.querySelector('[data-testid=cover-preview]').style.display='block',300);
         };
         document.querySelector('[data-function=insertimage]').onclick=()=>document.querySelector('[data-testid=body-image-dialog]').style.display='block';
         document.querySelector('[data-testid=body-image-picker]').onchange=()=>{
@@ -387,7 +389,7 @@ function route(
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
             bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,
-            coverUploaded:document.querySelector('[name=media]').files.length===1,
+            coverUploaded:document.querySelector('[data-testid=cover-preview]').style.display==='block',
             title:document.querySelector('[data-field=title]').value,
             fingerprint:document.querySelector('[data-field=fingerprint]').value
           })});
