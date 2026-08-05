@@ -139,7 +139,9 @@ function withCompanyNamePolicy(
     systemPrompt: `${prompt.systemPrompt}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
     taskTemplate: `${prompt.taskTemplate}
 
-For this rule, report every prohibited identifiable name as a brand-category BLOCK issue with rule_id "brand.other_company_name". Generic anonymous phrases such as “某公司” are not violations.`,
+For this rule, report every prohibited identifiable name as a brand-category BLOCK issue with rule_id "brand.other_company_name". Generic anonymous phrases such as “某公司” are not violations. Every such issue must quote the exact prohibited name in its message and point to the exact title, summary, or blocks[N].text location containing that name. Never emit a generic company-name issue without a verifiable name and location.
+
+An issue with rule_id "fact.high_risk.unsupported" or "fact.high_risk.unsupported_or_conflicted" is valid only for a supplied fact_results entry whose risk_level is high/critical and verdict is unsupported/conflicted. Its location must be exactly "claim:<claim_key>". Never invent a block location for this rule.`,
   });
 }
 
@@ -211,6 +213,8 @@ The previous response failed mandatory server semantic validation. Produce a fre
 3. You may append other real findings, but must not remove, rename, merge, downgrade, or rewrite any required issue.
 4. ${decisionInstruction}
 5. Use only citation IDs present in fact_results.
+6. A brand.other_company_name issue must quote the exact prohibited name and point to the exact content location containing it; never report the allowed company name or an anonymous phrase.
+7. A fact.high_risk.unsupported or fact.high_risk.unsupported_or_conflicted issue must match a high/critical unsupported/conflicted fact_results entry and use its exact claim:<claim_key> location.
 Mandatory server-required issues: ${JSON.stringify(mandatoryIssues)}.
 Return one complete quality data JSON object only.`,
   });

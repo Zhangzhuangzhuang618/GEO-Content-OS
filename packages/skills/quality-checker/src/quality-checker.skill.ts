@@ -1,4 +1,5 @@
 import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
+import { ALLOWED_COMPANY_NAME } from '@geo-content-os/contracts';
 import {
   QUALITY_CHECKER_DATA_SCHEMA,
   QUALITY_CHECKER_INPUT_SCHEMA,
@@ -36,7 +37,7 @@ export interface QualityCheckerPublishedPrompt {
 }
 
 interface CheckerInput {
-  readonly content_version: { readonly content: { readonly title?: string } };
+  readonly content_version: { readonly content: Readonly<Record<string, unknown>> };
   readonly fact_results: readonly {
     readonly citation_ids: readonly string[];
     readonly claim_key: string;
@@ -210,6 +211,87 @@ function assertOutput(
   if (output.data.issues.some((issue) => issue.citation_ids.some((id) => !citationIds.has(id)))) {
     invalid('Quality Checker issue references an unknown citation ID');
   }
+  assertVerifiableIssues(input, output.data.issues);
+}
+
+function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData['issues']): void {
+  for (const issue of issues) {
+    if (issue.rule_id === 'brand.other_company_name') {
+      const locationText = textAtLocation(input.content_version.content, issue.location);
+      const quotedNames = quotedCompanyNames(issue.message);
+      if (
+        issue.category !== 'brand' ||
+        issue.severity !== 'BLOCK' ||
+        !locationText ||
+        !quotedNames.some((name) => !isAllowedCompanyReference(name) && locationText.includes(name))
+      ) {
+        invalid('Quality Checker brand issue does not identify a prohibited name at its location');
+      }
+    }
+    if (
+      issue.rule_id === 'fact.high_risk.unsupported' ||
+      issue.rule_id === 'fact.high_risk.unsupported_or_conflicted'
+    ) {
+      const claimKey = issue.location?.startsWith('claim:')
+        ? issue.location.slice('claim:'.length)
+        : '';
+      const fact = input.fact_results.find((candidate) => candidate.claim_key === claimKey);
+      if (
+        issue.category !== 'fact' ||
+        issue.severity !== 'BLOCK' ||
+        !fact ||
+        (fact.risk_level !== 'high' && fact.risk_level !== 'critical') ||
+        (fact.verdict !== 'unsupported' && fact.verdict !== 'conflicted')
+      ) {
+        invalid(
+          'Quality Checker high-risk fact issue does not match an unsupported or conflicted fact result',
+        );
+      }
+    }
+  }
+}
+
+function quotedCompanyNames(message: string): readonly string[] {
+  return Object.freeze(
+    [...message.matchAll(/[“"]([^”"]{2,80})[”"]/gu)].map((match) => match[1]!.trim()),
+  );
+}
+
+function isAllowedCompanyReference(value: string): boolean {
+  return (
+    value === ALLOWED_COMPANY_NAME ||
+    value === '某公司' ||
+    value === '某搬家公司' ||
+    value === '其他服务商'
+  );
+}
+
+function textAtLocation(
+  content: Readonly<Record<string, unknown>>,
+  location: string | null,
+): string | null {
+  if (!location) return null;
+  if (location === 'title' || location === 'summary') {
+    const value = content[location];
+    return typeof value === 'string' ? value : null;
+  }
+  const blocks = Array.isArray(content['blocks']) ? content['blocks'] : [];
+  const indexed = /^blocks\[(\d+)\](?:\.text)?$/u.exec(location);
+  if (indexed) return blockText(blocks[Number(indexed[1])]);
+  const keyed = /^blocks\.([^.]+)(?:\.text)?$/u.exec(location);
+  if (!keyed) return null;
+  const block = blocks.find(
+    (candidate) => record(candidate) && candidate['block_key'] === keyed[1],
+  );
+  return blockText(block);
+}
+
+function blockText(value: unknown): string | null {
+  return record(value) && typeof value['text'] === 'string' ? value['text'] : null;
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function invalid(message: string): never {

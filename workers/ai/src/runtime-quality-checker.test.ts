@@ -111,6 +111,87 @@ describe('RuntimeQualityChecker', () => {
     expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
     expect(repairPrompt).toContain('Mandatory server-required issues: []');
   });
+
+  it('retries ghost brand and fact blockers without persisting them as quality findings', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const qualityInput = {
+      ...clean.input,
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [
+            {
+              block_key: 'intro',
+              text: '工厂搬迁前应先确认设备清单、责任边界和验收标准。',
+            },
+          ],
+          platform_code: 'baijiahao',
+          title: '广州工厂搬迁准备指南',
+        },
+      },
+    };
+    const ghostOutput = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '内容中出现了其他可识别公司名称，违反品牌名称硬性规定。',
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '将其他公司名称替换为“某公司”等匿名表述。',
+        },
+        {
+          category: 'fact' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '高风险事实缺少支持证据。',
+          rule_id: 'fact.high_risk.unsupported',
+          severity: 'BLOCK' as const,
+          suggestion: '补充权威证据或删除该事实。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(ghostOutput),
+      JSON.stringify(clean.output.data),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000083',
+          projectId: '20000000-0000-4000-8000-000000000083',
+          promptVersionId: '70000000-0000-4000-8000-000000000071',
+          requestId: 'runtime-quality-checker-0083',
+          runId: '60000000-0000-4000-8000-000000000071',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000071',
+          variantId: '20000000-0000-4000-8000-000000000071',
+          workspaceId: '30000000-0000-4000-8000-000000000083',
+        },
+        qualityInput,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    expect(adapter.requests).toHaveLength(2);
+    const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
+    expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
+    expect(repairPrompt).toContain('brand.other_company_name issue must quote the exact');
+    expect(repairPrompt).toContain('fact.high_risk.unsupported');
+  });
 });
 
 class QualityMockAdapter extends MockModelAdapter {

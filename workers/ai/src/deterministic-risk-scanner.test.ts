@@ -410,7 +410,7 @@ describe('deterministic pre-publish risk scanner', () => {
     expect(merged.decision).toBe('block');
   });
 
-  it('keeps an unquoted model company-name block because it cannot be disproved safely', () => {
+  it('drops an unquoted model company-name block because it has no verifiable target', () => {
     const candidate = content({ blocks: [block('company', '建议先核对服务合同。')] });
     const merged = mergeDeterministicRiskIssues(
       {
@@ -433,8 +433,8 @@ describe('deterministic pre-publish risk scanner', () => {
       candidate,
     );
 
-    expect(merged.issues).toHaveLength(1);
-    expect(merged.decision).toBe('block');
+    expect(merged.issues).toEqual([]);
+    expect(merged.decision).toBe('pass');
   });
 
   it('blocks Baijiahao diversion fields and invalid platform structure deterministically', () => {

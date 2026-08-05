@@ -75,6 +75,103 @@ describe('QualityCheckerSkill', () => {
     ).resolves.toMatchObject({ output: { data: { decision: 'revise' } } });
   });
 
+  it('rejects a company-name block without an exact prohibited name at its location', async () => {
+    const input = qualityInputWithBlocks([
+      {
+        block_key: 'intro',
+        text: '工厂搬迁前应先确认设备清单、责任边界和验收标准。',
+      },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容中出现了其他可识别公司名称，违反品牌名称硬性规定。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '将其他公司名称替换为“某公司”等匿名表述。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('rejects a high-risk fact block that does not match fact_results', async () => {
+    const input = qualityInputWithBlocks([
+      {
+        block_key: 'intro',
+        text: '工厂搬迁前应先确认设备清单、责任边界和验收标准。',
+      },
+    ]);
+    const output = blockedOutput({
+      category: 'fact',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '高风险事实缺少支持证据。',
+      rule_id: 'fact.high_risk.unsupported',
+      severity: 'BLOCK',
+      suggestion: '补充权威证据或删除该事实。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('rejects a company-name block that points to the wrong content location', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '工厂搬迁前应先确认设备清单。' },
+      { block_key: 'comparison', text: '可通过货拉拉安排运输。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方品牌“货拉拉”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('keeps an exact company-name block at the location containing the prohibited name', async () => {
+    const input = qualityInputWithBlocks([{ block_key: 'intro', text: '可通过货拉拉安排运输。' }]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方品牌“货拉拉”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
   it('runs through the real DeepSeek Adapter with JSON mode and four tools', async () => {
     let requestBody: Record<string, unknown> | undefined;
     const baseUrl = await serve(async (incoming, outgoing) => {
@@ -141,6 +238,30 @@ function rulesCall() {
     ],
   };
 }
+
+function qualityInputWithBlocks(blocks: readonly Readonly<Record<string, unknown>>[]) {
+  return {
+    ...fixture.input,
+    content_version: {
+      ...(fixture.input['content_version'] as Readonly<Record<string, unknown>>),
+      content: {
+        blocks,
+        platform_code: 'baijiahao',
+        title: '广州工厂搬迁准备指南',
+      },
+    },
+  };
+}
+
+function blockedOutput(issue: Readonly<Record<string, unknown>>) {
+  return {
+    ...fixture.output.data,
+    decision: 'block',
+    issues: [issue],
+    score: 35,
+  };
+}
+
 function skill(adapter: ConstructorParameters<typeof SkillRunner>[0]): QualityCheckerSkill {
   const schemas = new SchemaGuard();
   const definitions = [

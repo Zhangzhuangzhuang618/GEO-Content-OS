@@ -322,7 +322,7 @@ function keepModelIssue(issue: QualityIssue, content: Readonly<Record<string, un
   const quotedNames = [...issue.message.matchAll(/[“"]([^”"]{2,80})[”"]/gu)].map((match) =>
     match[1]!.trim(),
   );
-  if (quotedNames.length === 0) return true;
+  if (quotedNames.length === 0) return false;
   const contentText = flattenStrings(content).join('\n');
   return quotedNames.some((name) => !isAllowedCompanyReference(name) && contentText.includes(name));
 }
