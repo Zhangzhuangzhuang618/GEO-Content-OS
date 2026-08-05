@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import { z } from 'zod';
 
-import { toGatewayError } from './service.js';
+import { safeBrowserError, toGatewayError } from './service.js';
 import type { BaijiahaoBrowserService } from './service.js';
 
 const UuidSchema = z.string().uuid();
@@ -156,7 +156,7 @@ function sendError(request: IncomingMessage, response: ServerResponse, error: un
     readonly statusCode?: unknown;
   };
   if (typeof candidate.statusCode === 'number' && typeof candidate.code === 'string') {
-    logGatewayFailure(request, candidate.statusCode, candidate.code);
+    logGatewayFailure(request, candidate.statusCode, candidate.code, error);
     send(response, candidate.statusCode, {
       code: candidate.code,
       message: typeof candidate.message === 'string' ? candidate.message : 'Request failed',
@@ -164,14 +164,22 @@ function sendError(request: IncomingMessage, response: ServerResponse, error: un
     return;
   }
   const gateway = toGatewayError(error);
-  logGatewayFailure(request, gateway.statusCode, gateway.code);
+  logGatewayFailure(request, gateway.statusCode, gateway.code, error);
   send(response, gateway.statusCode, { code: gateway.code, message: gateway.message });
 }
 
-function logGatewayFailure(request: IncomingMessage, statusCode: number, code: string): void {
+function logGatewayFailure(
+  request: IncomingMessage,
+  statusCode: number,
+  code: string,
+  error: unknown,
+): void {
   if (statusCode < 409) return;
   const pathname = new URL(request.url ?? '/', 'http://gateway.local').pathname;
+  const stage = (error as { readonly stage?: unknown } | null)?.stage;
   console.error('Baijiahao browser gateway request failed', {
+    ...(typeof stage === 'string' ? { browser_stage: stage } : {}),
+    error: safeBrowserError(error),
     error_code: code,
     http_method: request.method ?? 'UNKNOWN',
     http_path: pathname,

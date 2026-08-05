@@ -590,16 +590,30 @@ function sessionVerificationErrorCode(error: unknown): string {
 }
 
 export function safeBrowserError(error: unknown): string {
-  const candidate = error as {
-    readonly code?: unknown;
-    readonly message?: unknown;
-    readonly name?: unknown;
-  };
+  return safeBrowserErrorValue(error, true).slice(0, 2_000);
+}
+
+function safeBrowserErrorValue(error: unknown, includeCause: boolean): string {
+  const candidate =
+    error !== null && (typeof error === 'object' || typeof error === 'function')
+      ? (error as {
+          readonly code?: unknown;
+          readonly cause?: unknown;
+          readonly message?: unknown;
+          readonly name?: unknown;
+          readonly stage?: unknown;
+        })
+      : {};
   const name = typeof candidate.name === 'string' ? candidate.name : 'Error';
   const message =
     typeof candidate.message === 'string' ? candidate.message : String(error ?? 'Unknown error');
   const code = typeof candidate.code === 'string' ? ` (code=${candidate.code})` : '';
-  return `${name}: ${redactBrowserError(message)}${code}`.slice(0, 2_000);
+  const stage = typeof candidate.stage === 'string' ? ` stage=${candidate.stage};` : '';
+  const cause =
+    includeCause && candidate.cause !== undefined && candidate.cause !== error
+      ? ` cause=${safeBrowserErrorValue(candidate.cause, false)}`
+      : '';
+  return `${name}:${stage} ${redactBrowserError(message)}${code}${cause}`;
 }
 
 function redactBrowserError(value: string): string {

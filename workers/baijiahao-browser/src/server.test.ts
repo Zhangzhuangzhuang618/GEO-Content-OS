@@ -2,6 +2,7 @@ import type { AddressInfo } from 'node:net';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { PageDriverOperationError } from './page-driver.js';
 import { createGatewayServer } from './server.js';
 import type { BaijiahaoBrowserService } from './service.js';
 
@@ -76,6 +77,46 @@ describe('Baijiahao browser gateway routes', () => {
       content_version_id: ACCOUNT_ID,
       idempotency_key: 'baijiahao:variant:version',
     });
+  });
+
+  it('logs the redacted browser stage while keeping the public 503 generic', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const publish = vi.fn(async () => {
+      throw new PageDriverOperationError(
+        'fill_body',
+        new Error('locator.fill timed out; token=browser-secret'),
+      );
+    });
+    const baseUrl = await listen(fakeService({ publish }));
+
+    const response = await fetch(`${baseUrl}/publish`, {
+      body: JSON.stringify({ content_version_id: ACCOUNT_ID }),
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'content-type': 'application/json',
+        'idempotency-key': 'baijiahao:diagnostic:test',
+        'x-platform-account-id': ACCOUNT_ID,
+      },
+      method: 'POST',
+    });
+
+    await expect(response.json()).resolves.toEqual({
+      code: 'BROWSER_GATEWAY_UNAVAILABLE',
+      message: 'Browser operation failed',
+    });
+    expect(response.status).toBe(503);
+    expect(errorLog).toHaveBeenCalledWith(
+      'Baijiahao browser gateway request failed',
+      expect.objectContaining({
+        browser_stage: 'fill_body',
+        error:
+          'PageDriverOperationError: stage=fill_body; Baijiahao browser operation failed cause=Error: locator.fill timed out; token=[REDACTED]',
+        error_code: 'BROWSER_GATEWAY_UNAVAILABLE',
+        http_path: '/publish',
+        http_status: 503,
+      }),
+    );
+    errorLog.mockRestore();
   });
 
   async function listen(service: BaijiahaoBrowserService): Promise<string> {

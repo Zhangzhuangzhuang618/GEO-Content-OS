@@ -56,6 +56,34 @@ export class PageDriverError extends Error {
   }
 }
 
+type PublishOperationStage =
+  | 'capture_pre_submit'
+  | 'fill_abstract'
+  | 'fill_body'
+  | 'fill_fingerprint'
+  | 'fill_tags'
+  | 'fill_title'
+  | 'load_editor'
+  | 'mark_ai_generated'
+  | 'persist_pre_submit'
+  | 'select_category'
+  | 'select_no_cover'
+  | 'select_originality'
+  | 'upload_body_images'
+  | 'upload_cover'
+  | 'verify_editor'
+  | 'verify_pre_submit';
+
+export class PageDriverOperationError extends Error {
+  public constructor(
+    public readonly stage: PublishOperationStage,
+    cause: unknown,
+  ) {
+    super('Baijiahao browser operation failed', { cause });
+    this.name = 'PageDriverOperationError';
+  }
+}
+
 export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   private readonly contexts = new Map<string, BrowserContext>();
   private readonly loginPageUrls = new Map<string, string>();
@@ -165,69 +193,92 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     input: DriverPublishInput,
     beforeSubmit: (png: Uint8Array) => Promise<void>,
   ): Promise<RemotePublication> {
-    const page = await this.page(input.accountId, input.profilePath, input.storageStateJson);
-    await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
-    await this.rejectCaptcha(page);
-    await this.requireAuthenticated(page);
-    const title = page.locator(SELECTORS.title).first();
-    const body = await this.bodyLocator(page);
-    const submit = page.locator(SELECTORS.submit).first();
-    for (const locator of [title, body, submit]) {
-      if (!(await locator.isVisible().catch(() => false))) {
+    let stage: PublishOperationStage = 'load_editor';
+    try {
+      const page = await this.page(input.accountId, input.profilePath, input.storageStateJson);
+      await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+      stage = 'verify_editor';
+      await this.rejectCaptcha(page);
+      await this.requireAuthenticated(page);
+      const title = page.locator(SELECTORS.title).first();
+      const body = await this.bodyLocator(page);
+      const submit = page.locator(SELECTORS.submit).first();
+      for (const locator of [title, body, submit]) {
+        if (!(await locator.isVisible().catch(() => false))) {
+          throw new PageDriverError(
+            'PAGE_SIGNATURE_CHANGED',
+            'Baijiahao editor fields no longer match the frozen page signature',
+          );
+        }
+      }
+      stage = 'fill_title';
+      await title.fill(input.payload.title);
+      stage = 'fill_body';
+      await body.fill(input.payload.body_text);
+      stage = 'upload_cover';
+      await uploadCover(
+        page,
+        input.images.filter((image) => image.role === 'cover'),
+      );
+      stage = 'upload_body_images';
+      await uploadImages(
+        page,
+        SELECTORS.bodyImages,
+        input.images.filter((image) => image.role === 'body'),
+      );
+      stage = 'select_no_cover';
+      if (input.payload.cover_asset_id === null) await clickOptional(page, SELECTORS.noCover);
+      stage = 'select_category';
+      await selectOptional(page, SELECTORS.category, input.payload.content_type);
+      stage = 'select_originality';
+      await clickOptional(page, SELECTORS.notOriginal);
+      stage = 'mark_ai_generated';
+      await checkOptional(page, SELECTORS.aiGenerated);
+      stage = 'fill_abstract';
+      await fillOptional(page, SELECTORS.abstract, input.payload.abstract);
+      stage = 'fill_tags';
+      await fillOptional(page, SELECTORS.tags, input.payload.tags.join(','));
+      stage = 'fill_fingerprint';
+      await fillOptional(page, SELECTORS.fingerprint, input.contentFingerprint);
+      stage = 'verify_pre_submit';
+      await this.rejectCaptcha(page);
+      stage = 'capture_pre_submit';
+      const preSubmit = await page.screenshot({ fullPage: true, type: 'png' });
+      stage = 'persist_pre_submit';
+      await beforeSubmit(preSubmit);
+      try {
+        await submit.click();
+        await page.waitForLoadState('domcontentloaded', {
+          timeout: this.config.navigationTimeoutMs,
+        });
+      } catch {
         throw new PageDriverError(
-          'PAGE_SIGNATURE_CHANGED',
-          'Baijiahao editor fields no longer match the frozen page signature',
+          'PUBLISH_STATE_UNKNOWN',
+          'Baijiahao submission ended without a conclusive browser state',
         );
       }
-    }
-    await title.fill(input.payload.title);
-    await body.fill(input.payload.body_text);
-    await uploadCover(
-      page,
-      input.images.filter((image) => image.role === 'cover'),
-    );
-    await uploadImages(
-      page,
-      SELECTORS.bodyImages,
-      input.images.filter((image) => image.role === 'body'),
-    );
-    if (input.payload.cover_asset_id === null) await clickOptional(page, SELECTORS.noCover);
-    await selectOptional(page, SELECTORS.category, input.payload.content_type);
-    await clickOptional(page, SELECTORS.notOriginal);
-    await checkOptional(page, SELECTORS.aiGenerated);
-    await fillOptional(page, SELECTORS.abstract, input.payload.abstract);
-    await fillOptional(page, SELECTORS.tags, input.payload.tags.join(','));
-    await fillOptional(page, SELECTORS.fingerprint, input.contentFingerprint);
-    await this.rejectCaptcha(page);
-    await beforeSubmit(await page.screenshot({ fullPage: true, type: 'png' }));
-    try {
-      await submit.click();
-      await page.waitForLoadState('domcontentloaded', {
-        timeout: this.config.navigationTimeoutMs,
-      });
-    } catch {
-      throw new PageDriverError(
-        'PUBLISH_STATE_UNKNOWN',
-        'Baijiahao submission ended without a conclusive browser state',
+      const result = await this.reconcile(
+        input.accountId,
+        input.profilePath,
+        {
+          contentFingerprint: input.contentFingerprint,
+          submittedAfter: new Date(Date.now() - 5 * 60_000),
+          title: input.payload.title,
+        },
+        input.storageStateJson,
       );
+      if (!result) {
+        throw new PageDriverError(
+          'PUBLISH_STATE_UNKNOWN',
+          'Baijiahao content list did not confirm the submitted article',
+        );
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof PageDriverError || error instanceof PageDriverOperationError)
+        throw error;
+      throw new PageDriverOperationError(stage, error);
     }
-    const result = await this.reconcile(
-      input.accountId,
-      input.profilePath,
-      {
-        contentFingerprint: input.contentFingerprint,
-        submittedAfter: new Date(Date.now() - 5 * 60_000),
-        title: input.payload.title,
-      },
-      input.storageStateJson,
-    );
-    if (!result) {
-      throw new PageDriverError(
-        'PUBLISH_STATE_UNKNOWN',
-        'Baijiahao content list did not confirm the submitted article',
-      );
-    }
-    return result;
   }
 
   public async reconcile(
