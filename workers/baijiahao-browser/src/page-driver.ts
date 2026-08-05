@@ -219,6 +219,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await uploadCover(
         page,
         input.images.filter((image) => image.role === 'cover'),
+        this.config.navigationTimeoutMs,
       );
       stage = 'upload_body_images';
       await uploadImages(
@@ -480,6 +481,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
 async function uploadCover(
   page: Page,
   images: readonly DriverPublishInput['images'][number][],
+  timeoutMs: number,
 ): Promise<void> {
   if (images.length === 0) return;
   const direct = page
@@ -498,7 +500,7 @@ async function uploadCover(
   }
   await trigger.click();
   const dialog = page.getByRole('dialog').filter({ hasText: '本地上传' }).first();
-  await dialog.waitFor({ state: 'visible', timeout: 10_000 });
+  await dialog.waitFor({ state: 'visible', timeout: timeoutMs });
   const locator = dialog.locator(SELECTORS.cover).first();
   if ((await locator.count()) === 0) {
     throw new PageDriverError(
@@ -507,10 +509,7 @@ async function uploadCover(
     );
   }
   await setImageFiles(locator, images);
-  const confirm = dialog.getByRole('button', { name: /^确定/u });
-  await confirm.waitFor({ state: 'visible', timeout: 10_000 });
-  await confirm.click();
-  await dialog.waitFor({ state: 'hidden', timeout: 15_000 });
+  await confirmUploadedImages(dialog, images.length, timeoutMs);
 }
 
 async function fillOptional(page: Page, selector: string, value: string): Promise<void> {
@@ -551,13 +550,26 @@ async function uploadImages(
     );
   }
   await setImageFiles(upload, images);
-  const confirm = dialog.getByRole('button', { name: /^(?:确认|确定)/u }).first();
-  await confirm.click({ timeout: timeoutMs });
-  await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });
+  await confirmUploadedImages(dialog, images.length, timeoutMs);
   await body
     .locator('img')
     .nth(insertedCount + images.length - 1)
     .waitFor({ state: 'attached', timeout: timeoutMs });
+}
+
+async function confirmUploadedImages(
+  dialog: Locator,
+  imageCount: number,
+  timeoutMs: number,
+): Promise<void> {
+  const confirm = dialog
+    .getByRole('button', {
+      name: new RegExp(`^(?:确认|确定)\\s*\\(${imageCount}\\)$`, 'u'),
+    })
+    .first();
+  await confirm.waitFor({ state: 'visible', timeout: timeoutMs });
+  await confirm.click({ timeout: timeoutMs });
+  await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });
 }
 
 async function setImageFiles(

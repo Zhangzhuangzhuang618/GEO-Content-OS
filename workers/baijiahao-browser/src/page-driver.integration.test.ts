@@ -295,13 +295,13 @@ function route(
       <button type="button" data-testid="cover-trigger">选择封面</button>
       <div role="dialog" data-testid="cover-dialog" style="display:none">
         本地上传<input type="file" name="media" accept="image/*">
-        <button type="button" data-testid="cover-confirm">确定 (1)</button>
+        <button type="button" data-testid="cover-confirm" data-ready="false">确定</button>
       </div>
       <button type="button" data-function="insertimage">插入正文图片</button>
       <div role="dialog" data-testid="body-image-dialog" style="display:none">
         本地图片
         <input type="file" data-testid="body-image-picker" name="media" accept="image/*" multiple>
-        <button type="button" data-testid="body-image-confirm" disabled>确认</button>
+        <button type="button" data-testid="body-image-confirm" data-ready="false">确认</button>
       </div>
       <input data-field="tags"><input data-field="fingerprint">
       <select data-field="category"><option value="news">news</option></select>
@@ -310,12 +310,29 @@ function route(
       <button data-testid="submit">发布</button>
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
-        document.querySelector('[data-testid=cover-confirm]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='none';
+        document.querySelector('[name=media]').onchange=()=>{
+          const picker=document.querySelector('[name=media]');
+          setTimeout(()=>{
+            const confirm=document.querySelector('[data-testid=cover-confirm]');
+            confirm.dataset.ready='true';
+            confirm.textContent='确定 ('+picker.files.length+')';
+          },100);
+        };
+        document.querySelector('[data-testid=cover-confirm]').onclick=(event)=>{
+          if(event.currentTarget.dataset.ready!=='true') return;
+          document.querySelector('[data-testid=cover-dialog]').style.display='none';
+        };
         document.querySelector('[data-function=insertimage]').onclick=()=>document.querySelector('[data-testid=body-image-dialog]').style.display='block';
         document.querySelector('[data-testid=body-image-picker]').onchange=()=>{
-          document.querySelector('[data-testid=body-image-confirm]').disabled=false;
+          const picker=document.querySelector('[data-testid=body-image-picker]');
+          setTimeout(()=>{
+            const confirm=document.querySelector('[data-testid=body-image-confirm]');
+            confirm.dataset.ready='true';
+            confirm.textContent='确定 ('+picker.files.length+')';
+          },100);
         };
-        document.querySelector('[data-testid=body-image-confirm]').onclick=()=>{
+        document.querySelector('[data-testid=body-image-confirm]').onclick=(event)=>{
+          if(event.currentTarget.dataset.ready!=='true') return;
           const picker=document.querySelector('[data-testid=body-image-picker]');
           for(let index=0;index<picker.files.length;index+=1){
             const image=document.querySelector('#ueditor_0').contentDocument.createElement('img');

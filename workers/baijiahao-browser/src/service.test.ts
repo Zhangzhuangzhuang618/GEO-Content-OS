@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { BaijiahaoBrowserConfig } from './config.js';
 import { PageDriverError, PageDriverOperationError } from './page-driver.js';
-import { BaijiahaoBrowserService, safeBrowserError } from './service.js';
+import { BaijiahaoBrowserService, BrowserGatewayError, safeBrowserError } from './service.js';
 import type { PostgresBaijiahaoBrowserStore } from './store.js';
 import type { BaijiahaoPageDriver, BrowserSession, PublicationClaim } from './types.js';
 
@@ -436,6 +436,25 @@ describe('Baijiahao browser service', () => {
     expect(safeBrowserError(new Error('Cookie: SID=secret; password=hidden'))).toBe(
       'Error: Cookie: [REDACTED]',
     );
+  });
+
+  it('keeps nested Playwright causes in safe diagnostics', () => {
+    const error = new BrowserGatewayError(
+      423,
+      'EDITOR_OPERATION_FAILED',
+      'manual attention',
+      'upload_cover',
+      new PageDriverOperationError(
+        'upload_cover',
+        new Error('locator.click: Timeout 30000ms token=browser-secret'),
+      ),
+    );
+
+    const safe = safeBrowserError(error);
+
+    expect(safe).toContain('stage=upload_cover');
+    expect(safe).toContain('locator.click: Timeout 30000ms');
+    expect(safe).not.toContain('browser-secret');
   });
 
   it('reports an immediate platform rejection instead of claiming the publication is processing', async () => {

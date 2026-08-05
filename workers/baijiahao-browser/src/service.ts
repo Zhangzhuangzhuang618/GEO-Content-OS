@@ -660,10 +660,10 @@ function sessionVerificationErrorCode(error: unknown): string {
 }
 
 export function safeBrowserError(error: unknown): string {
-  return safeBrowserErrorValue(error, true).slice(0, 2_000);
+  return safeBrowserErrorValue(error, 3).slice(0, 2_000);
 }
 
-function safeBrowserErrorValue(error: unknown, includeCause: boolean): string {
+function safeBrowserErrorValue(error: unknown, remainingCauseDepth: number): string {
   const candidate =
     error !== null && (typeof error === 'object' || typeof error === 'function')
       ? (error as {
@@ -680,8 +680,8 @@ function safeBrowserErrorValue(error: unknown, includeCause: boolean): string {
   const code = typeof candidate.code === 'string' ? ` (code=${candidate.code})` : '';
   const stage = typeof candidate.stage === 'string' ? ` stage=${candidate.stage};` : '';
   const cause =
-    includeCause && candidate.cause !== undefined && candidate.cause !== error
-      ? ` cause=${safeBrowserErrorValue(candidate.cause, false)}`
+    remainingCauseDepth > 0 && candidate.cause !== undefined && candidate.cause !== error
+      ? ` cause=${safeBrowserErrorValue(candidate.cause, remainingCauseDepth - 1)}`
       : '';
   return `${name}:${stage} ${redactBrowserError(message)}${code}${cause}`;
 }
