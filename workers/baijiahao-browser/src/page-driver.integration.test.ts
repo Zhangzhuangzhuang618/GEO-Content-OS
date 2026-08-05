@@ -301,6 +301,7 @@ function route(
       <div role="dialog" data-testid="body-image-dialog" style="display:none">
         本地图片
         <input type="file" data-testid="body-image-picker" name="media" accept="image/*" multiple>
+        <p data-testid="body-upload-status" style="display:none"></p>
         <button type="button" data-testid="body-image-confirm" data-ready="false">确认</button>
       </div>
       <input data-field="tags"><input data-field="fingerprint">
@@ -328,7 +329,9 @@ function route(
           setTimeout(()=>{
             const confirm=document.querySelector('[data-testid=body-image-confirm]');
             confirm.dataset.ready='true';
-            confirm.textContent='确定 ('+picker.files.length+')';
+            const status=document.querySelector('[data-testid=body-upload-status]');
+            status.textContent=picker.files.length+'张上传成功';
+            status.style.display='block';
           },100);
         };
         document.querySelector('[data-testid=body-image-confirm]').onclick=(event)=>{

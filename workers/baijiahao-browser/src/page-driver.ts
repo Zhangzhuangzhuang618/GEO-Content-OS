@@ -509,7 +509,7 @@ async function uploadCover(
     );
   }
   await setImageFiles(locator, images);
-  await confirmUploadedImages(dialog, images.length, timeoutMs);
+  await confirmCoverUpload(dialog, images.length, timeoutMs);
 }
 
 async function fillOptional(page: Page, selector: string, value: string): Promise<void> {
@@ -550,14 +550,14 @@ async function uploadImages(
     );
   }
   await setImageFiles(upload, images);
-  await confirmUploadedImages(dialog, images.length, timeoutMs);
+  await confirmBodyImageUpload(dialog, images.length, timeoutMs);
   await body
     .locator('img')
     .nth(insertedCount + images.length - 1)
     .waitFor({ state: 'attached', timeout: timeoutMs });
 }
 
-async function confirmUploadedImages(
+async function confirmCoverUpload(
   dialog: Locator,
   imageCount: number,
   timeoutMs: number,
@@ -568,6 +568,20 @@ async function confirmUploadedImages(
     })
     .first();
   await confirm.waitFor({ state: 'visible', timeout: timeoutMs });
+  await confirm.click({ timeout: timeoutMs });
+  await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });
+}
+
+async function confirmBodyImageUpload(
+  dialog: Locator,
+  imageCount: number,
+  timeoutMs: number,
+): Promise<void> {
+  const uploadSucceeded = dialog
+    .getByText(new RegExp(`^${imageCount}\\s*张\\s*上传\\s*成功$`, 'u'))
+    .first();
+  await uploadSucceeded.waitFor({ state: 'visible', timeout: timeoutMs });
+  const confirm = dialog.getByRole('button', { name: /^(?:确认|确定)$/u }).first();
   await confirm.click({ timeout: timeoutMs });
   await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });
 }
