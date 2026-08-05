@@ -11,7 +11,7 @@ import {
 
 import { AccountLock } from './account-lock.js';
 import type { BaijiahaoBrowserConfig } from './config.js';
-import { PageDriverError } from './page-driver.js';
+import { PageDriverError, PageDriverOperationError } from './page-driver.js';
 import { BrowserStoreError } from './store.js';
 import type { PostgresBaijiahaoBrowserStore } from './store.js';
 import type {
@@ -30,8 +30,10 @@ export class BrowserGatewayError extends Error {
     public readonly statusCode: 400 | 401 | 404 | 409 | 423 | 503,
     public readonly code: string,
     message: string,
+    public readonly stage?: string,
+    cause?: unknown,
   ) {
-    super(message);
+    super(message, cause === undefined ? undefined : { cause });
     this.name = 'BrowserGatewayError';
   }
 }
@@ -313,6 +315,9 @@ export class BaijiahaoBrowserService {
       if (error instanceof PageDriverError) {
         throw await this.handlePageDriverFailure(session, publication, error);
       }
+      if (error instanceof PageDriverOperationError) {
+        throw await this.handlePageDriverOperationFailure(session, publication, error);
+      }
       throw error;
     }
   }
@@ -431,9 +436,40 @@ export class BaijiahaoBrowserService {
     return new BrowserGatewayError(423, error.code, error.message);
   }
 
-  private async finishLogin(session: BrowserSession, expiresAt: Date): Promise<void> {
-    const authenticated = await this.driver.waitForAuthentication(session.accountId, expiresAt);
+  private async handlePageDriverOperationFailure(
+    session: BrowserSession,
+    publication: PublicationClaim,
+    error: PageDriverOperationError,
+  ): Promise<BrowserGatewayError> {
+    const code = 'EDITOR_OPERATION_FAILED';
+    await this.store.markSession(session, {
+      error: { code, schema_version: 'baijiahao-browser-error@1', stage: error.stage },
+      status: 'attention_required',
+    });
+    const updated = await this.store.updatePublication(publication, {
+      status: 'manual_required',
+    });
     try {
+      await this.saveArtifact(
+        updated,
+        'attention_required',
+        await this.driver.capture(session.accountId),
+      );
+    } catch {
+      // The durable manual-required state is authoritative if screenshot capture is unavailable.
+    }
+    return new BrowserGatewayError(
+      423,
+      code,
+      'Baijiahao editor operation failed before submission and requires manual attention',
+      error.stage,
+      error,
+    );
+  }
+
+  private async finishLogin(session: BrowserSession, expiresAt: Date): Promise<void> {
+    try {
+      const authenticated = await this.driver.waitForAuthentication(session.accountId, expiresAt);
       await this.locks.run(session.accountId, async () => {
         const current = await this.store.getSession(session.accountId);
         if (!authenticated) {
@@ -447,8 +483,26 @@ export class BaijiahaoBrowserService {
         }
         await this.persistAuthenticatedSession(current);
       });
-    } catch {
-      // The next status poll exposes the persisted state; no credential or QR material is logged.
+    } catch (error) {
+      const code = error instanceof PageDriverError ? error.code : 'LOGIN_VERIFICATION_FAILED';
+      console.error('Baijiahao browser login verification failed', {
+        account_id: session.accountId,
+        error: safeBrowserError(error),
+        error_code: code,
+      });
+      try {
+        await this.locks.run(session.accountId, async () => {
+          const current = await this.store.getSession(session.accountId);
+          if (current.status !== 'qr_ready') return;
+          await this.store.markSession(current, {
+            error: { code, schema_version: 'baijiahao-browser-error@1' },
+            qrExpiresAt: null,
+            status: 'attention_required',
+          });
+        });
+      } catch {
+        // A later status request can recover if persistence is temporarily unavailable.
+      }
     }
   }
 

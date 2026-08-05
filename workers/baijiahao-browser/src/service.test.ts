@@ -7,7 +7,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import type { BaijiahaoBrowserConfig } from './config.js';
-import { PageDriverError } from './page-driver.js';
+import { PageDriverError, PageDriverOperationError } from './page-driver.js';
 import { BaijiahaoBrowserService, safeBrowserError } from './service.js';
 import type { PostgresBaijiahaoBrowserStore } from './store.js';
 import type { BaijiahaoPageDriver, BrowserSession, PublicationClaim } from './types.js';
@@ -58,6 +58,63 @@ describe('Baijiahao browser service', () => {
       qrExpiresAt: null,
       status: 'attention_required',
     });
+  });
+
+  it('contains asynchronous login verification failures without crashing the worker', async () => {
+    const session = browserSession('login_required');
+    const expiresAt = new Date('2026-08-05T14:00:00.000Z');
+    const pending = {
+      ...session,
+      qrExpiresAt: expiresAt,
+      status: 'qr_ready' as const,
+      version: 2,
+    };
+    const attention = {
+      ...pending,
+      qrExpiresAt: null,
+      status: 'attention_required' as const,
+      version: 3,
+    };
+    const markSession = vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce(attention);
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      getSession: vi.fn(async () => pending),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      startLogin: vi.fn(async () => ({ expiresAt, qrPng: Buffer.from('qr') })),
+      waitForAuthentication: vi.fn(async () => {
+        throw new Error('page.goto: net::ERR_ABORTED token=login-secret');
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.startLogin(ACCOUNT_ID)).resolves.toMatchObject({ status: 'qr_ready' });
+    await vi.waitFor(() =>
+      expect(markSession).toHaveBeenLastCalledWith(pending, {
+        error: {
+          code: 'LOGIN_VERIFICATION_FAILED',
+          schema_version: 'baijiahao-browser-error@1',
+        },
+        qrExpiresAt: null,
+        status: 'attention_required',
+      }),
+    );
+    expect(errorLog).toHaveBeenCalledWith(
+      'Baijiahao browser login verification failed',
+      expect.objectContaining({
+        error: 'Error: page.goto: net::ERR_ABORTED token=[REDACTED]',
+        error_code: 'LOGIN_VERIFICATION_FAILED',
+      }),
+    );
+    errorLog.mockRestore();
   });
 
   it('marks an encrypted session for reauthentication when decryption fails', async () => {
@@ -281,6 +338,98 @@ describe('Baijiahao browser service', () => {
       }),
     ).rejects.toMatchObject({ code: 'SESSION_ATTENTION_REQUIRED', statusCode: 423 });
     expect(driver.verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('records pre-submit browser operation failures as manual attention, not unknown', async () => {
+    const session = browserSession('authenticated');
+    const prepared: PublicationClaim = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentVersionId: CONTENT_VERSION_ID,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'baijiahao-editor-operation-failed',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      sessionId: SESSION_ID,
+      status: 'prepared',
+      tenantId: TENANT_ID,
+      version: 1,
+    });
+    const updatePublication = vi.fn(
+      async (publication: PublicationClaim, update: Readonly<Record<string, unknown>>) =>
+        Object.freeze({
+          ...publication,
+          status: update['status'] as PublicationClaim['status'],
+          version: publication.version + 1,
+        }),
+    );
+    const markSession = vi.fn(async () => ({
+      ...session,
+      status: 'attention_required' as const,
+      version: 2,
+    }));
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      insertArtifact: vi.fn(async () => undefined),
+      loadImageAssets: vi.fn(async () => []),
+      markSession,
+      preparePublication: vi.fn(async () => prepared),
+      updatePublication,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      capture: vi.fn(async () => Buffer.from('attention-required')),
+      submit: vi.fn(async () => {
+        throw new PageDriverOperationError(
+          'upload_body_images',
+          new Error('file chooser timed out'),
+        );
+      }),
+      verifyAuthenticated: vi.fn(async () => true),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const storage = {
+      putObject: vi.fn(async () => ({ uri: 'memory://test/attention-required.png' })),
+    } as unknown as ObjectStorageAdapter;
+    const service = new BaijiahaoBrowserService(config(), store, driver, credentials, storage);
+    const payload = {
+      abstract: '用于验证提交前浏览器异常的摘要。',
+      body_asset_ids: [],
+      body_html: '<p>用于验证提交前浏览器异常的正文。</p>',
+      body_text: '用于验证提交前浏览器异常的正文。',
+      citation_links: [],
+      content_type: 'news',
+      cover_asset_id: null,
+      platform_code: 'baijiahao' as const,
+      rule_version: 'baijiahao-render-rules@1.1.0' as const,
+      schema_version: 'baijiahao-payload@2' as const,
+      tags: ['百家号', '编辑器异常', '验证'],
+      title: '百家号提交前浏览器异常验证',
+    };
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: prepared.idempotencyKey,
+        payload,
+        payload_hash: hashBaijiahaoPayload(payload),
+      }),
+    ).rejects.toMatchObject({
+      code: 'EDITOR_OPERATION_FAILED',
+      stage: 'upload_body_images',
+      statusCode: 423,
+    });
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: {
+        code: 'EDITOR_OPERATION_FAILED',
+        schema_version: 'baijiahao-browser-error@1',
+        stage: 'upload_body_images',
+      },
+      status: 'attention_required',
+    });
+    expect(updatePublication).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'submitting' }),
+      { status: 'manual_required' },
+    );
   });
 
   it('redacts browser secrets from diagnostics', () => {

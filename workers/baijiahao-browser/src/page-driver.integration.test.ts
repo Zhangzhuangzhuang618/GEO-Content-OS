@@ -298,7 +298,11 @@ function route(
         <button type="button" data-testid="cover-confirm">确定 (1)</button>
       </div>
       <button type="button" data-function="insertimage">插入正文图片</button>
-      <input type="file" data-testid="body-image-picker" accept="image/*" style="display:none">
+      <div role="dialog" data-testid="body-image-dialog" style="display:none">
+        本地图片
+        <input type="file" data-testid="body-image-picker" name="media" accept="image/*" multiple>
+        <button type="button" data-testid="body-image-confirm" disabled>确认</button>
+      </div>
       <input data-field="tags"><input data-field="fingerprint">
       <select data-field="category"><option value="news">news</option></select>
       <label data-testid="not-original"><input type="radio" name="original">非原创</label>
@@ -307,11 +311,18 @@ function route(
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
         document.querySelector('[data-testid=cover-confirm]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='none';
-        document.querySelector('[data-function=insertimage]').onclick=()=>document.querySelector('[data-testid=body-image-picker]').click();
+        document.querySelector('[data-function=insertimage]').onclick=()=>document.querySelector('[data-testid=body-image-dialog]').style.display='block';
         document.querySelector('[data-testid=body-image-picker]').onchange=()=>{
-          const image=document.querySelector('#ueditor_0').contentDocument.createElement('img');
-          image.alt='正文配图';
-          document.querySelector('#ueditor_0').contentDocument.body.append(image);
+          document.querySelector('[data-testid=body-image-confirm]').disabled=false;
+        };
+        document.querySelector('[data-testid=body-image-confirm]').onclick=()=>{
+          const picker=document.querySelector('[data-testid=body-image-picker]');
+          for(let index=0;index<picker.files.length;index+=1){
+            const image=document.querySelector('#ueditor_0').contentDocument.createElement('img');
+            image.alt='正文配图';
+            document.querySelector('#ueditor_0').contentDocument.body.append(image);
+          }
+          document.querySelector('[data-testid=body-image-dialog]').style.display='none';
         };
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({

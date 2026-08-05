@@ -18,8 +18,7 @@ const SELECTORS = Object.freeze({
   authenticatedManage:
     '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list',
   body: '[contenteditable="true"][data-field="body"], .ProseMirror, [contenteditable="true"]',
-  bodyImages:
-    'input[type="file"][data-field="body-images"], input[type="file"][multiple][accept*="image"]',
+  bodyImages: 'input[type="file"][data-field="body-images"]',
   bodyImageTrigger: '[data-function="insertimage"]',
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
   category: 'select[data-field="category"], select[name*="category"]',
@@ -540,23 +539,25 @@ async function uploadImages(
       'Baijiahao image upload entry no longer matches the frozen page signature',
     );
   }
-  let insertedCount = await body.locator('img').count();
-  for (let offset = 0; offset < images.length;) {
-    const [fileChooser] = await Promise.all([
-      page.waitForEvent('filechooser', { timeout: timeoutMs }),
-      trigger.click(),
-    ]);
-    const batch = fileChooser.isMultiple()
-      ? images.slice(offset)
-      : images.slice(offset, offset + 1);
-    await fileChooser.setFiles(imageFilePayloads(batch));
-    insertedCount += batch.length;
-    await body
-      .locator('img')
-      .nth(insertedCount - 1)
-      .waitFor({ state: 'attached', timeout: timeoutMs });
-    offset += batch.length;
+  const insertedCount = await body.locator('img').count();
+  await trigger.click();
+  const dialog = page.getByRole('dialog').filter({ hasText: '本地图片' }).first();
+  await dialog.waitFor({ state: 'visible', timeout: timeoutMs });
+  const upload = dialog.locator('input[type="file"][accept*="image"]').first();
+  if ((await upload.count()) === 0) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao local image upload field no longer matches the frozen page signature',
+    );
   }
+  await setImageFiles(upload, images);
+  const confirm = dialog.getByRole('button', { name: /^(?:确认|确定)/u }).first();
+  await confirm.click({ timeout: timeoutMs });
+  await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });
+  await body
+    .locator('img')
+    .nth(insertedCount + images.length - 1)
+    .waitFor({ state: 'attached', timeout: timeoutMs });
 }
 
 async function setImageFiles(
