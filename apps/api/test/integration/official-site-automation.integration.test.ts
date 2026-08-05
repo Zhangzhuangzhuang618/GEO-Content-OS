@@ -465,6 +465,35 @@ describe('official-site quality, rewrite, and publication automation', () => {
     ).toEqual([{ count: 0 }]);
   });
 
+  it('persists a fresh quality result for retained content after generation failure', async () => {
+    const database = requireClient(client);
+    await seedQualityCycle(database, 'generation_failed', 0, 'queued');
+    await database`
+      UPDATE content_packages SET status='all_failed' WHERE id=${PACKAGE_ID}::uuid
+    `;
+    const checker = {
+      evaluate: async () => ({
+        decision: 'pass' as const,
+        geo_scores: SCORES,
+        issues: [],
+        score: SCORES.total,
+      }),
+    };
+    const worker = new QualityCheckWorker(database, checker as never);
+
+    await expect(worker.run(qualityEvent())).resolves.toEqual({ disposition: 'processed' });
+    expect(
+      await database<{ packageStatus: string; reportCount: number; status: string }[]>`
+        SELECT variant.status,package.status AS "packageStatus",
+          (SELECT count(*)::integer FROM quality_reports
+            WHERE generation_run_id=${QUALITY_RUN_ID}::uuid) AS "reportCount"
+        FROM content_variants AS variant
+        JOIN content_packages AS package ON package.id=variant.package_id
+        WHERE variant.id=${VARIANT_ID}::uuid
+      `,
+    ).toEqual([{ packageStatus: 'generated', reportCount: 1, status: 'quality_failed' }]);
+  });
+
   it('resumes a manual-required automation run from the user-edited content version', async () => {
     const database = requireClient(client);
     const edited = content('User edited website article ready for another quality check');
@@ -561,7 +590,7 @@ function createAutomation(database: Sql, writer: FakeRewriteWriter): OfficialSit
 
 async function seedQualityCycle(
   database: Sql,
-  variantStatus: 'quality_failed' | 'quality_passed',
+  variantStatus: 'generation_failed' | 'quality_failed' | 'quality_passed',
   rewriteCount: number,
   runStatus: 'queued' | 'succeeded' = 'succeeded',
   result: QualityCheckerData = failedResult(),

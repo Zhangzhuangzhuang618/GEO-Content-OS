@@ -592,6 +592,7 @@ export async function insertGeneratedVersion(
   sourceRunId: string,
   content: GeneratedContent,
 ): Promise<string> {
+  const generatedContentHash = contentHash(content);
   const versions = await transaction<{ versionNo: number }[]>`
     SELECT COALESCE(max(version_no), 0)::integer + 1 AS "versionNo"
     FROM content_versions
@@ -620,14 +621,27 @@ export async function insertGeneratedVersion(
       ${versionNo},
       ${content.schema_version},
       ${JSON.stringify(content)}::text::jsonb,
-      ${contentHash(content)},
+      ${generatedContentHash},
       ${sourceRunId}::uuid,
       ${event.data.actorUserId}::uuid
     )
+    ON CONFLICT DO NOTHING
     RETURNING id
   `;
   const row = inserted[0];
-  if (!row) throw new Error('Content version insert failed');
+  if (!row) {
+    const existing = await transaction<{ id: string }[]>`
+      SELECT id FROM content_versions
+      WHERE tenant_id = ${event.tenantId}::uuid
+        AND package_id = ${event.data.packageId}::uuid
+        AND variant_id IS NOT DISTINCT FROM ${variantId}::uuid
+        AND content_hash = ${generatedContentHash}
+      LIMIT 1
+    `;
+    const existingId = existing[0]?.id;
+    if (!existingId) throw new Error('Content version insert conflicted without matching content');
+    return existingId;
+  }
   for (const [position, block] of contentBlocks(content).entries()) {
     await transaction`
       INSERT INTO content_blocks (

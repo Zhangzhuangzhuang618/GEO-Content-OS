@@ -266,12 +266,14 @@ function route(
       response,
       `
       <canvas width="1440" height="1755"></canvas>
-      <div data-testid="account-menu" style="display:none">已登录</div>
+      <nav data-testid="authenticated-home" style="display:none">
+        <button>发布作品</button><span>内容管理</span><span>个人中心</span>
+      </nav>
       <button data-testid="bjh-login-btn">登录</button>
       <img data-testid="login-qr" style="display:none" src="/v2/api/qrcode">
       <script>
         if(localStorage.getItem('simulator-auth')==='yes') {
-          document.querySelector('[data-testid=account-menu]').style.display='block';
+          document.querySelector('[data-testid=authenticated-home]').style.display='block';
           document.querySelector('[data-testid=bjh-login-btn]').style.display='none';
         }
         document.querySelector('[data-testid=bjh-login-btn]').onclick=()=>{

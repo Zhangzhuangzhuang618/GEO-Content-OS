@@ -1,4 +1,7 @@
-import { BaijiahaoAutomationPolicyViewSchema } from '@geo-content-os/contracts';
+import {
+  BaijiahaoAutomationPolicyViewSchema,
+  qualityEvaluationFingerprintSource,
+} from '@geo-content-os/contracts';
 import {
   BaijiahaoAutomation,
   BaijiahaoDailyScheduler,
@@ -404,7 +407,7 @@ describe('Baijiahao official-site derived automation', () => {
 
   it('allows a recoverable non-required automation candidate to be regenerated', async () => {
     const database = requireClient(client);
-    await seedGeneratedIndependentCandidate(database);
+    const generatedHash = await seedGeneratedIndependentCandidate(database);
     await database`
       UPDATE content_variants SET status='generation_failed'
       WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
@@ -425,8 +428,8 @@ describe('Baijiahao official-site derived automation', () => {
       ) VALUES(
         ${MANUAL_QUALITY_RUN_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
         ${PROJECT_ID}::uuid,${PACKAGE_ID}::uuid,${INDEPENDENT_VARIANT_ID}::uuid,
-        'quality-checker','1.0.0',${WRITER_PROMPT_ID}::uuid,'deepseek-v4-flash','succeeded',
-        ${'e'.repeat(64)},'manual-quality-report',now(),now()
+        'quality-checker','1.0.0',${QUALITY_PROMPT_ID}::uuid,'deepseek-v4-flash','succeeded',
+        ${generatedHash},'manual-quality-report',now(),now()
       )
     `;
     await database`
@@ -473,12 +476,43 @@ describe('Baijiahao official-site derived automation', () => {
     const previousEnvironment = {
       model: process.env['CONTENT_MODEL_BALANCED_KEY'],
       prompt: process.env['CONTENT_WRITER_PROMPT_VERSION_ID'],
+      qualityModel: process.env['QUALITY_CHECKER_MODEL_KEY'],
+      qualityPrompt: process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'],
+      qualityVersion: process.env['QUALITY_CHECKER_SKILL_VERSION'],
       version: process.env['CONTENT_WRITER_SKILL_VERSION'],
     };
     process.env['CONTENT_MODEL_BALANCED_KEY'] = 'deepseek-v4-flash';
     process.env['CONTENT_WRITER_PROMPT_VERSION_ID'] = WRITER_PROMPT_ID;
     process.env['CONTENT_WRITER_SKILL_VERSION'] = '1.0.0';
+    process.env['QUALITY_CHECKER_MODEL_KEY'] = 'deepseek-v4-flash';
+    process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'] = QUALITY_PROMPT_ID;
+    process.env['QUALITY_CHECKER_SKILL_VERSION'] = '1.0.0';
     try {
+      await expect(
+        database.begin((transaction) =>
+          service.regenerateVariant(
+            transaction,
+            TENANT_ID,
+            USER_ID,
+            INDEPENDENT_VARIANT_ID,
+            variants[0]?.version ?? 0,
+            {
+              locked_block_keys: [],
+              model_policy: 'balanced',
+              quality_report_id: MANUAL_QUALITY_REPORT_ID,
+            },
+            { requestId: 'baijiahao-stale-report-rejected' },
+          ),
+        ),
+      ).rejects.toMatchObject({
+        kind: 'state',
+        message:
+          'Quality report was produced by an outdated checker policy; run a new quality check',
+      });
+      await database`
+        UPDATE generation_runs SET input_hash=${qualityEvaluationInputHash(generatedHash)}
+        WHERE id=${MANUAL_QUALITY_RUN_ID}::uuid
+      `;
       await database.begin((transaction) =>
         service.regenerateVariant(
           transaction,
@@ -498,6 +532,9 @@ describe('Baijiahao official-site derived automation', () => {
       restoreEnvironment('CONTENT_MODEL_BALANCED_KEY', previousEnvironment.model);
       restoreEnvironment('CONTENT_WRITER_PROMPT_VERSION_ID', previousEnvironment.prompt);
       restoreEnvironment('CONTENT_WRITER_SKILL_VERSION', previousEnvironment.version);
+      restoreEnvironment('QUALITY_CHECKER_MODEL_KEY', previousEnvironment.qualityModel);
+      restoreEnvironment('QUALITY_CHECKER_PROMPT_VERSION_ID', previousEnvironment.qualityPrompt);
+      restoreEnvironment('QUALITY_CHECKER_SKILL_VERSION', previousEnvironment.qualityVersion);
     }
 
     expect(
@@ -529,11 +566,11 @@ describe('Baijiahao official-site derived automation', () => {
     });
   });
 
-  it('reattaches a stale automation run before a user-requested quality check', async () => {
+  it('reattaches a stale automation run and rechecks retained content after generation failure', async () => {
     const database = requireClient(client);
     const generatedHash = await seedGeneratedIndependentCandidate(database);
     await database`
-      UPDATE content_variants SET status='quality_failed'
+      UPDATE content_variants SET status='generation_failed'
       WHERE id=${INDEPENDENT_VARIANT_ID}::uuid
     `;
     const service = new ContentApiService(
@@ -566,13 +603,22 @@ describe('Baijiahao official-site derived automation', () => {
     }
 
     await expectIndependentQualityQueued(database);
+    expect(
+      await database<{ inputHash: string }[]>`
+        SELECT input_hash AS "inputHash" FROM generation_runs
+        WHERE tenant_id=${TENANT_ID}::uuid AND variant_id=${INDEPENDENT_VARIANT_ID}::uuid
+          AND skill_name='quality-checker'
+        ORDER BY created_at DESC,id DESC LIMIT 1
+      `,
+    ).toEqual([{ inputHash: qualityEvaluationInputHash(generatedHash) }]);
   });
 
   it('terminalizes a daily candidate after its content generation fails', async () => {
     const database = requireClient(client);
     await seedGeneratedIndependentCandidate(database);
     await database`
-      UPDATE baijiahao_automation_policies SET daily_enabled=true
+      UPDATE baijiahao_automation_policies SET
+        daily_enabled=true,source_mode='independent',independent_fallback_enabled=false
       WHERE id=${POLICY_ID}::uuid
     `;
     await database`
@@ -1191,6 +1237,17 @@ function article(): GeneratedContent {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
+}
+
+function qualityEvaluationInputHash(contentHashValue: string): string {
+  return sha256(
+    qualityEvaluationFingerprintSource({
+      contentHash: contentHashValue,
+      modelKey: 'deepseek-v4-flash',
+      promptVersionId: QUALITY_PROMPT_ID,
+      skillVersion: '1.0.0',
+    }),
+  );
 }
 
 function requireClient(value: Sql | undefined): Sql {

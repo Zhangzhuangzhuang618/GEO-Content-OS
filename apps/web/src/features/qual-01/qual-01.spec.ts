@@ -106,6 +106,29 @@ test('rewrites failed content directly from its quality report', async ({ page }
   expect(ifMatch).toBe('"4"');
 });
 
+test('requires a fresh quality check after a rewrite failure', async ({ page }) => {
+  const base = detail('block');
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, (route) =>
+    json(route, {
+      ...base,
+      automation_run: { id: '64000000-0000-4000-8000-000000000088' },
+      variant: {
+        ...base.variant,
+        is_required: false,
+        platform_code: 'baijiahao',
+        status: 'generation_failed',
+      },
+    }),
+  );
+  await page.goto(`/qual-01?id=${VARIANT_ID}`);
+
+  await expect(page.getByRole('button', { name: '重新检查' })).toBeEnabled();
+  await expect(page.getByRole('button', { name: '按质检报告重写' })).toBeDisabled();
+  await expect(
+    page.getByText('上次重写失败后，必须先重新检查当前内容，旧报告不会继续用于重写。'),
+  ).toBeVisible();
+});
+
 test('tracks a quality rewrite through generation and automatic recheck', async ({ page }) => {
   const base = detail('block');
   const baijiahao = {

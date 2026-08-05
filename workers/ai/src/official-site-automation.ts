@@ -1,5 +1,6 @@
 import {
   DomainEventEnvelopeSchema,
+  qualityEvaluationFingerprintSource,
   type AggregateType,
   type EventType,
 } from '@geo-content-os/contracts';
@@ -396,7 +397,8 @@ export class OfficialSiteAutomation {
         ${input.tenantId}::uuid, ${input.workspaceId}::uuid, ${input.projectId}::uuid,
         ${input.packageId}::uuid, ${input.variantId}::uuid, 'quality-checker',
         ${this.config.qualitySkillVersion}, ${this.config.qualityPromptVersionId}::uuid,
-        ${this.config.qualityModelKey}, ${input.contentHash}, ${input.requestId}
+        ${this.config.qualityModelKey},
+        ${qualityEvaluationInputHash(input.contentHash, this.config)}, ${input.requestId}
       )
       RETURNING id
     `;
@@ -850,6 +852,20 @@ export class OfficialSiteAutomation {
       return terminal;
     });
   }
+}
+
+function qualityEvaluationInputHash(
+  contentHashValue: string,
+  config: OfficialSiteAutomationConfig,
+): string {
+  return sha256(
+    qualityEvaluationFingerprintSource({
+      contentHash: contentHashValue,
+      modelKey: config.qualityModelKey,
+      promptVersionId: config.qualityPromptVersionId,
+      skillVersion: config.qualitySkillVersion,
+    }),
+  );
 }
 
 function issueScore(

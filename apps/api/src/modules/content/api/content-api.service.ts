@@ -9,6 +9,7 @@ import {
   type PlatformCode,
   type RegenerateVariantRequest,
   type ReopenVariantsRequest,
+  qualityEvaluationFingerprintSource,
 } from '@geo-content-os/contracts';
 import {
   createEmbeddingAdapter,
@@ -105,6 +106,8 @@ interface QualityRewriteSource {
 
 interface QualityRewriteRow extends QualityReportRow {
   readonly content: unknown;
+  readonly contentHash: string;
+  readonly inputHash: string;
 }
 
 interface GenerationRuntime {
@@ -665,7 +668,11 @@ export class ContentApiService {
     const scope = await this.scopeForVariant(transaction, tenantId, userId, variantId);
     const variant = await lockVariant(transaction, tenantId, variantId);
     if (!variant || !variant.currentContentVersionId) throw contentNotFound();
-    if (!['generated', 'quality_failed', 'quality_passed'].includes(variant.status)) {
+    if (
+      !['generated', 'generation_failed', 'quality_failed', 'quality_passed'].includes(
+        variant.status,
+      )
+    ) {
       throw contentStateInvalid('Variant state does not permit a quality check');
     }
     await assertNoActiveVariantRun(transaction, tenantId, variantId);
@@ -738,7 +745,7 @@ export class ContentApiService {
     );
     if (current.contentHash !== expectedContentHash) throw contentVersionConflict();
     const run = await insertGenerationRun(transaction, {
-      inputHash: current.contentHash,
+      inputHash: qualityEvaluationInputHash(current.contentHash, runtime),
       modelKey: runtime.modelKey,
       packageId: variant.packageId,
       projectId: scope.projectId,
@@ -1929,10 +1936,14 @@ async function loadQualityRewriteSource(
       report.checker_version AS "checkerVersion", report.score::text AS score, report.decision,
       report.issues_json AS "issuesJson", report.geo_scores_json AS "geoScoresJson",
       report.automation_gate_json AS "automationGateJson", report.created_at AS "createdAt",
-      version.content_json AS content
+      version.content_json AS content, version.content_hash AS "contentHash",
+      run.input_hash AS "inputHash"
     FROM quality_reports AS report
     JOIN content_versions AS version
       ON version.id=report.content_version_id AND version.tenant_id=report.tenant_id
+    JOIN generation_runs AS run
+      ON run.id=report.generation_run_id AND run.tenant_id=report.tenant_id
+      AND run.skill_name='quality-checker'
     WHERE report.id=${qualityReportId}::uuid
       AND report.tenant_id=${tenantId}::uuid
       AND report.variant_id=${variantId}::uuid
@@ -1951,6 +1962,12 @@ async function loadQualityRewriteSource(
   if (!row) {
     throw contentStateInvalid(
       'Quality report must be the latest report for the current content version',
+    );
+  }
+  const expectedInputHash = qualityEvaluationInputHash(row.contentHash, readQualityRuntime());
+  if (row.inputHash !== expectedInputHash) {
+    throw contentStateInvalid(
+      'Quality report was produced by an outdated checker policy; run a new quality check',
     );
   }
   if (row.decision === 'pass' && row.automationGateJson?.['passed'] !== false) {
@@ -2184,4 +2201,15 @@ function canonicalJson(value: unknown): string {
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function qualityEvaluationInputHash(contentHash: string, runtime: GenerationRuntime): string {
+  return sha256(
+    qualityEvaluationFingerprintSource({
+      contentHash,
+      modelKey: runtime.modelKey,
+      promptVersionId: runtime.promptVersionId,
+      skillVersion: runtime.skillVersion,
+    }),
+  );
 }

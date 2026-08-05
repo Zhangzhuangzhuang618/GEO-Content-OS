@@ -372,11 +372,17 @@ export class QualityCheckWorker {
           AND tenant_id = ${event.tenantId}::uuid
           AND version = ${context.variantVersion}
           AND current_content_version_id = ${event.data.contentVersionId}::uuid
-          AND status IN ('generated', 'quality_failed', 'quality_passed')
+          AND status IN ('generated', 'generation_failed', 'quality_failed', 'quality_passed')
         RETURNING version
       `;
       const variant = variants[0];
       if (!variant) throw new Error('Quality result no longer matches the current content');
+      await transaction`
+        UPDATE content_packages
+        SET status='generated',version=version+1
+        WHERE id=${context.packageId}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND status='all_failed'
+      `;
       const runs = await transaction<{ id: string }[]>`
         UPDATE generation_runs
         SET status = 'succeeded', finished_at = now(), error_json = NULL, version = version + 1

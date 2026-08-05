@@ -41,6 +41,8 @@ const SELECTORS = Object.freeze({
     '[data-testid="news-title-input"] [contenteditable="true"], input[placeholder*="标题"], textarea[placeholder*="标题"], input[data-field="title"]',
 });
 
+const AUTHENTICATED_HOME_MARKERS = Object.freeze(['发布作品', '内容管理', '个人中心']);
+
 export class PageDriverError extends Error {
   public constructor(
     public readonly code:
@@ -94,15 +96,10 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   public async startLogin(accountId: string, profilePath: string): Promise<LoginStartResult> {
     const page = await this.page(accountId, profilePath, null);
     await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
+    await this.waitForLoginPageState(page);
     await this.rejectCaptcha(page);
     const expiresAt = new Date(Date.now() + 120_000);
-    if (
-      await page
-        .locator(SELECTORS.authenticated)
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
+    if (await this.isAuthenticatedAccountPage(page)) {
       return { expiresAt, qrPng: Buffer.alloc(0) };
     }
     const qr = page.locator(SELECTORS.qr).first();
@@ -156,6 +153,10 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
         `(() => {
           const authenticated = document.querySelector(${JSON.stringify(SELECTORS.authenticated)});
           if (authenticated instanceof HTMLElement && authenticated.offsetParent !== null) {
+            return true;
+          }
+          const pageText = document.body?.innerText ?? '';
+          if (${JSON.stringify(AUTHENTICATED_HOME_MARKERS)}.every((marker) => pageText.includes(marker))) {
             return true;
           }
           return window.location.href !== ${JSON.stringify(loginPageUrl)};
@@ -422,16 +423,9 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
 
   private async verifyViaLoginPage(page: Page): Promise<boolean> {
     await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
+    await this.waitForLoginPageState(page);
     await this.rejectCaptcha(page);
-    if (
-      await page
-        .locator(SELECTORS.authenticated)
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return true;
-    }
+    if (await this.isAuthenticatedAccountPage(page)) return true;
     const loginRequired = await page
       .locator(`${SELECTORS.loginTrigger}, ${SELECTORS.qr}`)
       .first()
@@ -442,6 +436,49 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       'PAGE_SIGNATURE_CHANGED',
       'Baijiahao login page no longer exposes an authenticated or login-required state',
     );
+  }
+
+  private async isAuthenticatedAccountPage(page: Page): Promise<boolean> {
+    if (
+      await page
+        .locator(SELECTORS.authenticated)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      return true;
+    }
+    const pageText = await page
+      .locator('body')
+      .innerText()
+      .catch(() => '');
+    return AUTHENTICATED_HOME_MARKERS.every((marker) => pageText.includes(marker));
+  }
+
+  private async waitForLoginPageState(page: Page): Promise<void> {
+    const expiresAt = Date.now() + this.config.navigationTimeoutMs;
+    while (Date.now() < expiresAt) {
+      const [authenticated, loginRequired, qrVisible, captchaVisible] = await Promise.all([
+        this.isAuthenticatedAccountPage(page),
+        page
+          .locator(SELECTORS.loginTrigger)
+          .first()
+          .isVisible()
+          .catch(() => false),
+        page
+          .locator(SELECTORS.qr)
+          .first()
+          .isVisible()
+          .catch(() => false),
+        page
+          .locator(SELECTORS.captcha)
+          .first()
+          .isVisible()
+          .catch(() => false),
+      ]);
+      if (authenticated || loginRequired || qrVisible || captchaVisible) return;
+      await page.waitForTimeout(100);
+    }
   }
 
   private async isAuthenticatedEditor(page: Page): Promise<boolean> {

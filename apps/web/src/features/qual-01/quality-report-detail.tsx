@@ -18,7 +18,12 @@ import {
 import type { QualityIssue, QualityVariantDetail } from './quality-report.schema';
 
 const WRITE_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'content_editor']);
-const RECHECK_STATUSES = new Set(['generated', 'quality_failed', 'quality_passed']);
+const RECHECK_STATUSES = new Set([
+  'generated',
+  'generation_failed',
+  'quality_failed',
+  'quality_passed',
+]);
 const REGENERATE_STATUSES = new Set([
   'generated',
   'generation_failed',
@@ -275,6 +280,7 @@ export function QualityReportDetail() {
   const canRecheck = canWrite && RECHECK_STATUSES.has(detail.variant.status);
   const canRegenerate =
     canWrite &&
+    detail.variant.status !== 'generation_failed' &&
     REGENERATE_STATUSES.has(detail.variant.status) &&
     (detail.variant.is_required ||
       (detail.variant.platform_code === 'baijiahao' && Boolean(detail.automation_run)));
@@ -387,9 +393,11 @@ export function QualityReportDetail() {
         </div>
         {report.decision !== 'pass' ? (
           <p className="mt-5 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
-            {report.decision === 'block'
-              ? '发现必须修改的问题，处理完后才能提交审核。'
-              : '建议先处理下方问题，再重新检查并提交审核。'}
+            {detail.variant.status === 'generation_failed'
+              ? '上次重写失败后，必须先重新检查当前内容，旧报告不会继续用于重写。'
+              : report.decision === 'block'
+                ? '发现必须修改的问题，处理完后才能提交审核。'
+                : '建议先处理下方问题，再重新检查并提交审核。'}
           </p>
         ) : null}
         <TechnicalDetails summary="检查技术信息">
