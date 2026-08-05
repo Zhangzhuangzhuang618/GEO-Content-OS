@@ -577,9 +577,9 @@ async function confirmBodyImageUpload(
   imageCount: number,
   timeoutMs: number,
 ): Promise<void> {
-  const uploadSucceeded = dialog
-    .getByText(new RegExp(`^${imageCount}\\s*张\\s*上传\\s*成功$`, 'u'))
-    .first();
+  const uploadSucceeded = dialog.filter({
+    hasText: new RegExp(`(?:^|[^0-9])${imageCount}\\s*张\\s*上传\\s*成功`, 'u'),
+  });
   await uploadSucceeded.waitFor({ state: 'visible', timeout: timeoutMs });
   const confirm = dialog.getByRole('button', { name: /^(?:确认|确定)$/u }).first();
   await confirm.click({ timeout: timeoutMs });
