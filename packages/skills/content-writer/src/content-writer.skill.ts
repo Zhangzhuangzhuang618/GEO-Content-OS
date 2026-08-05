@@ -136,8 +136,9 @@ function messages(
     {
       content: JSON.stringify({
         content_writer_input: input,
-        instruction:
-          'Return only the content data object with master_content and variants. The server adds identity, status, citations, usage, and trace. Do not emit those envelope fields. Do not copy facts or platform selection from examples.',
+        instruction: revision
+          ? 'This is a quality-guided rewrite, not a new draft. Resolve every supplied quality issue and make substantive changes at the specified locations. The requested platform content must not be identical to candidate_to_rewrite. When the requested platform is baijiahao, cta must be null and no block may use block_type=cta. Return only the complete content data object with master_content and variants. Do not emit schema_version or envelope fields; the server adds them. Do not copy facts or platform selection from examples.'
+          : 'Return only the content data object with master_content and variants. Do not emit schema_version or envelope fields; the server adds identity, status, citations, usage, and trace. Do not copy facts or platform selection from examples.',
       }),
       role: 'user',
     },

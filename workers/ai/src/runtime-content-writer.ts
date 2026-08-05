@@ -521,10 +521,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
         input.revision
           ? {
               candidate: {
-                master_content: input.revision.candidate
-                  .master_content as unknown as ContentWriterData['master_content'],
-                variants: input.revision.candidate
-                  .variants as unknown as ContentWriterData['variants'],
+                master_content: modelRevisionContent(input.revision.candidate.master_content),
+                variants: Object.freeze(
+                  input.revision.candidate.variants.map(modelRevisionContent),
+                ),
               },
               issues: input.revision.issues,
             }
@@ -1441,6 +1441,12 @@ function generated(content: ContentWriterContent): GeneratedContent {
     platform_code: content.platform_code,
     schema_version: 'content-writer-data@1',
   }) as GeneratedContent;
+}
+
+function modelRevisionContent(content: GeneratedContent): ContentWriterContent {
+  const { schema_version: serverOwnedSchemaVersion, ...modelContent } = content;
+  void serverOwnedSchemaVersion;
+  return modelContent as unknown as ContentWriterContent;
 }
 
 function baijiahaoSourceContent(

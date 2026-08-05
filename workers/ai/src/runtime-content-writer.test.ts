@@ -116,6 +116,25 @@ describe('AI Worker runtime wiring', () => {
     expect(adapter.requests[0]?.messages.map((message) => message.content).join('\n')).toContain(
       issue,
     );
+    const revisionMessage = adapter.requests[0]?.messages.find((message) =>
+      message.content?.includes('candidate_to_rewrite'),
+    );
+    if (!revisionMessage?.content) throw new Error('Revision prompt was not recorded');
+    const revisionPayload = JSON.parse(revisionMessage.content) as {
+      candidate_to_rewrite: {
+        master_content: Record<string, unknown>;
+        variants: readonly Record<string, unknown>[];
+      };
+    };
+    expect(revisionPayload.candidate_to_rewrite.master_content).not.toHaveProperty(
+      'schema_version',
+    );
+    expect(revisionPayload.candidate_to_rewrite.variants[0]).not.toHaveProperty('schema_version');
+    expect(adapter.requests[0]?.messages.at(-1)?.content).toContain(
+      'This is a quality-guided rewrite, not a new draft',
+    );
+    expect(adapter.requests[0]?.messages.at(-1)?.content).toContain('Do not emit schema_version');
+    expect(adapter.requests[0]?.messages.at(-1)?.content).toContain('cta must be null');
     const retryPrompt = adapter.requests[1]?.messages.map((message) => message.content).join('\n');
     expect(retryPrompt).toContain(issue);
     expect(retryPrompt).toContain('质量报告驱动重写结果与待修改版本完全相同');
