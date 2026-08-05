@@ -10,6 +10,7 @@ import { PlaywrightBaijiahaoPageDriver } from './page-driver.js';
 
 type SubmittedPublication = {
   aiGenerated: boolean;
+  bodyInputRegistered: boolean;
   bodyImagesUploaded: number;
   coverUploaded: boolean;
   fingerprint: string;
@@ -131,6 +132,7 @@ describe('Baijiahao local browser simulator', () => {
       expect(preSubmitBytes).toBeGreaterThan(0);
       expect(submitted).toMatchObject({
         aiGenerated: true,
+        bodyInputRegistered: true,
         bodyImagesUploaded: 2,
         coverUploaded: true,
       });
@@ -161,6 +163,7 @@ describe('Baijiahao local browser simulator', () => {
       expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
       submitted = {
         aiGenerated: true,
+        bodyInputRegistered: true,
         bodyImagesUploaded: 0,
         coverUploaded: true,
         fingerprint: 'a'.repeat(64),
@@ -215,6 +218,7 @@ describe('Baijiahao local browser simulator', () => {
       expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
       submitted = {
         aiGenerated: true,
+        bodyInputRegistered: true,
         bodyImagesUploaded: 0,
         coverUploaded: true,
         fingerprint: 'a'.repeat(64),
@@ -331,6 +335,7 @@ function route(
       `
       <input data-field="title"><textarea data-field="abstract"></textarea>
       <iframe id="ueditor_0" srcdoc="&lt;body contenteditable='true'&gt;&lt;/body&gt;"></iframe>
+      <span data-testid="body-count">字数 0</span>
       <button type="button" data-testid="cover-trigger">选择封面</button>
       <div role="dialog" data-testid="cover-dialog" style="display:none">
         本地上传<input type="file" name="media" accept="image/*">
@@ -351,6 +356,18 @@ function route(
       <button data-testid="submit">发布</button>
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
+        const editorFrame=document.querySelector('#ueditor_0');
+        const registerEditorInput=()=>{
+          const editorBody=editorFrame.contentDocument.body;
+          if(editorBody.dataset.listenerRegistered==='true') return;
+          editorBody.dataset.listenerRegistered='true';
+          editorBody.addEventListener('keydown',()=>editorBody.dataset.keyboardInput='true');
+          editorBody.addEventListener('input',()=>{
+            if(editorBody.dataset.keyboardInput==='true') document.querySelector('[data-testid=body-count]').textContent='字数 '+editorBody.innerText.length;
+          });
+        };
+        editorFrame.addEventListener('load',registerEditorInput);
+        registerEditorInput();
         document.querySelector('[name=media]').onchange=()=>{
           const picker=document.querySelector('[name=media]');
           setTimeout(()=>{
@@ -388,6 +405,7 @@ function route(
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
+            bodyInputRegistered:document.querySelector('[data-testid=body-count]').textContent!=='字数 0',
             bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,
             coverUploaded:document.querySelector('[data-testid=cover-preview]').style.display==='block',
             title:document.querySelector('[data-field=title]').value,

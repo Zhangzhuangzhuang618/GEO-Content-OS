@@ -220,7 +220,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       stage = 'fill_title';
       await title.fill(input.payload.title);
       stage = 'fill_body';
-      await body.fill(input.payload.body_text);
+      await fillBody(page, body, input.payload.body_text, this.config.navigationTimeoutMs);
       stage = 'upload_cover';
       await uploadCover(
         page,
@@ -620,6 +620,34 @@ async function waitForCoverPreview(page: Page, timeoutMs: number): Promise<void>
 async function fillOptional(page: Page, selector: string, value: string): Promise<void> {
   const locator = page.locator(selector).first();
   if (await locator.isVisible().catch(() => false)) await locator.fill(value);
+}
+
+async function fillBody(
+  page: Page,
+  body: Locator,
+  value: string,
+  timeoutMs: number,
+): Promise<void> {
+  await body.click();
+  await body.press('ControlOrMeta+A');
+  await body.pressSequentially(value, { timeout: timeoutMs });
+  if (normalizeText(await body.innerText()) !== normalizeText(value)) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao editor did not preserve the complete body text',
+    );
+  }
+  const zeroCount = page.getByText(/字数\s*0/u).first();
+  if (await zeroCount.isVisible().catch(() => false)) {
+    try {
+      await zeroCount.waitFor({ state: 'hidden', timeout: timeoutMs });
+    } catch {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Baijiahao editor did not register the body text',
+      );
+    }
+  }
 }
 
 async function uploadImages(
