@@ -523,7 +523,10 @@ function unknownResolution(
   attempts: readonly AttemptRow[],
 ): PublishJobDetail['unknown_resolution'] {
   const latest = attempts.at(-1);
-  if (job.status !== 'failed' || job.platformCode !== 'baijiahao' || latest?.status !== 'unknown') {
+  const requiresResolution =
+    latest?.status === 'unknown' ||
+    (latest?.status === 'failed' && latest.errorCode === 'MANUAL_REQUIRED');
+  if (job.status !== 'failed' || job.platformCode !== 'baijiahao' || !requiresResolution) {
     return null;
   }
   return {

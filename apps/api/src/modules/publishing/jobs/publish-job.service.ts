@@ -81,7 +81,13 @@ interface ProjectionRow {
 
 interface LatestAttemptRow {
   readonly attemptNo: number;
+  readonly errorCode: string | null;
   readonly status: 'failed' | 'running' | 'succeeded' | 'unknown';
+}
+
+interface ResolvedExternalState {
+  readonly attemptNo: number;
+  readonly automationStatus: 'manual_required' | 'publish_failed';
 }
 
 interface BrowserPublicationRow {
@@ -320,8 +326,8 @@ export class PublishJobService {
       throw stateInvalid('The publish job no longer points to the current content version');
     }
     const latestAttempt = await loadLatestAttempt(transaction, scope.tenantId, before.id);
-    if (latestAttempt?.status !== 'unknown') {
-      throw stateInvalid('Latest publish attempt is not unknown');
+    if (!latestAttempt || !attemptRequiresManualResolution(latestAttempt)) {
+      throw stateInvalid('Latest publish attempt does not require manual resolution');
     }
     const publications = await transaction<BrowserPublicationRow[]>`
       SELECT id,external_post_id AS "externalPostId"
@@ -347,15 +353,11 @@ export class PublishJobService {
         `;
         if (reset.length !== 1) throw stateInvalid('Baijiahao publication state changed');
       }
-      return this.retryInTransaction(
-        transaction,
-        scope,
-        jobId,
-        expectedVersion,
-        {},
-        new Date(),
-        latestAttempt.attemptNo,
-      );
+      return this.retryInTransaction(transaction, scope, jobId, expectedVersion, {}, new Date(), {
+        attemptNo: latestAttempt.attemptNo,
+        automationStatus:
+          latestAttempt.errorCode === 'MANUAL_REQUIRED' ? 'manual_required' : 'publish_failed',
+      });
     }
 
     if (
@@ -458,7 +460,7 @@ export class PublishJobService {
     expectedVersion: number,
     input: RetryPublishRequest,
     scheduledAt = input.scheduled_at ? parseDate(input.scheduled_at) : new Date(),
-    resolvedUnknownAttemptNo?: number,
+    resolvedExternalState?: ResolvedExternalState,
   ): Promise<PublishJobView> {
     assertVersion(expectedVersion);
     const before = await loadJob(transaction, scope, jobId);
@@ -495,10 +497,15 @@ export class PublishJobService {
     }
     if (
       before.status !== 'scheduled' &&
-      resolvedUnknownAttemptNo === undefined &&
-      (await latestAttemptIsUnknown(transaction, scope.tenantId, before.id))
+      resolvedExternalState === undefined &&
+      (await latestAttemptRequiresManualResolution(
+        transaction,
+        scope.tenantId,
+        before.id,
+        before.platformCode,
+      ))
     ) {
-      throw stateInvalid('Unknown external publish state requires manual resolution');
+      throw stateInvalid('External publish state requires manual resolution');
     }
     assertAccountReady(before);
     const scheduledAtIso = scheduledAt.toISOString();
@@ -555,7 +562,9 @@ export class PublishJobService {
           scope.tenantId,
           before.id,
           before.origin,
-          before.status === 'failed' ? 'publish_failed' : 'disabled',
+          before.status === 'failed'
+            ? (resolvedExternalState?.automationStatus ?? 'publish_failed')
+            : 'disabled',
         );
         await syncDailyBatchSchedule(
           transaction,
@@ -586,19 +595,19 @@ export class PublishJobService {
     await enqueueExecution(transaction, this.outbox, scope, after, scheduledAt);
     await this.audit.record(transaction, {
       action:
-        resolvedUnknownAttemptNo === undefined
+        resolvedExternalState === undefined
           ? before.status === 'failed'
             ? 'publish_job.retried'
             : 'publish_job.rescheduled'
           : 'publish_job.unknown_resolved_not_published',
       actorId: scope.userId,
       after:
-        resolvedUnknownAttemptNo === undefined
+        resolvedExternalState === undefined
           ? safeJob(after)
           : {
               ...safeJob(after),
               unknown_resolution: {
-                latest_attempt_no: resolvedUnknownAttemptNo,
+                latest_attempt_no: resolvedExternalState.attemptNo,
                 resolution: 'not_published',
               },
             },
@@ -805,12 +814,18 @@ async function enqueueExecution(
   `;
 }
 
-async function latestAttemptIsUnknown(
+async function latestAttemptRequiresManualResolution(
   transaction: TransactionSql,
   tenantId: string,
   jobId: string,
+  platformCode: PlatformCode,
 ): Promise<boolean> {
-  return (await loadLatestAttempt(transaction, tenantId, jobId))?.status === 'unknown';
+  const attempt = await loadLatestAttempt(transaction, tenantId, jobId);
+  if (!attempt) return false;
+  return (
+    attempt.status === 'unknown' ||
+    (platformCode === 'baijiahao' && attemptRequiresManualResolution(attempt))
+  );
 }
 
 async function loadLatestAttempt(
@@ -819,11 +834,18 @@ async function loadLatestAttempt(
   jobId: string,
 ): Promise<LatestAttemptRow | undefined> {
   const rows = await transaction<LatestAttemptRow[]>`
-    SELECT attempt_no AS "attemptNo",status FROM publish_attempts
+    SELECT attempt_no AS "attemptNo",error_code AS "errorCode",status FROM publish_attempts
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
     ORDER BY attempt_no DESC LIMIT 1
   `;
   return rows[0];
+}
+
+function attemptRequiresManualResolution(attempt: LatestAttemptRow): boolean {
+  return (
+    attempt.status === 'unknown' ||
+    (attempt.status === 'failed' && attempt.errorCode === 'MANUAL_REQUIRED')
+  );
 }
 
 async function confirmBaijiahaoAutomationPublished(
@@ -918,7 +940,7 @@ async function restartAutomationRun(
   tenantId: string,
   publishJobId: string,
   origin: 'baijiahao_automation' | 'official_site_automation',
-  expectedStatus: 'disabled' | 'publish_failed',
+  expectedStatus: 'disabled' | 'manual_required' | 'publish_failed',
 ): Promise<void> {
   if (origin === 'baijiahao_automation') {
     const rows = await transaction<{ id: string }[]>`
@@ -953,7 +975,7 @@ async function syncDailyBatchSchedule(
       UPDATE baijiahao_daily_batch_items SET
         status='scheduled',scheduled_at=${scheduledAtIso}::timestamptz,last_error_json=NULL
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-        AND status IN ('retired','scheduled','publish_failed')
+        AND status IN ('retired','scheduled','manual_required','publish_failed')
     `;
     return;
   }

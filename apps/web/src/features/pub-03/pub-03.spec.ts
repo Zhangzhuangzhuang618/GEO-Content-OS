@@ -131,6 +131,55 @@ test('requires manual verification before retrying an unknown Baijiahao publicat
   );
 });
 
+test('routes a manual-required Baijiahao automation through verified resolution', async ({
+  page,
+}) => {
+  const currentJob = {
+    ...job({ attemptCount: 2, status: 'failed', version: 7 }),
+    last_error: { code: 'MANUAL_REQUIRED' },
+    origin: 'baijiahao_automation',
+  };
+  const currentAttempt = {
+    ...attempt(2, 'failed'),
+    adapter_code: 'baijiahao-delivery@1.1.0',
+    error_code: 'MANUAL_REQUIRED',
+  };
+  const writes: { body: unknown; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(
+        route,
+        detail(currentJob, [currentAttempt], null, {
+          can_retry: true,
+          latest_attempt_no: 2,
+          platform_code: 'baijiahao',
+        }),
+      );
+      return;
+    }
+    writes.push({ body: request.postDataJSON() as unknown, path });
+    await json(route, {
+      data: { ...currentJob, status: 'scheduled', version: 8 },
+      meta: { request_id: 'manual-required-resolved' },
+    });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
+  await expect(page.getByText('百家号发布结果需要人工核实')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '确认未发布并重试' }).click();
+
+  expect(writes).toEqual([
+    {
+      body: { resolution: 'not_published' },
+      path: `/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`,
+    },
+  ]);
+});
+
 test('records a manually verified Baijiahao publication with its public link', async ({ page }) => {
   let currentJob: Record<string, unknown> = {
     ...job({ attemptCount: 4, status: 'failed', version: 12 }),

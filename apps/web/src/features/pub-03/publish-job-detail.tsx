@@ -362,7 +362,7 @@ function DetailContent({
             <h3 className="font-semibold">百家号发布结果需要人工核实</h3>
             <p className="mt-2 leading-6">
               第 {detail.unknown_resolution.latest_attempt_no}{' '}
-              次提交没有取得确定结果。请先在百家号内容管理中按标题核对；系统会保留这次未知尝试，不会覆盖历史记录。
+              次发布尝试没有取得可安全重试的明确结果。请先在百家号内容管理中按标题核对；系统会保留原尝试记录，不会覆盖历史。
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               {detail.unknown_resolution.can_retry ? (

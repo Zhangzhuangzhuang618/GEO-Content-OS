@@ -123,6 +123,29 @@ describe('PublishJobService rescheduling', () => {
     );
   });
 
+  it('does not route another platform manual-required error through Baijiahao resolution', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 1,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createTransaction(before, sqlStatements, {
+      attemptNo: 1,
+      errorCode: 'MANUAL_REQUIRED',
+      status: 'failed',
+    });
+    const { service } = createService();
+
+    await expect(
+      service.retryInTransaction(transaction, SCOPE, JOB_ID, 1, {
+        scheduled_at: RESCHEDULED_AT,
+      }),
+    ).resolves.toMatchObject({ status: 'scheduled', version: 2 });
+  });
+
   it('keeps the unknown attempt immutable and safely retries after a not-published confirmation', async () => {
     const sqlStatements: string[] = [];
     const before = jobRow({
@@ -190,6 +213,81 @@ describe('PublishJobService rescheduling', () => {
       expect.objectContaining({ action: 'publish_job.unknown_resolved_published' }),
     );
   });
+
+  it('restores a manually verified Baijiahao automation after browser handling is required', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 2,
+      origin: 'baijiahao_automation',
+      packageStatus: 'publish_failed',
+      platformCode: 'baijiahao',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'not_published', {
+      attemptNo: 2,
+      errorCode: 'MANUAL_REQUIRED',
+      status: 'failed',
+    });
+    const { audit, outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      resolution: 'not_published',
+    });
+
+    expect(result).toMatchObject({ status: 'scheduled', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_automation_runs') && sql.includes("status='scheduled'"),
+      ),
+    ).toBe(true);
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_daily_batch_items') && sql.includes("'manual_required'"),
+      ),
+    ).toBe(true);
+    expect(outbox.enqueue).toHaveBeenCalledOnce();
+    expect(audit.record).toHaveBeenCalledWith(
+      transaction,
+      expect.objectContaining({ action: 'publish_job.unknown_resolved_not_published' }),
+    );
+  });
+
+  it('records a verified manual-required Baijiahao automation as published', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 2,
+      origin: 'baijiahao_automation',
+      packageStatus: 'publish_failed',
+      platformCode: 'baijiahao',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'published', {
+      attemptNo: 2,
+      errorCode: 'MANUAL_REQUIRED',
+      status: 'failed',
+    });
+    const { outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      external_post_id: 'baijiahao-post-130',
+      external_url: 'https://baijiahao.baidu.com/s?id=130',
+      resolution: 'published',
+    });
+
+    expect(result).toMatchObject({ status: 'published', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_automation_runs') && sql.includes("status='published'"),
+      ),
+    ).toBe(true);
+    expect(sqlStatements.some((sql) => sql.includes('UPDATE publish_attempts'))).toBe(false);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+  });
 });
 
 function createService() {
@@ -206,12 +304,20 @@ function createService() {
   };
 }
 
-function createTransaction(before: ReturnType<typeof jobRow>, sqlStatements: string[]) {
+function createTransaction(
+  before: ReturnType<typeof jobRow>,
+  sqlStatements: string[],
+  latestAttempt?: {
+    readonly attemptNo: number;
+    readonly errorCode: string | null;
+    readonly status: 'failed' | 'unknown';
+  },
+) {
   return vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     sqlStatements.push(sql);
     if (sql.includes('FROM publish_jobs AS job')) return [before];
-    if (sql.includes('FROM publish_attempts')) return [];
+    if (sql.includes('FROM publish_attempts')) return latestAttempt ? [latestAttempt] : [];
     if (sql.includes('UPDATE publish_jobs SET')) {
       return [
         {
@@ -236,12 +342,17 @@ function createUnknownResolutionTransaction(
   before: ReturnType<typeof jobRow>,
   sqlStatements: string[],
   resolution: 'not_published' | 'published',
+  latestAttempt: {
+    readonly attemptNo: number;
+    readonly errorCode: string | null;
+    readonly status: 'failed' | 'unknown';
+  } = { attemptNo: 3, errorCode: null, status: 'unknown' },
 ) {
   return vi.fn(async (strings: TemplateStringsArray) => {
     const sql = strings.join('?');
     sqlStatements.push(sql);
     if (sql.includes('FROM publish_jobs AS job')) return [before];
-    if (sql.includes('FROM publish_attempts')) return [{ attemptNo: 3, status: 'unknown' }];
+    if (sql.includes('FROM publish_attempts')) return [latestAttempt];
     if (sql.includes('FROM baijiahao_browser_publications') && sql.includes('FOR UPDATE')) {
       return [{ externalPostId: null, id: PUBLICATION_ID }];
     }
@@ -269,6 +380,7 @@ function createUnknownResolutionTransaction(
       ];
     }
     if (sql.includes('UPDATE content_packages')) return [{ id: PACKAGE_ID }];
+    if (sql.includes('UPDATE baijiahao_automation_runs')) return [{ id: AUTOMATION_ID }];
     return [];
   }) as unknown as TransactionSql;
 }
