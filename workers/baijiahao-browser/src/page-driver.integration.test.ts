@@ -10,6 +10,7 @@ import { PlaywrightBaijiahaoPageDriver } from './page-driver.js';
 
 type SubmittedPublication = {
   aiGenerated: boolean;
+  bodyImagesUploaded: number;
   coverUploaded: boolean;
   fingerprint: string;
   title: string;
@@ -93,11 +94,20 @@ describe('Baijiahao local browser simulator', () => {
               mimeType: 'image/jpeg',
               role: 'body',
             },
+            {
+              assetId: '00000000-0000-4000-8000-000000000148',
+              body: Buffer.from('second-simulated-body-image'),
+              mimeType: 'image/png',
+              role: 'body',
+            },
           ],
           payload: {
             abstract: '这是一段摘要',
             body_html: '<p>正文</p>',
-            body_asset_ids: ['00000000-0000-4000-8000-000000000147'],
+            body_asset_ids: [
+              '00000000-0000-4000-8000-000000000147',
+              '00000000-0000-4000-8000-000000000148',
+            ],
             body_text: '用于百家号浏览器仿真验证的正文内容。',
             citation_links: [],
             content_type: 'news',
@@ -116,7 +126,11 @@ describe('Baijiahao local browser simulator', () => {
         },
       );
       expect(preSubmitBytes).toBeGreaterThan(0);
-      expect(submitted).toMatchObject({ aiGenerated: true, coverUploaded: true });
+      expect(submitted).toMatchObject({
+        aiGenerated: true,
+        bodyImagesUploaded: 2,
+        coverUploaded: true,
+      });
       expect(result).toMatchObject({ externalId: 'simulator-145', status: 'processing' });
       const reconciled = await recovered.reconcile(
         accountId,
@@ -144,6 +158,7 @@ describe('Baijiahao local browser simulator', () => {
       expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
       submitted = {
         aiGenerated: true,
+        bodyImagesUploaded: 0,
         coverUploaded: true,
         fingerprint: 'a'.repeat(64),
         title: '重复匹配测试',
@@ -282,7 +297,8 @@ function route(
         本地上传<input type="file" name="media" accept="image/*">
         <button type="button" data-testid="cover-confirm">确定 (1)</button>
       </div>
-      <input type="file" data-field="body-images" accept="image/*" multiple>
+      <button type="button" data-function="insertimage">插入正文图片</button>
+      <input type="file" data-testid="body-image-picker" accept="image/*" style="display:none">
       <input data-field="tags"><input data-field="fingerprint">
       <select data-field="category"><option value="news">news</option></select>
       <label data-testid="not-original"><input type="radio" name="original">非原创</label>
@@ -291,9 +307,16 @@ function route(
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
         document.querySelector('[data-testid=cover-confirm]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='none';
+        document.querySelector('[data-function=insertimage]').onclick=()=>document.querySelector('[data-testid=body-image-picker]').click();
+        document.querySelector('[data-testid=body-image-picker]').onchange=()=>{
+          const image=document.querySelector('#ueditor_0').contentDocument.createElement('img');
+          image.alt='正文配图';
+          document.querySelector('#ueditor_0').contentDocument.body.append(image);
+        };
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
+            bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,
             coverUploaded:document.querySelector('[name=media]').files.length===1,
             title:document.querySelector('[data-field=title]').value,
             fingerprint:document.querySelector('[data-field=fingerprint]').value

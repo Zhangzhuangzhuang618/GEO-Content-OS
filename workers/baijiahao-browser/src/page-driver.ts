@@ -20,6 +20,7 @@ const SELECTORS = Object.freeze({
   body: '[contenteditable="true"][data-field="body"], .ProseMirror, [contenteditable="true"]',
   bodyImages:
     'input[type="file"][data-field="body-images"], input[type="file"][multiple][accept*="image"]',
+  bodyImageTrigger: '[data-function="insertimage"]',
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
   category: 'select[data-field="category"], select[name*="category"]',
   contentList:
@@ -223,8 +224,11 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       stage = 'upload_body_images';
       await uploadImages(
         page,
+        body,
         SELECTORS.bodyImages,
+        SELECTORS.bodyImageTrigger,
         input.images.filter((image) => image.role === 'body'),
+        this.config.navigationTimeoutMs,
       );
       stage = 'select_no_cover';
       if (input.payload.cover_asset_id === null) await clickOptional(page, SELECTORS.noCover);
@@ -517,31 +521,59 @@ async function fillOptional(page: Page, selector: string, value: string): Promis
 
 async function uploadImages(
   page: Page,
+  body: Locator,
   selector: string,
+  triggerSelector: string,
   images: readonly DriverPublishInput['images'][number][],
+  timeoutMs: number,
 ): Promise<void> {
   if (images.length === 0) return;
   const locator = page.locator(selector).first();
-  if ((await locator.count()) === 0) {
+  if ((await locator.count()) > 0) {
+    await setImageFiles(locator, images);
+    return;
+  }
+  const trigger = page.locator(triggerSelector).first();
+  if (!(await trigger.isVisible().catch(() => false))) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
-      'Baijiahao image upload field no longer matches the frozen page signature',
+      'Baijiahao image upload entry no longer matches the frozen page signature',
     );
   }
-  await setImageFiles(locator, images);
+  let insertedCount = await body.locator('img').count();
+  for (let offset = 0; offset < images.length;) {
+    const [fileChooser] = await Promise.all([
+      page.waitForEvent('filechooser', { timeout: timeoutMs }),
+      trigger.click(),
+    ]);
+    const batch = fileChooser.isMultiple()
+      ? images.slice(offset)
+      : images.slice(offset, offset + 1);
+    await fileChooser.setFiles(imageFilePayloads(batch));
+    insertedCount += batch.length;
+    await body
+      .locator('img')
+      .nth(insertedCount - 1)
+      .waitFor({ state: 'attached', timeout: timeoutMs });
+    offset += batch.length;
+  }
 }
 
 async function setImageFiles(
   locator: Locator,
   images: readonly DriverPublishInput['images'][number][],
 ): Promise<void> {
-  await locator.setInputFiles(
-    images.map((image, index) => ({
-      buffer: Buffer.from(image.body),
-      mimeType: image.mimeType,
-      name: `${image.role}-${index + 1}.${extension(image.mimeType)}`,
-    })),
-  );
+  await locator.setInputFiles(imageFilePayloads(images));
+}
+
+function imageFilePayloads(
+  images: readonly DriverPublishInput['images'][number][],
+): Parameters<Locator['setInputFiles']>[0] {
+  return images.map((image, index) => ({
+    buffer: Buffer.from(image.body),
+    mimeType: image.mimeType,
+    name: `${image.role}-${index + 1}.${extension(image.mimeType)}`,
+  }));
 }
 
 async function clickOptional(page: Page, selector: string): Promise<void> {
