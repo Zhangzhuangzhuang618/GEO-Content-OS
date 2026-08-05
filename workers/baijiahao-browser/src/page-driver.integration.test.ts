@@ -402,6 +402,9 @@ function route(
           }
           document.querySelector('[data-testid=body-image-dialog]').style.display='none';
         };
+        document.querySelector('[data-field=tags]').addEventListener('input',()=>{
+          document.querySelector('[data-testid=ai-generated]').checked=false;
+        });
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,

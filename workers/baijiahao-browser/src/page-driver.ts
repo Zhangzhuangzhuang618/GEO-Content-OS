@@ -242,20 +242,22 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await selectOptional(page, SELECTORS.category, input.payload.content_type);
       stage = 'select_originality';
       await clickOptional(page, SELECTORS.notOriginal);
-      stage = 'mark_ai_generated';
-      await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
       stage = 'fill_abstract';
       await fillOptional(page, SELECTORS.abstract, input.payload.abstract);
       stage = 'fill_tags';
       await fillOptional(page, SELECTORS.tags, input.payload.tags.join(','));
       stage = 'fill_fingerprint';
       await fillOptional(page, SELECTORS.fingerprint, input.contentFingerprint);
+      stage = 'mark_ai_generated';
+      await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
       stage = 'verify_pre_submit';
       await this.rejectCaptcha(page);
       stage = 'capture_pre_submit';
       const preSubmit = await page.screenshot({ fullPage: true, type: 'png' });
       stage = 'persist_pre_submit';
       await beforeSubmit(preSubmit);
+      stage = 'mark_ai_generated';
+      await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
       try {
         await submit.click();
         await page.waitForLoadState('domcontentloaded', {
