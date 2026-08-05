@@ -768,7 +768,7 @@ async function checkRequired(page: Page, selector: string, label: string): Promi
   if ((await checkbox.count()) === 0) {
     throw new PageDriverError('PAGE_SIGNATURE_CHANGED', `${label} checkbox is unavailable`);
   }
-  await checkbox.setChecked(true, { force: true });
+  if (!(await checkbox.isChecked())) await checkbox.click({ force: true });
   if (!(await checkbox.isChecked())) {
     throw new PageDriverError('PAGE_SIGNATURE_CHANGED', `${label} was not selected`);
   }
