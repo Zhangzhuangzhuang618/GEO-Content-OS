@@ -56,13 +56,21 @@ describe('AI Worker runtime wiring', () => {
     expect(recordUsage).toHaveBeenCalledOnce();
   });
 
-  it('includes trusted quality diagnostics in a generic platform rewrite', async () => {
+  it('retries an unchanged quality-guided rewrite with the original diagnostics', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
-    const adapter = new LooseMockAdapter(
-      [
-        { text: JSON.stringify(fixture.output.data) },
-        { text: JSON.stringify(platformExpansionDraft()) },
+    const original = multiPlatformContentData(['baijiahao'], new Set());
+    const originalVariant = original.variants[0]!;
+    const rewritten = {
+      ...original,
+      variants: [
+        {
+          ...originalVariant,
+          summary: '修订后直接说明搬家前需要核对的服务步骤、责任边界和风险处理方法。',
+        },
       ],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(original) }, { text: JSON.stringify(rewritten) }],
       'deepseek-v4-flash',
     );
     const writer = new RuntimeContentWriter(
@@ -72,34 +80,90 @@ describe('AI Worker runtime wiring', () => {
       async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
     );
     const issue = '质量问题 BLOCK FORMAT_DIRECT_ANSWER；位置：intro；修改建议：首段直接回答';
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['baijiahao']);
 
-    await writer.generateMaster({
-      context: context(MASTER_RUN, null),
+    const rewriteContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: rewriteContext,
       requestId: 'runtime-quality-rewrite-0061',
       revision: {
         candidate: {
           master_content: {
-            ...fixture.output.data.master_content,
+            ...original.master_content,
             schema_version: 'content-writer-data@1',
           } as unknown as GeneratedContent,
-          variants: fixture.output.data.variants.map(
-            (variant) =>
-              ({
-                ...variant,
-                schema_version: 'content-writer-data@1',
-              }) as unknown as GeneratedContent,
-          ),
+          variants: [
+            {
+              ...originalVariant,
+              schema_version: 'content-writer-data@1',
+            } as unknown as GeneratedContent,
+          ],
         },
         contentVersionId: '82000000-0000-4000-8000-000000000061',
         issues: [issue],
         qualityReportId: '83000000-0000-4000-8000-000000000061',
       },
-      writerInput: fixture.input as JsonObject,
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...rewriteContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'baijiahao',
+      requestId: 'runtime-quality-rewrite-variant-0061',
+      writerInput,
     });
 
     expect(adapter.requests[0]?.messages.map((message) => message.content).join('\n')).toContain(
       issue,
     );
+    const retryPrompt = adapter.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(retryPrompt).toContain(issue);
+    expect(retryPrompt).toContain('质量报告驱动重写结果与待修改版本完全相同');
+    expect(variant.summary).toBe(rewritten.variants[0]!.summary);
+  });
+
+  it('fails before persistence when a quality-guided rewrite remains unchanged', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const original = multiPlatformContentData(['baijiahao'], new Set());
+    const originalVariant = original.variants[0]!;
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(original) }, { text: JSON.stringify(original) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: 'runtime-unchanged-quality-rewrite-0061',
+        revision: {
+          candidate: {
+            master_content: {
+              ...original.master_content,
+              schema_version: 'content-writer-data@1',
+            } as unknown as GeneratedContent,
+            variants: [
+              {
+                ...originalVariant,
+                schema_version: 'content-writer-data@1',
+              } as unknown as GeneratedContent,
+            ],
+          },
+          contentVersionId: '82000000-0000-4000-8000-000000000061',
+          issues: ['质量问题 BLOCK fact.unsupported；修改建议：删除无证据事实'],
+          qualityReportId: '83000000-0000-4000-8000-000000000061',
+        },
+        writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['baijiahao']),
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONTENT_QUALITY_INSUFFICIENT',
+      message: expect.stringContaining('质量报告驱动重写结果与待修改版本完全相同'),
+    });
   });
 
   it('removes Baijiahao CTA and then expands the final allowed body above the frozen minimum', async () => {

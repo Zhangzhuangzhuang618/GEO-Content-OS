@@ -39,6 +39,7 @@ import {
 import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 
+import { contentHash } from './generation.content.js';
 import { GenerationWorkerError } from './generation.errors.js';
 import type {
   ContentWriterPort,
@@ -595,7 +596,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     const validationPolicy = revision ? 'quality' : input.context.modelPolicy;
     let output = result.output;
     let assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-    let deterministicIssues = deterministicContentIssues(output.data);
+    let deterministicIssues = rewriteDeterministicIssues(output.data, revision);
     if (
       deterministicIssues.length === 0 &&
       (assessment.passed || (!revision && input.context.modelPolicy === 'fast'))
@@ -603,10 +604,13 @@ export class RuntimeContentWriter implements ContentWriterPort {
       return output;
     }
     let shortfalls = contentLengthShortfalls(assessment.issues);
-    if (deterministicIssues.length === 0 && shortfalls) {
+    if (
+      shortfalls &&
+      (deterministicIssues.length === 0 || onlyUnchangedRewriteIssues(deterministicIssues))
+    ) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = deterministicContentIssues(output.data);
+      deterministicIssues = rewriteDeterministicIssues(output.data, revision);
       if (assessment.passed && deterministicIssues.length === 0) return output;
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
@@ -618,17 +622,22 @@ export class RuntimeContentWriter implements ContentWriterPort {
       ...invocation,
       revision: {
         candidate: output.data,
-        issues: Object.freeze([...assessment.issues, ...deterministicIssues]),
+        issues: Object.freeze([
+          ...new Set([...(revision?.issues ?? []), ...assessment.issues, ...deterministicIssues]),
+        ]),
       },
     });
     output = result.output;
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-    deterministicIssues = deterministicContentIssues(output.data);
+    deterministicIssues = rewriteDeterministicIssues(output.data, revision);
     shortfalls = contentLengthShortfalls(assessment.issues);
-    if (deterministicIssues.length === 0 && shortfalls) {
+    if (
+      shortfalls &&
+      (deterministicIssues.length === 0 || onlyUnchangedRewriteIssues(deterministicIssues))
+    ) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = deterministicContentIssues(output.data);
+      deterministicIssues = rewriteDeterministicIssues(output.data, revision);
     }
     if (!assessment.passed || deterministicIssues.length > 0) {
       throw new GenerationWorkerError(
@@ -1028,6 +1037,32 @@ function deterministicContentIssues(data: ContentWriterData): readonly string[] 
     }
   }
   return Object.freeze(issues);
+}
+
+function rewriteDeterministicIssues(
+  data: ContentWriterData,
+  revision?: ContentWriterRevision,
+): readonly string[] {
+  const issues = [...deterministicContentIssues(data)];
+  if (!revision) return Object.freeze(issues);
+  for (const current of revision.candidate.variants) {
+    const rewritten = data.variants.find(
+      (candidate) => candidate.platform_code === current.platform_code,
+    );
+    if (rewritten && contentHash(generated(rewritten)) === contentHash(generated(current))) {
+      issues.push(
+        `${current.platform_code}:质量报告驱动重写结果与待修改版本完全相同，必须根据原质量问题实质修改目标平台内容，不得原样返回`,
+      );
+    }
+  }
+  return Object.freeze(issues);
+}
+
+function onlyUnchangedRewriteIssues(issues: readonly string[]): boolean {
+  return (
+    issues.length > 0 &&
+    issues.every((issue) => issue.includes('质量报告驱动重写结果与待修改版本完全相同'))
+  );
 }
 
 function officialSiteBodyCharacterCount(article: OfficialSiteArticleDraft): number {
