@@ -243,7 +243,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       stage = 'select_originality';
       await clickOptional(page, SELECTORS.notOriginal);
       stage = 'mark_ai_generated';
-      await checkOptional(page, SELECTORS.aiGenerated);
+      await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
       stage = 'fill_abstract';
       await fillOptional(page, SELECTORS.abstract, input.payload.abstract);
       stage = 'fill_tags';
@@ -628,17 +628,23 @@ async function fillBody(
   value: string,
   timeoutMs: number,
 ): Promise<void> {
+  const editorValue = value.replace(/^(?!1\.\s)\d+\.\s+/gmu, '');
   await body.click();
   await body.press('ControlOrMeta+A');
-  await body.pressSequentially(value, { timeout: timeoutMs });
+  await body.pressSequentially(editorValue, { timeout: timeoutMs });
   const actual = normalizeEditorText(await body.innerText());
   const expected = normalizeEditorText(value);
-  const expectedAutoLists = normalizeEditorText(value.replace(/^1\.\s+/gmu, ''));
+  const expectedAutoLists = normalizeEditorText(value.replace(/^\d+\.\s+/gmu, ''));
   const expectedListCount = [...value.matchAll(/^1\.\s+/gmu)].length;
+  const expectedListItemCount = [...value.matchAll(/^\d+\.\s+/gmu)].length;
   const actualListCount = await body.locator('ol').count();
+  const actualListItemCount = await body.locator('ol > li').count();
   if (
-    actual !== expected &&
-    !(actual === expectedAutoLists && actualListCount === expectedListCount)
+    (expectedListItemCount === 0 && actual !== expected) ||
+    (expectedListItemCount > 0 &&
+      (actual !== expectedAutoLists ||
+        actualListCount !== expectedListCount ||
+        actualListItemCount !== expectedListItemCount))
   ) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
@@ -753,11 +759,19 @@ async function clickOptional(page: Page, selector: string): Promise<void> {
   if (await locator.isVisible().catch(() => false)) await locator.click();
 }
 
-async function checkOptional(page: Page, selector: string): Promise<void> {
+async function checkRequired(page: Page, selector: string, label: string): Promise<void> {
   const locator = page.locator(selector).first();
-  if (!(await locator.isVisible().catch(() => false))) return;
+  if (!(await locator.isVisible().catch(() => false))) {
+    throw new PageDriverError('PAGE_SIGNATURE_CHANGED', `${label} control is unavailable`);
+  }
   const checkbox = locator.locator('input[type="checkbox"]').first();
-  if ((await checkbox.count()) === 0 || !(await checkbox.isChecked())) await locator.click();
+  if ((await checkbox.count()) === 0) {
+    throw new PageDriverError('PAGE_SIGNATURE_CHANGED', `${label} checkbox is unavailable`);
+  }
+  await checkbox.setChecked(true);
+  if (!(await checkbox.isChecked())) {
+    throw new PageDriverError('PAGE_SIGNATURE_CHANGED', `${label} was not selected`);
+  }
 }
 
 async function selectOptional(page: Page, selector: string, value: string): Promise<void> {

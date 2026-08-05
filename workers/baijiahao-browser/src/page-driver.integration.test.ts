@@ -362,7 +362,7 @@ function route(
           editorBody.dataset.listenerRegistered='true';
           editorBody.addEventListener('input',()=>{
             if(editorBody.innerText.endsWith('收尾。') && editorBody.innerText.includes('1. 第一步')) {
-              editorBody.innerHTML='<p>用于百家号浏览器仿真验证的正文内容。</p><ol><li>第一步\\n2. 第二步</li></ol><p>&#8205;收尾。</p>';
+              editorBody.innerHTML='<p>用于百家号浏览器仿真验证的正文内容。</p><ol><li>第一步</li><li>第二步</li></ol><p>&#8205;收尾。</p>';
             }
           });
         };
