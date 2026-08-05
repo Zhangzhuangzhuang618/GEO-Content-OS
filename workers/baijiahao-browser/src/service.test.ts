@@ -203,6 +203,86 @@ describe('Baijiahao browser service', () => {
     expect(verifyAuthenticated).not.toHaveBeenCalled();
   });
 
+  it('re-verifies an attention session and clears the browser safety pause', async () => {
+    const attention = browserSession('attention_required');
+    const authenticated = {
+      ...attention,
+      lastVerifiedAt: new Date('2026-08-05T00:00:00.000Z'),
+      status: 'authenticated' as const,
+      version: 2,
+    };
+    const markSession = vi.fn(async () => authenticated);
+    const store = {
+      getSession: vi.fn(async () => attention),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      verifyAuthenticated: vi.fn(async () => true),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'authenticated',
+      version: 2,
+    });
+    expect(driver.verifyAuthenticated).toHaveBeenCalledOnce();
+    expect(markSession).toHaveBeenCalledWith(attention, {
+      error: null,
+      lastVerifiedAt: expect.any(Date),
+      status: 'authenticated',
+    });
+  });
+
+  it('keeps browser attention separate from login expiry before publishing', async () => {
+    const attention = browserSession('attention_required');
+    const store = {
+      getOrCreateSession: vi.fn(async () => attention),
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      verifyAuthenticated: vi.fn(async () => true),
+    } as unknown as BaijiahaoPageDriver;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+    const payload = {
+      abstract: '用于验证浏览器安全暂停的摘要。',
+      body_asset_ids: [],
+      body_html: '<p>用于验证浏览器安全暂停的正文。</p>',
+      body_text: '用于验证浏览器安全暂停的正文。',
+      citation_links: [],
+      content_type: 'news',
+      cover_asset_id: null,
+      platform_code: 'baijiahao' as const,
+      rule_version: 'baijiahao-render-rules@1.1.0' as const,
+      schema_version: 'baijiahao-payload@2' as const,
+      tags: ['百家号', '安全暂停', '验证'],
+      title: '百家号浏览器安全暂停验证',
+    };
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'baijiahao-attention-required',
+        payload,
+        payload_hash: hashBaijiahaoPayload(payload),
+      }),
+    ).rejects.toMatchObject({ code: 'SESSION_ATTENTION_REQUIRED', statusCode: 423 });
+    expect(driver.verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
   it('redacts browser secrets from diagnostics', () => {
     expect(safeBrowserError(new Error('Cookie: SID=secret; password=hidden'))).toBe(
       'Error: Cookie: [REDACTED]',
@@ -291,16 +371,17 @@ describe('Baijiahao browser service', () => {
 });
 
 function browserSession(status: BrowserSession['status']): BrowserSession {
+  const hasAuthenticatedState = status === 'authenticated' || status === 'attention_required';
   return Object.freeze({
     accountId: ACCOUNT_ID,
-    authenticatedAt: status === 'authenticated' ? new Date('2026-08-02T00:00:00.000Z') : null,
+    authenticatedAt: hasAuthenticatedState ? new Date('2026-08-02T00:00:00.000Z') : null,
     id: SESSION_ID,
-    lastVerifiedAt: status === 'authenticated' ? new Date('2026-08-02T00:00:00.000Z') : null,
+    lastVerifiedAt: hasAuthenticatedState ? new Date('2026-08-02T00:00:00.000Z') : null,
     profileKey: `baijiahao/${TENANT_ID}/${ACCOUNT_ID}`,
     qrExpiresAt: null,
     status,
-    storageStateCiphertext: status === 'authenticated' ? 'encrypted-state' : null,
-    storageStateKeyVersion: status === 'authenticated' ? 'test-v1' : null,
+    storageStateCiphertext: hasAuthenticatedState ? 'encrypted-state' : null,
+    storageStateKeyVersion: hasAuthenticatedState ? 'test-v1' : null,
     tenantId: TENANT_ID,
     version: 1,
   });

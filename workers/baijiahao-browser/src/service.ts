@@ -98,10 +98,15 @@ export class BaijiahaoBrowserService {
 
   public async sessionStatus(accountId: string): Promise<Readonly<Record<string, unknown>>> {
     const session = await this.store.getSession(accountId);
-    if (session.status !== 'authenticated') return sessionView(session);
+    if (!canVerifySession(session)) return sessionView(session);
     return this.locks.run(accountId, async () => {
       const current = await this.store.getSession(accountId);
-      if (current.status !== 'authenticated') return sessionView(current);
+      if (
+        !canVerifySession(current) ||
+        (session.status === 'authenticated' && current.status !== 'authenticated')
+      ) {
+        return sessionView(current);
+      }
       try {
         const storageState = await this.decryptState(current);
         const authenticated = await this.driver.verifyAuthenticated(
@@ -223,6 +228,13 @@ export class BaijiahaoBrowserService {
     readonly url: string | null;
   }> {
     let session = await this.store.getOrCreateSession(accountId);
+    if (session.status === 'attention_required') {
+      throw new BrowserGatewayError(
+        423,
+        'SESSION_ATTENTION_REQUIRED',
+        'Baijiahao browser automation is paused for manual attention; login has not been marked expired',
+      );
+    }
     if (session.status !== 'authenticated') {
       throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login is required');
     }
@@ -519,6 +531,10 @@ function sessionView(session: BrowserSession): Readonly<Record<string, unknown>>
     status: session.status,
     version: session.version,
   });
+}
+
+function canVerifySession(session: BrowserSession): boolean {
+  return session.status === 'authenticated' || session.status === 'attention_required';
 }
 
 function publicationStatus(status: RemotePublication['status']): PublicationClaim['status'] {

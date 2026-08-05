@@ -218,6 +218,11 @@ export function BaijiahaoAutomationPanel({
                 <p className="mt-1 text-xs text-ink-500">
                   最近核验：{formatDateTime(session?.last_verified_at)}
                 </p>
+                {session?.status === 'attention_required' ? (
+                  <p className="mt-2 max-w-xl text-xs leading-5 text-amber-800">
+                    当前是浏览器操作安全暂停，未判定为登录过期。点击“实时核验登录态”可检查现有会话并解除暂停；若仍失败，再进行人工处理。
+                  </p>
+                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -238,7 +243,9 @@ export function BaijiahaoAutomationPanel({
                     ? '正在启动…'
                     : session?.status === 'reauth'
                       ? '重新扫码'
-                      : '扫码登录'}
+                      : session?.status === 'attention_required'
+                        ? '检查并恢复'
+                        : '扫码登录'}
                 </button>
               </div>
             </div>
@@ -592,7 +599,7 @@ function sessionLabel(status: BaijiahaoBrowserSession['status']) {
   return (
     {
       authenticated: '已登录',
-      attention_required: '页面变化或验证码，需人工处理',
+      attention_required: '浏览器操作需人工处理（未判定登录过期）',
       disabled: '已停用',
       login_required: '尚未登录',
       qr_ready: '等待扫码',

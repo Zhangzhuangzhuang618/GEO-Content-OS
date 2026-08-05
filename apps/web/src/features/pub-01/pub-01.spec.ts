@@ -573,6 +573,53 @@ test('shows actionable Baijiahao manual-required items', async ({ page }) => {
   );
 });
 
+test('distinguishes Baijiahao browser attention from login expiry and allows re-verification', async ({
+  page,
+}) => {
+  const policy = baijiahaoPolicy();
+  const attentionPolicy = {
+    ...policy,
+    browser_session: {
+      ...policy.browser_session!,
+      status: 'attention_required' as const,
+    },
+  };
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '百家号内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/baijiahao-browser-session')) {
+      await json(route, {
+        data: policy.browser_session,
+        meta: { request_id: 'baijiahao-session-verified' },
+      });
+      return;
+    }
+    if (path.endsWith('/baijiahao-automation')) {
+      await json(route, {
+        data: [attentionPolicy],
+        meta: { request_id: 'baijiahao-policy-attention' },
+      });
+      return;
+    }
+    await json(route, { data: [baijiahaoAccount()], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '百家号自动化' }).click();
+  await expect(page.getByText('浏览器操作需人工处理（未判定登录过期）')).toBeVisible();
+  await expect(page.getByText(/当前是浏览器操作安全暂停，未判定为登录过期/u)).toBeVisible();
+  await expect(page.getByRole('button', { name: '检查并恢复' })).toBeVisible();
+
+  await page.getByRole('button', { name: '实时核验登录态' }).click();
+  await expect(page.getByText('登录态已实时核验：已登录。')).toBeVisible();
+  await expect(page.getByText('状态：已登录')).toBeVisible();
+});
+
 test('denies non-publisher roles before requesting account data', async ({ page }) => {
   let accountRequests = 0;
   await page.unroute('**/api/v1/auth/tenants');
