@@ -47,6 +47,7 @@ const SELECTORS = Object.freeze({
 const AUTHENTICATED_HOME_MARKERS = Object.freeze(['发布作品', '内容管理', '个人中心']);
 const CONTENT_MANAGEMENT_ENTRY = '内容管理';
 const CONTENT_MANAGEMENT_DESTINATIONS = Object.freeze(['作品管理', '我的内容']);
+const COVER_CONFIRM_READY_BACKGROUND_COLOR = 'rgb(56, 85, 213)';
 
 export class PageDriverError extends Error {
   public constructor(
@@ -873,8 +874,27 @@ async function confirmCoverUpload(
     })
     .first();
   await confirm.waitFor({ state: 'visible', timeout: timeoutMs });
+  await waitForCoverConfirmationReady(confirm, timeoutMs);
   await confirm.click({ timeout: timeoutMs });
   await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });
+}
+
+async function waitForCoverConfirmationReady(confirm: Locator, timeoutMs: number): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const backgroundColor = await confirm
+      .evaluate(
+        (element) =>
+          element.ownerDocument.defaultView?.getComputedStyle(element).backgroundColor ?? null,
+      )
+      .catch(() => null);
+    if (backgroundColor === COVER_CONFIRM_READY_BACKGROUND_COLOR) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  }
+  throw new PageDriverError(
+    'PAGE_SIGNATURE_CHANGED',
+    'Baijiahao cover confirmation did not become actionable',
+  );
 }
 
 async function confirmBodyImageUpload(

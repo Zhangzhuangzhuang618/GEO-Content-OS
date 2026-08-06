@@ -342,7 +342,7 @@ function route(
       <button type="button" data-testid="cover-trigger">选择封面</button>
       <div role="dialog" data-testid="cover-dialog" style="display:none">
         本地上传<input type="file" name="media" accept="image/*">
-        <button type="button" data-testid="cover-confirm" data-ready="false">确定</button>
+        <button type="button" data-testid="cover-confirm" data-ready="false" style="background:rgb(175, 195, 255)">确定</button>
       </div>
       <div data-testid="cover-preview" style="display:none">封面已就绪</div>
       <button type="button" data-function="insertimage">插入正文图片</button>
@@ -388,11 +388,12 @@ function route(
         registerEditorInput();
         document.querySelector('[name=media]').onchange=()=>{
           const picker=document.querySelector('[name=media]');
+          const confirm=document.querySelector('[data-testid=cover-confirm]');
+          confirm.textContent='确定 ('+picker.files.length+')';
           setTimeout(()=>{
-            const confirm=document.querySelector('[data-testid=cover-confirm]');
             confirm.dataset.ready='true';
-            confirm.textContent='确定 ('+picker.files.length+')';
-          },100);
+            confirm.style.background='rgb(56, 85, 213)';
+          },300);
         };
         document.querySelector('[data-testid=cover-confirm]').onclick=(event)=>{
           if(event.currentTarget.dataset.ready!=='true') return;
