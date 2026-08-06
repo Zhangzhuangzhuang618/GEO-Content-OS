@@ -339,13 +339,15 @@ function route(
       `
       <input data-field="title"><textarea data-field="abstract"></textarea>
       <iframe id="ueditor_0" srcdoc="&lt;body contenteditable='true'&gt;&lt;/body&gt;"></iframe>
-      <button type="button" data-testid="cover-trigger">选择封面</button>
+      <button type="button" data-testid="cover-trigger" style="display:none">选择封面</button>
       <div role="dialog" data-testid="cover-dialog" style="display:none">
         本地上传<input type="file" name="media" accept="image/*">
         <button type="button" data-testid="cover-confirm" data-ready="false" style="background:rgb(175, 195, 255)">确定</button>
       </div>
       <div data-testid="cover-processing" style="display:none">封面裁剪处理中，请稍后再点击“确定”</div>
-      <div data-testid="cover-preview" style="display:none">封面已就绪</div>
+      <div data-testid="cover-preview" style="display:block">
+        封面已就绪<button type="button" data-testid="cover-replace" aria-label="更换封面">更换</button>
+      </div>
       <button type="button" data-function="insertimage">插入正文图片</button>
       <div role="dialog" data-testid="body-image-dialog" style="display:none">
         本地图片
@@ -361,6 +363,7 @@ function route(
       <button data-testid="submit">发布</button>
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
+        document.querySelector('[data-testid=cover-replace]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
         const editorFrame=document.querySelector('#ueditor_0');
         let editorModelContent='';
         window.UE_V2={instants:{ueditorInstant0:{
@@ -398,6 +401,7 @@ function route(
           },300);
         };
         let coverConfirmAttempts=0;
+        let coverUploadConfirmed=false;
         document.querySelector('[data-testid=cover-confirm]').onclick=(event)=>{
           if(event.currentTarget.dataset.ready!=='true') return;
           coverConfirmAttempts+=1;
@@ -408,6 +412,7 @@ function route(
             return;
           }
           document.querySelector('[data-testid=cover-dialog]').style.display='none';
+          coverUploadConfirmed=true;
           setTimeout(()=>document.querySelector('[data-testid=cover-preview]').style.display='block',300);
         };
         document.querySelector('[data-function=insertimage]').onclick=()=>document.querySelector('[data-testid=body-image-dialog]').style.display='block';
@@ -445,7 +450,7 @@ function route(
             bodyInputRegistered:document.querySelector('#ueditor_0').contentDocument.body.innerText.length>0,
             bodyModelRegistered:window.UE_V2.instants.ueditorInstant0.hasContents(),
             bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,
-            coverUploaded:document.querySelector('[data-testid=cover-preview]').style.display==='block',
+            coverUploaded:coverUploadConfirmed,
             title:document.querySelector('[data-field=title]').value,
             fingerprint:document.querySelector('[data-field=fingerprint]').value
           })});

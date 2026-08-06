@@ -578,13 +578,19 @@ async function uploadCover(
     return;
   }
   const trigger = page.locator(SELECTORS.coverTrigger).first();
-  if (!(await trigger.isVisible().catch(() => false))) {
-    throw new PageDriverError(
-      'PAGE_SIGNATURE_CHANGED',
-      'Baijiahao cover upload entry no longer matches the frozen page signature',
-    );
+  if (await trigger.isVisible().catch(() => false)) {
+    await trigger.click();
+  } else {
+    const preview = page.locator(SELECTORS.coverPreview).first();
+    const replace = page.getByRole('button', { name: /^(?:更换|更换封面)$/u }).first();
+    if (!(await preview.isVisible().catch(() => false)) || (await replace.count()) === 0) {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Baijiahao cover upload entry no longer matches the frozen page signature',
+      );
+    }
+    await replace.click();
   }
-  await trigger.click();
   const dialog = page.getByRole('dialog').filter({ hasText: '本地上传' }).first();
   await dialog.waitFor({ state: 'visible', timeout: timeoutMs });
   const locator = dialog.locator(SELECTORS.cover).first();
