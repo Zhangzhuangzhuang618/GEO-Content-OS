@@ -11,6 +11,7 @@ import { PlaywrightBaijiahaoPageDriver } from './page-driver.js';
 type SubmittedPublication = {
   aiGenerated: boolean;
   bodyInputRegistered: boolean;
+  bodyModelRegistered: boolean;
   bodyImagesUploaded: number;
   coverUploaded: boolean;
   fingerprint: string;
@@ -133,6 +134,7 @@ describe('Baijiahao local browser simulator', () => {
       expect(submitted).toMatchObject({
         aiGenerated: true,
         bodyInputRegistered: true,
+        bodyModelRegistered: true,
         bodyImagesUploaded: 2,
         coverUploaded: true,
       });
@@ -164,6 +166,7 @@ describe('Baijiahao local browser simulator', () => {
       submitted = {
         aiGenerated: true,
         bodyInputRegistered: true,
+        bodyModelRegistered: true,
         bodyImagesUploaded: 0,
         coverUploaded: true,
         fingerprint: 'a'.repeat(64),
@@ -219,6 +222,7 @@ describe('Baijiahao local browser simulator', () => {
       submitted = {
         aiGenerated: true,
         bodyInputRegistered: true,
+        bodyModelRegistered: true,
         bodyImagesUploaded: 0,
         coverUploaded: true,
         fingerprint: 'a'.repeat(64),
@@ -356,6 +360,20 @@ function route(
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
         const editorFrame=document.querySelector('#ueditor_0');
+        let editorModelContent='';
+        window.UE_V2={instants:{ueditorInstant0:{
+          isReady:1,
+          setContent:(html)=>{
+            editorModelContent=html;
+            editorFrame.contentDocument.body.innerHTML=html;
+          },
+          getContent:()=>editorModelContent,
+          getContentTxt:()=>editorFrame.contentDocument.body.innerText,
+          hasContents:()=>editorModelContent.length>0,
+          fireEvent:()=>{},
+          sync:()=>{},
+          focus:()=>{}
+        }}};
         const registerEditorInput=()=>{
           const editorBody=editorFrame.contentDocument.body;
           if(editorBody.dataset.listenerRegistered==='true') return;
@@ -409,6 +427,7 @@ function route(
           await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
             bodyInputRegistered:document.querySelector('#ueditor_0').contentDocument.body.innerText.length>0,
+            bodyModelRegistered:window.UE_V2.instants.ueditorInstant0.hasContents(),
             bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,
             coverUploaded:document.querySelector('[data-testid=cover-preview]').style.display==='block',
             title:document.querySelector('[data-field=title]').value,

@@ -630,10 +630,66 @@ async function fillBody(
   value: string,
   timeoutMs: number,
 ): Promise<void> {
-  const editorValue = value.replace(/^(?!1\.\s)\d+\.\s+/gmu, '');
-  await body.click();
-  await body.press('ControlOrMeta+A');
-  await body.pressSequentially(editorValue, { timeout: timeoutMs });
+  const ueditorFrame = page.locator('iframe#ueditor_0');
+  let modelText: string | null = null;
+  if ((await ueditorFrame.count()) > 0) {
+    try {
+      await page.waitForFunction(
+        `(() => {
+          const ue = window.UE_V2;
+          return Object.values(ue?.instants ?? {}).some(
+            (instance) => instance?.isReady && typeof instance?.setContent === 'function'
+          );
+        })()`,
+        undefined,
+        { timeout: timeoutMs },
+      );
+    } catch {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Baijiahao UE_V2 editor instance did not become ready',
+      );
+    }
+    const editorState = await page.evaluate((html) => {
+      type EditorInstance = {
+        readonly isReady?: number | boolean;
+        fireEvent(name: string): void;
+        focus(): void;
+        getContent(): string;
+        getContentTxt(): string;
+        hasContents(): boolean;
+        setContent(value: string): void;
+        sync(): void;
+      };
+      const ue = Reflect.get(globalThis, 'UE_V2') as
+        { readonly instants?: Readonly<Record<string, EditorInstance>> } | undefined;
+      const editor = Object.values(ue?.instants ?? {}).find(
+        (instance) => instance.isReady && typeof instance.setContent === 'function',
+      );
+      if (!editor) return null;
+      editor.setContent(html);
+      editor.fireEvent('contentchange');
+      editor.sync();
+      editor.focus();
+      return {
+        content: editor.getContent(),
+        hasContents: editor.hasContents(),
+        text: editor.getContentTxt(),
+      };
+    }, renderUeditorHtml(value));
+    if (!editorState?.hasContents || editorState.content.length === 0) {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Baijiahao UE_V2 editor model did not register the body text',
+      );
+    }
+    modelText = editorState.text;
+  } else {
+    const editorValue = value.replace(/^(?!1\.\s)\d+\.\s+/gmu, '');
+    await body.click();
+    await body.press('ControlOrMeta+A');
+    await body.pressSequentially(editorValue, { timeout: timeoutMs });
+  }
   const actual = normalizeEditorText(await body.innerText());
   const expected = normalizeEditorText(value);
   const expectedAutoLists = normalizeEditorText(value.replace(/^\d+\.\s+/gmu, ''));
@@ -653,6 +709,15 @@ async function fillBody(
       'Baijiahao editor did not preserve the complete body text',
     );
   }
+  if (
+    modelText !== null &&
+    normalizeEditorCharacters(modelText) !== normalizeEditorCharacters(expectedAutoLists)
+  ) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao UE_V2 editor model did not preserve the complete body text',
+    );
+  }
   const zeroCount = page.getByText(/字数\s*0/u).first();
   if (await zeroCount.isVisible().catch(() => false)) {
     try {
@@ -668,6 +733,42 @@ async function fillBody(
 
 function normalizeEditorText(value: string): string {
   return normalizeText(value.replace(/\p{Cf}/gu, ''));
+}
+
+function normalizeEditorCharacters(value: string): string {
+  return value.normalize('NFKC').replace(/[\s\p{Cf}]+/gu, '');
+}
+
+function renderUeditorHtml(value: string): string {
+  const html: string[] = [];
+  let listOpen = false;
+  for (const line of value.split(/\r?\n/u)) {
+    const item = /^\d+\.\s+(.*)$/u.exec(line);
+    if (item) {
+      if (!listOpen) {
+        html.push('<ol>');
+        listOpen = true;
+      }
+      html.push(`<li>${escapeHtml(item[1] ?? '')}</li>`);
+      continue;
+    }
+    if (listOpen) {
+      html.push('</ol>');
+      listOpen = false;
+    }
+    if (line.trim().length > 0) html.push(`<p>${escapeHtml(line)}</p>`);
+  }
+  if (listOpen) html.push('</ol>');
+  return html.join('');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 async function uploadImages(
