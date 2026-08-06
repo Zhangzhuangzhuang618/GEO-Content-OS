@@ -424,7 +424,7 @@ function route(
           document.querySelector('[data-testid=ai-generated]').checked=false;
         });
         document.querySelector('[data-testid=submit]').onclick=async()=>{
-          await fetch('/submit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
+          const publishResponse=await fetch('/pcui/article/publish?type=news&callback=bjhpublish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
             bodyInputRegistered:document.querySelector('#ueditor_0').contentDocument.body.innerText.length>0,
             bodyModelRegistered:window.UE_V2.instants.ueditorInstant0.hasContents(),
@@ -433,18 +433,31 @@ function route(
             title:document.querySelector('[data-field=title]').value,
             fingerprint:document.querySelector('[data-field=fingerprint]').value
           })});
+          await publishResponse.json();
+          await new Promise((resolve)=>setTimeout(resolve,100));
           location.href='/manage';
         };
       </script>
     `,
     );
   }
-  if (request.method === 'POST' && request.url === '/submit') {
+  if (
+    request.method === 'POST' &&
+    request.url === '/pcui/article/publish?type=news&callback=bjhpublish'
+  ) {
     const chunks: Buffer[] = [];
     request.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
     request.on('end', () => {
       saveSubmitted(JSON.parse(Buffer.concat(chunks).toString('utf8')) as SubmittedPublication);
-      response.writeHead(204).end();
+      json(response, {
+        errno: 0,
+        errmsg: 'success',
+        ret: {
+          article_id: 'simulator-145',
+          status: 'analyze',
+          url: '/builder/preview/s?id=simulator-nid-145',
+        },
+      });
     });
     return;
   }
@@ -499,6 +512,11 @@ function contentList(
 function html(response: ServerResponse, body: string): void {
   response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
   response.end(`<!doctype html><html><body>${body}</body></html>`);
+}
+
+function json(response: ServerResponse, body: unknown): void {
+  response.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+  response.end(JSON.stringify(body));
 }
 
 function escapeHtml(value: string): string {

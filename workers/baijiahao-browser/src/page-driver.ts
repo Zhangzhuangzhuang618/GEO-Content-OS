@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-import { chromium, type BrowserContext, type Locator, type Page } from 'playwright';
+import { chromium, type BrowserContext, type Locator, type Page, type Response } from 'playwright';
 
 import type { BaijiahaoBrowserConfig } from './config.js';
 import type {
@@ -76,6 +76,7 @@ type PublishOperationStage =
   | 'select_category'
   | 'select_no_cover'
   | 'select_originality'
+  | 'submit'
   | 'upload_body_images'
   | 'upload_cover'
   | 'verify_editor'
@@ -258,17 +259,12 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await beforeSubmit(preSubmit);
       stage = 'mark_ai_generated';
       await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
-      try {
-        await submit.click();
-        await page.waitForLoadState('domcontentloaded', {
-          timeout: this.config.navigationTimeoutMs,
-        });
-      } catch {
-        throw new PageDriverError(
-          'PUBLISH_STATE_UNKNOWN',
-          'Baijiahao submission ended without a conclusive browser state',
-        );
-      }
+      stage = 'submit';
+      const acknowledged = await submitAndWaitForAcknowledgement(
+        page,
+        submit,
+        this.config.navigationTimeoutMs,
+      );
       const result = await this.reconcile(
         input.accountId,
         input.profilePath,
@@ -279,13 +275,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
         },
         input.storageStateJson,
       );
-      if (!result) {
-        throw new PageDriverError(
-          'PUBLISH_STATE_UNKNOWN',
-          'Baijiahao content list did not confirm the submitted article',
-        );
-      }
-      return result;
+      return result ?? acknowledged;
     } catch (error) {
       if (error instanceof PageDriverError || error instanceof PageDriverOperationError)
         throw error;
@@ -624,6 +614,67 @@ async function fillOptional(page: Page, selector: string, value: string): Promis
   if (await locator.isVisible().catch(() => false)) await locator.fill(value);
 }
 
+async function submitAndWaitForAcknowledgement(
+  page: Page,
+  submit: Locator,
+  timeoutMs: number,
+): Promise<RemotePublication> {
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      new URL(response.url()).pathname === '/pcui/article/publish',
+    { timeout: timeoutMs },
+  );
+  try {
+    await submit.click();
+  } catch {
+    void responsePromise.catch(() => undefined);
+    throw new PageDriverError(
+      'PUBLISH_STATE_UNKNOWN',
+      'Baijiahao submission click ended without a conclusive browser state',
+    );
+  }
+  let response: Response;
+  try {
+    response = await responsePromise;
+  } catch {
+    throw new PageDriverError(
+      'PUBLISH_STATE_UNKNOWN',
+      'Baijiahao submission did not return a publish acknowledgement',
+    );
+  }
+  const payload = (await response.json().catch(() => null)) as unknown;
+  if (!isRecord(payload) || typeof payload['errno'] !== 'number') {
+    throw new PageDriverError(
+      'PUBLISH_STATE_UNKNOWN',
+      'Baijiahao publish acknowledgement did not match the expected schema',
+    );
+  }
+  const message = typeof payload['errmsg'] === 'string' ? payload['errmsg'] : 'unknown error';
+  if (payload['errno'] !== 0) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      `Baijiahao rejected submission (${String(payload['errno'])}): ${message}`,
+    );
+  }
+  const result = payload['ret'];
+  if (!isRecord(result)) {
+    throw new PageDriverError(
+      'PUBLISH_STATE_UNKNOWN',
+      'Baijiahao accepted submission without publication metadata',
+    );
+  }
+  const externalId = firstString(result, ['article_id', 'id', 'nid']);
+  if (!externalId) {
+    throw new PageDriverError(
+      'PUBLISH_STATE_UNKNOWN',
+      'Baijiahao accepted submission without a publication identifier',
+    );
+  }
+  const url = normalizeUrl(firstString(result, ['url']), page.url());
+  return Object.freeze({ externalId, reviewReason: null, status: 'processing', url });
+}
+
 async function fillBody(
   page: Page,
   body: Locator,
@@ -950,6 +1001,24 @@ function normalizeUrl(value: string | null, base: string): string | null {
   } catch {
     return null;
   }
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function firstString(
+  value: Readonly<Record<string, unknown>>,
+  keys: readonly string[],
+): string | null {
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate;
+    if (typeof candidate === 'number' && Number.isSafeInteger(candidate)) {
+      return String(candidate);
+    }
+  }
+  return null;
 }
 
 function normalizeText(value: string): string {
