@@ -423,6 +423,11 @@ function route(
         document.querySelector('[data-field=tags]').addEventListener('input',()=>{
           document.querySelector('[data-testid=ai-generated]').checked=false;
         });
+        let aiClickAttempts=0;
+        document.querySelector('[data-testid=ai-generated]').addEventListener('click',(event)=>{
+          aiClickAttempts+=1;
+          if(aiClickAttempts===1) event.preventDefault();
+        });
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           const publishResponse=await fetch('/pcui/article/publish?type=news&callback=bjhpublish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
             aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
