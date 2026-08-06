@@ -48,6 +48,7 @@ const AUTHENTICATED_HOME_MARKERS = Object.freeze(['发布作品', '内容管理'
 const CONTENT_MANAGEMENT_ENTRY = '内容管理';
 const CONTENT_MANAGEMENT_DESTINATIONS = Object.freeze(['作品管理', '我的内容']);
 const COVER_CONFIRM_READY_BACKGROUND_COLOR = 'rgb(56, 85, 213)';
+const COVER_PROCESSING_MESSAGE = /封面裁剪处理中，\s*请稍后再点击[“"]确定[”"]/u;
 
 export class PageDriverError extends Error {
   public constructor(
@@ -874,6 +875,17 @@ async function confirmCoverUpload(
     })
     .first();
   await confirm.waitFor({ state: 'visible', timeout: timeoutMs });
+  await waitForCoverConfirmationReady(confirm, timeoutMs);
+  await confirm.click({ timeout: timeoutMs });
+  const page = dialog.page();
+  const processing = page.getByText(COVER_PROCESSING_MESSAGE).first();
+  const outcome = await Promise.race([
+    dialog.waitFor({ state: 'hidden', timeout: timeoutMs }).then(() => 'closed' as const),
+    processing.waitFor({ state: 'visible', timeout: timeoutMs }).then(() => 'processing' as const),
+  ]);
+  if (outcome === 'closed') return;
+  await page.mouse.move(0, 0);
+  await processing.waitFor({ state: 'hidden', timeout: timeoutMs });
   await waitForCoverConfirmationReady(confirm, timeoutMs);
   await confirm.click({ timeout: timeoutMs });
   await dialog.waitFor({ state: 'hidden', timeout: timeoutMs });

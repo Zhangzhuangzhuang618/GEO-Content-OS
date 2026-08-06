@@ -344,6 +344,7 @@ function route(
         本地上传<input type="file" name="media" accept="image/*">
         <button type="button" data-testid="cover-confirm" data-ready="false" style="background:rgb(175, 195, 255)">确定</button>
       </div>
+      <div data-testid="cover-processing" style="display:none">封面裁剪处理中，请稍后再点击“确定”</div>
       <div data-testid="cover-preview" style="display:none">封面已就绪</div>
       <button type="button" data-function="insertimage">插入正文图片</button>
       <div role="dialog" data-testid="body-image-dialog" style="display:none">
@@ -395,8 +396,16 @@ function route(
             confirm.style.background='rgb(56, 85, 213)';
           },300);
         };
+        let coverConfirmAttempts=0;
         document.querySelector('[data-testid=cover-confirm]').onclick=(event)=>{
           if(event.currentTarget.dataset.ready!=='true') return;
+          coverConfirmAttempts+=1;
+          if(coverConfirmAttempts===1) {
+            const processing=document.querySelector('[data-testid=cover-processing]');
+            processing.style.display='block';
+            setTimeout(()=>processing.style.display='none',300);
+            return;
+          }
           document.querySelector('[data-testid=cover-dialog]').style.display='none';
           setTimeout(()=>document.querySelector('[data-testid=cover-preview]').style.display='block',300);
         };
