@@ -37,8 +37,6 @@ const SELECTORS = Object.freeze({
   noCover: '[data-testid="no-cover"], label:has-text("无封面"), button:has-text("无封面")',
   notOriginal: '[data-testid="not-original"], label:has-text("非原创")',
   qr: '[data-testid="login-qr"], img.tang-pass-qrcode-img, img[src*="/v2/api/qrcode"]',
-  submit:
-    '[data-testid="publish-btn"], [data-testid="submit"], button:has-text("发布"), button:has-text("提交")',
   tags: 'input[placeholder*="标签"], input[data-field="tags"]',
   title:
     '[data-testid="news-title-input"] [contenteditable="true"], input[placeholder*="标题"], textarea[placeholder*="标题"], input[data-field="title"]',
@@ -211,7 +209,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await this.requireAuthenticated(page);
       const title = page.locator(SELECTORS.title).first();
       const body = await this.bodyLocator(page);
-      const submit = page.locator(SELECTORS.submit).first();
+      const submit = publishButton(page);
       for (const locator of [title, body, submit]) {
         if (!(await locator.isVisible().catch(() => false))) {
           throw new PageDriverError(
@@ -539,7 +537,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     }
     try {
       const title = page.locator(SELECTORS.title).first();
-      const submit = page.locator(SELECTORS.submit).first();
+      const submit = publishButton(page);
       await title.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
       const body = await this.bodyLocator(page);
       await Promise.all([
@@ -559,6 +557,10 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     }
     return page.locator(SELECTORS.body).first();
   }
+}
+
+function publishButton(page: Page): Locator {
+  return page.getByRole('button', { name: /^(?:发布|提交)$/u }).first();
 }
 
 async function uploadCover(

@@ -357,6 +357,7 @@ function route(
       <select data-field="category"><option value="news">news</option></select>
       <label data-testid="not-original"><input type="radio" name="original">非原创</label>
       <label><input type="checkbox" data-testid="ai-generated">采用AI生成内容</label>
+      <button type="button">定时发布</button>
       <button data-testid="submit">发布</button>
       <script>
         document.querySelector('[data-testid=cover-trigger]').onclick=()=>document.querySelector('[data-testid=cover-dialog]').style.display='block';
