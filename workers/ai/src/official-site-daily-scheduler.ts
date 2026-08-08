@@ -9,7 +9,14 @@ const DAILY_TARGET = 10;
 const MAX_ACTIVE_CANDIDATES = 3;
 const SHANGHAI_OFFSET = '+08:00';
 const ACTIVE_ITEM_STATUSES = ['generating', 'quality_check', 'rewriting', 'media_pending'] as const;
-const QUALIFIED_ITEM_STATUSES = ['qualified', 'scheduled', 'published', 'reserve'] as const;
+const DAILY_QUALIFIED_ITEM_STATUSES = [
+  'qualified',
+  'scheduled',
+  'published',
+  'publish_failed',
+  'reserve',
+] as const;
+const DAILY_COMMITTED_ITEM_STATUSES = ['scheduled', 'published', 'publish_failed'] as const;
 const SCHEDULE_TIMES = Object.freeze([
   '08:00:00',
   '09:30:00',
@@ -36,6 +43,7 @@ interface BatchRow {
   readonly candidateLimit: 30;
   readonly createdBy: string;
   readonly id: string;
+  readonly attemptNo: number;
   readonly policyId: string;
   readonly projectId: string;
   readonly scheduleTimes: readonly string[];
@@ -49,7 +57,18 @@ interface BatchRow {
 interface BatchCounts {
   readonly attempted: number;
   readonly inProgress: number;
+}
+
+interface DailyCounts {
+  readonly committed: number;
+  readonly publishFailed: number;
+  readonly published: number;
   readonly qualified: number;
+}
+
+interface AngleUsage {
+  readonly attempted: Set<string>;
+  readonly protected: Set<string>;
 }
 
 interface CandidateSeed {
@@ -226,33 +245,53 @@ export class OfficialSiteDailyScheduler {
       if (batch.status !== 'running') return;
       await retireGenerationFailures(transaction, batch);
       await retireQualityExecutionFailures(transaction, batch);
+      if (batch.attemptNo > 1) {
+        await scheduleAvailableItems(transaction, batch, now, true);
+      }
       const counts = await loadCounts(transaction, batch);
-      if (counts.qualified >= batch.targetCount) {
-        await scheduleBatch(transaction, batch, now);
+      let dailyCounts = await loadDailyCounts(transaction, batch);
+      if (dailyCounts.qualified >= batch.targetCount) {
+        await scheduleAvailableItems(transaction, batch, now, false);
+        dailyCounts = await loadDailyCounts(transaction, batch);
+        if (dailyCounts.committed < batch.targetCount) {
+          await setAttentionRequired(
+            transaction,
+            batch,
+            'DAILY_SCHEDULING_FAILED',
+            `当天已有 ${dailyCounts.qualified} 篇合格内容，但仅成功排期 ${dailyCounts.committed} 篇，请检查排期状态。`,
+          );
+          return;
+        }
+        await finalizeDailyPlan(transaction, batch, dailyCounts);
         return;
       }
       if (counts.attempted >= batch.candidateLimit && counts.inProgress === 0) {
+        await scheduleAvailableItems(transaction, batch, now, false);
+        dailyCounts = await loadDailyCounts(transaction, batch);
         await setAttentionRequired(
           transaction,
           batch,
           'DAILY_CANDIDATE_LIMIT_REACHED',
-          `当天已尝试 ${batch.candidateLimit} 篇，仍未获得 ${batch.targetCount} 篇合格内容。`,
+          `本次已尝试 ${batch.candidateLimit} 篇；当天已保留 ${dailyCounts.qualified} 篇合格内容并排期 ${dailyCounts.committed} 篇，仍缺 ${batch.targetCount - dailyCounts.qualified} 篇。`,
         );
         return;
       }
       const required = Math.min(
-        batch.targetCount - counts.qualified - counts.inProgress,
+        batch.targetCount - dailyCounts.qualified - counts.inProgress,
         batch.candidateLimit - counts.attempted,
         MAX_ACTIVE_CANDIDATES - counts.inProgress,
       );
       if (required <= 0) return;
       const seed = await loadCandidateSeed(transaction, batch);
+      const angleUsage = await loadAngleUsage(transaction, batch);
       for (let offset = 1; offset <= required; offset += 1) {
+        const candidateNo = counts.attempted + offset;
         await createCandidate(
           transaction,
           batch,
           seed,
-          counts.attempted + offset,
+          candidateNo,
+          selectAngle(angleUsage, candidateNo),
           this.automationConfig,
         );
       }
@@ -284,7 +323,8 @@ async function lockBatch(
   const rows = await transaction<BatchRow[]>`
     SELECT
       batch.id, batch.tenant_id AS "tenantId", batch.policy_id AS "policyId",
-      batch.business_date::text AS "businessDate", batch.status, batch.version,
+      batch.attempt_no AS "attemptNo", batch.business_date::text AS "businessDate",
+      batch.status, batch.version,
       policy.workspace_id AS "workspaceId", policy.project_id AS "projectId",
       policy.account_id AS "accountId", policy.created_by AS "createdBy",
       policy.daily_target_count AS "targetCount",
@@ -387,13 +427,55 @@ async function loadCounts(
     SELECT
       count(*)::integer AS attempted,
       count(*) FILTER (WHERE status=ANY(${[...ACTIVE_ITEM_STATUSES]}::varchar[]))::integer
-        AS "inProgress",
-      count(*) FILTER (WHERE status=ANY(${[...QUALIFIED_ITEM_STATUSES]}::varchar[]))::integer
-        AS qualified
+        AS "inProgress"
     FROM official_site_daily_batch_items
     WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid
   `;
-  return rows[0] ?? { attempted: 0, inProgress: 0, qualified: 0 };
+  return rows[0] ?? { attempted: 0, inProgress: 0 };
+}
+
+async function loadDailyCounts(
+  transaction: postgres.TransactionSql,
+  batch: BatchRow,
+): Promise<DailyCounts> {
+  const rows = await transaction<DailyCounts[]>`
+    SELECT
+      count(item.id) FILTER (
+        WHERE item.status=ANY(${[...DAILY_QUALIFIED_ITEM_STATUSES]}::varchar[])
+      )::integer AS qualified,
+      count(item.id) FILTER (
+        WHERE item.status=ANY(${[...DAILY_COMMITTED_ITEM_STATUSES]}::varchar[])
+      )::integer AS committed,
+      count(item.id) FILTER (WHERE item.status='published')::integer AS published,
+      count(item.id) FILTER (WHERE item.status='publish_failed')::integer AS "publishFailed"
+    FROM official_site_daily_batches AS source
+    LEFT JOIN official_site_daily_batch_items AS item
+      ON item.batch_id=source.id AND item.tenant_id=source.tenant_id
+    WHERE source.tenant_id=${batch.tenantId}::uuid
+      AND source.policy_id=${batch.policyId}::uuid
+      AND source.business_date=${batch.businessDate}::date
+  `;
+  return rows[0] ?? { committed: 0, publishFailed: 0, published: 0, qualified: 0 };
+}
+
+async function loadAngleUsage(
+  transaction: postgres.TransactionSql,
+  batch: BatchRow,
+): Promise<AngleUsage> {
+  const rows = await transaction<{ angleKey: string; isProtected: boolean }[]>`
+    SELECT item.angle_key AS "angleKey",bool_or(item.status<>'retired') AS "isProtected"
+    FROM official_site_daily_batches AS source
+    JOIN official_site_daily_batch_items AS item
+      ON item.batch_id=source.id AND item.tenant_id=source.tenant_id
+    WHERE source.tenant_id=${batch.tenantId}::uuid
+      AND source.policy_id=${batch.policyId}::uuid
+      AND source.business_date=${batch.businessDate}::date
+    GROUP BY item.angle_key
+  `;
+  return {
+    attempted: new Set(rows.map((row) => row.angleKey)),
+    protected: new Set(rows.filter((row) => row.isProtected).map((row) => row.angleKey)),
+  };
 }
 
 async function loadCandidateSeed(
@@ -498,9 +580,9 @@ async function createCandidate(
   batch: BatchRow,
   seed: CandidateSeed,
   candidateNo: number,
+  angle: ContentAngle,
   config: OfficialSiteAutomationConfig,
 ): Promise<void> {
-  const angle = CONTENT_ANGLES[(candidateNo - 1) % CONTENT_ANGLES.length]!;
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
   const title = truncateTitle(angle.title(keyword.term), 80);
   const objective = objectiveFor(candidateNo);
@@ -684,11 +766,15 @@ async function createCandidate(
   `;
 }
 
-async function scheduleBatch(
+async function scheduleAvailableItems(
   transaction: postgres.TransactionSql,
   batch: BatchRow,
   now: Date,
+  previousAttemptsOnly: boolean,
 ): Promise<void> {
+  const before = await loadDailyCounts(transaction, batch);
+  const remaining = batch.targetCount - before.committed;
+  if (remaining <= 0) return;
   const items = await transaction<QualifiedItem[]>`
     SELECT
       item.id, item.variant_id AS "variantId",
@@ -708,21 +794,27 @@ async function scheduleBatch(
       ON automation.variant_id=item.variant_id AND automation.tenant_id=item.tenant_id
       AND automation.content_version_id=item.content_version_id
       AND automation.status='publish_pending'
-    WHERE item.tenant_id=${batch.tenantId}::uuid AND item.batch_id=${batch.id}::uuid
-      AND item.status='qualified'
-    ORDER BY item.qualified_at,item.candidate_no,item.id
-    LIMIT ${batch.targetCount}
+    JOIN official_site_daily_batches AS source
+      ON source.id=item.batch_id AND source.tenant_id=item.tenant_id
+    WHERE item.tenant_id=${batch.tenantId}::uuid
+      AND source.policy_id=${batch.policyId}::uuid
+      AND source.business_date=${batch.businessDate}::date
+      AND item.status IN ('qualified','reserve')
+      AND (${previousAttemptsOnly}=false OR source.attempt_no<${batch.attemptNo})
+    ORDER BY source.attempt_no,item.qualified_at,item.candidate_no,item.id
+    LIMIT ${remaining}
     FOR UPDATE OF item,variant,automation
   `;
-  if (items.length < batch.targetCount) return;
-  const times = resolveScheduleTimes(
+  if (items.length === 0) return;
+  const allTimes = resolveScheduleTimes(
     batch.businessDate,
     batch.scheduleTimes.length === DAILY_TARGET ? batch.scheduleTimes : SCHEDULE_TIMES,
     now,
   );
   for (const [index, item] of items.entries()) {
-    const scheduledAt = times[index]!;
-    const idempotencyKey = `official-site-daily:${batch.id}:${index + 1}`;
+    const slot = before.committed + index;
+    const scheduledAt = allTimes[slot]!;
+    const idempotencyKey = `official-site-daily:${item.id}`;
     const jobs = await transaction<{ id: string; version: number }[]>`
       INSERT INTO publish_jobs (
         tenant_id,variant_id,content_version_id,account_id,scheduled_at,
@@ -754,19 +846,21 @@ async function scheduleBatch(
       RETURNING id
     `;
     if (runs.length !== 1) throw new Error('Daily automation run lease was lost');
-    await transaction`
+    const batchItems = await transaction<{ id: string }[]>`
       UPDATE official_site_daily_batch_items SET
         status='scheduled',publish_job_id=${job.id}::uuid,
         scheduled_at=${scheduledAt.toISOString()}::timestamptz
       WHERE id=${item.id}::uuid AND tenant_id=${batch.tenantId}::uuid
-        AND status='qualified'
+        AND status IN ('qualified','reserve')
+      RETURNING id
     `;
+    if (batchItems.length !== 1) throw new Error('Daily batch item lease was lost');
     const event = DomainEventEnvelopeSchema.parse({
       aggregate: { id: job.id, type: 'publish_job' },
       data: {
         job_id: job.id,
         job_version: job.version,
-        request_id: `daily-publish-${batch.id.slice(0, 8)}-${index + 1}`,
+        request_id: `daily-publish-${item.id.slice(0, 8)}`,
         scheduled_at: scheduledAt.toISOString(),
       },
       event_id: randomUUID(),
@@ -785,14 +879,42 @@ async function scheduleBatch(
       )
     `;
   }
+}
+
+async function finalizeDailyPlan(
+  transaction: postgres.TransactionSql,
+  batch: BatchRow,
+  counts: DailyCounts,
+): Promise<void> {
   await transaction`
-    UPDATE official_site_daily_batch_items SET status='reserve'
-    WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid
-      AND status='qualified' AND id<>ALL(${items.map((item) => item.id)}::uuid[])
+    UPDATE official_site_daily_batch_items AS item SET status='reserve'
+    FROM official_site_daily_batches AS source
+    WHERE source.id=item.batch_id AND source.tenant_id=item.tenant_id
+      AND source.tenant_id=${batch.tenantId}::uuid
+      AND source.policy_id=${batch.policyId}::uuid
+      AND source.business_date=${batch.businessDate}::date
+      AND item.status='qualified'
   `;
+  const status =
+    counts.published >= batch.targetCount
+      ? 'completed'
+      : counts.publishFailed > 0
+        ? 'attention_required'
+        : 'scheduled';
+  const error =
+    status === 'attention_required'
+      ? {
+          code: 'DAILY_PUBLISH_FAILED',
+          message: '官网发布重试 3 次后仍失败，请重试原发布任务，不要重新生成内容。',
+          schema_version: 'official-site-daily-error@1',
+        }
+      : null;
   await transaction`
     UPDATE official_site_daily_batches SET
-      status='scheduled',scheduled_at=now(),last_error_json=NULL,version=version+1
+      status=${status},scheduled_at=COALESCE(scheduled_at,now()),
+      completed_at=CASE WHEN ${status}='completed' THEN COALESCE(completed_at,now()) ELSE completed_at END,
+      last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb,
+      version=version+1
     WHERE id=${batch.id}::uuid AND tenant_id=${batch.tenantId}::uuid
       AND status='running' AND version=${batch.version}
   `;
@@ -880,6 +1002,18 @@ const CONTENT_ANGLES = Object.freeze([
   angle('professionalism', '专业判断', (keyword) => `如何判断${keyword}服务是否专业`),
   angle('complete-guide', '完整指南', (keyword) => `${keyword}完整指南：从需求到落地`),
 ]);
+
+type ContentAngle = (typeof CONTENT_ANGLES)[number];
+
+function selectAngle(usage: AngleUsage, candidateNo: number): ContentAngle {
+  const selected =
+    CONTENT_ANGLES.find((item) => !usage.attempted.has(item.key)) ??
+    CONTENT_ANGLES.find((item) => !usage.protected.has(item.key)) ??
+    CONTENT_ANGLES[(candidateNo - 1) % CONTENT_ANGLES.length]!;
+  usage.attempted.add(selected.key);
+  usage.protected.add(selected.key);
+  return selected;
+}
 
 function angle(key: string, label: string, title: (keyword: string) => string) {
   return Object.freeze({ key, label, title });

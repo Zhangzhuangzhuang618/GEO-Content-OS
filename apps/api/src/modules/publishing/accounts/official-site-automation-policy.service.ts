@@ -119,7 +119,18 @@ export class OfficialSiteAutomationPolicyService {
               batch.status='cancelled'
               AND batch.last_error_json->>'code'='DAILY_BATCH_MANUALLY_CANCELLED'
             )
-          ) AS restart_allowed,
+          ) AND (
+            SELECT count(*)
+            FROM official_site_daily_batches AS day_batch
+            JOIN official_site_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id
+              AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date
+              AND day_item.status IN (
+                'qualified','scheduled','published','publish_failed','reserve'
+              )
+          ) < policy.daily_target_count AS restart_allowed,
           count(item.id)::integer AS attempted_count,
           count(item.id) FILTER (
             WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
@@ -166,13 +177,38 @@ export class OfficialSiteAutomationPolicyService {
                 )
               )
           )::integer AS running_count,
-          count(item.id) FILTER (
-            WHERE item.status IN ('qualified','scheduled','published','publish_failed','reserve')
-          )::integer AS qualified_count,
-          count(item.id) FILTER (
-            WHERE item.status IN ('scheduled','published','publish_failed')
-          )::integer AS scheduled_count,
-          count(item.id) FILTER (WHERE item.status='published')::integer AS published_count,
+          (
+            SELECT count(*)::integer
+            FROM official_site_daily_batches AS day_batch
+            JOIN official_site_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id
+              AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date
+              AND day_item.status IN (
+                'qualified','scheduled','published','publish_failed','reserve'
+              )
+          ) AS qualified_count,
+          (
+            SELECT count(*)::integer
+            FROM official_site_daily_batches AS day_batch
+            JOIN official_site_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id
+              AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date
+              AND day_item.status IN ('scheduled','published','publish_failed')
+          ) AS scheduled_count,
+          (
+            SELECT count(*)::integer
+            FROM official_site_daily_batches AS day_batch
+            JOIN official_site_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id
+              AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date
+              AND day_item.status='published'
+          ) AS published_count,
           count(item.id) FILTER (WHERE item.status='retired')::integer AS retired_count
         FROM official_site_daily_batches AS batch
         LEFT JOIN official_site_daily_batch_items AS item
@@ -350,16 +386,51 @@ export class OfficialSiteAutomationPolicyService {
         businessDate: Date | string;
         errorCode: string | null;
         id: string;
+        publishedCount: number;
+        scheduledCount: number;
         status: 'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled';
+        successfulCount: number;
         version: number;
       }[]
     >`
       SELECT
         id,attempt_no AS "attemptNo",business_date AS "businessDate",status,version,
-        last_error_json->>'code' AS "errorCode"
-      FROM official_site_daily_batches
-      WHERE tenant_id=${scope.tenantId}::uuid AND policy_id=${policy.id}::uuid
-        AND business_date=(now() AT TIME ZONE ${policy.timezone})::date
+        last_error_json->>'code' AS "errorCode",
+        (
+          SELECT count(*)::integer
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status IN (
+              'qualified','scheduled','published','publish_failed','reserve'
+            )
+        ) AS "successfulCount",
+        (
+          SELECT count(*)::integer
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status IN ('scheduled','published','publish_failed')
+        ) AS "scheduledCount",
+        (
+          SELECT count(*)::integer
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status='published'
+        ) AS "publishedCount"
+      FROM official_site_daily_batches AS batch
+      WHERE batch.tenant_id=${scope.tenantId}::uuid AND batch.policy_id=${policy.id}::uuid
+        AND batch.business_date=(now() AT TIME ZONE ${policy.timezone})::date
       ORDER BY attempt_no DESC
       LIMIT 1
       FOR UPDATE
@@ -376,6 +447,11 @@ export class OfficialSiteAutomationPolicyService {
         'Only a candidate-limit batch or a manually cancelled batch can be restarted',
       );
     }
+    if (before.successfulCount >= 10) {
+      throw stateInvalid(
+        'Today already has 10 quality-passed articles; retry failed publish jobs instead',
+      );
+    }
     const cancelled = await transaction<{ version: number }[]>`
       UPDATE official_site_daily_batches SET
         status='cancelled',
@@ -389,6 +465,22 @@ export class OfficialSiteAutomationPolicyService {
       RETURNING version
     `;
     if (!cancelled[0]) throw versionConflict();
+    await transaction`
+      UPDATE official_site_automation_runs AS automation SET
+        status='publish_pending',last_error_json=NULL,finished_at=NULL,version=automation.version+1
+      FROM official_site_daily_batch_items AS item
+      JOIN official_site_daily_batches AS source
+        ON source.id=item.batch_id AND source.tenant_id=item.tenant_id
+      WHERE source.tenant_id=${scope.tenantId}::uuid
+        AND source.policy_id=${policy.id}::uuid
+        AND source.business_date=${dateOnly(before.businessDate)}::date
+        AND item.status='reserve' AND item.publish_job_id IS NULL
+        AND automation.tenant_id=item.tenant_id
+        AND automation.variant_id=item.variant_id
+        AND automation.content_version_id=item.content_version_id
+        AND automation.status='disabled'
+        AND automation.last_error_json->>'code'='DAILY_BATCH_MANUALLY_CANCELLED'
+    `;
     const created = await transaction<
       {
         attemptNo: number;
@@ -420,12 +512,15 @@ export class OfficialSiteAutomationPolicyService {
           attempt_no: before.attemptNo,
           batch_id: before.id,
           status: before.status,
+          retained_success_count: before.successfulCount,
           version: before.version,
         })}::jsonb,
         ${jsonbText(transaction, {
           attempt_no: next.attemptNo,
           batch_id: next.id,
           restarted_from_batch_id: before.id,
+          missing_count: 10 - before.successfulCount,
+          retained_success_count: before.successfulCount,
           status: 'running',
           version: next.version,
         })}::jsonb,
@@ -458,8 +553,9 @@ export class OfficialSiteAutomationPolicyService {
         false AS "batchRestartAllowed",
         0::integer AS "attemptedCount",0::integer AS "inProgressCount",
         0::integer AS "queuedCount",0::integer AS "runningCount",
-        0::integer AS "qualifiedCount",0::integer AS "scheduledCount",
-        0::integer AS "publishedCount",0::integer AS "retiredCount"
+        ${before.successfulCount}::integer AS "qualifiedCount",
+        ${before.scheduledCount}::integer AS "scheduledCount",
+        ${before.publishedCount}::integer AS "publishedCount",0::integer AS "retiredCount"
       FROM official_site_automation_policies AS policy
       JOIN official_site_daily_batches AS batch
         ON batch.id=${next.id}::uuid AND batch.tenant_id=policy.tenant_id
@@ -576,6 +672,7 @@ export class OfficialSiteAutomationPolicyService {
           WHERE item.tenant_id=automation.tenant_id
             AND item.batch_id=${before.id}::uuid
             AND item.variant_id=automation.variant_id
+            AND item.status IN ('generating','quality_check','rewriting','media_pending')
         )
     `;
     await transaction`
@@ -687,7 +784,18 @@ export class OfficialSiteAutomationPolicyService {
         batch.status AS "batchStatus",batch.version AS "batchVersion",
         COALESCE(batch.last_error_json->>'message',batch.last_error_json->>'code')
           AS "batchLastErrorMessage",
-        true AS "batchRestartAllowed",
+        (
+          SELECT count(*)
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status IN (
+              'qualified','scheduled','published','publish_failed','reserve'
+            )
+        ) < policy.daily_target_count AS "batchRestartAllowed",
         count(item.id)::integer AS "attemptedCount",
         count(item.id) FILTER (
           WHERE item.status IN ('generating','quality_check','rewriting','media_pending')
@@ -734,13 +842,38 @@ export class OfficialSiteAutomationPolicyService {
               )
             )
         )::integer AS "runningCount",
-        count(item.id) FILTER (
-          WHERE item.status IN ('qualified','scheduled','published','publish_failed','reserve')
-        )::integer AS "qualifiedCount",
-        count(item.id) FILTER (
-          WHERE item.status IN ('scheduled','published','publish_failed')
-        )::integer AS "scheduledCount",
-        count(item.id) FILTER (WHERE item.status='published')::integer AS "publishedCount",
+        (
+          SELECT count(*)::integer
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status IN (
+              'qualified','scheduled','published','publish_failed','reserve'
+            )
+        ) AS "qualifiedCount",
+        (
+          SELECT count(*)::integer
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status IN ('scheduled','published','publish_failed')
+        ) AS "scheduledCount",
+        (
+          SELECT count(*)::integer
+          FROM official_site_daily_batches AS day_batch
+          JOIN official_site_daily_batch_items AS day_item
+            ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id
+            AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND day_item.status='published'
+        ) AS "publishedCount",
         count(item.id) FILTER (WHERE item.status='retired')::integer AS "retiredCount"
       FROM official_site_automation_policies AS policy
       JOIN official_site_daily_batches AS batch

@@ -37,7 +37,10 @@ export class AiQueueConsumer {
       'geo-ai',
       async (job) => {
         if (job.name === 'content.package.generation_requested.v1') {
-          const result = await generation.run(job.data);
+          const result = await generation.run(job.data, undefined, {
+            attempt: job.attemptsMade + 1,
+            maxAttempts: job.opts.attempts ?? 1,
+          });
           if (result.disposition === 'busy') throw new Error('Generation is already running');
           return result;
         }

@@ -1194,14 +1194,28 @@ async function completeDailyBatchItem(
   if (!batchId) return;
   await transaction`
     UPDATE official_site_daily_batches AS batch SET
-      status='completed',completed_at=now(),last_error_json=NULL,version=version+1
-    WHERE batch.id=${batchId}::uuid AND batch.tenant_id=${tenantId}::uuid
-      AND batch.status='scheduled'
+      status='completed',completed_at=now(),last_error_json=NULL,version=batch.version+1
+    FROM official_site_daily_batches AS source
+    JOIN official_site_automation_policies AS policy
+      ON policy.id=source.policy_id AND policy.tenant_id=source.tenant_id
+    WHERE source.id=${batchId}::uuid AND source.tenant_id=${tenantId}::uuid
+      AND batch.tenant_id=source.tenant_id AND batch.policy_id=source.policy_id
+      AND batch.business_date=source.business_date
+      AND batch.status IN ('scheduled','attention_required')
+      AND batch.attempt_no=(
+        SELECT max(latest.attempt_no)
+        FROM official_site_daily_batches AS latest
+        WHERE latest.tenant_id=source.tenant_id AND latest.policy_id=source.policy_id
+          AND latest.business_date=source.business_date
+      )
       AND (
-        SELECT count(*) FROM official_site_daily_batch_items AS item
-        WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
-          AND item.status='published'
-      ) >= 10
+        SELECT count(*)
+        FROM official_site_daily_batches AS day_batch
+        JOIN official_site_daily_batch_items AS item
+          ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+        WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+          AND day_batch.business_date=batch.business_date AND item.status='published'
+      ) >= policy.daily_target_count
   `;
 }
 
@@ -1263,16 +1277,24 @@ async function failDailyBatchItem(
   const batchId = items[0]?.batchId;
   if (!batchId) return;
   await transaction`
-    UPDATE official_site_daily_batches SET
+    UPDATE official_site_daily_batches AS batch SET
       status='attention_required',
       last_error_json=${JSON.stringify({
         code: 'DAILY_PUBLISH_FAILED',
         message: '官网发布重试 3 次后仍失败，请检查官网连接。',
         schema_version: 'official-site-daily-error@1',
       })}::text::jsonb,
-      version=version+1
-    WHERE id=${batchId}::uuid AND tenant_id=${tenantId}::uuid
-      AND status='scheduled'
+      version=batch.version+1
+    FROM official_site_daily_batches AS source
+    WHERE source.id=${batchId}::uuid AND source.tenant_id=${tenantId}::uuid
+      AND batch.tenant_id=source.tenant_id AND batch.policy_id=source.policy_id
+      AND batch.business_date=source.business_date AND batch.status='scheduled'
+      AND batch.attempt_no=(
+        SELECT max(latest.attempt_no)
+        FROM official_site_daily_batches AS latest
+        WHERE latest.tenant_id=source.tenant_id AND latest.policy_id=source.policy_id
+          AND latest.business_date=source.business_date
+      )
   `;
 }
 

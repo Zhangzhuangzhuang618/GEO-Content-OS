@@ -7,6 +7,7 @@ import type {
   ValidatedGenerationEvent,
   VariantGenerationRun,
 } from './generation.types.js';
+import { GenerationWorkerError } from './generation.errors.js';
 import { ContentGenerationWorker } from './generation.worker.js';
 
 const CONTENT = Object.freeze({
@@ -122,9 +123,40 @@ describe('ContentGenerationWorker official-site direct flow', () => {
     );
     logger.mockRestore();
   });
+
+  it('releases a retryable master timeout until the final queue attempt', async () => {
+    const store = new FakeStore();
+    const writer: ContentWriterPort = {
+      generateMaster: vi.fn(async () => CONTENT),
+      generateOfficialSiteMaster: vi.fn(async () => {
+        throw new GenerationWorkerError('DEEPSEEK_TIMEOUT', 'provider timed out', {
+          retryable: true,
+        });
+      }),
+      generateVariant: vi.fn(async () => OFFICIAL_CONTENT),
+    };
+    const worker = new ContentGenerationWorker(store, writer, 1, 1_000);
+
+    await expect(worker.run(event(), undefined, { attempt: 1, maxAttempts: 5 })).rejects.toThrow(
+      'provider timed out',
+    );
+    expect(store.retryMasterCalls).toBe(1);
+    expect(store.failMasterCalls).toBe(0);
+    expect(store.finalizeCalls).toBe(0);
+
+    await expect(worker.run(event(), undefined, { attempt: 5, maxAttempts: 5 })).rejects.toThrow(
+      'provider timed out',
+    );
+    expect(store.failMasterCalls).toBe(1);
+    expect(store.finalizeCalls).toBe(1);
+  });
 });
 
 class FakeStore implements GenerationStorePort {
+  public failMasterCalls = 0;
+  public finalizeCalls = 0;
+  public retryMasterCalls = 0;
+
   public async claim() {
     return { kind: 'claimed' as const, value: { leaseVersion: 1, masterAlreadySucceeded: false } };
   }
@@ -137,11 +169,14 @@ class FakeStore implements GenerationStorePort {
     };
   }
 
-  public async failMaster(): Promise<void> {}
+  public async failMaster(): Promise<void> {
+    this.failMasterCalls += 1;
+  }
 
   public async failVariant(): Promise<void> {}
 
   public async finalize() {
+    this.finalizeCalls += 1;
     return 'generated' as const;
   }
 
@@ -154,6 +189,10 @@ class FakeStore implements GenerationStorePort {
   public async saveMaster(): Promise<void> {}
 
   public async saveVariant(): Promise<void> {}
+
+  public async retryMaster(): Promise<void> {
+    this.retryMasterCalls += 1;
+  }
 }
 
 function event() {

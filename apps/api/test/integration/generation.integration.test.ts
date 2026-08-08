@@ -2,6 +2,7 @@ import type { PlatformCode } from '@geo-content-os/contracts';
 import {
   ContentGenerationWorker,
   type ContentWriterPort,
+  GenerationWorkerError,
   type GeneratedContent,
   OfficialSiteAutomation,
   PostgresGenerationStore,
@@ -151,6 +152,42 @@ describe('Master and multi-platform generation orchestration', () => {
         platformCode,
       })).sort((left, right) => left.platformCode.localeCompare(right.platformCode)),
     );
+  });
+
+  it('releases a retryable master timeout and succeeds on the next queue attempt', async () => {
+    const database = requireClient(client);
+    const request = await schedule(database, 'generation-timeout-retry');
+    const timeoutWriter: ContentWriterPort = {
+      generateMaster: async () => {
+        throw new GenerationWorkerError('DEEPSEEK_TIMEOUT', 'Provider timed out', {
+          retryable: true,
+        });
+      },
+      generateVariant: async (input) => document(input.platformCode, 'Recovered variant'),
+    };
+    const store = new PostgresGenerationStore(database);
+
+    await expect(
+      new ContentGenerationWorker(store, timeoutWriter, 3).run(request.event, undefined, {
+        attempt: 1,
+        maxAttempts: 5,
+      }),
+    ).rejects.toMatchObject({ code: 'DEEPSEEK_TIMEOUT', retryable: true });
+    expect(
+      await database<{ packageStatus: string; runStatus: string }[]>`
+        SELECT package.status AS "packageStatus",run.status AS "runStatus"
+        FROM generation_runs AS run
+        JOIN content_packages AS package ON package.id=run.package_id
+        WHERE run.id=${request.masterRunId}::uuid
+      `,
+    ).toEqual([{ packageStatus: 'generating', runStatus: 'queued' }]);
+
+    await expect(
+      new ContentGenerationWorker(store, new FakeWriter(), 3).run(request.event, undefined, {
+        attempt: 2,
+        maxAttempts: 5,
+      }),
+    ).resolves.toMatchObject({ failed: 0, packageStatus: 'generated', succeeded: 7 });
   });
 
   it('automatically queues machine quality checking only for an enabled website account', async () => {

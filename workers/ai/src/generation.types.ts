@@ -130,6 +130,7 @@ export type VariantClaimResult =
 export interface GenerationFailure {
   readonly code: string;
   readonly message: string;
+  readonly retryable: boolean;
 }
 
 export interface GenerationStorePort {
@@ -146,6 +147,11 @@ export interface GenerationStorePort {
   failVariant(
     event: ValidatedGenerationEvent,
     claim: VariantClaim,
+    failure: GenerationFailure,
+  ): Promise<void>;
+  retryMaster(
+    event: ValidatedGenerationEvent,
+    leaseVersion: number,
     failure: GenerationFailure,
   ): Promise<void>;
   finalize(event: ValidatedGenerationEvent): Promise<'all_failed' | 'generated' | 'generating'>;

@@ -9,9 +9,10 @@ import {
 } from '@geo-content-os/testkit';
 import { createHash } from 'node:crypto';
 import postgres, { type Sql } from 'postgres';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
+import { OfficialSiteAutomationPolicyService } from '../../src/modules/publishing/accounts/official-site-automation-policy.service.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000139';
 const TENANT_ID = '21000000-0000-4000-8000-000000000139';
@@ -36,8 +37,13 @@ describe('official-site daily ten-article scheduler', () => {
     container = await startPostgresTestContainer();
     await migrateDatabase(container.getConnectionUri());
     client = postgres(container.getConnectionUri(), { max: 4 });
-    await seed(requireClient(client));
   }, 120_000);
+
+  beforeEach(async () => {
+    const database = requireClient(client);
+    await database`TRUNCATE TABLE users,tenants,outbox_events CASCADE`;
+    await seed(database);
+  });
 
   afterAll(async () => {
     await client?.end();
@@ -139,6 +145,136 @@ describe('official-site daily ten-article scheduler', () => {
         WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
       `,
     ).toEqual([{ status: 'scheduled' }]);
+  });
+
+  it('schedules partial successes and a restart only fills the remaining daily slot', async () => {
+    const database = requireClient(client);
+    const scheduler = createScheduler(database);
+
+    await scheduler.tick();
+    await seedBrand(database);
+    await scheduler.tick();
+    const batchRows = await database<{ businessDate: string }[]>`
+      SELECT business_date::text AS "businessDate"
+      FROM official_site_daily_batches
+      WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
+    `;
+    const businessDate = required(batchRows[0]?.businessDate);
+    const planNow = new Date(`${businessDate}T00:00:00+08:00`);
+    let passed = 0;
+
+    for (let cycle = 0; cycle < 40; cycle += 1) {
+      const candidates = await database<
+        { candidateNo: number; packageId: string; variantId: string }[]
+      >`
+        SELECT candidate_no AS "candidateNo",package_id AS "packageId",
+          variant_id AS "variantId"
+        FROM official_site_daily_batch_items
+        WHERE tenant_id=${TENANT_ID}::uuid AND status='generating'
+        ORDER BY candidate_no
+      `;
+      for (const candidate of candidates) {
+        if (passed < 9) {
+          await qualify(database, candidate);
+          passed += 1;
+        } else {
+          await database`
+            UPDATE content_variants SET status='generation_failed'
+            WHERE id=${candidate.variantId}::uuid AND tenant_id=${TENANT_ID}::uuid
+          `;
+        }
+      }
+      await scheduler.tick(planNow);
+      const statuses = await database<{ status: string }[]>`
+        SELECT status FROM official_site_daily_batches
+        WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
+        ORDER BY attempt_no DESC LIMIT 1
+      `;
+      if (statuses[0]?.status === 'attention_required') break;
+    }
+
+    expect(await generationEventCount(database)).toBe(30);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM publish_jobs
+        WHERE tenant_id=${TENANT_ID}::uuid AND origin='official_site_automation'
+      `,
+    ).toEqual([{ count: 9 }]);
+    const exhausted = await database<
+      { status: string; version: number; errorCode: string | null }[]
+    >`
+      SELECT status,version,last_error_json->>'code' AS "errorCode"
+      FROM official_site_daily_batches
+      WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
+      ORDER BY attempt_no DESC LIMIT 1
+    `;
+    expect(exhausted).toEqual([
+      expect.objectContaining({
+        errorCode: 'DAILY_CANDIDATE_LIMIT_REACHED',
+        status: 'attention_required',
+      }),
+    ]);
+
+    const policyService = new OfficialSiteAutomationPolicyService(database);
+    const restarted = await database.begin((transaction) =>
+      policyService.restartDailyBatchInTransaction(
+        transaction,
+        { tenantId: TENANT_ID, userId: USER_ID },
+        ACCOUNT_ID,
+        {
+          expected_batch_version: required(exhausted[0]?.version),
+          project_id: PROJECT_ID,
+        },
+        { requestId: 'daily-partial-restart-139' },
+      ),
+    );
+    expect(restarted.today_batch).toMatchObject({
+      attempt_no: 2,
+      attempted_count: 0,
+      qualified_count: 9,
+      scheduled_count: 9,
+      status: 'running',
+    });
+
+    await scheduler.tick(planNow);
+    const replacements = await database<
+      { angleKey: string; candidateNo: number; packageId: string; variantId: string }[]
+    >`
+      SELECT item.angle_key AS "angleKey",item.candidate_no AS "candidateNo",
+        item.package_id AS "packageId",item.variant_id AS "variantId"
+      FROM official_site_daily_batch_items AS item
+      JOIN official_site_daily_batches AS batch ON batch.id=item.batch_id
+      WHERE item.tenant_id=${TENANT_ID}::uuid AND batch.attempt_no=2
+    `;
+    expect(replacements).toHaveLength(1);
+    expect(replacements[0]?.candidateNo).toBe(1);
+    const scheduledAngles = await database<{ angleKey: string }[]>`
+      SELECT angle_key AS "angleKey" FROM official_site_daily_batch_items
+      WHERE tenant_id=${TENANT_ID}::uuid AND status='scheduled'
+    `;
+    expect(scheduledAngles.map((row) => row.angleKey)).not.toContain(replacements[0]?.angleKey);
+
+    await qualify(database, required(replacements[0]));
+    await scheduler.tick(planNow);
+    const jobs = await database<{ idempotencyKey: string; scheduledAt: Date }[]>`
+      SELECT idempotency_key AS "idempotencyKey",scheduled_at AS "scheduledAt"
+      FROM publish_jobs
+      WHERE tenant_id=${TENANT_ID}::uuid AND origin='official_site_automation'
+      ORDER BY scheduled_at,id
+    `;
+    expect(jobs).toHaveLength(10);
+    expect(new Set(jobs.map((job) => job.idempotencyKey)).size).toBe(10);
+    expect(new Set(jobs.map((job) => job.scheduledAt.toISOString())).size).toBe(10);
+    expect(
+      await database<{ attemptNo: number; status: string }[]>`
+        SELECT attempt_no AS "attemptNo",status FROM official_site_daily_batches
+        WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
+        ORDER BY attempt_no
+      `,
+    ).toEqual([
+      { attemptNo: 1, status: 'cancelled' },
+      { attemptNo: 2, status: 'scheduled' },
+    ]);
   });
 });
 

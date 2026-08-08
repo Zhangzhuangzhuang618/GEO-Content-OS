@@ -1,3 +1,4 @@
+import { DeepSeekAdapterError } from '@geo-content-os/adapter-model-deepseek';
 import { SkillRuntimeError } from '@geo-content-os/skills/runtime';
 
 import type { GenerationFailure } from './generation.types.js';
@@ -18,10 +19,17 @@ export class GenerationWorkerError extends Error {
 
 export function asGenerationFailure(error: unknown): GenerationFailure {
   if (error instanceof GenerationWorkerError) {
-    return { code: error.code, message: error.message.slice(0, 500) };
+    return { code: error.code, message: error.message.slice(0, 500), retryable: error.retryable };
   }
   if (error instanceof SkillRuntimeError) {
-    return { code: error.code, message: error.message.slice(0, 500) };
+    return { code: error.code, message: error.message.slice(0, 500), retryable: false };
   }
-  return { code: 'GENERATION_FAILED', message: 'Content generation failed' };
+  if (error instanceof DeepSeekAdapterError) {
+    return {
+      code: error.code,
+      message: error.message.slice(0, 500),
+      retryable: error.retryable,
+    };
+  }
+  return { code: 'GENERATION_FAILED', message: 'Content generation failed', retryable: false };
 }

@@ -32,7 +32,11 @@ export class ContentGenerationWorker {
     }
   }
 
-  public async run(rawEvent: unknown, signal?: AbortSignal): Promise<GenerationWorkerResult> {
+  public async run(
+    rawEvent: unknown,
+    signal?: AbortSignal,
+    attempt = { attempt: 1, maxAttempts: 1 },
+  ): Promise<GenerationWorkerResult> {
     const event = validateGenerationEvent(rawEvent);
     const claimed = await this.store.claim(event);
     if (claimed.kind !== 'claimed') {
@@ -53,9 +57,15 @@ export class ContentGenerationWorker {
       const failure = asGenerationFailure(error);
       logGenerationFailure(event, event.data.masterRunId, null, 'master', error, failure);
       if (claimed.value.leaseVersion !== null) {
-        await this.store.failMaster(event, claimed.value.leaseVersion, failure);
+        if (failure.retryable && attempt.attempt < attempt.maxAttempts) {
+          await this.store.retryMaster(event, claimed.value.leaseVersion, failure);
+        } else {
+          await this.store.failMaster(event, claimed.value.leaseVersion, failure);
+        }
       }
-      await this.store.finalize(event);
+      if (!failure.retryable || attempt.attempt >= attempt.maxAttempts) {
+        await this.store.finalize(event);
+      }
       throw error instanceof Error
         ? error
         : new GenerationWorkerError(failure.code, failure.message, { cause: error });

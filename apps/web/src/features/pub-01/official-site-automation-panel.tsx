@@ -144,10 +144,12 @@ export function OfficialSiteAutomationPanel({
   async function restartTodayBatch() {
     const batch = selected?.today_batch;
     if (!selected || !batch?.restart_allowed || restarting) return;
+    const retainedCount = Math.min(batch.target_count, batch.qualified_count);
+    const missingCount = Math.max(0, batch.target_count - retainedCount);
     const confirmed = window.confirm(
       `将保留今日第 ${batch.attempt_no} 次尝试的全部记录，并立即创建第 ${
         batch.attempt_no + 1
-      } 次尝试。新批次最多再生成 30 篇候选，会产生新的 AI 调用成本。是否继续？`,
+      } 次尝试。当天已有 ${retainedCount} 篇合格内容会继续排期，新尝试只补足剩余 ${missingCount} 篇；为达到原质量标准，最多仍可能尝试 30 篇候选并产生新的 AI 调用成本。是否继续？`,
     );
     if (!confirmed) return;
     const csrf = readCookie('geo_csrf');
@@ -171,7 +173,7 @@ export function OfficialSiteAutomationPanel({
         restarted,
       ]);
       setMessage(
-        `已重新发起今日第 ${restarted.today_batch?.attempt_no ?? batch.attempt_no + 1} 次尝试。系统正在按原质量标准补足 10 篇。`,
+        `已重新发起今日第 ${restarted.today_batch?.attempt_no ?? batch.attempt_no + 1} 次尝试。系统正在按原质量标准补足剩余 ${missingCount} 篇。`,
       );
     } catch {
       setMessage('重新发起失败。批次状态可能已变化，请关闭后重新打开再试。');
@@ -387,6 +389,9 @@ function TodayBatchStatus({
         <ProgressValue label="已排期" value={batch.scheduled_count} />
         <ProgressValue label="已淘汰" value={batch.retired_count} />
       </div>
+      <p className="mt-3 text-xs leading-5 text-ink-500">
+        已合格、已排期和已发布按当天全部尝试汇总；已尝试、处理中和已淘汰仅统计当前尝试。
+      </p>
       {batch.in_progress_count > 0 ? (
         <p className="mt-3 text-xs leading-5 text-ink-500">
           新建和补位时最多保持 3 篇候选在生成、质检或重写流程中；系统会优先完成已有内容。
@@ -417,8 +422,8 @@ function TodayBatchStatus({
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3">
           <p className="text-sm leading-6 text-amber-900">
             {batch.status === 'cancelled'
-              ? '本次任务已终止。可以保留全部历史记录并重新开始一批。'
-              : '本次已用完 30 个候选仍未补足 10 篇。可以保留失败记录并重新开始一批。'}
+              ? `本次任务已终止。已合格内容会保留并继续排期，新尝试只补足剩余 ${Math.max(0, batch.target_count - batch.qualified_count)} 篇。`
+              : `本次已用完 30 个候选。已合格内容已经排期，新尝试只补足剩余 ${Math.max(0, batch.target_count - batch.qualified_count)} 篇。`}
           </p>
           <button
             className={secondaryButton}

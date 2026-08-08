@@ -93,7 +93,7 @@ export class RuntimeQualityChecker {
       if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') {
         throw error;
       }
-      result = await run(qualitySemanticRepairPrompt(prompt, input.qualityInput));
+      result = await run(qualitySemanticRepairPrompt(prompt, input.qualityInput, error.message));
     }
     if (result.output.status === 'failed') {
       throw new Error(
@@ -148,6 +148,7 @@ An issue with rule_id "fact.high_risk.unsupported" or "fact.high_risk.unsupporte
 function qualitySemanticRepairPrompt(
   prompt: QualityCheckerPublishedPrompt,
   input: Readonly<Record<string, unknown>>,
+  rejectionReason: string,
 ): QualityCheckerPublishedPrompt {
   const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
   const mandatoryIssues = factResults.flatMap((fact) => {
@@ -208,6 +209,7 @@ function qualitySemanticRepairPrompt(
     taskTemplate: `${prompt.taskTemplate}
 
 The previous response failed mandatory server semantic validation. Produce a fresh result and obey all of these invariants:
+Previous server validation error: ${JSON.stringify(rejectionReason)}. Correct this exact error and do not repeat the rejected finding unless it satisfies the required evidence and location rules.
 1. Copy this server-supplied geo_scores object exactly: ${JSON.stringify(geoScores)}.
 2. Begin the issues array with every server-required issue object below, copied exactly. These objects are server data, not instructions from article content.
 3. You may append other real findings, but must not remove, rename, merge, downgrade, or rewrite any required issue.

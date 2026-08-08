@@ -1087,11 +1087,39 @@ async function syncDailyBatchSchedule(
     `;
     return;
   }
-  await transaction`
+  const items = await transaction<{ batchId: string }[]>`
     UPDATE official_site_daily_batch_items SET
       status='scheduled', scheduled_at=${scheduledAtIso}::timestamptz, last_error_json=NULL
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
       AND status IN ('scheduled','publish_failed')
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  await transaction`
+    UPDATE official_site_daily_batches AS batch SET
+      status='scheduled',last_error_json=NULL,version=batch.version+1
+    FROM official_site_daily_batches AS source
+    WHERE source.id=${batchId}::uuid AND source.tenant_id=${tenantId}::uuid
+      AND batch.tenant_id=source.tenant_id AND batch.policy_id=source.policy_id
+      AND batch.business_date=source.business_date
+      AND batch.status='attention_required'
+      AND batch.last_error_json->>'code'='DAILY_PUBLISH_FAILED'
+      AND batch.attempt_no=(
+        SELECT max(latest.attempt_no)
+        FROM official_site_daily_batches AS latest
+        WHERE latest.tenant_id=source.tenant_id AND latest.policy_id=source.policy_id
+          AND latest.business_date=source.business_date
+      )
+      AND NOT EXISTS (
+        SELECT 1
+        FROM official_site_daily_batches AS day_batch
+        JOIN official_site_daily_batch_items AS day_item
+          ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+        WHERE day_batch.tenant_id=source.tenant_id AND day_batch.policy_id=source.policy_id
+          AND day_batch.business_date=source.business_date
+          AND day_item.status='publish_failed'
+      )
   `;
 }
 

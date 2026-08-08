@@ -344,6 +344,23 @@ export class PostgresGenerationStore implements GenerationStorePort {
     });
   }
 
+  public async retryMaster(
+    event: ValidatedGenerationEvent,
+    leaseVersion: number,
+    failure: GenerationFailure,
+  ): Promise<void> {
+    const rows = await this.client<{ id: string }[]>`
+      UPDATE generation_runs SET
+        status='queued',error_json=${JSON.stringify(failure)}::text::jsonb,
+        finished_at=NULL,version=version+1
+      WHERE id=${event.data.masterRunId}::uuid AND tenant_id=${event.tenantId}::uuid
+        AND package_id=${event.data.packageId}::uuid
+        AND status='running' AND version=${leaseVersion}
+      RETURNING id
+    `;
+    if (rows.length !== 1) throw leaseLost();
+  }
+
   public async failVariant(
     event: ValidatedGenerationEvent,
     claim: VariantClaim,

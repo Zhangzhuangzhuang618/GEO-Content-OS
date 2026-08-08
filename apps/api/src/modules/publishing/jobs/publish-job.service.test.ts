@@ -16,6 +16,7 @@ const PACKAGE_ID = '70000000-0000-4000-8000-000000000130';
 const EVENT_ID = '80000000-0000-4000-8000-000000000130';
 const AUTOMATION_ID = '90000000-0000-4000-8000-000000000130';
 const PUBLICATION_ID = '91000000-0000-4000-8000-000000000130';
+const DAILY_BATCH_ID = '92000000-0000-4000-8000-000000000130';
 const RESCHEDULED_AT = '2026-08-01T02:30:00.000Z';
 
 const SCOPE: PublishJobScope = {
@@ -114,6 +115,13 @@ describe('PublishJobService rescheduling', () => {
         (sql) =>
           sql.includes('UPDATE official_site_daily_batch_items') &&
           sql.includes("status='scheduled'"),
+      ),
+    ).toBe(true);
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE official_site_daily_batches AS batch') &&
+          sql.includes("batch.last_error_json->>'code'='DAILY_PUBLISH_FAILED'"),
       ),
     ).toBe(true);
     expect(outbox.enqueue).toHaveBeenCalledOnce();
@@ -334,6 +342,9 @@ function createTransaction(
     }
     if (sql.includes('UPDATE content_packages')) return [{ id: PACKAGE_ID }];
     if (sql.includes('UPDATE official_site_automation_runs')) return [{ id: AUTOMATION_ID }];
+    if (sql.includes('UPDATE official_site_daily_batch_items')) {
+      return [{ batchId: DAILY_BATCH_ID }];
+    }
     return [];
   }) as unknown as TransactionSql;
 }

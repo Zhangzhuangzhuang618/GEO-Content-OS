@@ -189,6 +189,9 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests).toHaveLength(2);
     const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
     expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
+    expect(repairPrompt).toContain(
+      'Quality Checker brand issue does not identify a prohibited name at its location',
+    );
     expect(repairPrompt).toContain('brand.other_company_name issue must quote the exact');
     expect(repairPrompt).toContain('fact.high_risk.unsupported');
   });

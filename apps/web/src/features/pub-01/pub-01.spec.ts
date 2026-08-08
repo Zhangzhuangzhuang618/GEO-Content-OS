@@ -367,7 +367,7 @@ test('restarts an exhausted daily batch while keeping the previous attempt', asy
         last_error_message: null,
         published_count: 0,
         queued_count: 0,
-        qualified_count: 0,
+        qualified_count: 3,
         restart_allowed: false,
         retired_count: 0,
         running_count: 0,
@@ -389,10 +389,14 @@ test('restarts an exhausted daily batch while keeping the previous attempt', asy
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '官网自动发布' }).click();
   await expect(page.getByText('今日发布进度（第 1 次尝试）')).toBeVisible();
-  page.once('dialog', (dialog) => dialog.accept());
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('新尝试只补足剩余 7 篇');
+    void dialog.accept();
+  });
   await page.getByRole('button', { name: '重新发起今日批次' }).click();
 
   await expect(page.getByText('已重新发起今日第 2 次尝试')).toBeVisible();
+  await expect(page.getByText(/补足剩余 7 篇/u)).toBeVisible();
   await expect(page.getByText('今日发布进度（第 2 次尝试）')).toBeVisible();
   expect(restartRequest?.body).toEqual({
     expected_batch_version: 4,
@@ -464,7 +468,7 @@ test('stops a running daily batch without deleting completed records', async ({ 
         last_error_message: null,
         published_count: 0,
         queued_count: 0,
-        qualified_count: 0,
+        qualified_count: 2,
         restart_allowed: false,
         retired_count: 0,
         running_count: 0,
@@ -502,9 +506,13 @@ test('stops a running daily batch without deleting completed records', async ({ 
   });
   expect(cancelRequest?.idempotencyKey).toMatch(/^official-site-daily-batch-cancel-/u);
 
-  page.once('dialog', (dialog) => dialog.accept());
+  page.once('dialog', (dialog) => {
+    expect(dialog.message()).toContain('新尝试只补足剩余 8 篇');
+    void dialog.accept();
+  });
   await page.getByRole('button', { name: '重新发起今日批次' }).click();
   await expect(page.getByText('已重新发起今日第 3 次尝试')).toBeVisible();
+  await expect(page.getByText(/补足剩余 8 篇/u)).toBeVisible();
   await expect(page.getByText('今日发布进度（第 3 次尝试）')).toBeVisible();
   expect(restartRequest?.body).toEqual({
     expected_batch_version: 8,
