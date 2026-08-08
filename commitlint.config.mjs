@@ -3,8 +3,8 @@ export default {
     {
       rules: {
         'task-header': ({ header }) => [
-          /^\[T\d{3}\] .{1,91}$/.test(header ?? ''),
-          'header must match "[Txxx] concise subject" and stay within 100 characters',
+          /^(?:\[T\d{3}\]|\[HOTFIX-\d{8}-\d{2}\]) .+$/u.test(header ?? ''),
+          'header must match "[Txxx] concise subject" or "[HOTFIX-YYYYMMDD-NN] concise subject" and stay within 100 characters',
         ],
       },
     },
