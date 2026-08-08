@@ -50,6 +50,10 @@ export const PublishJobDetailResponseSchema = z
     data: z
       .object({
         attempts: z.array(PublishAttemptSchema),
+        baijiahao_reconciliation: z
+          .object({ platform_code: z.literal('baijiahao') })
+          .strict()
+          .nullable(),
         export_artifact: ExportArtifactSchema.nullable(),
         job: PublishJobSchema,
         media: PublishMediaStateSchema,

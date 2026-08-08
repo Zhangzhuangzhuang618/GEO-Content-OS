@@ -13,6 +13,7 @@ import {
   getPublishJobDetail,
   getSignedExport,
   PublishJobDetailRequestError,
+  reconcileBaijiahaoPublishJob,
   resolveUnknownPublishJob,
   retryPublishJob,
 } from './publish-job-detail-api';
@@ -25,7 +26,8 @@ import type {
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-type BusyAction = 'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | 'resolve';
+type BusyAction =
+  'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | 'reconcile' | 'resolve';
 
 export function PublishJobDetailView() {
   const [jobId] = useState(readJobId);
@@ -225,6 +227,26 @@ export function PublishJobDetailView() {
     }
   }
 
+  async function reconcileBaijiahao() {
+    if (!detail?.baijiahao_reconciliation) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy('reconcile');
+    setMessage(null);
+    try {
+      await reconcileBaijiahaoPublishJob(detail.job, csrf);
+      setMessage('百家号发布状态核验已重新排队；不会再次提交文章。');
+      await load(detail.job.id);
+    } catch {
+      setMessage('重新核验失败；任务版本、浏览器终态或登录状态可能已经变化。');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="mt-8">
       <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
@@ -270,6 +292,7 @@ export function PublishJobDetailView() {
           onAction={runAction}
           onDownload={prepareDownload}
           onGenerateMedia={generateMedia}
+          onReconcileBaijiahao={reconcileBaijiahao}
           onResolveUnknown={resolveUnknown}
         />
       )}
@@ -283,6 +306,7 @@ function DetailContent({
   onAction,
   onDownload,
   onGenerateMedia,
+  onReconcileBaijiahao,
   onResolveUnknown,
 }: {
   readonly busy: BusyAction | null;
@@ -290,6 +314,7 @@ function DetailContent({
   readonly onAction: (action: 'retry' | 'reschedule' | 'cancel') => Promise<void>;
   readonly onDownload: () => Promise<void>;
   readonly onGenerateMedia: () => Promise<void>;
+  readonly onReconcileBaijiahao: () => Promise<void>;
   readonly onResolveUnknown: (resolution: 'not_published' | 'published') => Promise<void>;
 }) {
   const { job } = detail;
@@ -305,6 +330,16 @@ function DetailContent({
             <p className="mt-2 text-sm text-ink-500">排期：{formatDate(job.scheduled_at)}</p>
           </div>
           <div className="flex flex-wrap gap-3">
+            {detail.baijiahao_reconciliation ? (
+              <button
+                className={primaryButton}
+                disabled={busy !== null}
+                onClick={() => void onReconcileBaijiahao()}
+                type="button"
+              >
+                {busy === 'reconcile' ? '正在重新核验…' : '重新核验百家号状态'}
+              </button>
+            ) : null}
             {job.status === 'scheduled' &&
             detail.media.supported &&
             detail.media.status === 'none' ? (

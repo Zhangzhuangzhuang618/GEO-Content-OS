@@ -315,6 +315,74 @@ describe('publish jobs', () => {
     );
   });
 
+  it('requeues only terminal Baijiahao reconciliation for a stuck publishing job', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    const job = await seedBaijiahaoPublishingTerminal(database, service, 'published');
+
+    const detail = await new PublishingApiService(database, {} as ObjectStorageAdapter).detail(
+      SCOPE,
+      job.id,
+    );
+    expect(detail.baijiahao_reconciliation).toEqual({ platform_code: 'baijiahao' });
+
+    const requested = await service.requestBaijiahaoReconciliation(
+      { ...SCOPE, requestId: 'req-baijiahao-reconcile-124' },
+      job.id,
+      2,
+    );
+
+    expect(requested).toMatchObject({
+      external_post_id: 'baijiahao-terminal-124',
+      status: 'publishing',
+      version: 3,
+    });
+    const events = await database<
+      { eventType: string; jobVersion: number | null; reconcileAttempt: number | null }[]
+    >`
+      SELECT event_type AS "eventType",
+        (payload_json->'data'->>'job_version')::integer AS "jobVersion",
+        (payload_json->'data'->>'reconcile_attempt')::integer AS "reconcileAttempt"
+      FROM outbox_events WHERE aggregate_id=${job.id}::uuid ORDER BY created_at,id
+    `;
+    expect(events).toEqual([
+      {
+        eventType: 'publishing.job.execution_requested.v1',
+        jobVersion: 1,
+        reconcileAttempt: null,
+      },
+      {
+        eventType: 'baijiahao.publication.reconcile_requested.v1',
+        jobVersion: 3,
+        reconcileAttempt: 1,
+      },
+    ]);
+    await expect(auditActions(database, job.id)).resolves.toContain(
+      'publish_job.reconciliation_requested',
+    );
+  });
+
+  it('does not requeue a nonterminal Baijiahao browser publication', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    const job = await seedBaijiahaoPublishingTerminal(database, service, 'processing');
+
+    const detail = await new PublishingApiService(database, {} as ObjectStorageAdapter).detail(
+      SCOPE,
+      job.id,
+    );
+    expect(detail.baijiahao_reconciliation).toBeNull();
+
+    await expect(service.requestBaijiahaoReconciliation(SCOPE, job.id, 2)).rejects.toMatchObject({
+      code: 'PUBLISH_JOB_STATE_INVALID',
+    });
+    const events = await database<{ eventType: string }[]>`
+      SELECT event_type AS "eventType" FROM outbox_events
+      WHERE aggregate_id=${job.id}::uuid ORDER BY created_at,id
+    `;
+    expect(events).toEqual([{ eventType: 'publishing.job.execution_requested.v1' }]);
+  });
+
   it('requires verification and atomically restores a manual-required Baijiahao automation', async () => {
     const database = requireClient(client);
     const service = new PublishJobService(database);
@@ -564,6 +632,71 @@ async function seedBaijiahaoUnknown(database: Sql, service: PublishJobService) {
       ${CONTENT_HASH},${'b'.repeat(64)},'百家号未知发布测试','submitting',now()
     )
   `;
+  return job;
+}
+
+async function seedBaijiahaoPublishingTerminal(
+  database: Sql,
+  service: PublishJobService,
+  publicationStatus: 'failed' | 'processing' | 'published',
+) {
+  await database`
+    UPDATE briefs SET platform_codes=ARRAY['baijiahao']::varchar[] WHERE id=${BRIEF_ID}::uuid
+  `;
+  await database`
+    UPDATE content_variants SET platform_code='baijiahao' WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    UPDATE platform_accounts SET platform_code='baijiahao',display_name='Baijiahao'
+    WHERE id=${ACCOUNT_ID}::uuid
+  `;
+  const job = await schedule(service);
+  await database.begin(async (transaction) => {
+    await transaction`
+      UPDATE publish_jobs SET status='publishing',attempt_count=1,
+        external_post_id='baijiahao-terminal-124',
+        external_url='https://baijiahao.baidu.com/builder/preview/s?id=124',version=2
+      WHERE id=${job.id}::uuid
+    `;
+    await transaction`
+      UPDATE content_variants SET status='publishing',version=3 WHERE id=${VARIANT_ID}::uuid
+    `;
+    await transaction`
+      UPDATE content_packages SET status='publishing',version=3 WHERE id=${PACKAGE_ID}::uuid
+    `;
+    await transaction`
+      INSERT INTO publish_attempts(
+        tenant_id,publish_job_id,attempt_no,adapter_code,status,request_hash,
+        response_json,started_at,finished_at
+      ) VALUES(
+        ${TENANT_ID}::uuid,${job.id}::uuid,1,'baijiahao-delivery@1.1.0','succeeded',
+        ${'b'.repeat(64)},${transaction.json({
+          external_id: 'baijiahao-terminal-124',
+          status: 'processing',
+        })},now(),now()
+      )
+    `;
+    await transaction`
+      INSERT INTO baijiahao_browser_sessions(
+        id,tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+      ) VALUES(
+        ${BROWSER_SESSION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,'authenticated',
+        'baijiahao/test/account-124',now(),now()
+      )
+    `;
+    await transaction`
+      INSERT INTO baijiahao_browser_publications(
+        id,tenant_id,session_id,account_id,publish_job_id,content_version_id,
+        idempotency_key,payload_hash,content_fingerprint,title,status,external_post_id,
+        external_url,submitted_at,last_reconciled_at
+      ) VALUES(
+        ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${BROWSER_SESSION_ID}::uuid,
+        ${ACCOUNT_ID}::uuid,${job.id}::uuid,${VERSION_ID}::uuid,${job.idempotency_key},
+        ${CONTENT_HASH},${'b'.repeat(64)},'百家号终态重新核验测试',${publicationStatus},
+        'baijiahao-terminal-124','https://baijiahao.baidu.com/s?id=124',now(),now()
+      )
+    `;
+  });
   return job;
 }
 

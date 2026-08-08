@@ -78,6 +78,7 @@ const attempt: PublishAttemptView = {
 
 const detail: PublishJobDetail = {
   attempts: [attempt],
+  baijiahao_reconciliation: null,
   export_artifact: {
     content_hash: 'c'.repeat(64),
     content_version_id: CONTENT_VERSION_ID,
@@ -169,6 +170,7 @@ describe('publishing API mock E2E', () => {
   const jobs = {
     cancel: vi.fn(async () => ({ ...job, status: 'cancelled' as const, version: 4 })),
     createInTransaction: vi.fn(async () => job),
+    requestBaijiahaoReconciliationInTransaction: vi.fn(async () => ({ ...job, version: 4 })),
     resolveUnknownInTransaction: vi.fn(async () => ({
       ...job,
       scheduled_at: NOW,
@@ -353,6 +355,31 @@ describe('publishing API mock E2E', () => {
           path: `/publish-jobs/${JOB_ID}/resolve-unknown`,
         }),
         idempotencyKey: 'resolve-unknown-0001',
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it('requeues only Baijiahao reconciliation through an idempotent versioned route', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'reconcile-publish-0001', 'if-match': '"3"' },
+      method: 'POST',
+      payload: {},
+      url: `/publish-jobs/${JOB_ID}/reconcile`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract('job.reconcile').responseSchema.parse(response.json());
+    expect(jobs.requestBaijiahaoReconciliationInTransaction).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ tenantId: TENANT_ID, userId: USER_ID }),
+      JOB_ID,
+      3,
+    );
+    expect(idempotency.execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fingerprint: expect.objectContaining({ path: `/publish-jobs/${JOB_ID}/reconcile` }),
+        idempotencyKey: 'reconcile-publish-0001',
       }),
       expect.any(Function),
     );

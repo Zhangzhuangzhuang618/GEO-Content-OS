@@ -737,6 +737,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
             status=${result.status}, external_url=COALESCE(${result.url}, external_url),
             last_reconciled_at=now(), version=version+1
           WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+            AND external_post_id=${claim.externalId}
             AND status IN ('submitting','unknown','processing')
           RETURNING id
         `;
@@ -786,7 +787,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
             status='published', external_url=${result.url}, last_reconciled_at=now(),
             version=version+1
           WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND status IN ('submitting','unknown','processing')
+            AND external_post_id=${claim.externalId}
+            AND status IN ('submitting','unknown','processing','published')
           RETURNING id
         `;
         if (browserPublications.length !== 1) throw stateInvalid();
@@ -886,7 +888,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
           external_url=COALESCE(${result.url}, external_url),
           review_reason=${String(error['message'])}, last_reconciled_at=now(), version=version+1
         WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-          AND status IN ('submitting','unknown','processing')
+          AND external_post_id=${claim.externalId}
+          AND status IN ('submitting','unknown','processing',${manualRequired ? 'manual_required' : 'failed'})
         RETURNING id
       `;
       if (browserPublications.length !== 1) throw stateInvalid();

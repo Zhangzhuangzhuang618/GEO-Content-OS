@@ -93,6 +93,7 @@ interface ResolvedExternalState {
 interface BrowserPublicationRow {
   readonly externalPostId: string | null;
   readonly id: string;
+  readonly status: string;
 }
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/u;
@@ -304,6 +305,88 @@ export class PublishJobService {
     return this.database.begin((transaction) =>
       this.resolveUnknownInTransaction(transaction, scope, jobId, expectedVersion, input),
     );
+  }
+
+  public requestBaijiahaoReconciliation(
+    scope: PublishJobScope,
+    jobId: string,
+    expectedVersion: number,
+  ): Promise<PublishJobView> {
+    assertVersion(expectedVersion);
+    return this.database.begin((transaction) =>
+      this.requestBaijiahaoReconciliationInTransaction(transaction, scope, jobId, expectedVersion),
+    );
+  }
+
+  public async requestBaijiahaoReconciliationInTransaction(
+    transaction: TransactionSql,
+    scope: PublishJobScope,
+    jobId: string,
+    expectedVersion: number,
+  ): Promise<PublishJobView> {
+    assertVersion(expectedVersion);
+    const before = await loadJob(transaction, scope, jobId);
+    if (before.version !== expectedVersion) throw versionConflict();
+    if (
+      before.platformCode !== 'baijiahao' ||
+      before.accountPublishMode !== 'api' ||
+      before.status !== 'publishing' ||
+      before.variantStatus !== 'publishing' ||
+      !before.externalPostId
+    ) {
+      throw stateInvalid('Publish job is not eligible for Baijiahao reconciliation');
+    }
+    if (before.variantCurrentContentVersionId !== before.contentVersionId) {
+      throw stateInvalid('The publish job no longer points to the current content version');
+    }
+    assertAccountReady(before);
+    const publications = await transaction<BrowserPublicationRow[]>`
+      SELECT id,external_post_id AS "externalPostId",status
+      FROM baijiahao_browser_publications
+      WHERE tenant_id=${scope.tenantId}::uuid AND publish_job_id=${before.id}::uuid
+      FOR UPDATE
+    `;
+    const publication = publications[0];
+    if (
+      publications.length !== 1 ||
+      publication?.externalPostId !== before.externalPostId ||
+      (publication.status !== 'published' && publication.status !== 'failed')
+    ) {
+      throw stateInvalid('Baijiahao has not recorded a terminal publication state');
+    }
+    const rows = await transaction<JobRow[]>`
+      UPDATE publish_jobs SET version=version+1
+      WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND status='publishing' AND version=${expectedVersion}
+      RETURNING
+        id,tenant_id AS "tenantId",variant_id AS "variantId",
+        content_version_id AS "contentVersionId",account_id AS "accountId",
+        scheduled_at AS "scheduledAt",idempotency_key AS "idempotencyKey",
+        payload_hash AS "payloadHash",status,attempt_count AS "attemptCount",
+        external_post_id AS "externalPostId",external_url AS "externalUrl",
+        last_error_json AS "lastError",origin,published_at AS "publishedAt",
+        created_by AS "createdBy",version,created_at AS "createdAt",updated_at AS "updatedAt"
+    `;
+    const after = requireChangedJob(rows, before);
+    await enqueueBaijiahaoReconciliation(transaction, this.outbox, scope, after);
+    await this.audit.record(transaction, {
+      action: 'publish_job.reconciliation_requested',
+      actorId: scope.userId,
+      after: {
+        ...safeJob(after),
+        reconciliation: {
+          browser_status: publication.status,
+          external_post_id: before.externalPostId,
+        },
+      },
+      before: safeJob(before),
+      ip: scope.ip ?? null,
+      requestId: scope.requestId,
+      resourceId: after.id,
+      resourceType: 'publish_job',
+      tenantId: scope.tenantId,
+    });
+    return mapJob(after);
   }
 
   public async resolveUnknownInTransaction(
@@ -812,6 +895,31 @@ async function enqueueExecution(
     UPDATE outbox_events SET next_attempt_at=GREATEST(${scheduledAtIso}::timestamptz,now())
     WHERE id=${event.event_id}::uuid AND tenant_id=${scope.tenantId}::uuid
   `;
+}
+
+async function enqueueBaijiahaoReconciliation(
+  transaction: TransactionSql,
+  outbox: OutboxWriter,
+  scope: PublishJobScope,
+  job: Pick<JobRow, 'accountId' | 'id' | 'version'>,
+): Promise<void> {
+  await outbox.enqueue(
+    {
+      aggregateId: job.id,
+      aggregateType: 'publish_job',
+      data: {
+        account_id: job.accountId,
+        external_post_id: null,
+        job_id: job.id,
+        job_version: job.version,
+        reconcile_attempt: 1,
+        request_id: scope.requestId,
+      },
+      eventType: 'baijiahao.publication.reconcile_requested.v1',
+      tenantId: scope.tenantId,
+    },
+    transaction,
+  );
 }
 
 async function latestAttemptRequiresManualResolution(

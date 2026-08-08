@@ -61,6 +61,19 @@ export async function resolveUnknownPublishJob(
   return parseJob(response);
 }
 
+export async function reconcileBaijiahaoPublishJob(
+  job: PublishJob,
+  csrf: string,
+): Promise<PublishJob> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/publish-jobs/${job.id}/reconcile`, {
+    body: JSON.stringify({}),
+    credentials: 'include',
+    headers: writeHeaders(csrf, job.version, `publish-reconcile-${job.id}`),
+    method: 'POST',
+  });
+  return parseJob(response);
+}
+
 export async function cancelUnexecutedPublishJob(
   job: PublishJob,
   reason: string,

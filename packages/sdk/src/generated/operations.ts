@@ -798,6 +798,13 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  job_reconcile: {
+    idempotency: 'key+version',
+    method: 'POST',
+    path: '/publish-jobs/{id}/reconcile',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   job_unknown_resolve: {
     idempotency: 'key+version',
     method: 'POST',

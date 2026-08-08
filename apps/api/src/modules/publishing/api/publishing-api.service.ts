@@ -174,18 +174,44 @@ export class PublishingApiService {
 
   public async detail(scope: PublishingApiScope, jobId: string): Promise<PublishJobDetail> {
     const job = await this.requireJob(scope, jobId);
-    const [attempts, artifact, media] = await Promise.all([
+    const [attempts, artifact, media, baijiahaoReconciliation] = await Promise.all([
       this.attemptRows(scope, jobId),
       this.latestArtifact(scope, jobId),
       this.mediaState(scope, jobId),
+      this.baijiahaoReconciliation(scope, job),
     ]);
     return {
       attempts: attempts.map(mapAttempt),
+      baijiahao_reconciliation: baijiahaoReconciliation,
       export_artifact: artifact ? mapArtifact(artifact) : null,
       job: mapJob(job),
       media,
       unknown_resolution: unknownResolution(job, attempts),
     };
+  }
+
+  private async baijiahaoReconciliation(
+    scope: PublishingApiScope,
+    job: JobRow,
+  ): Promise<{ readonly platform_code: 'baijiahao' } | null> {
+    if (job.platformCode !== 'baijiahao' || job.status !== 'publishing' || !job.externalPostId) {
+      return null;
+    }
+    const rows = await this.database<{ externalPostId: string | null; status: string }[]>`
+      SELECT external_post_id AS "externalPostId",status
+      FROM baijiahao_browser_publications
+      WHERE tenant_id=${scope.tenantId}::uuid AND publish_job_id=${job.id}::uuid
+      LIMIT 2
+    `;
+    const publication = rows[0];
+    if (
+      rows.length !== 1 ||
+      publication?.externalPostId !== job.externalPostId ||
+      (publication.status !== 'published' && publication.status !== 'failed')
+    ) {
+      return null;
+    }
+    return Object.freeze({ platform_code: 'baijiahao' as const });
   }
 
   public requestMedia(

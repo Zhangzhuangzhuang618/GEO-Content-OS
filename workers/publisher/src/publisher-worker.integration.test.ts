@@ -339,6 +339,12 @@ describe('publisher worker', () => {
     await expect(
       worker.reconcileBaijiahao(await latestReconcileEvent(database)),
     ).resolves.toMatchObject({ disposition: 'processed' });
+    await database`
+      UPDATE baijiahao_browser_publications SET
+        status='published',external_url='https://baijiahao.baidu.com/s?id=t145',
+        last_reconciled_at=now(),version=version+1
+      WHERE publish_job_id=${JOB_ID}::uuid
+    `;
     await expect(
       worker.reconcileBaijiahao(await latestReconcileEvent(database)),
     ).resolves.toMatchObject({ disposition: 'completed' });
@@ -391,6 +397,64 @@ describe('publisher worker', () => {
         WHERE event_type='publishing.job.published.v1'
       `,
     ).toEqual([{ count: 1 }]);
+  });
+
+  it('reconciles when the browser worker already recorded a failed terminal state', async () => {
+    const database = requireClient(client);
+    await enableBaijiahaoAutomation(database);
+    const platform = new FakePlatform(
+      {
+        externalId: 'baijiahao-failed-t145',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [{ externalId: 'baijiahao-failed-t145', status: 'failed', url: null }],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await database`
+      UPDATE baijiahao_browser_publications SET
+        status='failed',review_reason='Baijiahao rejected the submitted article.',
+        last_reconciled_at=now(),version=version+1
+      WHERE publish_job_id=${JOB_ID}::uuid
+    `;
+    await expect(
+      worker.reconcileBaijiahao(await latestReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(
+      await database<
+        {
+          automationStatus: string;
+          browserStatus: string;
+          itemStatus: string;
+          jobStatus: string;
+          variantStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          publication.status AS "browserStatus",item.status AS "itemStatus",
+          variant.status AS "variantStatus"
+        FROM publish_jobs AS job
+        JOIN baijiahao_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN baijiahao_browser_publications AS publication ON publication.publish_job_id=job.id
+        JOIN baijiahao_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN content_variants AS variant ON variant.id=job.variant_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'publish_failed',
+        browserStatus: 'failed',
+        itemStatus: 'publish_failed',
+        jobStatus: 'failed',
+        variantStatus: 'publish_failed',
+      },
+    ]);
   });
 
   it('reconciles a manual Baijiahao browser submission without updating automation rows', async () => {

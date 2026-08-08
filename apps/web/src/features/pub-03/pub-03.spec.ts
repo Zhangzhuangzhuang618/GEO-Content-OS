@@ -225,6 +225,45 @@ test('records a manually verified Baijiahao publication with its public link', a
   ]);
 });
 
+test('requeues Baijiahao reconciliation without retrying publication', async ({ page }) => {
+  let currentJob: Record<string, unknown> = {
+    ...job({ attemptCount: 2, status: 'publishing', version: 6 }),
+    external_post_id: '1872934608584882031',
+    external_url: 'https://baijiahao.baidu.com/s?id=1872934608584882031',
+    origin: 'baijiahao_automation',
+  };
+  let reconciliation: Record<string, unknown> | null = { platform_code: 'baijiahao' };
+  const writes: { body: unknown; headers: Record<string, string>; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(route, detail(currentJob, [attempt(2, 'succeeded')], null, null, reconciliation));
+      return;
+    }
+    writes.push({
+      body: request.postDataJSON() as unknown,
+      headers: request.headers(),
+      path,
+    });
+    currentJob = { ...currentJob, version: 7 };
+    reconciliation = null;
+    await json(route, { data: currentJob, meta: { request_id: 'reconcile-requested' } });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await page.getByRole('button', { name: '重新核验百家号状态' }).click();
+
+  await expect(page.getByText('百家号发布状态核验已重新排队；不会再次提交文章。')).toBeVisible();
+  expect(writes).toHaveLength(1);
+  expect(writes[0]?.path).toBe(`/api/v1/publish-jobs/${JOB_ID}/reconcile`);
+  expect(writes[0]?.body).toEqual({});
+  expect(writes[0]?.headers['if-match']).toBe('"6"');
+  expect(writes[0]?.headers['idempotency-key']).toMatch(
+    new RegExp(`^publish-reconcile-${JOB_ID}-[0-9a-f-]{36}$`, 'u'),
+  );
+});
+
 test('loads and labels a Baijiahao automation publish job', async ({ page }) => {
   const currentJob = {
     ...job({ attemptCount: 0, status: 'scheduled', version: 1 }),
@@ -370,10 +409,12 @@ function detail(
   attempts: readonly Record<string, unknown>[],
   exportArtifact: Record<string, unknown> | null = null,
   unknownResolution: Record<string, unknown> | null = null,
+  baijiahaoReconciliation: Record<string, unknown> | null = null,
 ) {
   return {
     data: {
       attempts,
+      baijiahao_reconciliation: baijiahaoReconciliation,
       export_artifact: exportArtifact,
       job: currentJob,
       media: { asset_count: 0, run_id: null, status: 'none', supported: true },

@@ -13,6 +13,7 @@ import { PLATFORM_CODES } from '../../platforms.js';
 
 export const PublishJobParamsSchema = z.object({ id: UuidSchema }).strict();
 export const GeneratePublishMediaRequestSchema = z.object({}).strict();
+export const ReconcilePublishJobRequestSchema = z.object({}).strict();
 export const CreatePublishJobRequestSchema = z
   .object({
     account_id: UuidSchema,
@@ -136,6 +137,12 @@ export const PublishMediaRunSchema = z
 export const PublishJobDetailSchema = z
   .object({
     attempts: z.array(PublishAttemptViewSchema),
+    baijiahao_reconciliation: z
+      .object({
+        platform_code: z.literal('baijiahao'),
+      })
+      .strict()
+      .nullable(),
     export_artifact: ExportArtifactViewSchema.nullable(),
     job: PublishJobViewSchema,
     media: PublishMediaStateSchema,
@@ -171,6 +178,7 @@ export const PublishAttemptPageSchema = z
 export const SignedDownloadResponseSchema = createDataResponseSchema(SignedDownloadViewSchema);
 
 export type CreatePublishJobRequest = z.infer<typeof CreatePublishJobRequestSchema>;
+export type ReconcilePublishJobRequest = z.infer<typeof ReconcilePublishJobRequestSchema>;
 export type RetryPublishRequest = z.infer<typeof RetryPublishRequestSchema>;
 export type ResolveUnknownPublishRequest = z.infer<typeof ResolveUnknownPublishRequestSchema>;
 export type PublishJobView = z.infer<typeof PublishJobViewSchema>;

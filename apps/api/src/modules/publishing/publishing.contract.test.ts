@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import {
   findPublishingApiContract,
+  PUBLISHING_API_CONTRACTS,
   type PublishingApiContractKey,
 } from '@geo-content-os/contracts';
 import { RequestMethod } from '@nestjs/common';
@@ -76,14 +77,17 @@ const bindings: readonly Binding[] = [
   bind('job.get', PublishJobController, PublishJobController.prototype.detail),
   bind('job.cancel', PublishJobController, PublishJobController.prototype.cancel),
   bind('job.retry', PublishJobController, PublishJobController.prototype.retry),
+  bind('job.unknown.resolve', PublishJobController, PublishJobController.prototype.resolveUnknown),
+  bind('job.reconcile', PublishJobController, PublishJobController.prototype.reconcile),
+  bind('job.media.create', PublishJobController, PublishJobController.prototype.generateMedia),
   bind('job.attempts', PublishJobController, PublishJobController.prototype.attempts),
   bind('job.export', PublishJobController, PublishJobController.prototype.export),
 ];
 
 describe('publishing controller contract bindings', () => {
   it('binds every frozen publishing contract exactly once', () => {
-    expect(bindings).toHaveLength(24);
-    expect(new Set(bindings.map(({ key }) => key)).size).toBe(24);
+    expect(bindings).toHaveLength(PUBLISHING_API_CONTRACTS.length);
+    expect(new Set(bindings.map(({ key }) => key)).size).toBe(PUBLISHING_API_CONTRACTS.length);
   });
 
   it.each(bindings)('$key matches method, route, and permission', (binding) => {
