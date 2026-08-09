@@ -226,8 +226,67 @@ function parseJsonObject(value: string): Readonly<Record<string, unknown>> {
   try {
     return object(JSON.parse(value) as unknown);
   } catch {
+    const labeled = parseLabeledInspection(value);
+    if (labeled) return labeled;
     throw providerFailure('inspection JSON is invalid');
   }
+}
+
+function parseLabeledInspection(value: string): Readonly<Record<string, unknown>> | null {
+  const decision = labeledField(value, 'Decision');
+  const articleRelevance = labeledField(value, 'Article Relevance');
+  const detectedText = labeledField(value, 'Detected Text');
+  const companyNames = labeledField(value, 'Company Names');
+  const logosOrWatermarks = labeledField(value, 'Logos or Watermarks');
+  const phoneNumbers = labeledField(value, 'Phone Numbers');
+  const unsafe = labeledField(value, 'Unsafe');
+  const deceptiveRealism = labeledField(value, 'Deceptive Realism');
+  const issues = labeledField(value, 'Issues');
+  if (
+    decision === null ||
+    articleRelevance === null ||
+    detectedText === null ||
+    companyNames === null ||
+    logosOrWatermarks === null ||
+    phoneNumbers === null ||
+    unsafe === null ||
+    deceptiveRealism === null ||
+    issues === null
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    article_relevance: Number(articleRelevance),
+    company_names: jsonArray(companyNames),
+    decision,
+    deceptive_realism: strictBoolean(deceptiveRealism),
+    detected_text: jsonArray(detectedText),
+    issues: jsonArray(issues),
+    logos_or_watermarks: jsonArray(logosOrWatermarks),
+    phone_numbers: jsonArray(phoneNumbers),
+    unsafe: strictBoolean(unsafe),
+  });
+}
+
+function labeledField(value: string, label: string): string | null {
+  const pattern = new RegExp(`^\\s*(?:\\*\\*)?${label}:(?:\\*\\*)?\\s*(.+?)\\s*$`, 'gimu');
+  const matches = [...value.matchAll(pattern)];
+  return matches.length === 1 ? (matches[0]?.[1] ?? null) : null;
+}
+
+function jsonArray(value: string): unknown {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed : value;
+  } catch {
+    return value;
+  }
+}
+
+function strictBoolean(value: string): boolean | string {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
 }
 
 function strings(value: unknown): readonly string[] {

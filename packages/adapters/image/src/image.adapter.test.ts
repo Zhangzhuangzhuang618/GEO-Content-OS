@@ -132,6 +132,86 @@ describe('image adapter', () => {
     ).toMatchObject({ articleRelevance: 95, decision: 'pass' });
   });
 
+  it('accepts the vision model complete labeled response when JSON mode returns Markdown', async () => {
+    const generated = await renderTemplateImage({
+      accent: 'teal',
+      label: '场景',
+      title: '测试标题',
+    });
+    const fetcher = async () =>
+      new Response(
+        JSON.stringify({
+          errors: [],
+          messages: [],
+          result: {
+            response:
+              'The image matches the expected editorial scene.\n\n**Decision:** pass\n\n**Article Relevance:** 100\n\n**Detected Text:** []\n\n**Company Names:** []\n\n**Logos or Watermarks:** []\n\n**Phone Numbers:** []\n\n**Unsafe:** false\n\n**Deceptive Realism:** false\n\n**Issues:** []',
+          },
+          success: true,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    const adapter = new CloudflareWorkersAiImageAdapter(
+      {
+        accountId: 'account-id',
+        apiToken: 'secret-token',
+        generationModel: '@cf/black-forest-labs/flux-1-schnell',
+        inspectionModel: '@cf/meta/llama-3.2-11b-vision-instruct',
+        timeoutMs: 5_000,
+      },
+      fetcher as typeof fetch,
+    );
+
+    await expect(
+      adapter.inspect({
+        body: generated,
+        expectedScene: 'A moving checklist illustration.',
+        mimeType: 'image/png',
+        requestId: 'inspection-markdown',
+      }),
+    ).resolves.toMatchObject({ articleRelevance: 100, decision: 'pass' });
+  });
+
+  it('rejects labeled responses with a missing quality field', async () => {
+    const generated = await renderTemplateImage({
+      accent: 'teal',
+      label: '场景',
+      title: '测试标题',
+    });
+    const fetcher = async () =>
+      new Response(
+        JSON.stringify({
+          errors: [],
+          messages: [],
+          result: {
+            response:
+              '**Decision:** pass\n**Article Relevance:** 100\n**Detected Text:** []\n**Company Names:** []\n**Logos or Watermarks:** []\n**Phone Numbers:** []\n**Deceptive Realism:** false\n**Issues:** []',
+          },
+          success: true,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    const adapter = new CloudflareWorkersAiImageAdapter(
+      {
+        accountId: 'account-id',
+        apiToken: 'secret-token',
+        generationModel: '@cf/black-forest-labs/flux-1-schnell',
+        inspectionModel: '@cf/meta/llama-3.2-11b-vision-instruct',
+        timeoutMs: 5_000,
+      },
+      fetcher as typeof fetch,
+    );
+
+    await expect(
+      adapter.inspect({
+        body: generated,
+        expectedScene: 'A moving checklist illustration.',
+        mimeType: 'image/png',
+        requestId: 'inspection-incomplete-markdown',
+      }),
+    ).rejects.toThrow(/inspection JSON is invalid/u);
+  });
+
   it('requires credentials only when Cloudflare is enabled', () => {
     expect(readImageProviderConfiguration({ IMAGE_GENERATION_DRIVER: 'disabled' })).toEqual({
       driver: 'disabled',
