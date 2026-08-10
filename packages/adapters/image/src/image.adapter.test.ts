@@ -83,7 +83,14 @@ describe('image adapter', () => {
       title: '测试标题',
     });
     const fetcher = async (_url: string | URL | Request, input?: RequestInit) => {
-      const payload = JSON.parse(String(input?.body)) as { image?: string; prompt?: string };
+      const payload = JSON.parse(String(input?.body)) as {
+        image?: string;
+        messages?: { content?: string }[];
+        prompt?: string;
+      };
+      if (!payload.prompt) {
+        expect(payload.messages?.[1]?.content).toContain('article_relevance is at least 80');
+      }
       const result = payload.prompt
         ? { image: Buffer.from(generated).toString('base64'), request_id: 'cf-generation' }
         : {
@@ -170,6 +177,91 @@ describe('image adapter', () => {
         requestId: 'inspection-markdown',
       }),
     ).resolves.toMatchObject({ articleRelevance: 100, decision: 'pass' });
+  });
+
+  it('accepts a complete JSON result after the vision model commentary', async () => {
+    const generated = await renderTemplateImage({
+      accent: 'teal',
+      label: '场景',
+      title: '测试标题',
+    });
+    const fetcher = async () =>
+      new Response(
+        JSON.stringify({
+          errors: [],
+          messages: [],
+          result: {
+            response:
+              'The image does not clearly match the expected scene.\n\n{"decision":"block","article_relevance":0,"detected_text":[],"company_names":[],"logos_or_watermarks":[],"phone_numbers":[],"unsafe":false,"deceptive_realism":false,"issues":["scene mismatch"]}',
+          },
+          success: true,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    const adapter = new CloudflareWorkersAiImageAdapter(
+      {
+        accountId: 'account-id',
+        apiToken: 'secret-token',
+        generationModel: '@cf/black-forest-labs/flux-1-schnell',
+        inspectionModel: '@cf/meta/llama-3.2-11b-vision-instruct',
+        timeoutMs: 5_000,
+      },
+      fetcher as typeof fetch,
+    );
+
+    await expect(
+      adapter.inspect({
+        body: generated,
+        expectedScene: 'A moving checklist illustration.',
+        mimeType: 'image/png',
+        requestId: 'inspection-commentary-json',
+      }),
+    ).resolves.toMatchObject({ articleRelevance: 0, decision: 'block' });
+  });
+
+  it('accepts explicit None lists and case variants in the labeled response', async () => {
+    const generated = await renderTemplateImage({
+      accent: 'teal',
+      label: '场景',
+      title: '测试标题',
+    });
+    const fetcher = async () =>
+      new Response(
+        JSON.stringify({
+          errors: [],
+          messages: [],
+          result: {
+            response:
+              '* Decision: Pass\n* Article Relevance: 100%\n* Detected Text: None\n* Company Names: None\n* Logos or Watermarks: None\n* Phone Numbers: None\n* Unsafe: False\n* Deceptive Realism: False\n* Issues: None',
+          },
+          success: true,
+        }),
+        { headers: { 'content-type': 'application/json' }, status: 200 },
+      );
+    const adapter = new CloudflareWorkersAiImageAdapter(
+      {
+        accountId: 'account-id',
+        apiToken: 'secret-token',
+        generationModel: '@cf/black-forest-labs/flux-1-schnell',
+        inspectionModel: '@cf/meta/llama-3.2-11b-vision-instruct',
+        timeoutMs: 5_000,
+      },
+      fetcher as typeof fetch,
+    );
+
+    await expect(
+      adapter.inspect({
+        body: generated,
+        expectedScene: 'A moving checklist illustration.',
+        mimeType: 'image/png',
+        requestId: 'inspection-none-labels',
+      }),
+    ).resolves.toMatchObject({
+      articleRelevance: 100,
+      decision: 'pass',
+      detectedText: [],
+      unsafe: false,
+    });
   });
 
   it('rejects labeled responses with a missing quality field', async () => {

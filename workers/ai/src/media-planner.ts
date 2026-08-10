@@ -270,7 +270,7 @@ function parseScene(value: unknown): ArticleImageScene {
   ) {
     throw new Error('Image scene violates the deterministic prompt gate');
   }
-  const hardenedPrompt = `${prompt}. Clean editorial illustration, anonymous people, generic unbranded setting, no text, no letters, no numbers, no logo, no watermark, no phone number, no URL, no QR code, no licence plate, no identifiable company, not documentary evidence.`;
+  const hardenedPrompt = `${prompt}. Flat vector editorial illustration with visibly stylized two-dimensional geometric shapes, simplified faceless figures, matte color blocks, blank unlabeled surfaces, generic unbranded setting, no photorealism, no camera-like lighting, no realistic human faces, no text, letters, or numbers, no logo or watermark, no phone number, URL, QR code, or licence plate, no identifiable company; not documentary evidence.`;
   if (hardenedPrompt.length > 2_048) throw new Error('Hardened image prompt is too long');
   return Object.freeze({ caption, prompt: hardenedPrompt });
 }

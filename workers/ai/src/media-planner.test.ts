@@ -34,6 +34,7 @@ describe('ArticleImagePlanner', () => {
     expect(plan.source).toBe('deepseek');
     expect(plan.plannerFailure).toBeNull();
     expect(plan.scenes).toHaveLength(2);
+    expect(plan.scenes[0].prompt).toContain('Flat vector editorial illustration');
     expect(plan.scenes[0].prompt).toContain('no identifiable company');
     expect(plan.plannerDiagnostics).toMatchObject({ attempts: 1, repaired: false });
     expect(recordUsage).toHaveBeenCalledOnce();

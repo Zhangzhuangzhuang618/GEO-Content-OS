@@ -402,7 +402,7 @@ export class ContentMediaWorker {
           externalCalls += 1;
           const inspection = await this.provider.inspect({
             body: normalized,
-            expectedScene: scene.caption,
+            expectedScene: inspectionScene(scene),
             mimeType: 'image/jpeg',
             requestId: `${requestId}:inspect:${index + 1}`,
             ...(signal ? { signal } : {}),
@@ -722,6 +722,10 @@ function providerQuality(value: ImageInspectionResult): Readonly<Record<string, 
     schema_version: 'content-image-quality@1',
     unsafe: value.unsafe,
   });
+}
+
+function inspectionScene(scene: ArticleImagePlan['scenes'][number]): string {
+  return `Article scene (Chinese): ${scene.caption}\nPlanned visual representation (English): ${scene.prompt}`;
 }
 
 function safeDisplayText(value: string, fallback: string, maxLength: number): string {
