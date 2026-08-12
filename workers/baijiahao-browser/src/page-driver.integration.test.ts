@@ -21,6 +21,7 @@ type SubmittedPublication = {
 describe('Baijiahao local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
+  let editorStartsAtHome = false;
   let manageStartsAtHome = false;
   let profileRoot = '';
   let server: ReturnType<typeof createServer>;
@@ -30,6 +31,7 @@ describe('Baijiahao local browser simulator', () => {
 
   beforeEach(async () => {
     duplicateRows = false;
+    editorStartsAtHome = false;
     manageStartsAtHome = false;
     submitted = null;
     validEditorSignature = true;
@@ -42,6 +44,7 @@ describe('Baijiahao local browser simulator', () => {
         () => submitted,
         () => duplicateRows,
         () => validEditorSignature,
+        () => editorStartsAtHome,
         () => validManageSignature,
         () => manageStartsAtHome,
         (value) => {
@@ -212,6 +215,51 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
+  it('opens the article editor from the authenticated home page before submitting', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      editorStartsAtHome = true;
+
+      await expect(
+        driver.submit(
+          {
+            accountId,
+            contentFingerprint: 'b'.repeat(64),
+            images: [],
+            payload: {
+              abstract: '首页回退摘要',
+              body_html: '<p>正文</p>',
+              body_asset_ids: [],
+              body_text: '用于百家号浏览器仿真验证的正文内容。\n\n1. 第一步\n2. 第二步\n\n收尾。',
+              citation_links: [],
+              content_type: 'news',
+              cover_asset_id: null,
+              platform_code: 'baijiahao',
+              rule_version: 'baijiahao-render-rules@1.1.0',
+              schema_version: 'baijiahao-payload@2',
+              tags: ['首页', '图文', '发布'],
+              title: '首页回退图文发布测试',
+            },
+            profilePath,
+            storageStateJson: await driver.exportStorageState(accountId),
+          },
+          async () => undefined,
+        ),
+      ).resolves.toMatchObject({ externalId: 'simulator-145', status: 'processing' });
+      expect(submitted).toMatchObject({
+        aiGenerated: true,
+        fingerprint: 'b'.repeat(64),
+        title: '首页回退图文发布测试',
+      });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('opens content management from the authenticated home page before reconciling', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';
@@ -295,6 +343,7 @@ function route(
   readSubmitted: () => SubmittedPublication | null,
   readDuplicateRows: () => boolean,
   hasEditorSignature: () => boolean,
+  editorStartsAtHome: () => boolean,
   hasManageSignature: () => boolean,
   manageStartsAtHome: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
@@ -332,7 +381,24 @@ function route(
   if (request.url === '/login-complete') {
     return html(response, '<main>登录完成</main>');
   }
-  if (request.url === '/editor') {
+  if (request.url === '/editor' && editorStartsAtHome()) {
+    return html(
+      response,
+      `
+      <nav data-testid="authenticated-home">
+        <button data-testid="publishing-entry">发布作品</button>
+        <a data-testid="article-entry" href="/editor-ready" style="display:none">图文</a>
+        <span>内容管理</span><span>个人中心</span>
+      </nav>
+      <script>
+        document.querySelector('[data-testid=publishing-entry]').onclick=()=>{
+          document.querySelector('[data-testid=article-entry]').style.display='inline';
+        };
+      </script>
+    `,
+    );
+  }
+  if (request.url === '/editor' || request.url === '/editor-ready') {
     if (!hasEditorSignature()) return html(response, '<main>编辑器暂时不可用</main>');
     return html(
       response,

@@ -10,11 +10,13 @@ import { PlatformAccountError } from './platform-account.errors.js';
 export class BaijiahaoBrowserGatewayClient {
   private readonly baseUrl: string;
   private readonly token: string | null;
+  private readonly timeoutMs: number;
 
   public constructor(environment: NodeJS.ProcessEnv = process.env) {
     const configuration = readBaijiahaoBrowserGatewayCredential(environment, false);
     this.baseUrl = configuration.base_url;
     this.token = configuration.bearer_token || null;
+    this.timeoutMs = readGatewayTimeout(environment);
   }
 
   public login(accountId: string): Promise<BaijiahaoBrowserLoginView> {
@@ -53,7 +55,7 @@ export class BaijiahaoBrowserGatewayClient {
       );
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await fetch(new URL(path, this.baseUrl), {
         headers: { authorization: `Bearer ${this.token}` },
@@ -77,6 +79,15 @@ export class BaijiahaoBrowserGatewayClient {
       clearTimeout(timeout);
     }
   }
+}
+
+function readGatewayTimeout(environment: NodeJS.ProcessEnv): number {
+  const configured = environment['BAIJIAHAO_BROWSER_GATEWAY_TIMEOUT_MS']?.trim();
+  const value = Number(configured || 65_000);
+  if (!Number.isInteger(value) || value < 1_000 || value > 120_000) {
+    throw new Error('BAIJIAHAO_BROWSER_GATEWAY_TIMEOUT_MS is invalid');
+  }
+  return value;
 }
 
 export function readBaijiahaoBrowserGatewayCredential(

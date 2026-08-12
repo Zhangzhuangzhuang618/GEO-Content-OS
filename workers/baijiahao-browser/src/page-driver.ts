@@ -45,6 +45,8 @@ const SELECTORS = Object.freeze({
 const AUTHENTICATED_HOME_MARKERS = Object.freeze(['发布作品', '内容管理', '个人中心']);
 const CONTENT_MANAGEMENT_ENTRY = '内容管理';
 const CONTENT_MANAGEMENT_DESTINATIONS = Object.freeze(['作品管理', '我的内容']);
+const PUBLISHING_ENTRY = '发布作品';
+const PUBLISHING_DESTINATIONS = Object.freeze(['图文']);
 const COVER_CONFIRM_READY_BACKGROUND_COLOR = 'rgb(56, 85, 213)';
 const COVER_PROCESSING_MESSAGE = /封面裁剪处理中，\s*请稍后再点击[“"]确定[”"]/u;
 
@@ -114,7 +116,10 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       if (!(await loginTrigger.isVisible().catch(() => false))) {
         await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
         await this.rejectCaptcha(page);
-        if (await this.isAuthenticatedEditor(page)) {
+        if (
+          (await this.isAuthenticatedEditor(page)) ||
+          (await this.isAuthenticatedAccountPage(page))
+        ) {
           return { expiresAt, qrPng: Buffer.alloc(0) };
         }
         throw new PageDriverError(
@@ -175,7 +180,9 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     if (!loginObserved) return false;
     await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
-    return this.isAuthenticatedEditor(page);
+    if (await this.isAuthenticatedHomePage(page)) return true;
+    if (await this.isAuthenticatedEditor(page)) return true;
+    return this.isAuthenticatedAccountPage(page);
   }
 
   public async verifyAuthenticated(
@@ -186,7 +193,9 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     const page = await this.page(accountId, profilePath, storageStateJson);
     await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
+    if (await this.isAuthenticatedHomePage(page)) return true;
     if (await this.isAuthenticatedEditor(page)) return true;
+    if (await this.isAuthenticatedAccountPage(page)) return true;
     return this.verifyViaLoginPage(page);
   }
 
@@ -206,7 +215,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
       stage = 'verify_editor';
       await this.rejectCaptcha(page);
-      await this.requireAuthenticated(page);
+      await this.requireEditor(page);
       const title = page.locator(SELECTORS.title).first();
       const body = await this.bodyLocator(page);
       const submit = publishButton(page);
@@ -414,6 +423,52 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     );
   }
 
+  private async requireEditor(page: Page): Promise<void> {
+    if (await this.hasEditorSignature(page)) return;
+    if (await this.isAuthenticatedHomePage(page)) {
+      if (await this.openEditorFromHome(page)) return;
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Baijiahao publishing entry did not open a verifiable article editor',
+      );
+    }
+    if (await this.isAuthenticatedEditor(page)) return;
+    if (!(await this.verifyViaLoginPage(page))) {
+      throw new PageDriverError('AUTH_REQUIRED', 'Baijiahao login has expired');
+    }
+    if (await this.openEditorFromHome(page)) return;
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao session is active but the article editor is not available',
+    );
+  }
+
+  private async openEditorFromHome(page: Page): Promise<boolean> {
+    if (await this.hasEditorSignature(page)) return true;
+    if (!(await this.isAuthenticatedAccountPage(page))) return false;
+
+    const entry = page.getByText(PUBLISHING_ENTRY, { exact: true }).first();
+    if (!(await entry.isVisible().catch(() => false))) return false;
+    await entry.click();
+
+    const clickedDestinations = new Set<string>();
+    const expiresAt = Date.now() + this.config.navigationTimeoutMs;
+    while (Date.now() < expiresAt) {
+      await this.rejectCaptcha(page);
+      if (await this.hasEditorSignature(page)) return true;
+      for (const label of PUBLISHING_DESTINATIONS) {
+        if (clickedDestinations.has(label)) continue;
+        const destination = page.getByText(label, { exact: true }).first();
+        if (!(await destination.isVisible().catch(() => false))) continue;
+        clickedDestinations.add(label);
+        await destination.click();
+        break;
+      }
+      await page.waitForTimeout(100);
+    }
+    return false;
+  }
+
   private async openContentManagement(page: Page): Promise<void> {
     if (await this.isContentManagementPage(page)) return;
     if (!(await this.isAuthenticatedAccountPage(page))) return;
@@ -492,6 +547,10 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     ) {
       return true;
     }
+    return this.isAuthenticatedHomePage(page);
+  }
+
+  private async isAuthenticatedHomePage(page: Page): Promise<boolean> {
     const pageText = await page
       .locator('body')
       .innerText()
@@ -526,15 +585,6 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   }
 
   private async isAuthenticatedEditor(page: Page): Promise<boolean> {
-    if (
-      await page
-        .locator(SELECTORS.authenticated)
-        .first()
-        .isVisible()
-        .catch(() => false)
-    ) {
-      return true;
-    }
     try {
       const title = page.locator(SELECTORS.title).first();
       const submit = publishButton(page);
@@ -548,6 +598,16 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     } catch {
       return false;
     }
+  }
+
+  private async hasEditorSignature(page: Page): Promise<boolean> {
+    const title = page.locator(SELECTORS.title).first();
+    const body = await this.bodyLocator(page);
+    const submit = publishButton(page);
+    const visibility = await Promise.all(
+      [title, body, submit].map((locator) => locator.isVisible().catch(() => false)),
+    );
+    return visibility.every(Boolean);
   }
 
   private async bodyLocator(page: Page): Promise<Locator> {

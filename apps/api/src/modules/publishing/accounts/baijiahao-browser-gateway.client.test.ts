@@ -26,6 +26,16 @@ describe('Baijiahao browser gateway configuration', () => {
     expect(() => readBaijiahaoBrowserGatewayCredential({})).toThrow(PlatformAccountError);
   });
 
+  it('rejects an invalid browser gateway timeout', () => {
+    expect(
+      () =>
+        new BaijiahaoBrowserGatewayClient({
+          ...ENVIRONMENT,
+          BAIJIAHAO_BROWSER_GATEWAY_TIMEOUT_MS: '999',
+        }),
+    ).toThrow(/TIMEOUT/u);
+  });
+
   it('preserves a safe browser failure reason without exposing the upstream message', async () => {
     vi.stubGlobal(
       'fetch',
