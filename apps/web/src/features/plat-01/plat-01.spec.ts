@@ -37,11 +37,11 @@ test.beforeEach(async ({ context, page }) => {
 test('shows tenant, plan, usage and health on mobile and persists filters', async ({ page }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto('/plat-01');
-  await expect(page.getByRole('heading', { name: '平台租户管理' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '企业管理' })).toBeVisible();
   await expect(page.getByText('Acme China')).toBeVisible();
   await expect(page.getByText('¥12.34')).toBeVisible();
   await expect(page.locator('dd').filter({ hasText: /^健康$/u })).toBeVisible();
-  await page.getByLabel('搜索租户').fill('Acme');
+  await page.getByLabel('搜索企业').fill('Acme');
   await page.getByLabel('状态').selectOption('active');
   await page.getByRole('button', { name: '筛选' }).click();
   await expect(page).toHaveURL(/search=Acme.*status=active/u);
@@ -70,11 +70,11 @@ test('creates tenant with owner and default workspace through the frozen endpoin
     });
   });
   await page.goto('/plat-01');
-  await page.getByRole('button', { name: '创建租户' }).click();
-  await page.getByLabel('租户名称').fill('New Tenant');
-  await page.getByLabel('租户标识').fill('new-tenant');
-  await page.getByLabel('所有者邮箱').fill('owner@new.example');
-  await page.getByLabel('所有者姓名').fill('New Owner');
+  await page.getByRole('button', { name: '创建企业' }).click();
+  await page.getByLabel('企业名称').fill('New Tenant');
+  await page.getByLabel('企业网址标识').fill('new-tenant');
+  await page.getByLabel('管理员邮箱').fill('owner@new.example');
+  await page.getByLabel('管理员姓名').fill('New Owner');
   await page.getByRole('button', { name: '确认创建' }).click();
   await expect(page.getByRole('status')).toContainText('默认工作区已创建');
   expect(body).toMatchObject({
@@ -148,7 +148,7 @@ test('creates a grant capped at eight hours before any tenant-content read', asy
   await page.getByLabel('有效时长').selectOption('8');
   const startedAt = Date.now();
   await page.getByRole('button', { name: '创建授权' }).click();
-  await expect(page.getByText(`授权 ${GRANT} 已生效`)).toBeVisible();
+  await expect(page.getByText(/授权已生效，有效期至/u)).toBeVisible();
   const request = body as {
     expires_at: string;
     platform_user_id: string;
@@ -172,7 +172,7 @@ test('shows permission state when platform tenant access is denied', async ({ pa
   await page.unroute('**/api/v1/platform/tenants?*');
   await page.route('**/api/v1/platform/tenants?*', (route) => route.fulfill({ status: 403 }));
   await page.goto('/plat-01');
-  await expect(page.getByRole('heading', { name: '无权管理平台租户' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '无权管理企业' })).toBeVisible();
 });
 
 function tenant(overrides: Record<string, unknown> = {}) {
