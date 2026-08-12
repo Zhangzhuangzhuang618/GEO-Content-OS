@@ -118,6 +118,26 @@ test('suspends with reason and optimistic version, then renders restore action',
   expect(headers?.['x-csrf-token']).toBe('x'.repeat(43));
 });
 
+test('resends a pending owner invitation with CSRF and idempotency', async ({ page }) => {
+  let headers: Record<string, string> | undefined;
+  await page.route(
+    `**/api/v1/platform/tenants/${TENANT}/owner-invitation/resend`,
+    async (route) => {
+      headers = route.request().headers();
+      await route.fulfill({
+        body: JSON.stringify({ data: tenant(), meta: { request_id: 'resend-owner' } }),
+        contentType: 'application/json',
+        status: 200,
+      });
+    },
+  );
+  await page.goto('/plat-01');
+  await page.getByRole('button', { name: '重发管理员邀请' }).click();
+  await expect(page.getByRole('status')).toContainText('旧链接已失效');
+  expect(headers?.['idempotency-key']).toMatch(/^tenant-owner-invitation-resend-/u);
+  expect(headers?.['x-csrf-token']).toBe('x'.repeat(43));
+});
+
 test('creates a grant capped at eight hours before any tenant-content read', async ({ page }) => {
   let body: Record<string, unknown> | undefined;
   let tenantContentReads = 0;

@@ -51,6 +51,12 @@ interface OwnerRow {
   readonly status: 'active' | 'disabled' | 'invited';
 }
 
+interface PendingOwnerInvitationRow {
+  readonly email: string;
+  readonly invitationId: string;
+  readonly workspaceScope: unknown;
+}
+
 export interface PlatformTenantPage {
   readonly items: readonly PlatformTenantView[];
   readonly nextCursor: string | null;
@@ -211,6 +217,106 @@ export class PlatformTenantService {
     audit: PlatformTenantAuditContext,
   ): Promise<PlatformTenantView> {
     return this.transition(actorUserId, tenantId, expectedVersion, 'active', undefined, audit);
+  }
+
+  public async resendOwnerInvitation(
+    transaction: TransactionSql,
+    actorUserId: string,
+    tenantId: string,
+    audit: PlatformTenantAuditContext,
+  ): Promise<PlatformTenantView> {
+    const token = generateSecureToken(32);
+    const ttlSeconds = readInvitationConfiguration().ttlSeconds;
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1_000);
+    const tenant = await lockTenant(transaction, tenantId);
+    if (tenant.status !== 'active') throw new PlatformTenantStateError();
+
+    const actors = await transaction<ActorRow[]>`
+      SELECT identity_user.display_name AS "displayName"
+      FROM users AS identity_user
+      JOIN platform_roles AS platform_role ON platform_role.user_id = identity_user.id
+      WHERE
+        identity_user.id = ${actorUserId}::uuid
+        AND identity_user.status = 'active'
+        AND identity_user.deleted_at IS NULL
+        AND platform_role.role_code = 'platform_admin'
+        AND platform_role.status = 'active'
+      LIMIT 1
+    `;
+    const actor = actors[0];
+    if (!actor) throw new PlatformTenantNotFoundError();
+
+    const invitations = await transaction<PendingOwnerInvitationRow[]>`
+      SELECT
+        identity_user.email::text AS email,
+        invitation.id AS "invitationId",
+        invitation.workspace_scope_json AS "workspaceScope"
+      FROM memberships AS membership
+      JOIN users AS identity_user
+        ON identity_user.id = membership.user_id
+        AND identity_user.status IN ('active', 'invited')
+        AND identity_user.deleted_at IS NULL
+      JOIN invitations AS invitation
+        ON invitation.tenant_id = membership.tenant_id
+        AND invitation.email = identity_user.email
+        AND invitation.role_code = 'tenant_owner'
+        AND invitation.accepted_at IS NULL
+        AND invitation.revoked_at IS NULL
+      WHERE
+        membership.tenant_id = ${tenantId}::uuid
+        AND membership.role_code = 'tenant_owner'
+        AND membership.status = 'invited'
+      ORDER BY invitation.created_at DESC, invitation.id DESC
+      LIMIT 2
+      FOR UPDATE OF membership, identity_user, invitation
+    `;
+    if (invitations.length !== 1) throw new PlatformTenantStateError();
+    const previous = invitations[0];
+    if (!previous) throw new PlatformTenantStateError();
+
+    const revoked = await transaction<{ id: string }[]>`
+      UPDATE invitations
+      SET revoked_at = now()
+      WHERE
+        id = ${previous.invitationId}::uuid
+        AND accepted_at IS NULL
+        AND revoked_at IS NULL
+      RETURNING id
+    `;
+    if (revoked.length !== 1) throw new PlatformTenantStateError();
+
+    await transaction`
+      INSERT INTO invitations (
+        tenant_id, email, role_code, workspace_scope_json,
+        token_hash, expires_at, invited_by
+      ) VALUES (
+        ${tenantId}::uuid, ${previous.email}, 'tenant_owner',
+        ${JSON.stringify(previous.workspaceScope)}::text::jsonb,
+        ${sha256(token)}, ${expiresAt.toISOString()}, ${actorUserId}::uuid
+      )
+    `;
+
+    const view = toTenantView(await selectTenant(transaction, tenantId));
+    await insertAudit(transaction, {
+      action: 'platform.tenant.owner_invitation_resent',
+      actorUserId,
+      after: {
+        expires_at: expiresAt.toISOString(),
+        invitation_status: 'pending',
+        owner_membership_status: 'invited',
+      },
+      audit,
+      before: { invitation_status: 'pending', owner_membership_status: 'invited' },
+      tenantId,
+    });
+    await this.sendOwnerInvitation({
+      email: previous.email,
+      expiresAt: expiresAt.toISOString(),
+      inviterName: actor.displayName,
+      tenantName: tenant.name,
+      token,
+    });
+    return view;
   }
 
   private async transition(

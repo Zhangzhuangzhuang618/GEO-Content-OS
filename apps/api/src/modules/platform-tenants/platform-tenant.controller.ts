@@ -177,6 +177,53 @@ export class PlatformTenantController {
       await sendPlatformTenantError(reply, request.id, error);
     }
   }
+
+  @Post(':id/owner-invitation/resend')
+  public async resendOwnerInvitation(
+    @Param('id') rawId: string,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const id = PlatformTenantIdSchema.safeParse(rawId);
+    if (!id.success) return sendSchemaError(reply, request.id, id.error.issues);
+    const actorId = requireActor(request);
+    try {
+      const result = await this.idempotency.execute(
+        {
+          fingerprint: {
+            body: null,
+            method: request.method,
+            path: '/platform/tenants/{id}/owner-invitation/resend',
+          },
+          idempotencyKey: parseIdempotencyKey(request.headers['idempotency-key']),
+          scopeKey: buildIdempotencyScope({
+            actorId,
+            method: request.method,
+            route: '/platform/tenants/{id}/owner-invitation/resend',
+          }),
+          tenantId: id.data,
+        },
+        async (transaction) => {
+          const tenant = await this.tenants.resendOwnerInvitation(
+            transaction,
+            actorId,
+            id.data,
+            auditContext(request),
+          );
+          return {
+            body: toJson({ data: tenant, meta: { request_id: request.id } }),
+            statusCode: HttpStatus.OK,
+          };
+        },
+      );
+      await reply
+        .header('etag', `"${readVersion(result.response.body)}"`)
+        .status(result.response.statusCode)
+        .send(result.response.body);
+    } catch (error) {
+      await sendPlatformTenantError(reply, request.id, error);
+    }
+  }
 }
 
 async function sendTenant(

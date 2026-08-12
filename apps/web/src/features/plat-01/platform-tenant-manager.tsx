@@ -10,6 +10,7 @@ import {
   loadCurrentUser,
   loadPlatformTenants,
   PlatformTenantRequestError,
+  resendPlatformTenantOwnerInvitation,
 } from './platform-tenant-api';
 import type { PlatformTenant, SupportGrant, TenantFilters } from './platform-tenant.schema';
 
@@ -114,6 +115,25 @@ export function PlatformTenantManager() {
     }
   }
 
+  async function resendOwnerInvitation(tenant: PlatformTenant) {
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) return setMessage('安全令牌尚未就绪，请刷新后重试。');
+    setBusyId(tenant.id);
+    setMessage(null);
+    try {
+      await resendPlatformTenantOwnerInvitation(tenant.id, csrf);
+      setMessage('管理员邀请已重新发送；旧链接已失效，请使用最新邮件中的链接。');
+    } catch (error) {
+      setMessage(
+        error instanceof PlatformTenantRequestError && error.status === 409
+          ? '无法重发：该企业没有待接受的管理员邀请，或企业状态已变化。'
+          : '管理员邀请重发失败；请检查邮件服务和企业状态后重试。',
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (state === 'loading' && items.length === 0)
     return <StatePanel busy title="正在加载企业" text="正在读取企业状态与汇总用量。" />;
   if (state === 'permission')
@@ -152,6 +172,7 @@ export function PlatformTenantManager() {
             <TenantCard
               busy={busyId === tenant.id}
               key={tenant.id}
+              onResendOwnerInvitation={() => void resendOwnerInvitation(tenant)}
               onStateChange={(action) => void transition(tenant, action)}
               onSupport={() => setSupportTenant(tenant)}
               tenant={tenant}
@@ -255,11 +276,13 @@ function CreateTenantForm({
 function TenantCard({
   tenant,
   busy,
+  onResendOwnerInvitation,
   onStateChange,
   onSupport,
 }: {
   readonly tenant: PlatformTenant;
   readonly busy: boolean;
+  readonly onResendOwnerInvitation: () => void;
   readonly onStateChange: (action: 'restore' | 'suspend') => void;
   readonly onSupport: () => void;
 }) {
@@ -304,6 +327,16 @@ function TenantCard({
             type="button"
           >
             恢复
+          </button>
+        ) : null}
+        {tenant.status === 'active' ? (
+          <button
+            className={secondaryButton}
+            disabled={busy}
+            onClick={onResendOwnerInvitation}
+            type="button"
+          >
+            重发管理员邀请
           </button>
         ) : null}
         {tenant.status === 'active' ? (

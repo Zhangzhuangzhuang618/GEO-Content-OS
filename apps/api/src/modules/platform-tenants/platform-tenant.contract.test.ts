@@ -21,6 +21,10 @@ const bindings: readonly Binding[] = [
   bind('platform.tenants.list', PlatformTenantController.prototype.list),
   bind('platform.tenants.suspend', PlatformTenantController.prototype.suspend),
   bind('platform.tenants.restore', PlatformTenantController.prototype.restore),
+  bind(
+    'platform.tenants.owner_invitation.resend',
+    PlatformTenantController.prototype.resendOwnerInvitation,
+  ),
 ];
 
 describe('platform tenant controller contract bindings', () => {

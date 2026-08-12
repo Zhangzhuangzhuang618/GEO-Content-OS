@@ -75,6 +75,18 @@ const contracts = [
     200,
     PlatformTenantIdSchema,
   ),
+  contract(
+    'platform.tenants.owner_invitation.resend',
+    'POST',
+    '/platform/tenants/{id}/owner-invitation/resend',
+    'key+body_hash',
+    null,
+    null,
+    PlatformTenantResponseSchema,
+    'TenantView',
+    200,
+    PlatformTenantIdSchema,
+  ),
 ] as const satisfies readonly PlatformTenantApiContract[];
 
 export const PLATFORM_TENANT_API_CONTRACTS: readonly PlatformTenantApiContract[] =

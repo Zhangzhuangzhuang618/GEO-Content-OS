@@ -2,6 +2,7 @@ import {
   startPostgresTestContainer,
   type StartedPostgreSqlContainer,
 } from '@geo-content-os/testkit';
+import type { EmailAdapter } from '@geo-content-os/adapter-email';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createHash, randomBytes } from 'node:crypto';
 import postgres, { type Sql } from 'postgres';
@@ -9,6 +10,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createApplication } from '../../src/application.js';
 import { migrateDatabase } from '../../src/database/migrate.js';
+import { IdentityAuthDatabase } from '../../src/modules/identity/auth/auth.database.js';
+import { PlatformTenantService } from '../../src/modules/platform-tenants/platform-tenant.service.js';
 
 const ADMIN = '10000000-0000-4000-8000-000000000102';
 const OWNER = '11000000-0000-4000-8000-000000000102';
@@ -199,6 +202,160 @@ describe('platform tenant API', () => {
         SELECT action FROM audit_events WHERE tenant_id=${TENANT} ORDER BY created_at
       `,
     ).toEqual([{ action: 'platform.tenant.suspended' }, { action: 'platform.tenant.restored' }]);
+  });
+
+  it('replaces a pending owner invitation once and rejects resend after acceptance', async () => {
+    const database = requireClient(client);
+    const server = requireApplication(application).getHttpAdapter().getInstance();
+    const admin = await createSession(database, ADMIN);
+    await database`
+      INSERT INTO memberships (tenant_id,user_id,role_code,status)
+      VALUES (${TENANT},${ADMIN},'tenant_owner','active')
+    `;
+    await database`
+      UPDATE memberships
+      SET status = 'invited', invited_by = ${ADMIN}
+      WHERE tenant_id = ${TENANT} AND user_id = ${OWNER}
+    `;
+    const workspaces = await database<{ id: string }[]>`
+      INSERT INTO workspaces (tenant_id,name,slug,timezone,settings_json,status)
+      VALUES (${TENANT},'Default Workspace','default','Asia/Shanghai','{}'::jsonb,'active')
+      RETURNING id
+    `;
+    const workspace = workspaces[0];
+    if (!workspace) throw new Error('Invitation resend test workspace was not created');
+    const invitations = await database<{ id: string }[]>`
+      INSERT INTO invitations (
+        tenant_id,email,role_code,workspace_scope_json,token_hash,expires_at,invited_by
+      ) VALUES (
+        ${TENANT},'owner@example.com','tenant_owner',
+        ${database.json({ workspace_ids: [workspace.id] })},${'a'.repeat(64)},
+        now() + interval '1 hour',${ADMIN}
+      )
+      RETURNING id
+    `;
+    const original = invitations[0];
+    if (!original) throw new Error('Invitation resend test invitation was not created');
+
+    const headers = {
+      ...writeHeaders(admin),
+      'idempotency-key': 'tenant-owner-invitation-resend-102',
+    };
+    const first = await server.inject({
+      headers,
+      method: 'POST',
+      url: `/api/v1/platform/tenants/${TENANT}/owner-invitation/resend`,
+    });
+    const replay = await server.inject({
+      headers,
+      method: 'POST',
+      url: `/api/v1/platform/tenants/${TENANT}/owner-invitation/resend`,
+    });
+    expect(first.statusCode).toBe(200);
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json().data.id).toBe(TENANT);
+    expect(JSON.stringify(first.json())).not.toContain('owner@example.com');
+    expect(JSON.stringify(first.json())).not.toContain('token');
+
+    const history = await database<
+      { acceptedAt: Date | null; id: string; revokedAt: Date | null; tokenHash: string }[]
+    >`
+      SELECT
+        id,
+        accepted_at AS "acceptedAt",
+        revoked_at AS "revokedAt",
+        token_hash AS "tokenHash"
+      FROM invitations
+      WHERE tenant_id = ${TENANT}
+      ORDER BY created_at, id
+    `;
+    expect(history).toHaveLength(2);
+    expect(history.find((row) => row.id === original.id)?.revokedAt).not.toBeNull();
+    const current = history.find((row) => row.id !== original.id);
+    expect(current).toMatchObject({ acceptedAt: null, revokedAt: null });
+    expect(current?.tokenHash).not.toBe('a'.repeat(64));
+    expect(
+      await database<{ action: string }[]>`
+        SELECT action FROM audit_events WHERE tenant_id = ${TENANT} ORDER BY created_at
+      `,
+    ).toEqual([{ action: 'platform.tenant.owner_invitation_resent' }]);
+
+    await database`
+      UPDATE memberships SET status = 'active'
+      WHERE tenant_id = ${TENANT} AND user_id = ${OWNER}
+    `;
+    const accepted = await server.inject({
+      headers: {
+        ...writeHeaders(admin),
+        'idempotency-key': 'tenant-owner-invitation-resend-after-accept-102',
+      },
+      method: 'POST',
+      url: `/api/v1/platform/tenants/${TENANT}/owner-invitation/resend`,
+    });
+    expect(accepted.statusCode).toBe(409);
+    expect(accepted.json().error.code).toBe('STATE_TRANSITION_INVALID');
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM invitations WHERE tenant_id = ${TENANT}
+      `,
+    ).toEqual([{ count: 2 }]);
+  });
+
+  it('keeps the previous invitation pending when resend email delivery fails', async () => {
+    const database = requireClient(client);
+    const app = requireApplication(application);
+    await database`
+      INSERT INTO memberships (tenant_id,user_id,role_code,status)
+      VALUES (${TENANT},${ADMIN},'tenant_owner','active')
+    `;
+    await database`
+      UPDATE memberships
+      SET status = 'invited', invited_by = ${ADMIN}
+      WHERE tenant_id = ${TENANT} AND user_id = ${OWNER}
+    `;
+    const workspaces = await database<{ id: string }[]>`
+      INSERT INTO workspaces (tenant_id,name,slug,timezone,settings_json,status)
+      VALUES (${TENANT},'Default Workspace','default','Asia/Shanghai','{}'::jsonb,'active')
+      RETURNING id
+    `;
+    const workspace = workspaces[0];
+    if (!workspace) throw new Error('Invitation rollback test workspace was not created');
+    const invitations = await database<{ id: string }[]>`
+      INSERT INTO invitations (
+        tenant_id,email,role_code,workspace_scope_json,token_hash,expires_at,invited_by
+      ) VALUES (
+        ${TENANT},'owner@example.com','tenant_owner',
+        ${database.json({ workspace_ids: [workspace.id] })},${'b'.repeat(64)},
+        now() + interval '1 hour',${ADMIN}
+      )
+      RETURNING id
+    `;
+    const original = invitations[0];
+    if (!original) throw new Error('Invitation rollback test invitation was not created');
+    const failingEmailAdapter: EmailAdapter = {
+      sendInvitation: () => Promise.reject(new Error('Email delivery failed')),
+      sendPasswordReset: () => Promise.reject(new Error('Email delivery failed')),
+    };
+    const service = new PlatformTenantService(app.get(IdentityAuthDatabase), failingEmailAdapter);
+
+    await expect(
+      database.begin((transaction) =>
+        service.resendOwnerInvitation(transaction, ADMIN, TENANT, {
+          requestId: 'owner-invitation-resend-email-failed',
+        }),
+      ),
+    ).rejects.toThrow('Email delivery failed');
+    expect(
+      await database<{ id: string; revokedAt: Date | null; tokenHash: string }[]>`
+        SELECT id, revoked_at AS "revokedAt", token_hash AS "tokenHash"
+        FROM invitations WHERE tenant_id = ${TENANT}
+      `,
+    ).toEqual([{ id: original.id, revokedAt: null, tokenHash: 'b'.repeat(64) }]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events WHERE tenant_id = ${TENANT}
+      `,
+    ).toEqual([{ count: 0 }]);
   });
 
   it('denies tenant owners and rejects archived transitions', async () => {

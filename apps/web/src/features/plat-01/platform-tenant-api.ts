@@ -73,6 +73,16 @@ export async function changeTenantState(
   );
 }
 
+export async function resendPlatformTenantOwnerInvitation(tenantId: string, csrf: string) {
+  return mutate(
+    `/api/v1/platform/tenants/${tenantId}/owner-invitation/resend`,
+    undefined,
+    csrf,
+    TenantResponseSchema,
+    { idempotency: `tenant-owner-invitation-resend-${createRequestUuid()}` },
+  );
+}
+
 export async function createSupportGrant(
   input: {
     readonly hours: number;

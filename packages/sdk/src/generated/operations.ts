@@ -707,6 +707,13 @@ export const operations = {
     permission: 'platform.tenants.manage',
     security: 'session_csrf',
   },
+  platform_tenants_owner_invitation_resend: {
+    idempotency: 'key+body_hash',
+    method: 'POST',
+    path: '/platform/tenants/{id}/owner-invitation/resend',
+    permission: 'platform.tenants.manage',
+    security: 'session_csrf',
+  },
   platform_tenants_restore: {
     idempotency: 'resource+version',
     method: 'POST',

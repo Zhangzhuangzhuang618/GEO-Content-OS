@@ -8,16 +8,17 @@ import {
 } from './index.js';
 
 describe('platform tenant API contract', () => {
-  it('freezes the four existing platform tenant endpoints', () => {
+  it('freezes the platform tenant endpoints including owner invitation resend', () => {
     expect(PLATFORM_TENANT_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).toEqual([
       'POST /platform/tenants',
       'GET /platform/tenants',
       'POST /platform/tenants/{id}/suspend',
       'POST /platform/tenants/{id}/restore',
+      'POST /platform/tenants/{id}/owner-invitation/resend',
     ]);
     expect(
       Object.values(PLATFORM_TENANT_OPENAPI_DOCUMENT.paths).flatMap((path) => Object.values(path)),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
   });
 
   it('requires a valid owner and exposes only aggregate platform metadata', () => {
