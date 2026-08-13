@@ -3,6 +3,7 @@ import { z } from 'zod';
 const PlatformSchema = z.enum([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',

@@ -450,6 +450,7 @@ function buildEstimate(input: BriefSaveInput): CostEstimate {
 const OUTPUT_BUDGET: Readonly<Record<PlatformCode, number>> = {
   official_site: 2400,
   baijiahao: 1600,
+  sohu: 1600,
   toutiao: 1800,
   zhihu: 2200,
   xiaohongshu: 1000,

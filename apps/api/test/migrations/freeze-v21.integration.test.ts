@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 
-const FREEZE_TABLE_COUNT = 76;
+const FREEZE_TABLE_COUNT = 79;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -75,7 +75,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T148 with content media automation tables', async () => {
+  it('migrates an empty database through T150 with Sohu browser publishing tables', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -111,6 +111,9 @@ describe('freeze v2.1 database verification', () => {
         'baijiahao_browser_sessions',
         'baijiahao_browser_publications',
         'baijiahao_browser_artifacts',
+        'sohu_browser_sessions',
+        'sohu_browser_publications',
+        'sohu_browser_artifacts',
         'keyword_import_jobs',
         'keyword_import_candidates',
         'content_media_runs',
@@ -146,7 +149,7 @@ describe('freeze v2.1 database verification', () => {
       invitedOwners: 1,
       modelRates: 1,
       projects: 1,
-      rules: 7,
+      rules: 8,
       subscriptions: 1,
       workspaces: 1,
     });

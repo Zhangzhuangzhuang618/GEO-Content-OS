@@ -646,7 +646,7 @@ function validateCommon(
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
     inputInvalid('expectedVersion must be a positive integer');
   }
-  if (variantIds.length < 1 || variantIds.length > 7) {
+  if (variantIds.length < 1 || variantIds.length > 8) {
     inputInvalid('variantIds must contain between 1 and 7 items');
   }
   if (variantIds.some((value) => !UuidSchema.safeParse(value).success)) {

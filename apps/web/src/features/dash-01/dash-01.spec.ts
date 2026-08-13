@@ -394,6 +394,7 @@ test('creates and starts all-platform content from one human-friendly form', asy
   const platforms = [
     'official_site',
     'baijiahao',
+    'sohu',
     'toutiao',
     'zhihu',
     'xiaohongshu',

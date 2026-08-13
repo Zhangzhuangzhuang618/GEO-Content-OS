@@ -148,7 +148,7 @@ function parseRevision(
 }
 
 function parseVariantRuns(value: unknown): readonly VariantGenerationRun[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 7) throw invalidEvent();
+  if (!Array.isArray(value) || value.length < 1 || value.length > 8) throw invalidEvent();
   return value.map((candidate) => {
     if (!isRecord(candidate) || Object.keys(candidate).some((key) => !VARIANT_KEYS.has(key))) {
       throw invalidEvent();

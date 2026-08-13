@@ -15,7 +15,7 @@ export default function PlatformConfigPage() {
           AI 生成与平台规则
         </h1>
         <p className="mt-2 text-sm leading-6 text-ink-500">
-          管理 AI 生成指令和七个平台的内容规则。测试不会调用 AI 或真实发布平台。
+          管理 AI 生成指令和八个平台的内容规则。测试不会调用 AI 或真实发布平台。
         </p>
       </header>
       <PlatformConfigManager />

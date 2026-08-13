@@ -72,6 +72,21 @@ const bindings: readonly Binding[] = [
     PlatformAccountController,
     PlatformAccountController.prototype.reauthenticateBaijiahaoBrowser,
   ),
+  bind(
+    'account.sohu_browser_session.get',
+    PlatformAccountController,
+    PlatformAccountController.prototype.getSohuBrowserSession,
+  ),
+  bind(
+    'account.sohu_browser_session.login',
+    PlatformAccountController,
+    PlatformAccountController.prototype.startSohuBrowserLogin,
+  ),
+  bind(
+    'account.sohu_browser_session.reauth',
+    PlatformAccountController,
+    PlatformAccountController.prototype.reauthenticateSohuBrowser,
+  ),
   bind('job.create', PublishJobController, PublishJobController.prototype.create),
   bind('job.list', PublishJobController, PublishJobController.prototype.list),
   bind('job.get', PublishJobController, PublishJobController.prototype.detail),

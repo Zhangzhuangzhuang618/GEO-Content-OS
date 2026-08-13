@@ -12,6 +12,7 @@ const HashSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const PlatformCodeSchema = z.enum([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -20,7 +21,7 @@ const PlatformCodeSchema = z.enum([
 ]);
 const OptionalPlatformCodesSchema = z.preprocess(
   (value) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value),
-  z.array(PlatformCodeSchema).max(7).optional(),
+  z.array(PlatformCodeSchema).max(8).optional(),
 );
 
 export const AiVisibilityIntentCodeSchema = z.enum([

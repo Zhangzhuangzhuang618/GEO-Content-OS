@@ -32,6 +32,7 @@ export const CreatePlatformAccountRequestSchema = z
     (value) =>
       value.publish_mode !== 'api' ||
       value.platform_code === 'baijiahao' ||
+      value.platform_code === 'sohu' ||
       value.credential !== undefined,
     {
       message: 'API accounts require credential',

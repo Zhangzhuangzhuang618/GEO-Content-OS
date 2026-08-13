@@ -1,0 +1,37 @@
+{
+  "name": "@geo-content-os/worker-sohu-browser",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GEO Content OS — 搜狐号托管浏览器发布网关",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm build:dependencies && tsc --project tsconfig.build.json --pretty false",
+    "build:dependencies": "pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-platforms build && pnpm --filter @geo-content-os/security build",
+    "test": "vitest run --config vitest.config.ts",
+    "test:integration": "pnpm build:dependencies && vitest run --config vitest.integration.config.ts",
+    "typecheck": "pnpm build:dependencies && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-platforms": "workspace:*",
+    "@geo-content-os/adapter-storage": "workspace:*",
+    "@geo-content-os/security": "workspace:*",
+    "playwright": "1.61.1",
+    "postgres": "3.4.9",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@geo-content-os/testkit": "workspace:*",
+    "vitest": "4.1.10"
+  },
+  "files": [
+    "dist"
+  ]
+}

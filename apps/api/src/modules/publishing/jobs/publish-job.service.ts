@@ -328,31 +328,31 @@ export class PublishJobService {
     const before = await loadJob(transaction, scope, jobId);
     if (before.version !== expectedVersion) throw versionConflict();
     if (
-      before.platformCode !== 'baijiahao' ||
+      (before.platformCode !== 'baijiahao' && before.platformCode !== 'sohu') ||
       before.accountPublishMode !== 'api' ||
       before.status !== 'publishing' ||
       before.variantStatus !== 'publishing' ||
       !before.externalPostId
     ) {
-      throw stateInvalid('Publish job is not eligible for Baijiahao reconciliation');
+      throw stateInvalid('Publish job is not eligible for browser publication reconciliation');
     }
     if (before.variantCurrentContentVersionId !== before.contentVersionId) {
       throw stateInvalid('The publish job no longer points to the current content version');
     }
     assertAccountReady(before);
-    const publications = await transaction<BrowserPublicationRow[]>`
-      SELECT id,external_post_id AS "externalPostId",status
-      FROM baijiahao_browser_publications
-      WHERE tenant_id=${scope.tenantId}::uuid AND publish_job_id=${before.id}::uuid
-      FOR UPDATE
-    `;
+    const publications = await selectBrowserPublications(
+      transaction,
+      scope.tenantId,
+      before.id,
+      before.platformCode,
+    );
     const publication = publications[0];
     if (
       publications.length !== 1 ||
       publication?.externalPostId !== before.externalPostId ||
       (publication.status !== 'published' && publication.status !== 'failed')
     ) {
-      throw stateInvalid('Baijiahao has not recorded a terminal publication state');
+      throw stateInvalid('The browser publisher has not recorded a terminal publication state');
     }
     const rows = await transaction<JobRow[]>`
       UPDATE publish_jobs SET version=version+1
@@ -368,7 +368,7 @@ export class PublishJobService {
         created_by AS "createdBy",version,created_at AS "createdAt",updated_at AS "updatedAt"
     `;
     const after = requireChangedJob(rows, before);
-    await enqueueBaijiahaoReconciliation(transaction, this.outbox, scope, after);
+    await enqueueBrowserReconciliation(transaction, this.outbox, scope, after, before.platformCode);
     await this.audit.record(transaction, {
       action: 'publish_job.reconciliation_requested',
       actorId: scope.userId,
@@ -399,8 +399,8 @@ export class PublishJobService {
     assertVersion(expectedVersion);
     const before = await loadJob(transaction, scope, jobId);
     if (before.version !== expectedVersion) throw versionConflict();
-    if (before.platformCode !== 'baijiahao') {
-      throw stateInvalid('Only Baijiahao unknown publications can be resolved here');
+    if (before.platformCode !== 'baijiahao' && before.platformCode !== 'sohu') {
+      throw stateInvalid('Only browser-published unknown publications can be resolved here');
     }
     if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
       throw stateInvalid('Publish job is not waiting for unknown-state resolution');
@@ -412,12 +412,12 @@ export class PublishJobService {
     if (!latestAttempt || !attemptRequiresManualResolution(latestAttempt)) {
       throw stateInvalid('Latest publish attempt does not require manual resolution');
     }
-    const publications = await transaction<BrowserPublicationRow[]>`
-      SELECT id,external_post_id AS "externalPostId"
-      FROM baijiahao_browser_publications
-      WHERE tenant_id=${scope.tenantId}::uuid AND publish_job_id=${before.id}::uuid
-      FOR UPDATE
-    `;
+    const publications = await selectBrowserPublications(
+      transaction,
+      scope.tenantId,
+      before.id,
+      before.platformCode,
+    );
     const publication = publications[0];
 
     if (input.resolution === 'not_published') {
@@ -425,16 +425,13 @@ export class PublishJobService {
         throw stateInvalid('A remote publication is already linked to this publish job');
       }
       if (publication) {
-        const reset = await transaction<{ id: string }[]>`
-          UPDATE baijiahao_browser_publications SET
-            status='prepared',external_post_id=NULL,external_url=NULL,
-            review_reason='人工核实百家号后台未创建内容，允许使用原幂等键重试。',
-            submitted_at=NULL,last_reconciled_at=now(),version=version+1
-          WHERE id=${publication.id}::uuid AND tenant_id=${scope.tenantId}::uuid
-            AND status IN ('submitting','unknown','processing','manual_required')
-          RETURNING id
-        `;
-        if (reset.length !== 1) throw stateInvalid('Baijiahao publication state changed');
+        const reset = await resetBrowserPublication(
+          transaction,
+          scope.tenantId,
+          publication.id,
+          before.platformCode,
+        );
+        if (reset.length !== 1) throw stateInvalid('Browser publication state changed');
       }
       return this.retryInTransaction(transaction, scope, jobId, expectedVersion, {}, new Date(), {
         attemptNo: latestAttempt.attemptNo,
@@ -452,15 +449,15 @@ export class PublishJobService {
     }
     const externalPostId = input.external_post_id ?? publication?.externalPostId ?? null;
     if (publication) {
-      const linked = await transaction<{ id: string }[]>`
-        UPDATE baijiahao_browser_publications SET
-          status='published',external_post_id=${externalPostId},external_url=${input.external_url},
-          review_reason='人工核实百家号内容已经发布。',last_reconciled_at=now(),version=version+1
-        WHERE id=${publication.id}::uuid AND tenant_id=${scope.tenantId}::uuid
-          AND status IN ('submitting','unknown','processing','manual_required')
-        RETURNING id
-      `;
-      if (linked.length !== 1) throw stateInvalid('Baijiahao publication state changed');
+      const linked = await confirmBrowserPublication(
+        transaction,
+        scope.tenantId,
+        publication.id,
+        before.platformCode,
+        externalPostId,
+        input.external_url,
+      );
+      if (linked.length !== 1) throw stateInvalid('Browser publication state changed');
     }
     const publishedAt = new Date();
     const rows = await transaction<JobRow[]>`
@@ -897,11 +894,12 @@ async function enqueueExecution(
   `;
 }
 
-async function enqueueBaijiahaoReconciliation(
+async function enqueueBrowserReconciliation(
   transaction: TransactionSql,
   outbox: OutboxWriter,
   scope: PublishJobScope,
   job: Pick<JobRow, 'accountId' | 'id' | 'version'>,
+  platformCode: 'baijiahao' | 'sohu',
 ): Promise<void> {
   await outbox.enqueue(
     {
@@ -915,7 +913,7 @@ async function enqueueBaijiahaoReconciliation(
         reconcile_attempt: 1,
         request_id: scope.requestId,
       },
-      eventType: 'baijiahao.publication.reconcile_requested.v1',
+      eventType: `${platformCode}.publication.reconcile_requested.v1`,
       tenantId: scope.tenantId,
     },
     transaction,
@@ -932,8 +930,87 @@ async function latestAttemptRequiresManualResolution(
   if (!attempt) return false;
   return (
     attempt.status === 'unknown' ||
-    (platformCode === 'baijiahao' && attemptRequiresManualResolution(attempt))
+    ((platformCode === 'baijiahao' || platformCode === 'sohu') &&
+      attemptRequiresManualResolution(attempt))
   );
+}
+
+function selectBrowserPublications(
+  transaction: TransactionSql,
+  tenantId: string,
+  jobId: string,
+  platformCode: 'baijiahao' | 'sohu',
+): Promise<BrowserPublicationRow[]> {
+  if (platformCode === 'sohu') {
+    return transaction<BrowserPublicationRow[]>`
+      SELECT id,external_post_id AS "externalPostId",status
+      FROM sohu_browser_publications
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+      FOR UPDATE
+    `;
+  }
+  return transaction<BrowserPublicationRow[]>`
+    SELECT id,external_post_id AS "externalPostId",status
+    FROM baijiahao_browser_publications
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+    FOR UPDATE
+  `;
+}
+
+function resetBrowserPublication(
+  transaction: TransactionSql,
+  tenantId: string,
+  publicationId: string,
+  platformCode: 'baijiahao' | 'sohu',
+): Promise<{ id: string }[]> {
+  const reason = `人工核实${platformCode === 'sohu' ? '搜狐号' : '百家号'}后台未创建内容，允许使用原幂等键重试。`;
+  if (platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      UPDATE sohu_browser_publications SET
+        status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+        submitted_at=NULL,last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('submitting','unknown','processing','manual_required')
+      RETURNING id
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    UPDATE baijiahao_browser_publications SET
+      status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+      submitted_at=NULL,last_reconciled_at=now(),version=version+1
+    WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+      AND status IN ('submitting','unknown','processing','manual_required')
+    RETURNING id
+  `;
+}
+
+function confirmBrowserPublication(
+  transaction: TransactionSql,
+  tenantId: string,
+  publicationId: string,
+  platformCode: 'baijiahao' | 'sohu',
+  externalPostId: string | null,
+  externalUrl: string,
+): Promise<{ id: string }[]> {
+  const reason = `人工核实${platformCode === 'sohu' ? '搜狐号' : '百家号'}内容已经发布。`;
+  if (platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      UPDATE sohu_browser_publications SET
+        status='published',external_post_id=${externalPostId},external_url=${externalUrl},
+        review_reason=${reason},last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('submitting','unknown','processing','manual_required')
+      RETURNING id
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    UPDATE baijiahao_browser_publications SET
+      status='published',external_post_id=${externalPostId},external_url=${externalUrl},
+      review_reason=${reason},last_reconciled_at=now(),version=version+1
+    WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+      AND status IN ('submitting','unknown','processing','manual_required')
+    RETURNING id
+  `;
 }
 
 async function loadLatestAttempt(

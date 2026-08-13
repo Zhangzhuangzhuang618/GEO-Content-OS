@@ -23,6 +23,14 @@ import {
   OFFICIAL_SITE_RENDER_RULE_VERSION,
   renderOfficialSite,
 } from '@geo-content-os/adapter-platforms/official_site/render';
+import {
+  hashSohuPayload,
+  SohuDeliveryAdapter,
+} from '@geo-content-os/adapter-platforms/sohu/delivery';
+import {
+  renderSohu,
+  SOHU_RENDER_RULE_VERSION,
+} from '@geo-content-os/adapter-platforms/sohu/render';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import { createHash } from 'node:crypto';
 import {
@@ -89,7 +97,7 @@ type DeliveryResult =
     }
   | { readonly export: unknown; readonly mode: 'export' };
 
-export class SevenPlatformPublisher implements PublisherPlatformPort {
+export class PlatformPublisher implements PublisherPlatformPort {
   public constructor(private readonly storage?: Pick<ObjectStorageAdapter, 'getObject'>) {}
 
   public async getBaijiahaoStatus(
@@ -97,9 +105,14 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
     credential: Readonly<Record<string, unknown>>,
     signal?: AbortSignal,
   ): Promise<BaijiahaoRemoteStatus> {
-    const adapter = new BaijiahaoDeliveryAdapter(
-      Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' }),
-    );
+    const adapter =
+      claim.platformCode === 'sohu'
+        ? new SohuDeliveryAdapter(
+            Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' }),
+          )
+        : new BaijiahaoDeliveryAdapter(
+            Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' }),
+          );
     const result = await adapter.getStatus(claim.externalId, signal);
     return Object.freeze({
       externalId: result.external_id,
@@ -166,11 +179,23 @@ export class SevenPlatformPublisher implements PublisherPlatformPort {
           signal,
           renderBaijiahao({
             citations: claim.citations,
-            content: baijiahaoContentWithMedia(content, claim.mediaAssets ?? []),
+            content: browserArticleContentWithMedia(content, claim.mediaAssets ?? []),
             rule_version: BAIJIAHAO_RENDER_RULE_VERSION,
           }),
           hashBaijiahaoPayload,
           (input) => new BaijiahaoDeliveryAdapter(config).deliver(input, signal),
+        );
+      case 'sohu':
+        return execute(
+          claim,
+          signal,
+          renderSohu({
+            citations: claim.citations,
+            content: browserArticleContentWithMedia(content, claim.mediaAssets ?? []),
+            rule_version: SOHU_RENDER_RULE_VERSION,
+          }),
+          hashSohuPayload,
+          (input) => new SohuDeliveryAdapter(config).deliver(input, signal),
         );
       case 'toutiao':
         return execute(
@@ -250,7 +275,7 @@ function platformRenderContent(
   return Object.freeze(renderContent);
 }
 
-function baijiahaoContentWithMedia(
+function browserArticleContentWithMedia(
   content: Readonly<Record<string, unknown>>,
   assets: readonly NonNullable<PublishClaim['mediaAssets']>[number][],
 ): Readonly<Record<string, unknown>> {
@@ -472,7 +497,7 @@ function deliveryConfig(
   if (!credential) throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Credential is required');
   return Object.freeze({
     ...credential,
-    ...(claim.platformCode === 'baijiahao' ? { account_id: claim.accountId } : {}),
+    ...(['baijiahao', 'sohu'].includes(claim.platformCode) ? { account_id: claim.accountId } : {}),
     mode: 'api',
   });
 }

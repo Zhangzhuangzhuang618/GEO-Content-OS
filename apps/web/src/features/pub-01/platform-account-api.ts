@@ -47,7 +47,7 @@ export async function createPlatformAccount(
 ): Promise<PlatformAccount> {
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts`, {
     body: JSON.stringify({
-      ...(form.publish_mode === 'api' && form.platform_code !== 'baijiahao'
+      ...(form.publish_mode === 'api' && !['baijiahao', 'sohu'].includes(form.platform_code)
         ? {
             credential: {
               base_url: form.base_url.trim(),
@@ -325,6 +325,40 @@ export async function startBaijiahaoBrowserLogin(
   const action = reauthenticate ? 'reauth' : 'login';
   const response = await fetch(
     `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/baijiahao-browser-session/${action}`,
+    {
+      credentials: 'include',
+      headers: writeHeaders(csrf, account.version),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw await parseRequestError(response);
+  const parsed = BaijiahaoBrowserLoginResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function getSohuBrowserSession(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<BaijiahaoBrowserSession> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/sohu-browser-session`,
+    { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoBrowserSessionResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function startSohuBrowserLogin(
+  account: PlatformAccount,
+  csrf: string,
+  reauthenticate = false,
+): Promise<BaijiahaoBrowserLogin> {
+  const action = reauthenticate ? 'reauth' : 'login';
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/sohu-browser-session/${action}`,
     {
       credentials: 'include',
       headers: writeHeaders(csrf, account.version),

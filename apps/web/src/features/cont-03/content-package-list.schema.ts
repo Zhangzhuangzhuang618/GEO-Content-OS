@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const PlatformCodeSchema = z.enum([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -79,7 +80,7 @@ export const ContentVariantSchema = z
 
 export const ContentPackageListItemSchema = ContentPackageSchema.extend({
   brief_title: z.string().trim().min(1).max(240),
-  variants: z.array(ContentVariantSchema).max(7),
+  variants: z.array(ContentVariantSchema).max(8),
 }).strict();
 
 export const ContentPackagePageSchema = z
@@ -103,7 +104,7 @@ export const ContentPackageDetailResponseSchema = z
         generation_runs: z.array(z.unknown()),
         master_content: z.unknown().nullable(),
         package: ContentPackageSchema,
-        variants: z.array(ContentVariantSchema).min(1).max(7),
+        variants: z.array(ContentVariantSchema).min(1).max(8),
       })
       .strict(),
     meta: z.object({ request_id: z.string().min(1) }).passthrough(),

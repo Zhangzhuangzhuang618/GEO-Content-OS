@@ -191,13 +191,13 @@ describe('baijiahao delivery integration', () => {
   });
 
   it('allows the browser gateway enough time to complete a normal page flow by default', () => {
-    expect(
-      BaijiahaoDeliveryConfigSchema.parse({
-        base_url: 'https://publisher.example.com',
-        bearer_token: 'secret',
-        mode: 'api',
-      }).timeout_ms,
-    ).toBe(60_000);
+    const config = BaijiahaoDeliveryConfigSchema.parse({
+      base_url: 'https://publisher.example.com',
+      bearer_token: 'secret',
+      mode: 'api',
+    });
+    expect(config.mode).toBe('api');
+    if (config.mode === 'api') expect(config.timeout_ms).toBe(60_000);
   });
 });
 

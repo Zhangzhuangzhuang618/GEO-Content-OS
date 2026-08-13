@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { InMemoryStorageAdapter } from '@geo-content-os/adapter-storage';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { SevenPlatformPublisher } from './platform.publisher.js';
+import { PlatformPublisher } from './platform.publisher.js';
 import type { PublishClaim } from './publisher.types.js';
 
 const fixtureUrl = new URL(
@@ -11,7 +11,7 @@ const fixtureUrl = new URL(
   import.meta.url,
 );
 
-describe('SevenPlatformPublisher', () => {
+describe('PlatformPublisher', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('removes content storage metadata before rendering an official-site export', async () => {
@@ -40,7 +40,7 @@ describe('SevenPlatformPublisher', () => {
       ],
     );
 
-    const result = await new SevenPlatformPublisher().deliver(claim, null);
+    const result = await new PlatformPublisher().deliver(claim, null);
 
     expect(result.mode).toBe('export');
     if (result.mode !== 'export') return;
@@ -62,7 +62,7 @@ describe('SevenPlatformPublisher', () => {
       schema_version: 'content-writer-data@2',
     });
 
-    await expect(new SevenPlatformPublisher().deliver(claim, null)).rejects.toThrow(
+    await expect(new PlatformPublisher().deliver(claim, null)).rejects.toThrow(
       'CONTENT_SCHEMA_UNSUPPORTED',
     );
   });
@@ -132,7 +132,7 @@ describe('SevenPlatformPublisher', () => {
       );
     vi.stubGlobal('fetch', fetchMock);
 
-    const result = await new SevenPlatformPublisher(storage).deliver(claim, {
+    const result = await new PlatformPublisher(storage).deliver(claim, {
       base_url: 'https://cms.example.com/api/geo/v1/',
       bearer_token: 'test-secret',
     });

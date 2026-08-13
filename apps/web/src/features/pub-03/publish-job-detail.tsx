@@ -337,7 +337,9 @@ function DetailContent({
                 onClick={() => void onReconcileBaijiahao()}
                 type="button"
               >
-                {busy === 'reconcile' ? '正在重新核验…' : '重新核验百家号状态'}
+                {busy === 'reconcile'
+                  ? '正在重新核验…'
+                  : `重新核验${detail.baijiahao_reconciliation.platform_code === 'sohu' ? '搜狐号' : '百家号'}状态`}
               </button>
             ) : null}
             {job.status === 'scheduled' &&
@@ -394,10 +396,15 @@ function DetailContent({
 
         {detail.unknown_resolution ? (
           <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-            <h3 className="font-semibold">百家号发布结果需要人工核实</h3>
+            <h3 className="font-semibold">
+              {detail.unknown_resolution.platform_code === 'sohu' ? '搜狐号' : '百家号'}
+              发布结果需要人工核实
+            </h3>
             <p className="mt-2 leading-6">
               第 {detail.unknown_resolution.latest_attempt_no}{' '}
-              次发布尝试没有取得可安全重试的明确结果。请先在百家号内容管理中按标题核对；系统会保留原尝试记录，不会覆盖历史。
+              次发布尝试没有取得可安全重试的明确结果。请先在
+              {detail.unknown_resolution.platform_code === 'sohu' ? '搜狐号' : '百家号'}
+              内容管理中按标题核对；系统会保留原尝试记录，不会覆盖历史。
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               {detail.unknown_resolution.can_retry ? (
@@ -421,7 +428,7 @@ function DetailContent({
             </div>
             {!detail.unknown_resolution.can_retry ? (
               <p className="mt-3 text-xs leading-5 text-amber-800">
-                当前自动化任务已达到 3 次发布上限，不能继续请求百家号；仍可在核实后确认已经发布。
+                当前任务已达到发布重试上限，不能继续请求目标平台；仍可在核实后确认已经发布。
               </p>
             ) : null}
           </div>

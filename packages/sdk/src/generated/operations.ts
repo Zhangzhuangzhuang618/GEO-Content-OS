@@ -623,6 +623,27 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_sohu_browser_session_get: {
+    idempotency: '-',
+    method: 'GET',
+    path: '/platform-accounts/{id}/sohu-browser-session',
+    permission: 'publishing.manage',
+    security: 'session',
+  },
+  account_sohu_browser_session_login: {
+    idempotency: 'resource+version',
+    method: 'POST',
+    path: '/platform-accounts/{id}/sohu-browser-session/login',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
+  account_sohu_browser_session_reauth: {
+    idempotency: 'resource+version',
+    method: 'POST',
+    path: '/platform-accounts/{id}/sohu-browser-session/reauth',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_test: {
     idempotency: 'resource+version',
     method: 'POST',

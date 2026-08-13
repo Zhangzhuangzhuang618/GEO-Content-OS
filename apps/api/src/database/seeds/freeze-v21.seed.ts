@@ -284,6 +284,36 @@ export async function seedFreezeV21(client: DatabaseClient): Promise<void> {
       `;
     }
 
+    const sohuRules = {
+      schema_version: 'platform-rules@1',
+      platform_code: 'sohu',
+      require_citations: true,
+      title_min_characters: 5,
+      title_max_characters: 72,
+      abstract_max_characters: 120,
+      declare_ai_generated: true,
+      declare_original: false,
+    };
+    const serializedSohuRules = JSON.stringify(sohuRules);
+    await transaction`
+      INSERT INTO platform_rule_versions (
+        id, platform_code, version, rules_json, content_hash, status,
+        created_by, published_at, change_summary, published_by
+      ) VALUES (
+        '26000000-0000-4000-8000-000000000009',
+        'sohu',
+        '1.0.0',
+        ${serializedSohuRules}::text::jsonb,
+        ${sha256(serializedSohuRules)},
+        'published',
+        ${IDENTITY_SEED.userId},
+        TIMESTAMPTZ '2026-08-14T00:00:00Z',
+        'Add Sohu article generation and managed browser publishing rules',
+        ${IDENTITY_SEED.userId}
+      )
+      ON CONFLICT DO NOTHING
+    `;
+
     const officialSiteFirstPartyRules = {
       schema_version: 'platform-rules@1',
       platform_code: 'official_site',
@@ -350,7 +380,7 @@ export async function seedFreezeV21(client: DatabaseClient): Promise<void> {
       summary.projectName !== 'GEO 多平台演示项目' ||
       summary.modelKey !== 'deepseek-v4-flash' ||
       summary.prompts !== 1 ||
-      summary.rules !== PLATFORMS.length
+      summary.rules !== PLATFORMS.length + 1
     ) {
       throw new Error('Freeze v2.1 seed conflicts with existing rows');
     }

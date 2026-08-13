@@ -30,7 +30,8 @@ export class PublisherQueueConsumer {
       'geo-publisher',
       async (job) => {
         const result =
-          job.name === 'baijiahao.publication.reconcile_requested.v1'
+          job.name === 'baijiahao.publication.reconcile_requested.v1' ||
+          job.name === 'sohu.publication.reconcile_requested.v1'
             ? await publisher.reconcileBaijiahao(job.data)
             : await publisher.run(job.data);
         if (result.disposition === 'busy') {

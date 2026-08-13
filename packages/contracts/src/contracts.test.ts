@@ -25,8 +25,8 @@ const uuid = '0b44bf0c-8c9a-44b9-9a19-a1812f5695fb';
 const requestId = '01J00000000000000000000000';
 
 describe('frozen enums', () => {
-  it('keeps all seven MVP platforms and definitions aligned', () => {
-    expect(PLATFORM_CODES).toHaveLength(7);
+  it('keeps all eight supported platforms and definitions aligned', () => {
+    expect(PLATFORM_CODES).toHaveLength(8);
     expect(Object.keys(PLATFORM_DEFINITIONS)).toEqual(PLATFORM_CODES);
     expect(new Set(PLATFORM_CODES).size).toBe(PLATFORM_CODES.length);
     expect(Object.isFrozen(PLATFORM_CODES)).toBe(true);

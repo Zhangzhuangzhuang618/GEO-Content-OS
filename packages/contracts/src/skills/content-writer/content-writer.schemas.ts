@@ -14,6 +14,7 @@ export const OFFICIAL_SITE_FAQ_DRAFT_SCHEMA_VERSION = 'official-site-faq-draft@1
 export const CONTENT_PLATFORM_CODES = Object.freeze([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -41,7 +42,7 @@ export const CONTENT_WRITER_INPUT_SCHEMA: JsonSchema = Object.freeze({
         objective: { minLength: 1, type: 'string' },
         platform_codes: {
           items: { enum: CONTENT_PLATFORM_CODES },
-          maxItems: 7,
+          maxItems: 8,
           minItems: 1,
           type: 'array',
           uniqueItems: true,
@@ -91,7 +92,7 @@ export const CONTENT_WRITER_INPUT_SCHEMA: JsonSchema = Object.freeze({
         required: ['version_id', 'rules_hash', 'rules'],
         type: 'object',
       },
-      maxProperties: 7,
+      maxProperties: 8,
       minProperties: 1,
       propertyNames: { enum: CONTENT_PLATFORM_CODES },
       type: 'object',
@@ -157,6 +158,10 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
           then: { properties: { title: { maxLength: 40, type: 'string' } } },
         },
         {
+          if: { properties: { platform_code: { const: 'sohu' } } },
+          then: { properties: { title: { maxLength: 72, minLength: 5, type: 'string' } } },
+        },
+        {
           if: { properties: { platform_code: { const: 'toutiao' } } },
           then: { properties: { title: { maxLength: 50, type: 'string' } } },
         },
@@ -203,7 +208,7 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
     master_content: { $ref: '#/$defs/content' },
     variants: {
       items: { $ref: '#/$defs/content' },
-      maxItems: 7,
+      maxItems: 8,
       minItems: 1,
       type: 'array',
     },

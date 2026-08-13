@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { API_CONTRACTS } from './catalog.js';
 
 describe('API contract catalog', () => {
-  it('contains the 147-operation executable ADR baseline without duplicates', () => {
+  it('contains the 150-operation executable ADR baseline without duplicates', () => {
     const routes = API_CONTRACTS.map((contract) => `${contract.method} ${contract.path}`);
-    expect(routes).toHaveLength(147);
-    expect(new Set(routes).size).toBe(147);
-    expect(new Set(API_CONTRACTS.map((contract) => contract.key)).size).toBe(147);
+    expect(routes).toHaveLength(150);
+    expect(new Set(routes).size).toBe(150);
+    expect(new Set(API_CONTRACTS.map((contract) => contract.key)).size).toBe(150);
   });
 
   it('contains the tenant profile endpoints missing from the original task graph', () => {
@@ -42,6 +42,8 @@ function allowsEmptyBody(key: string): boolean {
     'account.test',
     'account.baijiahao_browser_session.login',
     'account.baijiahao_browser_session.reauth',
+    'account.sohu_browser_session.login',
+    'account.sohu_browser_session.reauth',
     'memberships.restore',
     'platform.tenants.restore',
     'platform.tenants.owner_invitation.resend',

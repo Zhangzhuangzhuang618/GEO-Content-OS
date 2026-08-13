@@ -7,6 +7,7 @@ import type { DatabaseClient } from '../../../database/index.js';
 const PLATFORM_CODES = new Set([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',

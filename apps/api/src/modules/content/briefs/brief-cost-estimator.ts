@@ -5,6 +5,7 @@ const PLATFORM_OUTPUT_TOKEN_BUDGET = Object.freeze({
   baijiahao: 1_600,
   douyin: 900,
   official_site: 2_400,
+  sohu: 1_600,
   toutiao: 1_800,
   wechat_mp: 2_000,
   xiaohongshu: 1_000,

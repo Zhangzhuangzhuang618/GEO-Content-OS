@@ -28,6 +28,7 @@ import {
 import { resolvePublishingUrl } from './platform-publishing-url';
 import { OfficialSiteAutomationPanel } from './official-site-automation-panel';
 import { BaijiahaoAutomationPanel } from './baijiahao-automation-panel';
+import { SohuBrowserPanel } from './sohu-browser-panel';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -141,7 +142,7 @@ export function PlatformAccountManager() {
       return;
     }
     if (
-      editingAccount.platform_code !== 'baijiahao' &&
+      !['baijiahao', 'sohu'].includes(editingAccount.platform_code) &&
       editingAccount.publish_mode !== 'api' &&
       parsed.data.publish_mode === 'api' &&
       (!parsed.data.base_url.trim() || !parsed.data.bearer_token.trim())
@@ -307,7 +308,9 @@ export function PlatformAccountManager() {
           onModeChange={setPublishMode}
           onPlatformChange={(next) => {
             setPlatformCode(next);
-            setPublishMode(next === 'official_site' || next === 'baijiahao' ? 'api' : 'export');
+            setPublishMode(
+              ['official_site', 'baijiahao', 'sohu'].includes(next) ? 'api' : 'export',
+            );
           }}
           onSubmit={connect}
           platformCode={platformCode}
@@ -334,6 +337,11 @@ export function PlatformAccountManager() {
       {automationAccount ? (
         automationAccount.platform_code === 'baijiahao' ? (
           <BaijiahaoAutomationPanel
+            account={automationAccount}
+            onClose={() => setAutomationAccount(null)}
+          />
+        ) : automationAccount.platform_code === 'sohu' ? (
+          <SohuBrowserPanel
             account={automationAccount}
             onClose={() => setAutomationAccount(null)}
           />
@@ -453,7 +461,7 @@ function EditForm({
             type="url"
           />
         </label>
-        {publishMode === 'api' && account.platform_code !== 'baijiahao' ? (
+        {publishMode === 'api' && !['baijiahao', 'sohu'].includes(account.platform_code) ? (
           <>
             <label className="text-sm text-ink-700">
               新的发布 API 根地址
@@ -529,7 +537,8 @@ function ConnectForm({
     >
       <h2 className="text-xl font-semibold text-ink-950">连接平台账号</h2>
       <p className="mt-2 text-sm text-ink-500">
-        先选平台和发布方式。百家号网关由服务器管理，其他“自动发布”账号需要 API 地址和令牌。
+        先选平台和发布方式。百家号与搜狐号由服务器托管浏览器管理，其他“自动发布”账号需要 API
+        地址和令牌。
       </p>
       <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         <label className="text-sm text-ink-700">
@@ -595,7 +604,7 @@ function ConnectForm({
             这里只用于“打开发布后台”，不参与 API 调用。
           </span>
         </label>
-        {publishMode === 'api' && platformCode !== 'baijiahao' ? (
+        {publishMode === 'api' && !['baijiahao', 'sohu'].includes(platformCode) ? (
           <>
             <label className="text-sm text-ink-700">
               {platformCode === 'official_site' ? '官网发布 API 根地址' : '平台 API 根地址'}
@@ -632,7 +641,7 @@ function ConnectForm({
         ) : (
           <input name="base_url" type="hidden" value="" />
         )}
-        {publishMode !== 'api' || platformCode === 'baijiahao' ? (
+        {publishMode !== 'api' || ['baijiahao', 'sohu'].includes(platformCode) ? (
           <input name="bearer_token" type="hidden" value="" />
         ) : null}
       </div>
@@ -744,6 +753,16 @@ function ConnectionGuide({
       </div>
     );
   }
+  if (platformCode === 'sohu') {
+    return (
+      <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm leading-6 text-ink-700">
+        <p className="font-semibold text-ink-900">搜狐号自动发布使用独立托管浏览器</p>
+        <p className="mt-2">
+          内部网关和令牌由服务器管理。账号保存后点击“搜狐号登录”，使用微信扫码；系统不保存搜狐账号密码，也不会自动声明原创。
+        </p>
+      </div>
+    );
+  }
   if (platformCode !== 'official_site') {
     return (
       <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
@@ -842,6 +861,16 @@ function AccountCard({
             百家号自动化
           </button>
         ) : null}
+        {account.platform_code === 'sohu' && account.publish_mode === 'api' ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => onAutomation(account)}
+            type="button"
+          >
+            搜狐号登录
+          </button>
+        ) : null}
         {account.publish_mode === 'api' && !disabled ? (
           <button
             className={smallButton}
@@ -898,6 +927,7 @@ function AccountCard({
 const PLATFORM_OPTIONS = [
   ['official_site', '官网'],
   ['baijiahao', '百家号'],
+  ['sohu', '搜狐号'],
   ['toutiao', '头条号'],
   ['zhihu', '知乎'],
   ['xiaohongshu', '小红书'],

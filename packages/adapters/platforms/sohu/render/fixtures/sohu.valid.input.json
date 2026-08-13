@@ -1,0 +1,46 @@
+{
+  "rule_version": "sohu-render-rules@1.0.0",
+  "content": {
+    "platform_code": "sohu",
+    "title": "企业GEO内容系统如何建立可信生产闭环",
+    "summary": "说明企业如何建立可追溯的内容生产流程。",
+    "blocks": [
+      { "block_key": "heading", "block_type": "heading", "text": "先固定可信资料" },
+      {
+        "block_key": "evidence",
+        "block_type": "paragraph",
+        "text": "企业建设内容系统时，应先管理可信资料和引用关系，避免事实无法回溯。"
+      },
+      {
+        "block_key": "versions",
+        "block_type": "paragraph",
+        "text": "生产流程应绑定品牌策略、提示词、模型和平台规则版本。"
+      },
+      {
+        "block_key": "quality",
+        "block_type": "paragraph",
+        "text": "内容经过事实检查与质量门禁后再进入审核。"
+      },
+      {
+        "block_key": "delivery",
+        "block_type": "list",
+        "text": "先检查平台账号能力\n再生成确定性发布载荷\n提交后核验内容管理状态"
+      },
+      {
+        "block_key": "audit",
+        "block_type": "paragraph",
+        "text": "审核快照固定具体内容版本，发布记录保存每次尝试与平台返回。"
+      }
+    ],
+    "hashtags": ["GEO", "内容生产"],
+    "cta": null,
+    "citation_map": [],
+    "platform_meta": {
+      "abstract": "说明企业如何用可信资料、版本规则和质量门禁建设可追溯的内容生产流程。",
+      "body_asset_ids": [],
+      "cover_asset_id": null,
+      "content_type": "article"
+    }
+  },
+  "citations": []
+}

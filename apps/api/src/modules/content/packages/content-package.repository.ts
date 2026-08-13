@@ -70,8 +70,8 @@ export class ContentPackageRepository {
     await assertContentProducer(transaction, scope.tenantId, scope.userId);
     const brief = await lockBriefSeed(transaction, scope, briefId);
     if (!brief) throw new ContentPackageNotFoundError();
-    if (brief.platformCodes.length === 0 || brief.platformCodes.length > 7) {
-      throw new ContentPackageStateError('Brief must select between one and seven platforms');
+    if (brief.platformCodes.length === 0 || brief.platformCodes.length > 8) {
+      throw new ContentPackageStateError('Brief must select between one and eight platforms');
     }
 
     const packageRows = await transaction<PackageRow[]>`

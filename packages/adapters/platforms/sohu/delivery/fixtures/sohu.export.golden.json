@@ -1,0 +1,10 @@
+{
+  "bundle_sha256": "295b0a11398befaa2ba928660c3c74a613341608cf19ca0eac59e6a395d78fa4",
+  "file_paths": [
+    "30000000-0000-4000-8000-000000000106/article.html",
+    "30000000-0000-4000-8000-000000000106/article.txt",
+    "30000000-0000-4000-8000-000000000106/metadata.json",
+    "30000000-0000-4000-8000-000000000106/manifest.json"
+  ],
+  "schema_version": "sohu-export@1"
+}

@@ -23,6 +23,7 @@ const EVENT_QUEUE: Readonly<Record<EventType, OutboxQueueName>> = Object.freeze(
   'publishing.job.execution_requested.v1': 'geo-publisher',
   'publishing.job.published.v1': 'geo-ai',
   'baijiahao.publication.reconcile_requested.v1': 'geo-publisher',
+  'sohu.publication.reconcile_requested.v1': 'geo-publisher',
   'analytics.metrics.import_requested.v1': 'geo-analytics',
   'analytics.visibility.probe_requested.v1': 'geo-ai',
   'analytics.export.requested.v1': 'geo-analytics',

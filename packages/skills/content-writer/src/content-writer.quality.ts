@@ -22,6 +22,7 @@ const TARGETS: Readonly<Record<ContentWriterPlatformCode, QualityTarget>> = Obje
   master: { blocks: 8, characters: 1_300, headings: 3, lists: 1 },
   official_site: { blocks: 8, characters: 1_300, headings: 3, lists: 1 },
   baijiahao: { blocks: 7, characters: 850, headings: 2, lists: 1 },
+  sohu: { blocks: 7, characters: 850, headings: 2, lists: 1 },
   toutiao: { blocks: 7, characters: 850, headings: 2, lists: 1 },
   zhihu: { blocks: 8, characters: 1_100, headings: 3, lists: 1 },
   xiaohongshu: { blocks: 7, characters: 500, headings: 2, lists: 1 },

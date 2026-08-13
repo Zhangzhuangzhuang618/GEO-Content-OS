@@ -12,6 +12,7 @@ import {
   type DatabaseClientSource,
 } from '../../../database/index.js';
 import { readBaijiahaoBrowserGatewayCredential } from './baijiahao-browser-gateway.client.js';
+import { readSohuBrowserGatewayCredential } from './sohu-browser-gateway.client.js';
 import { PlatformAccountError } from './platform-account.errors.js';
 import type {
   PlatformAccountAudit,
@@ -113,7 +114,7 @@ export class PlatformAccountService {
       if (!credential) throw invalid();
       const probe = await this.connector.refresh({ credential, platformCode: row.platform_code });
       const stored =
-        input.credential || row.platform_code === 'baijiahao'
+        input.credential || ['baijiahao', 'sohu'].includes(row.platform_code)
           ? await encryptCredential(this.credentials, credential)
           : null;
       const rows = await tx<
@@ -356,6 +357,7 @@ async function accountCredential(
 ): Promise<Readonly<Record<string, unknown>> | null> {
   if (publishMode !== 'api') return null;
   if (platformCode === 'baijiahao') return readBaijiahaoBrowserGatewayCredential();
+  if (platformCode === 'sohu') return readSohuBrowserGatewayCredential();
   if (supplied) return supplied;
   return fallback ? fallback() : null;
 }

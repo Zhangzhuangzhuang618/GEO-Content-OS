@@ -17,7 +17,10 @@ export function validateBaijiahaoReconcileEvent(raw: unknown): ValidatedBaijiaha
   if (!parsed.success) throw invalid();
   const event = parsed.data;
   if (
-    event.event_type !== 'baijiahao.publication.reconcile_requested.v1' ||
+    ![
+      'baijiahao.publication.reconcile_requested.v1',
+      'sohu.publication.reconcile_requested.v1',
+    ].includes(event.event_type) ||
     event.aggregate.type !== 'publish_job' ||
     !isRecord(event.data) ||
     Object.keys(event.data).some((key) => !ALLOWED_KEYS.has(key))
@@ -45,6 +48,7 @@ export function validateBaijiahaoReconcileEvent(raw: unknown): ValidatedBaijiaha
     occurredAt: event.occurred_at,
     reconcileAttempt,
     requestId,
+    platformCode: event.event_type.startsWith('sohu.') ? 'sohu' : 'baijiahao',
     tenantId: event.tenant.id,
   });
 }
@@ -62,5 +66,8 @@ function numberValue(value: unknown): number {
 }
 
 function invalid(): PublisherError {
-  return new PublisherError('PUBLISHER_EVENT_INVALID', 'Baijiahao reconciliation event is invalid');
+  return new PublisherError(
+    'PUBLISHER_EVENT_INVALID',
+    'Browser publication reconciliation event is invalid',
+  );
 }

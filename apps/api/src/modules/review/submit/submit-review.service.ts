@@ -214,7 +214,7 @@ function validateRequest(
   if (scope.requestId.trim().length < 1 || scope.requestId.trim().length > 80) {
     inputInvalid('requestId must contain 1 to 80 characters');
   }
-  if (request.variantIds.length < 1 || request.variantIds.length > 7) {
+  if (request.variantIds.length < 1 || request.variantIds.length > 8) {
     inputInvalid('variantIds must contain between 1 and 7 items');
   }
   if (request.variantIds.some((value) => !UuidSchema.safeParse(value).success)) {

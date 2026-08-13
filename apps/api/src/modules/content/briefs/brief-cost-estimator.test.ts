@@ -16,7 +16,7 @@ const FROZEN_WEIGHTED_TOKEN_COST = 29_498;
 const MAXIMUM_COST_REGRESSION = 1.15;
 
 describe('BriefCostEstimator release cost gate', () => {
-  it('keeps the fixed seven-platform workload within 15% of the frozen cost baseline', () => {
+  it('keeps the fixed eight-platform workload within 15% of the frozen cost baseline', () => {
     const estimate = new BriefCostEstimator().estimate(fixedBrief());
     // The frozen rate card prices output tokens at twice the input-token rate.
     const weightedTokenCost =
@@ -46,6 +46,7 @@ function fixedBrief(): BriefView {
     platform_codes: [
       'official_site',
       'baijiahao',
+      'sohu',
       'toutiao',
       'zhihu',
       'xiaohongshu',
@@ -57,7 +58,7 @@ function fixedBrief(): BriefView {
     source_ids: [UUIDS[3], UUIDS[4]],
     source_topic_candidate_id: null,
     tenant_id: UUIDS[0],
-    title: '七平台固定成本回归样本',
+    title: '八平台固定成本回归样本',
     updated_at: '2026-07-15T00:00:00.000Z',
     version: 1,
     workspace_id: UUIDS[6],

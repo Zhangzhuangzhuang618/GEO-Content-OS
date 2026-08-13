@@ -20,8 +20,8 @@ export class ContentGenerationWorker {
     private readonly concurrency = 3,
     private readonly heartbeatIntervalMs = 10_000,
   ) {
-    if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 7) {
-      throw new TypeError('Generation concurrency must be between one and seven');
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8) {
+      throw new TypeError('Generation concurrency must be between one and eight');
     }
     if (
       !Number.isSafeInteger(heartbeatIntervalMs) ||

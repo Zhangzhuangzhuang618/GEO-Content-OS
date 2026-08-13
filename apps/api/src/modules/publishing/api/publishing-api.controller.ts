@@ -53,6 +53,7 @@ import {
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
+  SohuBrowserSessionService,
 } from '../accounts/index.js';
 import { PublishJobError, PublishJobService } from '../jobs/index.js';
 import { PublishingApiError } from './publishing-api.errors.js';
@@ -76,6 +77,8 @@ export class PlatformAccountController {
     private readonly automation: OfficialSiteAutomationPolicyService,
     @Inject(BaijiahaoAutomationPolicyService)
     private readonly baijiahaoAutomation: BaijiahaoAutomationPolicyService,
+    @Inject(SohuBrowserSessionService)
+    private readonly sohuBrowser: SohuBrowserSessionService,
     @Inject(IdempotencyService) private readonly idempotency: IdempotencyService,
   ) {}
 
@@ -496,6 +499,65 @@ export class PlatformAccountController {
     if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
     try {
       const data = await this.baijiahaoAutomation.reauthenticate(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/sohu-browser-session')
+  @RequirePermissions('publishing.manage')
+  public async getSohuBrowserSession(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.sohuBrowser.status(requireScope(request), parsed.data.id);
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/sohu-browser-session/login')
+  @RequirePermissions('publishing.manage')
+  public async startSohuBrowserLogin(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.sohuBrowser.login(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/sohu-browser-session/reauth')
+  @RequirePermissions('publishing.manage')
+  public async reauthenticateSohuBrowser(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.sohuBrowser.reauthenticate(
         requireScope(request),
         parsed.data.id,
         parseIfMatch(request.headers['if-match']),

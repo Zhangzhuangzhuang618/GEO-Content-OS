@@ -4,7 +4,7 @@ import { createStorageAdapter, readStorageConfiguration } from '@geo-content-os/
 import postgres from 'postgres';
 
 import { createPublisherCredentialService, readPublisherWorkerConfig } from './config.js';
-import { SevenPlatformPublisher } from './platform.publisher.js';
+import { PlatformPublisher } from './platform.publisher.js';
 import { PostgresPublisherStore } from './publisher.store.js';
 import { PublisherWorker } from './publisher.worker.js';
 import { PublisherQueueConsumer } from './queue.consumer.js';
@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   const storage = createStorageAdapter(readStorageConfiguration());
   const publisher = new PublisherWorker(
     {
-      platform: new SevenPlatformPublisher(storage),
+      platform: new PlatformPublisher(storage),
       storage,
       store: new PostgresPublisherStore(database, config.staleAfterMs),
     },

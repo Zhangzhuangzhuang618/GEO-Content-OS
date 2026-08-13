@@ -394,7 +394,7 @@ export class PostgresGenerationStore implements GenerationStorePort {
         FOR UPDATE
       `;
       const required = variants.filter((variant) => variant.isRequired);
-      if (required.length < 1 || required.length > 7) throw stateInvalid();
+      if (required.length < 1 || required.length > 8) throw stateInvalid();
       const status = required.some((variant) => variant.status === 'generating')
         ? 'generating'
         : required.some((variant) => EDITABLE_VARIANT_STATUSES.has(variant.status))

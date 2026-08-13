@@ -144,7 +144,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
     restoreRuntime();
   });
 
-  test('completes a Mock Brief through seven-platform delivery and metrics', async () => {
+  test('completes a Mock Brief through eight-platform delivery and metrics', async () => {
     const database = requireClient(client);
     const state: JourneyState = {
       accounts: new Map(),

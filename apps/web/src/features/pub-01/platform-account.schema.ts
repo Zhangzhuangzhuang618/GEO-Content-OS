@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const PlatformCodeSchema = z.enum([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -287,7 +288,7 @@ export const PlatformAccountFormSchema = z
       });
     }
     if (value.publish_mode !== 'api') return;
-    if (value.platform_code === 'baijiahao') return;
+    if (value.platform_code === 'baijiahao' || value.platform_code === 'sohu') return;
     if (!isValidApiBaseUrl(value.base_url.trim())) {
       context.addIssue({
         code: 'custom',
@@ -353,7 +354,7 @@ function isValidApiBaseUrl(value: string) {
   if (url.protocol === 'https:') return true;
   return (
     url.protocol === 'http:' &&
-    ['localhost', '127.0.0.1', '::1', 'baijiahao-browser'].includes(
+    ['localhost', '127.0.0.1', '::1', 'baijiahao-browser', 'sohu-browser'].includes(
       url.hostname.toLocaleLowerCase('en-US'),
     )
   );

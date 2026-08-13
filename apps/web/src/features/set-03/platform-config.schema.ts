@@ -11,6 +11,7 @@ export const SkillNameSchema = z.enum([
 export const PlatformCodeSchema = z.enum([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',

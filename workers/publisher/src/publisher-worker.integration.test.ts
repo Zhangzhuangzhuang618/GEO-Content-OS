@@ -515,6 +515,66 @@ describe('publisher worker', () => {
     ]);
   });
 
+  it('reconciles a manual Sohu browser submission from processing to published', async () => {
+    const database = requireClient(client);
+    await enableSohuManualPublishing(database);
+    const platform = new FakePlatform(
+      {
+        externalId: 'sohu-manual-t150',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [
+        {
+          externalId: 'sohu-manual-t150',
+          status: 'published',
+          url: 'https://mp.sohu.com/profile?contentId=sohu-manual-t150',
+        },
+      ],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(
+      worker.reconcileBaijiahao(await latestSohuReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(platform.statusClaims).toHaveLength(1);
+    expect(platform.statusClaims[0]?.platformCode).toBe('sohu');
+    expect(
+      await database<
+        {
+          adapterCode: string;
+          browserStatus: string;
+          jobStatus: string;
+          packageStatus: string;
+          variantStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",publication.status AS "browserStatus",
+          variant.status AS "variantStatus",package.status AS "packageStatus",
+          attempt.adapter_code AS "adapterCode"
+        FROM publish_jobs AS job
+        JOIN sohu_browser_publications AS publication ON publication.publish_job_id=job.id
+        JOIN content_variants AS variant ON variant.id=job.variant_id
+        JOIN content_packages AS package ON package.id=variant.package_id
+        JOIN publish_attempts AS attempt ON attempt.publish_job_id=job.id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        adapterCode: 'sohu-delivery@1.0.0',
+        browserStatus: 'published',
+        jobStatus: 'published',
+        packageStatus: 'published',
+        variantStatus: 'published',
+      },
+    ]);
+  });
+
   it('requires manual handling when review is still processing after twelve reconciliations', async () => {
     const database = requireClient(client);
     await enableBaijiahaoAutomation(database);
@@ -675,6 +735,18 @@ async function latestReconcileEvent(database: Sql): Promise<unknown> {
   `;
   const payload = events[0]?.payload;
   if (!payload) throw new Error('Baijiahao reconciliation event was not queued');
+  return payload;
+}
+
+async function latestSohuReconcileEvent(database: Sql): Promise<unknown> {
+  const events = await database<{ payload: unknown }[]>`
+    SELECT payload_json AS payload FROM outbox_events
+    WHERE event_type='sohu.publication.reconcile_requested.v1'
+    ORDER BY (payload_json->'data'->>'reconcile_attempt')::integer DESC,id DESC
+    LIMIT 1
+  `;
+  const payload = events[0]?.payload;
+  if (!payload) throw new Error('Sohu reconciliation event was not queued');
   return payload;
 }
 
@@ -870,6 +942,57 @@ async function enableBaijiahaoAutomation(
       ${ACCOUNT_ID}::uuid,${JOB_ID}::uuid,${VERSION_ID}::uuid,
       'publish-job-125-stable',${CONTENT_HASH},${'c'.repeat(64)},
       '百家号测试文章','submitting','{}'::jsonb,now()
+    )
+  `;
+}
+
+async function enableSohuManualPublishing(database: Sql): Promise<void> {
+  await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+  await database`
+    UPDATE briefs SET platform_codes=ARRAY['sohu']::varchar[]
+    WHERE id=${BRIEF_ID}::uuid
+  `;
+  await database`
+    UPDATE platform_accounts SET
+      platform_code='sohu',provider_account_id='sohu-t150',display_name='Sohu T150',
+      capabilities_json=${database.json({ get_status: true, metrics: false, publish: true })},
+      publish_mode='api',status='active'
+    WHERE id=${ACCOUNT_ID}::uuid
+  `;
+  await database`
+    UPDATE content_variants SET
+      platform_code='sohu',platform_account_id=${ACCOUNT_ID}::uuid,
+      status='scheduled',is_required=true
+    WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    INSERT INTO publish_jobs(
+      id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+      idempotency_key,payload_hash,status,origin,created_by
+    ) VALUES(
+      ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
+      ${CONTENT_HASH},'scheduled','manual',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO sohu_browser_sessions(
+      id,tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+    ) VALUES(
+      ${BROWSER_SESSION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,
+      'authenticated','tenants/t125/accounts/sohu',now(),now()
+    )
+  `;
+  await database`
+    INSERT INTO sohu_browser_publications(
+      id,tenant_id,session_id,account_id,publish_job_id,content_version_id,
+      idempotency_key,payload_hash,content_fingerprint,title,status,field_summary_json,
+      submitted_at
+    ) VALUES(
+      ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${BROWSER_SESSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,${JOB_ID}::uuid,${VERSION_ID}::uuid,
+      'publish-job-125-stable',${CONTENT_HASH},${'c'.repeat(64)},
+      '搜狐号测试文章','submitting','{}'::jsonb,now()
     )
   `;
 }

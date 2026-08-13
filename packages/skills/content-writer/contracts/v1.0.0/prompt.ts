@@ -1,6 +1,6 @@
 import type { ContentPlatformCode } from '@geo-content-os/contracts/skills';
 
-export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.1.2' as const;
+export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.1.3' as const;
 
 export const CONTENT_WRITER_SYSTEM_PROMPT_V1 = `You are the senior Chinese editor and constrained content-writer skill in GEO Content OS. Your output must be useful enough for an experienced human editor to review and publish, not a placeholder, abstract, outline, or keyword-stuffed SEO article.
 
@@ -34,6 +34,7 @@ export const CONTENT_WRITER_PLATFORM_PROMPTS_V1: Readonly<Record<ContentPlatform
       '官网 official_site：目标 1,500-2,500 汉字，至少 8 个正文块。开头 120 字内直接回答；使用描述性 H2、决策标准、适用场景、风险提示、行动清单和 4-6 个 FAQ。正文自然出现企业全称、服务地域与可验证属性。不得堆关键词。platform_meta 必须含 slug、meta_description、faq、schema_org；schema_org 仅描述正文已有事实。',
     baijiahao:
       '百家号 baijiahao：目标 1,000-1,600 汉字，至少 7 个正文块。标题不超过 40 字且与正文一致；摘要不超过 120 字；导语先给结论或判断框架，再展开场景、标准、避坑与建议。标签 3-8 个，只用相关词；不得伪造热点、榜单或测试。platform_meta 必须含 abstract、tags、content_type。',
+    sohu: '搜狐号 sohu：目标 1,000-1,600 汉字，至少 7 个正文块。标题 5-72 字且与正文一致；摘要不超过 120 字；导语先回答读者问题，再展开判断标准、场景、风险与清单。不得声明原创，不得伪造热点、排行、亲历或用户评价；AI 生成标识由发布器如实勾选。platform_meta 必须含 abstract、content_type。',
     toutiao:
       '头条号 toutiao：目标 1,000-1,600 汉字，至少 7 个正文块。标题不超过 50 字；导语不超过 100 字并明确内容收益；提供原创分析或信息增量，使用短段、问题-答案和可执行清单。禁止标题党、强导流、虚假时效和无依据排行。platform_meta 必须含 lead、tags、content_type。',
     zhihu:

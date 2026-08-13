@@ -193,16 +193,20 @@ export class PublishingApiService {
   private async baijiahaoReconciliation(
     scope: PublishingApiScope,
     job: JobRow,
-  ): Promise<{ readonly platform_code: 'baijiahao' } | null> {
-    if (job.platformCode !== 'baijiahao' || job.status !== 'publishing' || !job.externalPostId) {
+  ): Promise<{ readonly platform_code: 'baijiahao' | 'sohu' } | null> {
+    if (
+      (job.platformCode !== 'baijiahao' && job.platformCode !== 'sohu') ||
+      job.status !== 'publishing' ||
+      !job.externalPostId
+    ) {
       return null;
     }
-    const rows = await this.database<{ externalPostId: string | null; status: string }[]>`
-      SELECT external_post_id AS "externalPostId",status
-      FROM baijiahao_browser_publications
-      WHERE tenant_id=${scope.tenantId}::uuid AND publish_job_id=${job.id}::uuid
-      LIMIT 2
-    `;
+    const rows = await browserPublicationRows(
+      this.database,
+      scope.tenantId,
+      job.id,
+      job.platformCode,
+    );
     const publication = rows[0];
     if (
       rows.length !== 1 ||
@@ -211,7 +215,7 @@ export class PublishingApiService {
     ) {
       return null;
     }
-    return Object.freeze({ platform_code: 'baijiahao' as const });
+    return Object.freeze({ platform_code: job.platformCode });
   }
 
   public requestMedia(
@@ -552,13 +556,17 @@ function unknownResolution(
   const requiresResolution =
     latest?.status === 'unknown' ||
     (latest?.status === 'failed' && latest.errorCode === 'MANUAL_REQUIRED');
-  if (job.status !== 'failed' || job.platformCode !== 'baijiahao' || !requiresResolution) {
+  if (
+    job.status !== 'failed' ||
+    (job.platformCode !== 'baijiahao' && job.platformCode !== 'sohu') ||
+    !requiresResolution
+  ) {
     return null;
   }
   return {
     can_retry: job.attemptCount < (job.origin === 'manual' ? 20 : 3),
     latest_attempt_no: latest.attemptNo,
-    platform_code: 'baijiahao',
+    platform_code: job.platformCode,
   };
 }
 
@@ -650,6 +658,28 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function browserPublicationRows(
+  database: postgres.Sql,
+  tenantId: string,
+  jobId: string,
+  platformCode: 'baijiahao' | 'sohu',
+): Promise<{ externalPostId: string | null; status: string }[]> {
+  if (platformCode === 'sohu') {
+    return database<{ externalPostId: string | null; status: string }[]>`
+      SELECT external_post_id AS "externalPostId",status
+      FROM sohu_browser_publications
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+      LIMIT 2
+    `;
+  }
+  return database<{ externalPostId: string | null; status: string }[]>`
+    SELECT external_post_id AS "externalPostId",status
+    FROM baijiahao_browser_publications
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+    LIMIT 2
+  `;
+}
+
 function readPublishMediaConfig(environment: NodeJS.ProcessEnv = process.env): PublishMediaConfig {
   const driver = environment['IMAGE_GENERATION_DRIVER']?.trim().toLowerCase() ?? 'disabled';
   return Object.freeze({
@@ -671,8 +701,8 @@ function readPublishMediaConfig(environment: NodeJS.ProcessEnv = process.env): P
   });
 }
 
-function isMediaPlatform(value: string): value is 'baijiahao' | 'official_site' {
-  return value === 'baijiahao' || value === 'official_site';
+function isMediaPlatform(value: string): value is 'baijiahao' | 'official_site' | 'sohu' {
+  return value === 'baijiahao' || value === 'official_site' || value === 'sohu';
 }
 
 function boundedRequestId(value: string): string {

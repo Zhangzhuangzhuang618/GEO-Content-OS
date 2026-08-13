@@ -17,6 +17,8 @@ import {
   BaijiahaoBrowserGatewayClient,
   OfficialSiteAutomationPolicyService,
   PlatformAccountService,
+  SohuBrowserGatewayClient,
+  SohuBrowserSessionService,
   type PlatformAccountConnector,
 } from './accounts/index.js';
 import { PlatformDeliveryAccountConnector } from './accounts/platform-account.connector.js';
@@ -57,6 +59,16 @@ import {
     {
       provide: BaijiahaoBrowserGatewayClient,
       useFactory: () => new BaijiahaoBrowserGatewayClient(),
+    },
+    {
+      provide: SohuBrowserGatewayClient,
+      useFactory: () => new SohuBrowserGatewayClient(),
+    },
+    {
+      inject: [IdentityAuthDatabase, SohuBrowserGatewayClient],
+      provide: SohuBrowserSessionService,
+      useFactory: (database: IdentityAuthDatabase, gateway: SohuBrowserGatewayClient) =>
+        new SohuBrowserSessionService(database, gateway),
     },
     {
       inject: [IdentityAuthDatabase, BaijiahaoBrowserGatewayClient],

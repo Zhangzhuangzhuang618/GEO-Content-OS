@@ -1,6 +1,7 @@
 import { BaijiahaoDeliveryAdapter } from '@geo-content-os/adapter-platforms/baijiahao/delivery';
 import { DouyinDeliveryAdapter } from '@geo-content-os/adapter-platforms/douyin/delivery';
 import { OfficialSiteDeliveryAdapter } from '@geo-content-os/adapter-platforms/official_site/delivery';
+import { SohuDeliveryAdapter } from '@geo-content-os/adapter-platforms/sohu/delivery';
 import { ToutiaoDeliveryAdapter } from '@geo-content-os/adapter-platforms/toutiao/delivery';
 import { WechatMpDeliveryAdapter } from '@geo-content-os/adapter-platforms/wechat_mp/delivery';
 import { XiaohongshuDeliveryAdapter } from '@geo-content-os/adapter-platforms/xiaohongshu/delivery';
@@ -58,6 +59,8 @@ function deliveryAdapter(
       return new OfficialSiteDeliveryAdapter(config);
     case 'baijiahao':
       return new BaijiahaoDeliveryAdapter(config);
+    case 'sohu':
+      return new SohuDeliveryAdapter(config);
     case 'toutiao':
       return new ToutiaoDeliveryAdapter(config);
     case 'zhihu':

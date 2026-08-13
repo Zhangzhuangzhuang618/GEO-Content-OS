@@ -288,7 +288,10 @@ export class PostgresPublisherStore implements PublisherStorePort {
         status: 'succeeded',
       });
       if (delivery.mode === 'api' && deliveryStatus(delivery) === 'processing') {
-        if (claim.platformCode !== 'baijiahao' || !isBaijiahaoBrowserOrigin(row.origin)) {
+        if (
+          !isBrowserPlatform(claim.platformCode) ||
+          !isBrowserOrigin(row.origin, claim.platformCode)
+        ) {
           throw stateInvalid();
         }
         const processing = await transaction<{ version: number }[]>`
@@ -301,17 +304,11 @@ export class PostgresPublisherStore implements PublisherStorePort {
         `;
         const job = processing[0];
         if (!job) throw leaseLost();
-        const browserPublications = await transaction<{ id: string }[]>`
-          UPDATE baijiahao_browser_publications SET
-            status='processing',external_post_id=${delivery.externalId},
-            external_url=COALESCE(${delivery.url},external_url),
-            last_reconciled_at=now(),version=version+1
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND account_id=${claim.accountId}::uuid
-            AND content_version_id=${claim.contentVersionId}::uuid
-            AND status IN ('submitting','unknown','processing')
-          RETURNING id
-        `;
+        const browserPublications = await updateBrowserPublicationProcessing(
+          transaction,
+          claim,
+          delivery,
+        );
         if (browserPublications.length !== 1) throw stateInvalid();
         if (row.origin === 'baijiahao_automation') {
           await transaction`
@@ -326,7 +323,16 @@ export class PostgresPublisherStore implements PublisherStorePort {
               AND status='scheduled'
           `;
         }
-        await insertBaijiahaoReconcileEvent(transaction, event, claim, row, job.version, 5);
+        await insertBrowserReconcileEvent(
+          transaction,
+          event,
+          claim,
+          row,
+          job.version,
+          5,
+          1,
+          claim.platformCode,
+        );
         await writeAudit(
           transaction,
           event,
@@ -371,31 +377,30 @@ export class PostgresPublisherStore implements PublisherStorePort {
       if (row.origin === 'official_site_automation') {
         await completeAutomationRun(transaction, claim.tenantId, claim.jobId, 'published', null);
         await completeDailyBatchItem(transaction, claim.tenantId, claim.jobId, delivery);
-      } else if (row.origin === 'baijiahao_automation') {
+      } else if (isBrowserPlatform(claim.platformCode)) {
         if (delivery.mode !== 'api') throw stateInvalid();
-        const browserPublications = await transaction<{ id: string }[]>`
-          SELECT id FROM baijiahao_browser_publications
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND account_id=${claim.accountId}::uuid
-            AND content_version_id=${claim.contentVersionId}::uuid
-            AND status='published' AND external_post_id=${delivery.externalId}
-          FOR UPDATE
-        `;
+        const browserPublications = await selectPublishedBrowserPublication(
+          transaction,
+          claim,
+          delivery.externalId,
+        );
         if (browserPublications.length !== 1) throw stateInvalid();
-        await completeBaijiahaoAutomationRun(
-          transaction,
-          claim.tenantId,
-          claim.jobId,
-          'published',
-          null,
-        );
-        await completeBaijiahaoDailyBatchItem(
-          transaction,
-          claim.tenantId,
-          claim.jobId,
-          'published',
-          null,
-        );
+        if (row.origin === 'baijiahao_automation') {
+          await completeBaijiahaoAutomationRun(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'published',
+            null,
+          );
+          await completeBaijiahaoDailyBatchItem(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'published',
+            null,
+          );
+        }
       }
       await transitionVariant(
         transaction,
@@ -494,6 +499,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
           requiresManualHandling ? 'manual_required' : 'publish_failed',
           error,
         );
+      } else if (claim.platformCode === 'sohu') {
+        await updateSohuPublicationFailure(transaction, claim, failure, error);
       }
       await transitionVariant(
         transaction,
@@ -663,7 +670,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
       if (row.jobVersion > event.jobVersion) return { kind: 'completed' } as const;
       if (
         row.jobVersion !== event.jobVersion ||
-        !isBaijiahaoBrowserOrigin(row.origin) ||
+        !isBrowserOrigin(row.origin, event.platformCode) ||
         row.publishMode !== 'api' ||
         row.variantStatus !== 'publishing' ||
         !row.externalId
@@ -683,7 +690,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           externalId: row.externalId,
           jobId: event.jobId,
           jobVersion: row.jobVersion,
-          platformCode: 'baijiahao',
+          platformCode: event.platformCode,
           publishMode: 'api',
           tenantId: event.tenantId,
         }),
@@ -703,7 +710,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
         return 'completed' as const;
       }
       if (
-        !isBaijiahaoBrowserOrigin(row.origin) ||
+        claim.platformCode !== event.platformCode ||
+        !isBrowserOrigin(row.origin, claim.platformCode) ||
         row.variantStatus !== 'publishing' ||
         row.externalId !== claim.externalId ||
         result.externalId !== claim.externalId
@@ -717,8 +725,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
         const error =
           result.status === 'unknown'
             ? adapterError(
-                'BAIJIAHAO_STATUS_UNKNOWN',
-                'Baijiahao status could not be verified; reconciliation will continue.',
+                `${browserErrorPrefix(claim.platformCode)}_STATUS_UNKNOWN`,
+                `${browserPlatformName(claim.platformCode)} status could not be verified; reconciliation will continue.`,
               )
             : null;
         const updated = await transaction<{ version: number }[]>`
@@ -732,17 +740,14 @@ export class PostgresPublisherStore implements PublisherStorePort {
         `;
         const job = updated[0];
         if (!job) throw leaseLost();
-        const browserPublications = await transaction<{ id: string }[]>`
-          UPDATE baijiahao_browser_publications SET
-            status=${result.status}, external_url=COALESCE(${result.url}, external_url),
-            last_reconciled_at=now(), version=version+1
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND external_post_id=${claim.externalId}
-            AND status IN ('submitting','unknown','processing')
-          RETURNING id
-        `;
+        const browserPublications = await updateBrowserReconciliationState(
+          transaction,
+          claim,
+          result.status,
+          result.url,
+        );
         if (browserPublications.length !== 1) throw stateInvalid();
-        await insertBaijiahaoReconcileEvent(
+        await insertBrowserReconcileEvent(
           transaction,
           event,
           claim,
@@ -750,6 +755,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           job.version,
           5,
           event.reconcileAttempt + 1,
+          claim.platformCode,
         );
         await writeAudit(
           transaction,
@@ -782,15 +788,12 @@ export class PostgresPublisherStore implements PublisherStorePort {
             null,
           );
         }
-        const browserPublications = await transaction<{ id: string }[]>`
-          UPDATE baijiahao_browser_publications SET
-            status='published', external_url=${result.url}, last_reconciled_at=now(),
-            version=version+1
-          WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-            AND external_post_id=${claim.externalId}
-            AND status IN ('submitting','unknown','processing','published')
-          RETURNING id
-        `;
+        const browserPublications = await updateBrowserReconciliationState(
+          transaction,
+          claim,
+          'published',
+          result.url,
+        );
         if (browserPublications.length !== 1) throw stateInvalid();
         if (row.origin === 'baijiahao_automation') {
           await completeBaijiahaoDailyBatchItem(
@@ -840,17 +843,19 @@ export class PostgresPublisherStore implements PublisherStorePort {
         return 'completed' as const;
       }
       const manualRequired = result.status !== 'failed';
+      const errorPrefix = browserErrorPrefix(claim.platformCode);
+      const platformName = browserPlatformName(claim.platformCode);
       const error = adapterError(
         result.status === 'processing'
-          ? 'BAIJIAHAO_REVIEW_PENDING_TIMEOUT'
+          ? `${errorPrefix}_REVIEW_PENDING_TIMEOUT`
           : manualRequired
-            ? 'BAIJIAHAO_STATUS_UNKNOWN'
-            : 'BAIJIAHAO_REVIEW_FAILED',
+            ? `${errorPrefix}_STATUS_UNKNOWN`
+            : `${errorPrefix}_REVIEW_FAILED`,
         result.status === 'processing'
-          ? 'Baijiahao publication remained under review after twelve reconciliations.'
+          ? `${platformName} publication remained under review after twelve reconciliations.`
           : manualRequired
-            ? 'Baijiahao publication status remained unknown after twelve reconciliations.'
-            : 'Baijiahao rejected the submitted article.',
+            ? `${platformName} publication status remained unknown after twelve reconciliations.`
+            : `${platformName} rejected the submitted article.`,
       );
       const updated = await transaction<{ id: string }[]>`
         UPDATE publish_jobs SET
@@ -882,16 +887,13 @@ export class PostgresPublisherStore implements PublisherStorePort {
           );
         }
       }
-      const browserPublications = await transaction<{ id: string }[]>`
-        UPDATE baijiahao_browser_publications SET
-          status=${manualRequired ? 'manual_required' : 'failed'},
-          external_url=COALESCE(${result.url}, external_url),
-          review_reason=${String(error['message'])}, last_reconciled_at=now(), version=version+1
-        WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
-          AND external_post_id=${claim.externalId}
-          AND status IN ('submitting','unknown','processing',${manualRequired ? 'manual_required' : 'failed'})
-        RETURNING id
-      `;
+      const browserPublications = await updateBrowserReconciliationTerminalFailure(
+        transaction,
+        claim,
+        manualRequired ? 'manual_required' : 'failed',
+        result.url,
+        String(error['message']),
+      );
       if (browserPublications.length !== 1) throw stateInvalid();
       if (row.origin === 'baijiahao_automation') {
         await completeBaijiahaoDailyBatchItem(
@@ -935,6 +937,135 @@ export class PostgresPublisherStore implements PublisherStorePort {
   }
 }
 
+function updateBrowserPublicationProcessing(
+  transaction: postgres.TransactionSql,
+  claim: PublishClaim,
+  delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>,
+): Promise<{ id: string }[]> {
+  if (claim.platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      UPDATE sohu_browser_publications SET
+        status='processing',external_post_id=${delivery.externalId},
+        external_url=COALESCE(${delivery.url},external_url),
+        last_reconciled_at=now(),version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND account_id=${claim.accountId}::uuid
+        AND content_version_id=${claim.contentVersionId}::uuid
+        AND status IN ('submitting','unknown','processing')
+      RETURNING id
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    UPDATE baijiahao_browser_publications SET
+      status='processing',external_post_id=${delivery.externalId},
+      external_url=COALESCE(${delivery.url},external_url),
+      last_reconciled_at=now(),version=version+1
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND account_id=${claim.accountId}::uuid
+      AND content_version_id=${claim.contentVersionId}::uuid
+      AND status IN ('submitting','unknown','processing')
+    RETURNING id
+  `;
+}
+
+function selectPublishedBrowserPublication(
+  transaction: postgres.TransactionSql,
+  claim: PublishClaim,
+  externalId: string,
+): Promise<{ id: string }[]> {
+  if (claim.platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      SELECT id FROM sohu_browser_publications
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND account_id=${claim.accountId}::uuid
+        AND content_version_id=${claim.contentVersionId}::uuid
+        AND status='published' AND external_post_id=${externalId}
+      FOR UPDATE
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    SELECT id FROM baijiahao_browser_publications
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND account_id=${claim.accountId}::uuid
+      AND content_version_id=${claim.contentVersionId}::uuid
+      AND status='published' AND external_post_id=${externalId}
+    FOR UPDATE
+  `;
+}
+
+function updateBrowserReconciliationState(
+  transaction: postgres.TransactionSql,
+  claim: BaijiahaoReconcileClaim,
+  status: 'processing' | 'published' | 'unknown',
+  url: string | null,
+): Promise<{ id: string }[]> {
+  if (claim.platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      UPDATE sohu_browser_publications SET
+        status=${status}, external_url=COALESCE(${url}, external_url),
+        last_reconciled_at=now(), version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND external_post_id=${claim.externalId}
+        AND status IN ('submitting','unknown','processing','published')
+      RETURNING id
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    UPDATE baijiahao_browser_publications SET
+      status=${status}, external_url=COALESCE(${url}, external_url),
+      last_reconciled_at=now(), version=version+1
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND external_post_id=${claim.externalId}
+      AND status IN ('submitting','unknown','processing','published')
+    RETURNING id
+  `;
+}
+
+function updateBrowserReconciliationTerminalFailure(
+  transaction: postgres.TransactionSql,
+  claim: BaijiahaoReconcileClaim,
+  status: 'failed' | 'manual_required',
+  url: string | null,
+  reason: string,
+): Promise<{ id: string }[]> {
+  if (claim.platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      UPDATE sohu_browser_publications SET
+        status=${status}, external_url=COALESCE(${url}, external_url),
+        review_reason=${reason}, last_reconciled_at=now(), version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND external_post_id=${claim.externalId}
+        AND status IN ('submitting','unknown','processing','manual_required','failed')
+      RETURNING id
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    UPDATE baijiahao_browser_publications SET
+      status=${status}, external_url=COALESCE(${url}, external_url),
+      review_reason=${reason}, last_reconciled_at=now(), version=version+1
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND external_post_id=${claim.externalId}
+      AND status IN ('submitting','unknown','processing','manual_required','failed')
+    RETURNING id
+  `;
+}
+
+function updateSohuPublicationFailure(
+  transaction: postgres.TransactionSql,
+  claim: PublishClaim,
+  failure: { readonly message: string; readonly status: 'failed' | 'unknown' },
+  error: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  const status = failure.status === 'unknown' ? 'manual_required' : 'failed';
+  return transaction`
+    UPDATE sohu_browser_publications SET
+      status=${status},review_reason=${String(error['message'])},
+      last_reconciled_at=now(),version=version+1
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND status IN ('prepared','submitting','unknown','processing')
+  `.then(() => undefined);
+}
+
 function selectBaijiahaoReconcileRow(
   transaction: postgres.TransactionSql,
   event: ValidatedBaijiahaoReconcileEvent,
@@ -957,14 +1088,17 @@ function selectBaijiahaoReconcileRow(
     FROM publish_jobs AS job
     JOIN content_variants AS variant
       ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
-      AND variant.platform_code='baijiahao'
+      AND variant.platform_code=${event.platformCode}
     JOIN content_packages AS package
       ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
     JOIN platform_accounts AS account
       ON account.id=job.account_id AND account.tenant_id=job.tenant_id
-      AND account.workspace_id=package.workspace_id AND account.platform_code='baijiahao'
+      AND account.workspace_id=package.workspace_id AND account.platform_code=${event.platformCode}
     WHERE job.id=${event.jobId}::uuid AND job.tenant_id=${event.tenantId}::uuid
-      AND job.origin IN ('manual','baijiahao_automation')
+      AND (
+        (${event.platformCode}='baijiahao' AND job.origin IN ('manual','baijiahao_automation'))
+        OR (${event.platformCode}='sohu' AND job.origin='manual')
+      )
     ${lock ? transaction`FOR UPDATE OF job, variant, package, account` : transaction``}
   `;
 }
@@ -1046,10 +1180,23 @@ function deliveryStatus(
   return delivery.response['status'] === 'processing' ? 'processing' : 'published';
 }
 
-function isBaijiahaoBrowserOrigin(
+function isBrowserOrigin(
   origin: CompletionRow['origin'],
+  platformCode: 'baijiahao' | 'sohu',
 ): origin is 'manual' | 'baijiahao_automation' {
-  return origin === 'manual' || origin === 'baijiahao_automation';
+  return origin === 'manual' || (platformCode === 'baijiahao' && origin === 'baijiahao_automation');
+}
+
+function isBrowserPlatform(platformCode: PlatformCode): platformCode is 'baijiahao' | 'sohu' {
+  return platformCode === 'baijiahao' || platformCode === 'sohu';
+}
+
+function browserErrorPrefix(platformCode: 'baijiahao' | 'sohu'): 'BAIJIAHAO' | 'SOHU' {
+  return platformCode === 'sohu' ? 'SOHU' : 'BAIJIAHAO';
+}
+
+function browserPlatformName(platformCode: 'baijiahao' | 'sohu'): 'Baijiahao' | 'Sohu' {
+  return platformCode === 'sohu' ? 'Sohu' : 'Baijiahao';
 }
 
 function automatedReadyStatus(origin: CompletionRow['origin']): 'approved' | 'quality_passed' {
@@ -1137,7 +1284,7 @@ async function insertPublishedEvent(
   `;
 }
 
-async function insertBaijiahaoReconcileEvent(
+async function insertBrowserReconcileEvent(
   transaction: postgres.TransactionSql,
   event: Pick<ValidatedPublishEvent, 'requestId'>,
   claim: Pick<PublishClaim, 'jobId' | 'tenantId'>,
@@ -1145,6 +1292,7 @@ async function insertBaijiahaoReconcileEvent(
   jobVersion: number,
   delayMinutes: number,
   reconcileAttempt = 1,
+  platformCode: 'baijiahao' | 'sohu' = 'baijiahao',
 ): Promise<void> {
   const eventId = randomUUID();
   const occurredAt = new Date().toISOString();
@@ -1159,7 +1307,7 @@ async function insertBaijiahaoReconcileEvent(
       request_id: event.requestId,
     },
     event_id: eventId,
-    event_type: 'baijiahao.publication.reconcile_requested.v1',
+    event_type: `${platformCode}.publication.reconcile_requested.v1`,
     occurred_at: occurredAt,
     tenant: { id: claim.tenantId },
   };
@@ -1169,7 +1317,7 @@ async function insertBaijiahaoReconcileEvent(
       payload_json, next_attempt_at
     ) VALUES (
       ${eventId}::uuid, ${claim.tenantId}::uuid,
-      'baijiahao.publication.reconcile_requested.v1', 'publish_job',
+      ${`${platformCode}.publication.reconcile_requested.v1`}, 'publish_job',
       ${claim.jobId}::uuid, ${JSON.stringify(envelope)}::text::jsonb,
       now() + (${delayMinutes} * interval '1 minute')
     )

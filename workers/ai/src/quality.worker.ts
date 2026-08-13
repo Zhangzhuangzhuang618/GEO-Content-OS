@@ -527,6 +527,7 @@ export function calculateGeoScores(
     baijiahao: 40,
     douyin: 80,
     official_site: 60,
+    sohu: 72,
     toutiao: 50,
     wechat_mp: 64,
     xiaohongshu: 20,

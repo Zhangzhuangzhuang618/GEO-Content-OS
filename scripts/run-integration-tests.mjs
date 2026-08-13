@@ -10,11 +10,16 @@ if (selectors.length === 1 && selectors[0] === 'publisher-worker') {
   run(['--filter', '@geo-content-os/worker-publisher', 'test:integration']);
   process.exit(0);
 }
+if (selectors.length === 1 && selectors[0] === 'sohu-browser') {
+  run(['--filter', '@geo-content-os/worker-sohu-browser', 'test:integration']);
+  process.exit(0);
+}
 if (
   selectors.length === 1 &&
   [
     'official_site-delivery',
     'baijiahao-delivery',
+    'sohu-delivery',
     'toutiao-delivery',
     'zhihu-delivery',
     'xiaohongshu-delivery',

@@ -65,8 +65,8 @@ export class GenerationRequestService {
     await assertNoActiveRun(transaction, context.scope.tenantId, input.packageId);
     const variants = await lockVariants(transaction, context.scope.tenantId, input.packageId);
     const required = variants.filter((variant) => variant.isRequired);
-    if (required.length < 1 || required.length > 7) {
-      throw generationStateInvalid('Generation requires between one and seven required variants');
+    if (required.length < 1 || required.length > 8) {
+      throw generationStateInvalid('Generation requires between one and eight required variants');
     }
     for (const variant of required) {
       try {

@@ -20,6 +20,7 @@ import type {
 const PLATFORM_CODES = new Set([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',

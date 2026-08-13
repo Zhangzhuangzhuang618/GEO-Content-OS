@@ -6,6 +6,7 @@ const DateTime = z.iso.datetime();
 const Platform = z.enum([
   'official_site',
   'baijiahao',
+  'sohu',
   'toutiao',
   'zhihu',
   'xiaohongshu',

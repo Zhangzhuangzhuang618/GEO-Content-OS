@@ -174,7 +174,7 @@ export const ContentVariantViewSchema = z
 
 export const ContentPackageListItemSchema = ContentPackageViewSchema.extend({
   brief_title: z.string().trim().min(1).max(240),
-  variants: z.array(ContentVariantViewSchema).max(7),
+  variants: z.array(ContentVariantViewSchema).max(8),
 }).strict();
 
 export const ContentBlockViewSchema = z

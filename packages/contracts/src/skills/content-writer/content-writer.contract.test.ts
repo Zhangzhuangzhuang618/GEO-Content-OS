@@ -36,7 +36,7 @@ describe('content-writer contract v1.0.0', () => {
     }
   });
 
-  it('binds all seven platform patches and only the two authorized tools', () => {
+  it('binds all eight platform patches and only the two authorized tools', () => {
     expect(Object.keys(CONTENT_WRITER_CONTRACT_V1.platformPrompts).sort()).toEqual(
       [...CONTENT_PLATFORM_CODES].sort(),
     );
@@ -52,6 +52,7 @@ describe('content-writer contract v1.0.0', () => {
     const limits = {
       baijiahao: 40,
       official_site: 60,
+      sohu: 72,
       toutiao: 50,
       wechat_mp: 64,
       xiaohongshu: 20,
