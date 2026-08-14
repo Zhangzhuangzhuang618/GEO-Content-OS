@@ -176,7 +176,7 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
       await beforeSubmit(screenshot);
       stage = 'submit';
       await page.locator(SELECTORS.submit).click();
-      await waitForSubmitResult(page, this.config.navigationTimeoutMs);
+      await waitForSubmitResult(page, this.config.editorUrl, this.config.navigationTimeoutMs);
       const match = {
         contentFingerprint: input.contentFingerprint,
         submittedAfter: new Date(Date.now() - 5 * 60_000),
@@ -327,7 +327,7 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
     }
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
-      'Lieju logistics form no longer matches the frozen page signature',
+      'Lieju moving-services form no longer matches the frozen page signature',
     );
   }
 
@@ -408,10 +408,14 @@ async function uploadImage(page: Page, input: DriverPublishInput): Promise<void>
     const input = element as unknown as { files?: { readonly length: number } | null };
     return input.files?.length ?? 0;
   });
-  if (uploadedFiles !== 1) {
+  const previewSource = await page
+    .locator('#preview1 img')
+    .getAttribute('src')
+    .catch(() => null);
+  if (uploadedFiles !== 1 && !previewSource?.trim()) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
-      'Lieju rejected or cleared the selected image',
+      'Lieju rejected the selected image without creating a preview',
     );
   }
 }
@@ -433,10 +437,17 @@ async function verifyForm(page: Page, input: DriverPublishInput): Promise<void> 
   }
 }
 
-async function waitForSubmitResult(page: Page, timeoutMs: number): Promise<void> {
+async function waitForSubmitResult(
+  page: Page,
+  editorUrl: string,
+  timeoutMs: number,
+): Promise<void> {
+  const editorPath = new URL(editorUrl).pathname.replace(/\/+$/u, '');
   const failure = page.getByText(/发布失败|每天可发布|验证码|错误/u).first();
   await Promise.race([
-    page.waitForURL((url) => !url.pathname.endsWith('/5/104'), { timeout: timeoutMs }),
+    page.waitForURL((url) => url.pathname.replace(/\/+$/u, '') !== editorPath, {
+      timeout: timeoutMs,
+    }),
     page
       .getByText(/发布成功|提交成功|审核/u)
       .first()

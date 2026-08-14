@@ -166,7 +166,7 @@ describe('Publishing API frozen contract', () => {
         credential: {
           posting_profile: {
             address: '广州市天河区',
-            category_id: '104',
+            category_id: '4',
             contact_name: '测试联系人',
             mobile_phone: '13800000000',
             zone_id: '5',

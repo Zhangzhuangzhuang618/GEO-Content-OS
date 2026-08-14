@@ -206,6 +206,17 @@ describe('lieju delivery integration', () => {
     expect(config.mode).toBe('api');
     if (config.mode === 'api') expect(config.timeout_ms).toBe(60_000);
   });
+
+  it('rejects the removed logistics-only category', () => {
+    expect(
+      LiejuDeliveryConfigSchema.safeParse({
+        base_url: 'https://publisher.example.com',
+        bearer_token: 'secret',
+        mode: 'api',
+        posting_profile: { ...POSTING_PROFILE, category_id: '7' },
+      }).success,
+    ).toBe(false);
+  });
 });
 
 class FakeTransport implements LiejuHttpTransport {

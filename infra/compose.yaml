@@ -411,7 +411,7 @@ services:
       LIEJU_BROWSER_NAVIGATION_TIMEOUT_MS: ${LIEJU_BROWSER_NAVIGATION_TIMEOUT_MS:-30000}
       LIEJU_BROWSER_PROFILE_ROOT: /var/lib/geo-content-os/lieju
       LIEJU_BROWSER_SIMULATOR: ${LIEJU_BROWSER_SIMULATOR:-false}
-      LIEJU_EDITOR_URL: ${LIEJU_EDITOR_URL:-https://post.lieju.com/5/104}
+      LIEJU_EDITOR_URL: ${LIEJU_EDITOR_URL:-https://post.lieju.com/5/73}
       LIEJU_LOGIN_URL: ${LIEJU_LOGIN_URL:-https://www.lieju.com/qq_login/}
       LIEJU_MANAGE_URL: ${LIEJU_MANAGE_URL:-https://www.lieju.com/member/list.php}
       DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}

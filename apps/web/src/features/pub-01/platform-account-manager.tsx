@@ -635,7 +635,7 @@ function ConnectForm({
               </select>
             </label>
             <label className="text-sm text-ink-700">
-              物流类别
+              搬家类别
               <select className={controlClass} defaultValue="" name="category_id" required>
                 <option disabled value="">
                   请选择类别
@@ -1053,13 +1053,12 @@ const LIEJU_ZONE_OPTIONS = [
   ['3081', '广州周边'],
 ] as const;
 const LIEJU_CATEGORY_OPTIONS = [
-  ['1', '国内物流'],
-  ['2', '国际物流'],
-  ['3', '报关'],
-  ['4', '仓储'],
-  ['5', '货物运输'],
-  ['6', '包车运输'],
-  ['7', '货运代理'],
+  ['1', '空调拆装'],
+  ['2', '公司搬家'],
+  ['3', '设备搬迁'],
+  ['4', '搬家搬场'],
+  ['5', '长途搬家'],
+  ['6', '起重吊装'],
 ] as const;
 const STATUS_OPTIONS = [
   ['active', '连接正常'],

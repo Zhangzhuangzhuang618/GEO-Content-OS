@@ -28,7 +28,7 @@ export function readLiejuBrowserConfig(
   const simulator = boolean(environment['LIEJU_BROWSER_SIMULATOR'], false);
   const configuration = ConfigSchema.parse({
     databaseUrl: environment['DATABASE_URL'],
-    editorUrl: environment['LIEJU_EDITOR_URL'] ?? 'https://post.lieju.com/5/104',
+    editorUrl: environment['LIEJU_EDITOR_URL'] ?? 'https://post.lieju.com/5/73',
     gatewayToken: environment['LIEJU_BROWSER_GATEWAY_TOKEN'],
     headless: boolean(environment['LIEJU_BROWSER_HEADLESS'], true),
     healthPort: integer(environment['HEALTH_PORT'], 9097),

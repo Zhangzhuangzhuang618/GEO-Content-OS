@@ -256,7 +256,7 @@ function payload(title: string) {
 function config(baseUrl: string, profileRoot: string): LiejuBrowserConfig {
   return Object.freeze({
     databaseUrl: 'postgresql://unused',
-    editorUrl: `${baseUrl}/5/104`,
+    editorUrl: `${baseUrl}/5/73`,
     gatewayToken: 'x'.repeat(32),
     headless: true,
     healthPort: 9097,
@@ -297,7 +297,7 @@ function route(
        <script>document.querySelector('form').onsubmit=(event)=>{event.preventDefault();document.cookie='lieju-auth=yes; path=/';location.href='/member/list.php'}</script>`,
     );
   }
-  if (request.url === '/5/104') {
+  if (request.url === '/5/73') {
     if (!authenticated(request)) return redirect(response, '/signin');
     return html(response, editor(readCaptchaRequired()));
   }
@@ -336,13 +336,21 @@ function route(
 function editor(captchaRequired: boolean): string {
   return `<a href="/member/index.php">会员中心</a><a href="?action=quit">退出</a>
     <select id="atc_zone_id"><option value="73">天河区</option></select>
-    <input id="atc_title"><select id="atc_leibie"><option value="1">国内物流</option></select>
+    <input id="atc_title"><select id="atc_leibie"><option value="1">空调拆装</option></select>
     <input id="atc_dizhi"><textarea id="atc_content"></textarea><input id="in_url1" type="file">
+    <div id="preview1"><img src=""></div><div id="previewerr1"></div>
     <input id="atc_mobphone"><input id="atc_oicq"><input id="atc_wechat"><input id="atc_linkman">
     <select id="atc_autofill"><option value="0">不自动填充</option></select><input id="dtop" type="checkbox">
     <input id="atc_yzm" value="${captchaRequired ? '' : '1'}">${captchaRequired ? '<div id="TencentCaptcha">验证码</div>' : ''}
     <button id="sub" type="button">提交发布</button><div id="result"></div>
     <script>
+      document.querySelector('#in_url1').onchange=()=>{
+        const input=document.querySelector('#in_url1');
+        const file=input.files[0];
+        const reader=new FileReader();
+        reader.onload=()=>{document.querySelector('#preview1 img').src=reader.result;input.dataset.uploaded='1';input.value=''};
+        reader.readAsDataURL(file);
+      };
       document.querySelector('#sub').onclick=async()=>{
         const image=document.querySelector('#in_url1');
         const result=await fetch('/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
@@ -350,7 +358,7 @@ function editor(captchaRequired: boolean): string {
           body:document.querySelector('#atc_content').value,
           category:document.querySelector('#atc_leibie').value,
           contactName:document.querySelector('#atc_linkman').value,
-          imageCount:image.files.length,
+          imageCount:image.dataset.uploaded==='1'?1:0,
           mobilePhone:document.querySelector('#atc_mobphone').value,
           title:document.querySelector('#atc_title').value,
           zone:document.querySelector('#atc_zone_id').value

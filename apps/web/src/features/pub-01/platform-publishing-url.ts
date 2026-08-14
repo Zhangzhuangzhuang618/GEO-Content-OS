@@ -3,7 +3,7 @@ import type { PlatformAccount, PlatformCode } from './platform-account.schema';
 const DEFAULT_PUBLISHING_URLS: Readonly<Partial<Record<PlatformCode, string>>> = {
   baijiahao: 'https://baijiahao.baidu.com/builder/rc/edit?type=news',
   sohu: 'https://mp.sohu.com/mpfe/v4/contentManagement/news/addarticle?contentStatus=1',
-  lieju: 'https://post.lieju.com/5/104',
+  lieju: 'https://post.lieju.com/5/73',
   douyin: 'https://creator.douyin.com/creator-micro/content/upload',
   toutiao: 'https://mp.toutiao.com/profile_v4/graphic/publish',
   wechat_mp: 'https://mp.weixin.qq.com/',

@@ -8,6 +8,10 @@ const BASE_ENV = Object.freeze({
 });
 
 describe('Lieju browser configuration', () => {
+  it('defaults to the Guangzhou moving-services editor', () => {
+    expect(readLiejuBrowserConfig(BASE_ENV).editorUrl).toBe('https://post.lieju.com/5/73');
+  });
+
   it('requires HTTPS for real Lieju pages', () => {
     expect(() =>
       readLiejuBrowserConfig({
