@@ -166,16 +166,23 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
       await submit.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
       await submit.click();
       await waitForSubmitResult(page, this.config.navigationTimeoutMs);
-      const reconciled = await this.reconcile(
-        input.accountId,
-        input.profilePath,
-        {
-          contentFingerprint: input.contentFingerprint,
-          submittedAfter: new Date(Date.now() - 5 * 60_000),
-          title: input.payload.title,
-        },
-        input.storageStateJson,
-      );
+      const match = {
+        contentFingerprint: input.contentFingerprint,
+        submittedAfter: new Date(Date.now() - 5 * 60_000),
+        title: input.payload.title,
+      };
+      let reconciled: RemotePublication | null = null;
+      for (let attempt = 0; attempt < 3 && !reconciled; attempt += 1) {
+        reconciled = await this.reconcile(
+          input.accountId,
+          input.profilePath,
+          match,
+          input.storageStateJson,
+        );
+        if (!reconciled && attempt < 2) {
+          await this.pages.get(input.accountId)?.waitForTimeout(2_000);
+        }
+      }
       if (!reconciled) {
         throw new PageDriverError(
           'PUBLISH_STATE_UNKNOWN',

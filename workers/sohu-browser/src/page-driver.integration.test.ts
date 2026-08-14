@@ -246,7 +246,10 @@ function route(
     const chunks: Buffer[] = [];
     request.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
     request.on('end', () => {
-      saveSubmitted(JSON.parse(Buffer.concat(chunks).toString('utf8')) as SubmittedPublication);
+      const publication = JSON.parse(
+        Buffer.concat(chunks).toString('utf8'),
+      ) as SubmittedPublication;
+      setTimeout(() => saveSubmitted(publication), 500);
       json(response, { success: true });
     });
     return;
