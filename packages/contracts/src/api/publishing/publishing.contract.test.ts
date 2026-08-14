@@ -8,6 +8,8 @@ import {
   PUBLISHING_OPENAPI_DOCUMENT,
   PublishJobQuerySchema,
   ResolveUnknownPublishRequestSchema,
+  SohuBrowserLoginRequestSchema,
+  LiejuBrowserLoginRequestSchema,
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
@@ -83,6 +85,32 @@ describe('Publishing API frozen contract', () => {
       OfficialSiteDailyBatchCancelRequestSchema.safeParse({
         project_id: crypto.randomUUID(),
       }).success,
+    ).toBe(false);
+  });
+
+  it('accepts only platform-supported ephemeral browser login methods', () => {
+    expect(
+      SohuBrowserLoginRequestSchema.safeParse({
+        accepted_terms: true,
+        account: 'publisher@example.com',
+        method: 'password',
+        password: 'temporary',
+      }).success,
+    ).toBe(true);
+    expect(
+      SohuBrowserLoginRequestSchema.safeParse({ method: 'sms_prepare', mobile: '13800138000' })
+        .success,
+    ).toBe(true);
+    expect(
+      LiejuBrowserLoginRequestSchema.safeParse({
+        method: 'password',
+        password: 'temporary',
+        username: 'publisher',
+      }).success,
+    ).toBe(true);
+    expect(
+      LiejuBrowserLoginRequestSchema.safeParse({ method: 'sms_prepare', mobile: '13800138000' })
+        .success,
     ).toBe(false);
   });
 

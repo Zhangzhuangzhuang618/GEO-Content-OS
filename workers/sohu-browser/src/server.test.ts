@@ -40,7 +40,35 @@ describe('Sohu browser gateway routes', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID);
+    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID, { method: 'wechat' });
+  });
+
+  it('forwards ephemeral password login input without echoing it', async () => {
+    const startLogin = vi.fn(async () => ({
+      account_id: ACCOUNT_ID,
+      status: 'authenticated',
+      version: 1,
+    }));
+    const baseUrl = await listen(fakeService({ startLogin }));
+    const response = await fetch(`${baseUrl}/sessions/${ACCOUNT_ID}/login`, {
+      body: JSON.stringify({
+        accepted_terms: true,
+        account: 'publisher@example.com',
+        method: 'password',
+        password: 'ephemeral-password',
+      }),
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID, {
+      accepted_terms: true,
+      account: 'publisher@example.com',
+      method: 'password',
+      password: 'ephemeral-password',
+    });
+    expect(await response.text()).not.toMatch(/publisher@example\.com|ephemeral-password/u);
   });
 
   it('rejects unauthorized session requests before invoking the browser', async () => {

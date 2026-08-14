@@ -117,7 +117,7 @@ AI 可见度实验是独立于八个平台发布流程的分析域。问题集�
 
 ### 搜狐号发布（ADR-0034 / T150）
 
-搜狐号作为第八个平台进入普通生成、质检、审核和排期主链路，不新增日批或官网派生。发布由独立 `sohu-browser` 进程完成：微信扫码登录、不保存密码、加密 storage state、账号串行、Quill 正文与摘要填充、配图上传，并如实选择“包含AI创作内容”，不得声明原创。提交后持续从内容管理页对账，只有远端为已发布才完成任务；未知态先核验后重试，重复匹配进入人工处理。自动测试只访问本地仿真页面。
+搜狐号作为第八个平台进入普通生成、质检、审核和排期主链路，不新增日批或官网派生。发布由独立 `sohu-browser` 进程完成：支持微信扫码、临时账号密码和临时手机验证码登录；第三方登录输入不落库，认证后只保存加密 storage state。账号串行，填充 Quill 正文与摘要、上传配图，并如实选择“包含AI创作内容”，不得声明原创。提交后持续从内容管理页对账，只有远端为已发布才完成任务；未知态先核验后重试，重复匹配进入人工处理。自动测试只访问本地仿真页面。
 
 HOTFIX-20260814-01 已按搜狐真实页面修正两阶段微信登录、OAuth 绑定失败识别、实名认证发文权限提示、内容首页进入编辑器、上传管理器确认、非 `button` 发布控件、发布完成等待和异步内容列表对账。同名草稿不作为远端发布结果；真实低频灰度验证已进入搜狐审核中，未知或本地假失败仍必须先对账，禁止直接重复提交。
 
@@ -127,7 +127,11 @@ HOTFIX-20260814-03 修正搜狐号账号卡片的登录交互：用户点击“�
 
 ### 列举网发布（ADR-0035 / T151）
 
-列举网作为第九个平台进入普通生成、质检、审核和排期主链路，不新增日批。发布由独立 `lieju-browser` 进程完成：QQ 扫码登录、不保存密码、加密 storage state、账号串行，固定填写广州“商务服务 → 物流/货运”分类信息表单。联系人、电话、地址、区域和物流子类属于加密账号配置，不进入 Prompt、日志或审计；正文不得包含联系方式。普通会员的腾讯交互验证码必须转人工，不绕过；只有免验证码权益生效且页面未出现验证码时才允许无人值守提交。提交后从会员中心对账，待审核保持 `processing`，只有公开信息链接可访问且标题匹配才记为 `published`。
+列举网作为第九个平台进入普通生成、质检、审核和排期主链路，不新增日批。发布由独立 `lieju-browser` 进程完成：支持 QQ 扫码和临时用户名密码登录；官方没有手机验证码登录入口，第三方登录输入不落库，认证后只保存加密 storage state。账号串行，固定填写广州“商务服务 → 物流/货运”分类信息表单。联系人、电话、地址、区域和物流子类属于加密账号配置，不进入 Prompt、日志或审计；正文不得包含联系方式。普通会员的腾讯交互验证码必须转人工，不绕过；只有免验证码权益生效且页面未出现验证码时才允许无人值守提交。提交后从会员中心对账，待审核保持 `processing`，只有公开信息链接可访问且标题匹配才记为 `published`。
+
+### 托管浏览器临时凭据登录（ADR-0036 / T152）
+
+搜狐账号密码、手机号、图形码和短信码，以及列举网用户名密码，只在单次同步请求和 Worker 当前浏览器内存中存在，不进入平台账号凭据、数据库、Outbox、幂等记录、审计详情、日志或测试快照。短信只能由用户明确点击发送；图形验证码必须人工查看和输入。Worker 重启后未完成挑战失效。新增登录方式不改变质量门禁、发布状态判定或真实发布授权边界。
 
 ### 官网媒体随文上传（ADR-0031 / T149）
 
@@ -245,7 +249,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，后续 Hotfix 补充配图恢复等既有流程端点，并以 HOTFIX-20260805-11 增加百家号未知发布结果人工处置端点、HOTFIX-20260808-01 增加百家号终态重新对账端点，ADR-0033 增加平台企业所有者邀请重发端点，ADR-0034 增加搜狐号浏览器会话 3 个端点，当前可执行端点数为 150。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，后续 Hotfix 补充配图恢复等既有流程端点，并以 HOTFIX-20260805-11 增加百家号未知发布结果人工处置端点、HOTFIX-20260808-01 增加百家号终态重新对账端点，ADR-0033 增加平台企业所有者邀请重发端点，ADR-0034 增加搜狐号浏览器会话 3 个端点，ADR-0035 增加列举网浏览器会话 3 个端点，当前可执行端点数为 153。ADR-0036 只扩展既有登录请求体，不增加端点。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -362,6 +366,12 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 发布 | GET | `/platform-accounts/{id}/baijiahao-browser-session` | publisher_or_admin | - | BaijiahaoBrowserSessionView | - |
 | 发布 | POST | `/platform-accounts/{id}/baijiahao-browser-session/login` | publisher_or_admin | - | BaijiahaoBrowserLoginView | resource+version |
 | 发布 | POST | `/platform-accounts/{id}/baijiahao-browser-session/reauth` | publisher_or_admin | - | BaijiahaoBrowserLoginView | resource+version |
+| 发布 | GET | `/platform-accounts/{id}/sohu-browser-session` | publisher_or_admin | - | BaijiahaoBrowserSessionView | - |
+| 发布 | POST | `/platform-accounts/{id}/sohu-browser-session/login` | publisher_or_admin | SohuBrowserLoginRequest | BaijiahaoBrowserLoginView | resource+version |
+| 发布 | POST | `/platform-accounts/{id}/sohu-browser-session/reauth` | publisher_or_admin | SohuBrowserLoginRequest | BaijiahaoBrowserLoginView | resource+version |
+| 发布 | GET | `/platform-accounts/{id}/lieju-browser-session` | publisher_or_admin | - | BaijiahaoBrowserSessionView | - |
+| 发布 | POST | `/platform-accounts/{id}/lieju-browser-session/login` | publisher_or_admin | LiejuBrowserLoginRequest | BaijiahaoBrowserLoginView | resource+version |
+| 发布 | POST | `/platform-accounts/{id}/lieju-browser-session/reauth` | publisher_or_admin | LiejuBrowserLoginRequest | BaijiahaoBrowserLoginView | resource+version |
 | 发布 | POST | `/publish-jobs` | publisher_or_admin | CreatePublishJobRequest | PublishJobView | key+body_hash |
 | 发布 | GET | `/publish-jobs` | publisher_or_admin | PublishJobQuery | PublishJobPage | - |
 | 发布 | GET | `/publish-jobs/{id}` | publisher_or_admin | - | PublishJobDetail | - |
@@ -473,7 +483,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 
 ## 10. 开发任务
 
-原始开发任务固定 T001-T144，共 144 个；新增功能必须通过新 ADR、任务号和验收标准单独批准。T145 为已完成的百家号自动化，T146 为已完成的关键词多意图与自适应管理，T147 为已完成的关键词表格预检与异步分批导入，T148 为已批准的 DeepSeek 规划与 Cloudflare Workers AI 自动配图，T149 为已批准的官网媒体随文上传，T150 为已完成的搜狐号生成与托管浏览器发布，T151 为已完成的列举网分类信息生成与托管浏览器发布（真实发布灰度待单独授权）。每任务包含交付物、文件范围、依赖、验收命令和统一 DoD。
+原始开发任务固定 T001-T144，共 144 个；新增功能必须通过新 ADR、任务号和验收标准单独批准。T145 为已完成的百家号自动化，T146 为已完成的关键词多意图与自适应管理，T147 为已完成的关键词表格预检与异步分批导入，T148 为已批准的 DeepSeek 规划与 Cloudflare Workers AI 自动配图，T149 为已批准的官网媒体随文上传，T150 为已完成的搜狐号生成与托管浏览器发布，T151 为已完成的列举网分类信息生成与托管浏览器发布（真实发布灰度待单独授权），T152 为已完成的搜狐号与列举网临时凭据登录。每任务包含交付物、文件范围、依赖、验收命令和统一 DoD。
 
 | 里程碑 | 范围 | 出口 |
 |---|---|---|
@@ -490,6 +500,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | M10 | T149 | Windows 私有素材在官网发布时上传并转换为官网持久地址 |
 | M11 | T150 | 搜狐号内容生成、扫码登录、托管浏览器发布和状态对账 |
 | M12 | T151 | 列举网分类信息生成、QQ 扫码、托管浏览器发布和审核状态对账 |
+| M13 | T152 | 搜狐密码与手机验证码、列举网密码登录及敏感输入不落库 |
 
 ### 启动命令
 

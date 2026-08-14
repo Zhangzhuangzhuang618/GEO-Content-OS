@@ -322,11 +322,64 @@ export const BaijiahaoBrowserSessionViewSchema = z
   })
   .strict();
 export const BaijiahaoBrowserLoginViewSchema = BaijiahaoBrowserSessionViewSchema.extend({
+  captcha_image_data_url: z
+    .string()
+    .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u)
+    .optional(),
+  login_stage: z.enum(['captcha_required', 'sms_code_required']).optional(),
   qr_image_data_url: z
     .string()
     .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u)
     .optional(),
 }).strict();
+const LoginIdentifierSchema = z.string().trim().min(1).max(120);
+const LoginPasswordSchema = z.string().min(1).max(256);
+const MainlandMobileSchema = z.string().regex(/^1[3-9][0-9]{9}$/u);
+export const SohuBrowserLoginRequestSchema = z
+  .discriminatedUnion('method', [
+    z.object({ method: z.literal('wechat') }).strict(),
+    z
+      .object({
+        accepted_terms: z.literal(true),
+        account: LoginIdentifierSchema,
+        method: z.literal('password'),
+        password: LoginPasswordSchema,
+      })
+      .strict(),
+    z.object({ method: z.literal('sms_prepare'), mobile: MainlandMobileSchema }).strict(),
+    z
+      .object({
+        accepted_terms: z.literal(true),
+        image_captcha: z.string().trim().min(1).max(12),
+        method: z.literal('sms_send'),
+        mobile: MainlandMobileSchema,
+      })
+      .strict(),
+    z
+      .object({
+        accepted_terms: z.literal(true),
+        method: z.literal('sms_verify'),
+        mobile: MainlandMobileSchema,
+        sms_code: z
+          .string()
+          .trim()
+          .regex(/^[0-9]{4,8}$/u),
+      })
+      .strict(),
+  ])
+  .default({ method: 'wechat' });
+export const LiejuBrowserLoginRequestSchema = z
+  .discriminatedUnion('method', [
+    z.object({ method: z.literal('qq') }).strict(),
+    z
+      .object({
+        method: z.literal('password'),
+        password: LoginPasswordSchema,
+        username: LoginIdentifierSchema,
+      })
+      .strict(),
+  ])
+  .default({ method: 'qq' });
 export const BaijiahaoAutomationPolicyViewSchema = z
   .object({
     account_id: UuidSchema,
@@ -405,3 +458,5 @@ export type BaijiahaoAutomationPolicyRequest = z.infer<
 export type BaijiahaoAutomationPolicyView = z.infer<typeof BaijiahaoAutomationPolicyViewSchema>;
 export type BaijiahaoBrowserSessionView = z.infer<typeof BaijiahaoBrowserSessionViewSchema>;
 export type BaijiahaoBrowserLoginView = z.infer<typeof BaijiahaoBrowserLoginViewSchema>;
+export type SohuBrowserLoginRequest = z.infer<typeof SohuBrowserLoginRequestSchema>;
+export type LiejuBrowserLoginRequest = z.infer<typeof LiejuBrowserLoginRequestSchema>;

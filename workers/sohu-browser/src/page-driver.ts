@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright';
+import type { SohuBrowserLoginRequest } from '@geo-content-os/contracts';
 
 import type { SohuBrowserConfig } from './config.js';
 import type {
@@ -18,10 +19,17 @@ const SELECTORS = Object.freeze({
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
   declarationAi: 'label:has-text("包含AI创作内容")',
   loginAccount: '[data-role="login-btn"], .login-sohu, button:has-text("登录")',
+  loginPassword: '[data-role="user-secret"]',
+  loginUsername: '[data-role="user-passport"]',
   managePublish: 'button:has-text("发布内容")',
   publish:
     'li.publish-report-btn.active, button:has-text("发布"), .submit-btn button, [class*="submit-btn"] button',
   qr: 'img.qrcode, img[src*="qrcode"], img[src*="qr"], canvas',
+  smsCaptcha: '[data-role="mobilenum-captcha"] .captcha-pic',
+  smsCaptchaInput: '[data-role="mobilenum-tip"]',
+  smsCode: '[data-role="mobilenum-dynamic"]',
+  smsGetCode: '[data-role="dynamic-get"]',
+  smsMobile: '[data-role="mobilenum"]',
   title: 'input[placeholder="请输入标题（5-72字）"]',
   wechatLogin: '[data-login="weChat"], .wx-icon',
 });
@@ -72,14 +80,59 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
 
   public constructor(private readonly config: SohuBrowserConfig) {}
 
-  public async startLogin(accountId: string, profilePath: string): Promise<LoginStartResult> {
+  public async startLogin(
+    accountId: string,
+    profilePath: string,
+    input: SohuBrowserLoginRequest = { method: 'wechat' },
+  ): Promise<LoginStartResult> {
     const page = await this.page(accountId, profilePath, null);
-    await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
-    await this.rejectCaptcha(page);
     const expiresAt = new Date(Date.now() + 180_000);
+    if (input.method === 'sms_send') return this.sendSmsCode(page, expiresAt, input);
+    if (input.method === 'sms_verify') {
+      return this.verifySmsCode(accountId, page, expiresAt, input);
+    }
+    await this.openLogin(page);
     if (await this.isAuthenticated(page)) return { expiresAt, qrPng: Buffer.alloc(0) };
-    const accountLogin = page.locator(SELECTORS.loginAccount).first();
-    if (await accountLogin.isVisible().catch(() => false)) await accountLogin.click();
+    if (input.method === 'password') {
+      await page.locator(SELECTORS.loginUsername).fill(input.account);
+      await page.locator(SELECTORS.loginPassword).fill(input.password);
+      await this.acceptProtocol(page);
+      await page.locator('[data-role="submit-user"]').click();
+      const authenticated = await this.waitForAuthentication(
+        accountId,
+        new Date(Date.now() + this.config.navigationTimeoutMs),
+      );
+      if (!authenticated) {
+        await page
+          .locator(SELECTORS.loginPassword)
+          .fill('')
+          .catch(() => undefined);
+        if (
+          await page
+            .locator('[data-role="user-captcha"]')
+            .isVisible()
+            .catch(() => false)
+        ) {
+          throw new PageDriverError('CAPTCHA_REQUIRED', 'Sohu requires an account login CAPTCHA');
+        }
+        throw new PageDriverError('AUTH_REQUIRED', 'Sohu rejected the account or password');
+      }
+      return { expiresAt, qrPng: Buffer.alloc(0) };
+    }
+    if (input.method === 'sms_prepare') {
+      await page
+        .getByText('手机登录', { exact: true })
+        .click()
+        .catch(() => undefined);
+      await page.locator(SELECTORS.smsMobile).fill(input.mobile);
+      const captcha = page.locator(SELECTORS.smsCaptcha).first();
+      await captcha.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+      return Object.freeze({
+        captchaPng: await captcha.screenshot({ type: 'png' }),
+        expiresAt,
+        qrPng: Buffer.alloc(0),
+      });
+    }
     const wechat = page.locator(SELECTORS.wechatLogin).first();
     await wechat.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
     await wechat.click();
@@ -89,6 +142,73 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     await qr.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
     await page.waitForTimeout(1_000);
     return Object.freeze({ expiresAt, qrPng: await qr.screenshot({ type: 'png' }) });
+  }
+
+  private async openLogin(page: Page): Promise<void> {
+    await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
+    await this.rejectCaptcha(page);
+    const accountLogin = page.locator(SELECTORS.loginAccount).first();
+    if (await accountLogin.isVisible().catch(() => false)) await accountLogin.click();
+  }
+
+  private async acceptProtocol(page: Page): Promise<void> {
+    const protocol = page.locator('[data-role="radio-protocol"]').first();
+    const className = (await protocol.getAttribute('class')) ?? '';
+    if (!/(?:active|checked|selected)/u.test(className)) await protocol.click();
+  }
+
+  private async sendSmsCode(
+    page: Page,
+    expiresAt: Date,
+    input: Extract<SohuBrowserLoginRequest, { method: 'sms_send' }>,
+  ): Promise<LoginStartResult> {
+    const mobile = page.locator(SELECTORS.smsMobile);
+    if (!(await mobile.isVisible().catch(() => false))) {
+      throw new PageDriverError('AUTH_REQUIRED', 'Sohu SMS challenge has expired; restart login');
+    }
+    await mobile.fill(input.mobile);
+    await page.locator(SELECTORS.smsCaptchaInput).fill(input.image_captcha);
+    await this.acceptProtocol(page);
+    const getCode = page.locator(SELECTORS.smsGetCode);
+    await getCode.click();
+    const sent = await page
+      .waitForFunction(
+        `(() => { const value = document.querySelector('[data-role="dynamic-get"]')?.textContent || ''; return value.trim() !== '获取验证码'; })()`,
+        undefined,
+        { timeout: this.config.navigationTimeoutMs },
+      )
+      .then(() => true)
+      .catch(() => false);
+    if (!sent) throw new PageDriverError('AUTH_REQUIRED', 'Sohu rejected the image CAPTCHA');
+    return Object.freeze({ expiresAt, qrPng: Buffer.alloc(0), smsCodeRequired: true });
+  }
+
+  private async verifySmsCode(
+    accountId: string,
+    page: Page,
+    expiresAt: Date,
+    input: Extract<SohuBrowserLoginRequest, { method: 'sms_verify' }>,
+  ): Promise<LoginStartResult> {
+    const mobile = page.locator(SELECTORS.smsMobile);
+    if (!(await mobile.isVisible().catch(() => false))) {
+      throw new PageDriverError('AUTH_REQUIRED', 'Sohu SMS challenge has expired; restart login');
+    }
+    await mobile.fill(input.mobile);
+    await page.locator(SELECTORS.smsCode).fill(input.sms_code);
+    await this.acceptProtocol(page);
+    await page.locator('[data-role="submit-mobile"]').click();
+    const authenticated = await this.waitForAuthentication(
+      accountId,
+      new Date(Date.now() + this.config.navigationTimeoutMs),
+    );
+    if (!authenticated) {
+      await page
+        .locator(SELECTORS.smsCode)
+        .fill('')
+        .catch(() => undefined);
+      throw new PageDriverError('AUTH_REQUIRED', 'Sohu rejected the SMS verification code');
+    }
+    return Object.freeze({ expiresAt, qrPng: Buffer.alloc(0) });
   }
 
   public async waitForAuthentication(accountId: string, expiresAt: Date): Promise<boolean> {

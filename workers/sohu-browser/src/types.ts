@@ -1,4 +1,5 @@
 import type { SohuPayload } from '@geo-content-os/adapter-platforms/sohu/render';
+import type { SohuBrowserLoginRequest } from '@geo-content-os/contracts';
 
 export type BrowserSessionStatus =
   'login_required' | 'qr_ready' | 'authenticated' | 'reauth' | 'attention_required' | 'disabled';
@@ -76,8 +77,10 @@ export interface StoredImageAsset {
 }
 
 export interface LoginStartResult {
+  readonly captchaPng?: Uint8Array;
   readonly expiresAt: Date;
   readonly qrPng: Uint8Array;
+  readonly smsCodeRequired?: boolean;
 }
 
 export interface SohuPageDriver {
@@ -94,7 +97,11 @@ export interface SohuPageDriver {
     },
     storageStateJson: string | null,
   ): Promise<RemotePublication | null>;
-  startLogin(accountId: string, profilePath: string): Promise<LoginStartResult>;
+  startLogin(
+    accountId: string,
+    profilePath: string,
+    input: SohuBrowserLoginRequest,
+  ): Promise<LoginStartResult>;
   submit(
     input: DriverPublishInput,
     beforeSubmit: (png: Uint8Array) => Promise<void>,

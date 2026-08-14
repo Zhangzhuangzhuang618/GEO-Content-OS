@@ -143,6 +143,8 @@ export const BaijiahaoBrowserSessionSchema = z
   })
   .strict();
 export const BaijiahaoBrowserLoginSchema = BaijiahaoBrowserSessionSchema.extend({
+  captcha_image_data_url: z.string().startsWith('data:image/png;base64,').optional(),
+  login_stage: z.enum(['captcha_required', 'sms_code_required']).optional(),
   qr_image_data_url: z.string().startsWith('data:image/png;base64,').optional(),
 }).strict();
 export const BaijiahaoAutomationPolicySchema = z
@@ -409,6 +411,30 @@ export type OfficialSiteAutomationPolicy = z.infer<typeof OfficialSiteAutomation
 export type BaijiahaoAutomationPolicy = z.infer<typeof BaijiahaoAutomationPolicySchema>;
 export type BaijiahaoBrowserSession = z.infer<typeof BaijiahaoBrowserSessionSchema>;
 export type BaijiahaoBrowserLogin = z.infer<typeof BaijiahaoBrowserLoginSchema>;
+export type SohuBrowserLoginInput =
+  | { readonly method: 'wechat' }
+  | {
+      readonly accepted_terms: true;
+      readonly account: string;
+      readonly method: 'password';
+      readonly password: string;
+    }
+  | { readonly method: 'sms_prepare'; readonly mobile: string }
+  | {
+      readonly accepted_terms: true;
+      readonly image_captcha: string;
+      readonly method: 'sms_send';
+      readonly mobile: string;
+    }
+  | {
+      readonly accepted_terms: true;
+      readonly method: 'sms_verify';
+      readonly mobile: string;
+      readonly sms_code: string;
+    };
+export type LiejuBrowserLoginInput =
+  | { readonly method: 'qq' }
+  | { readonly method: 'password'; readonly password: string; readonly username: string };
 
 export interface PlatformAccountFilters {
   readonly platformCode?: PlatformCode;

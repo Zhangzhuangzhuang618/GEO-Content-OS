@@ -1,5 +1,6 @@
 import type { LiejuPostingProfile } from '@geo-content-os/adapter-platforms/lieju/delivery';
 import type { LiejuPayload } from '@geo-content-os/adapter-platforms/lieju/render';
+import type { LiejuBrowserLoginRequest } from '@geo-content-os/contracts';
 
 export type BrowserSessionStatus =
   'login_required' | 'qr_ready' | 'authenticated' | 'reauth' | 'attention_required' | 'disabled';
@@ -97,7 +98,11 @@ export interface LiejuPageDriver {
     },
     storageStateJson: string | null,
   ): Promise<RemotePublication | null>;
-  startLogin(accountId: string, profilePath: string): Promise<LoginStartResult>;
+  startLogin(
+    accountId: string,
+    profilePath: string,
+    input: LiejuBrowserLoginRequest,
+  ): Promise<LoginStartResult>;
   submit(
     input: DriverPublishInput,
     beforeSubmit: (png: Uint8Array) => Promise<void>,

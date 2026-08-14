@@ -25813,6 +25813,14 @@
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
                         },
+                        "captcha_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        },
+                        "login_stage": {
+                          "type": "string",
+                          "enum": ["captcha_required", "sms_code_required"]
+                        },
                         "qr_image_data_url": {
                           "type": "string",
                           "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
@@ -26008,6 +26016,14 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "captcha_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        },
+                        "login_stage": {
+                          "type": "string",
+                          "enum": ["captcha_required", "sms_code_required"]
                         },
                         "qr_image_data_url": {
                           "type": "string",
@@ -26567,6 +26583,34 @@
             "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": { "method": "qq" },
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "method": { "type": "string", "const": "qq" } },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "password" },
+                      "password": { "type": "string", "minLength": 1, "maxLength": 256 },
+                      "username": { "type": "string", "minLength": 1, "maxLength": 120 }
+                    },
+                    "required": ["method", "password", "username"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -26627,6 +26671,14 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "captcha_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        },
+                        "login_stage": {
+                          "type": "string",
+                          "enum": ["captcha_required", "sms_code_required"]
                         },
                         "qr_image_data_url": {
                           "type": "string",
@@ -26763,6 +26815,34 @@
             "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": { "method": "qq" },
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "method": { "type": "string", "const": "qq" } },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "password" },
+                      "password": { "type": "string", "minLength": 1, "maxLength": 256 },
+                      "username": { "type": "string", "minLength": 1, "maxLength": 120 }
+                    },
+                    "required": ["method", "password", "username"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -26823,6 +26903,14 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "captcha_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        },
+                        "login_stage": {
+                          "type": "string",
+                          "enum": ["captcha_required", "sms_code_required"]
                         },
                         "qr_image_data_url": {
                           "type": "string",
@@ -28901,6 +28989,66 @@
             "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": { "method": "wechat" },
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "method": { "type": "string", "const": "wechat" } },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accepted_terms": { "type": "boolean", "const": true },
+                      "account": { "type": "string", "minLength": 1, "maxLength": 120 },
+                      "method": { "type": "string", "const": "password" },
+                      "password": { "type": "string", "minLength": 1, "maxLength": 256 }
+                    },
+                    "required": ["accepted_terms", "account", "method", "password"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "sms_prepare" },
+                      "mobile": { "type": "string", "pattern": "^1[3-9][0-9]{9}$" }
+                    },
+                    "required": ["method", "mobile"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accepted_terms": { "type": "boolean", "const": true },
+                      "image_captcha": { "type": "string", "minLength": 1, "maxLength": 12 },
+                      "method": { "type": "string", "const": "sms_send" },
+                      "mobile": { "type": "string", "pattern": "^1[3-9][0-9]{9}$" }
+                    },
+                    "required": ["accepted_terms", "image_captcha", "method", "mobile"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accepted_terms": { "type": "boolean", "const": true },
+                      "method": { "type": "string", "const": "sms_verify" },
+                      "mobile": { "type": "string", "pattern": "^1[3-9][0-9]{9}$" },
+                      "sms_code": { "type": "string", "pattern": "^[0-9]{4,8}$" }
+                    },
+                    "required": ["accepted_terms", "method", "mobile", "sms_code"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -28961,6 +29109,14 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "captcha_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        },
+                        "login_stage": {
+                          "type": "string",
+                          "enum": ["captcha_required", "sms_code_required"]
                         },
                         "qr_image_data_url": {
                           "type": "string",
@@ -29097,6 +29253,66 @@
             "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": { "method": "wechat" },
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "method": { "type": "string", "const": "wechat" } },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accepted_terms": { "type": "boolean", "const": true },
+                      "account": { "type": "string", "minLength": 1, "maxLength": 120 },
+                      "method": { "type": "string", "const": "password" },
+                      "password": { "type": "string", "minLength": 1, "maxLength": 256 }
+                    },
+                    "required": ["accepted_terms", "account", "method", "password"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "sms_prepare" },
+                      "mobile": { "type": "string", "pattern": "^1[3-9][0-9]{9}$" }
+                    },
+                    "required": ["method", "mobile"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accepted_terms": { "type": "boolean", "const": true },
+                      "image_captcha": { "type": "string", "minLength": 1, "maxLength": 12 },
+                      "method": { "type": "string", "const": "sms_send" },
+                      "mobile": { "type": "string", "pattern": "^1[3-9][0-9]{9}$" }
+                    },
+                    "required": ["accepted_terms", "image_captcha", "method", "mobile"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "accepted_terms": { "type": "boolean", "const": true },
+                      "method": { "type": "string", "const": "sms_verify" },
+                      "mobile": { "type": "string", "pattern": "^1[3-9][0-9]{9}$" },
+                      "sms_code": { "type": "string", "pattern": "^[0-9]{4,8}$" }
+                    },
+                    "required": ["accepted_terms", "method", "mobile", "sms_code"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -29157,6 +29373,14 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "captcha_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        },
+                        "login_stage": {
+                          "type": "string",
+                          "enum": ["captcha_required", "sms_code_required"]
                         },
                         "qr_image_data_url": {
                           "type": "string",

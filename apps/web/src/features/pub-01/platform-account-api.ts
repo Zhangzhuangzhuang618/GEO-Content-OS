@@ -14,6 +14,8 @@ import {
   type PlatformAccountFilters,
   type PlatformAccountEdit,
   type PlatformAccountForm,
+  type LiejuBrowserLoginInput,
+  type SohuBrowserLoginInput,
 } from './platform-account.schema';
 import type { OfficialSiteAutomationPolicy } from './platform-account.schema';
 import type {
@@ -367,6 +369,7 @@ export async function getSohuBrowserSession(
 export async function startSohuBrowserLogin(
   account: PlatformAccount,
   csrf: string,
+  input: SohuBrowserLoginInput = { method: 'wechat' },
   reauthenticate = false,
 ): Promise<BaijiahaoBrowserLogin> {
   const action = reauthenticate ? 'reauth' : 'login';
@@ -374,7 +377,8 @@ export async function startSohuBrowserLogin(
     `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/sohu-browser-session/${action}`,
     {
       credentials: 'include',
-      headers: writeHeaders(csrf, account.version),
+      body: JSON.stringify(input),
+      headers: { ...writeHeaders(csrf, account.version), 'content-type': 'application/json' },
       method: 'POST',
     },
   );
@@ -401,6 +405,7 @@ export async function getLiejuBrowserSession(
 export async function startLiejuBrowserLogin(
   account: PlatformAccount,
   csrf: string,
+  input: LiejuBrowserLoginInput = { method: 'qq' },
   reauthenticate = false,
 ): Promise<BaijiahaoBrowserLogin> {
   const action = reauthenticate ? 'reauth' : 'login';
@@ -408,7 +413,8 @@ export async function startLiejuBrowserLogin(
     `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/lieju-browser-session/${action}`,
     {
       credentials: 'include',
-      headers: writeHeaders(csrf, account.version),
+      body: JSON.stringify(input),
+      headers: { ...writeHeaders(csrf, account.version), 'content-type': 'application/json' },
       method: 'POST',
     },
   );

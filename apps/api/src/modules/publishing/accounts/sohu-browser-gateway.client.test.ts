@@ -26,6 +26,32 @@ describe('Sohu browser gateway configuration', () => {
     expect(() => readSohuBrowserGatewayCredential({})).toThrow(PlatformAccountError);
   });
 
+  it('forwards password input only in the internal request body', async () => {
+    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      expect(init?.body).toBe(
+        JSON.stringify({
+          accepted_terms: true,
+          account: 'publisher@example.com',
+          method: 'password',
+          password: 'ephemeral-password',
+        }),
+      );
+      expect(init?.headers).toMatchObject({ 'content-type': 'application/json' });
+      return new Response(JSON.stringify(authenticatedLogin()), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new SohuBrowserGatewayClient(ENVIRONMENT).login(ACCOUNT_ID, {
+        accepted_terms: true,
+        account: 'publisher@example.com',
+        method: 'password',
+        password: 'ephemeral-password',
+      }),
+    ).resolves.toMatchObject({ status: 'authenticated' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('preserves a safe attention reason without exposing the upstream message', async () => {
     vi.stubGlobal(
       'fetch',
@@ -68,3 +94,14 @@ describe('Sohu browser gateway configuration', () => {
     );
   });
 });
+
+function authenticatedLogin() {
+  return {
+    account_id: ACCOUNT_ID,
+    authenticated_at: '2026-08-14T08:00:00.000Z',
+    last_verified_at: '2026-08-14T08:00:00.000Z',
+    qr_expires_at: null,
+    status: 'authenticated',
+    version: 1,
+  };
+}

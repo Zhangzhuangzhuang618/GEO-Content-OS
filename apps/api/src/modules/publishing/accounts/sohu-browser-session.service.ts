@@ -1,6 +1,7 @@
 import type {
   BaijiahaoBrowserLoginView,
   BaijiahaoBrowserSessionView,
+  SohuBrowserLoginRequest,
 } from '@geo-content-os/contracts';
 
 import { resolveDatabaseClient, type DatabaseClientSource } from '../../../database/index.js';
@@ -29,21 +30,23 @@ export class SohuBrowserSessionService {
   public async login(
     scope: PlatformAccountScope,
     accountId: string,
+    input: SohuBrowserLoginRequest,
     expectedVersion: number,
   ): Promise<BaijiahaoBrowserLoginView> {
     const account = await this.requireAccount(scope, accountId);
     requireMutable(account, expectedVersion);
-    return this.gateway.login(accountId);
+    return this.gateway.login(accountId, input);
   }
 
   public async reauthenticate(
     scope: PlatformAccountScope,
     accountId: string,
+    input: SohuBrowserLoginRequest,
     expectedVersion: number,
   ): Promise<BaijiahaoBrowserLoginView> {
     const account = await this.requireAccount(scope, accountId);
     requireMutable(account, expectedVersion);
-    return this.gateway.reauthenticate(accountId);
+    return this.gateway.reauthenticate(accountId, input);
   }
 
   private async requireAccount(scope: PlatformAccountScope, accountId: string) {

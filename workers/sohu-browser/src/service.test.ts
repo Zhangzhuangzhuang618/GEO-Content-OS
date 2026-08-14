@@ -19,6 +19,81 @@ const SESSION_ID = '00000000-0000-4000-8000-000000000148';
 const TENANT_ID = '00000000-0000-4000-8000-000000000149';
 
 describe('Sohu browser service', () => {
+  it('returns the image captcha challenge without persisting the mobile number', async () => {
+    const session = browserSession('login_required');
+    const pending = { ...session, version: 2 };
+    const markSession = vi.fn(async () => pending);
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      markSession,
+    } as unknown as PostgresSohuBrowserStore;
+    const driver = {
+      startLogin: vi.fn(async () => ({
+        captchaPng: Buffer.from('captcha'),
+        expiresAt: new Date('2026-08-14T12:00:00.000Z'),
+        qrPng: Buffer.alloc(0),
+      })),
+    } as unknown as SohuPageDriver;
+    const service = new SohuBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(
+      service.startLogin(ACCOUNT_ID, { method: 'sms_prepare', mobile: '13800138000' }),
+    ).resolves.toMatchObject({
+      captcha_image_data_url: `data:image/png;base64,${Buffer.from('captcha').toString('base64')}`,
+      login_stage: 'captcha_required',
+      status: 'login_required',
+    });
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: null,
+      qrExpiresAt: null,
+      status: 'login_required',
+    });
+    expect(JSON.stringify(markSession.mock.calls)).not.toContain('13800138000');
+  });
+
+  it('returns the SMS challenge without persisting either verification code', async () => {
+    const session = browserSession('login_required');
+    const pending = { ...session, version: 2 };
+    const markSession = vi.fn(async () => pending);
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      markSession,
+    } as unknown as PostgresSohuBrowserStore;
+    const driver = {
+      startLogin: vi.fn(async () => ({
+        expiresAt: new Date('2026-08-14T12:00:00.000Z'),
+        qrPng: Buffer.alloc(0),
+        smsCodeRequired: true,
+      })),
+    } as unknown as SohuPageDriver;
+    const service = new SohuBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(
+      service.startLogin(ACCOUNT_ID, {
+        accepted_terms: true,
+        image_captcha: 'image-code',
+        method: 'sms_send',
+        mobile: '13800138000',
+      }),
+    ).resolves.toMatchObject({
+      login_stage: 'sms_code_required',
+      status: 'login_required',
+    });
+    expect(JSON.stringify(markSession.mock.calls)).not.toMatch(/13800138000|image-code/u);
+  });
+
   it('persists a safe attention state when the login page signature changes', async () => {
     const session = browserSession('login_required');
     const markSession = vi.fn(async () => ({

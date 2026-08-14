@@ -614,6 +614,9 @@ importers:
       '@geo-content-os/adapter-storage':
         specifier: workspace:*
         version: link:../../packages/adapters/storage
+      '@geo-content-os/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@geo-content-os/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -720,6 +723,9 @@ importers:
       '@geo-content-os/adapter-storage':
         specifier: workspace:*
         version: link:../../packages/adapters/storage
+      '@geo-content-os/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@geo-content-os/security':
         specifier: workspace:*
         version: link:../../packages/security

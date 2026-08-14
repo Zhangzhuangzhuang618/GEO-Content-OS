@@ -121,6 +121,25 @@ describe('Lieju local browser simulator', () => {
     }
   });
 
+  it('logs in with an ephemeral Lieju username and password', async () => {
+    const driver = new PlaywrightLiejuPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000155';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath, {
+        method: 'password',
+        password: 'ephemeral-password',
+        username: 'lieju-user',
+      });
+      expect(login.qrPng.byteLength).toBe(0);
+      const storageState = await driver.exportStorageState(accountId);
+      expect(storageState).not.toMatch(/lieju-user|ephemeral-password/u);
+      expect(await driver.verifyAuthenticated(accountId, profilePath, storageState)).toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops before submission when Lieju requires Tencent CAPTCHA', async () => {
     captchaRequired = true;
     const driver = new PlaywrightLiejuPageDriver(config(baseUrl, profileRoot));
@@ -268,7 +287,14 @@ function route(
   if (request.url === '/signin') {
     return html(
       response,
-      `<img data-lieju-qq-qr src="/qr.svg"><script>setTimeout(()=>{document.cookie='lieju-auth=yes; path=/';location.href='/member/list.php'},300)</script>`,
+      `<img data-lieju-qq-qr src="/qr.svg"><script>setTimeout(()=>{document.cookie='lieju-auth=yes; path=/';location.href='/member/list.php'},1500)</script>`,
+    );
+  }
+  if (request.url === '/login/') {
+    return html(
+      response,
+      `<form><input name="username"><input name="password" type="password"><input name="cookietime" type="checkbox" checked><input id="login-submit" type="submit" value="登录"></form>
+       <script>document.querySelector('form').onsubmit=(event)=>{event.preventDefault();document.cookie='lieju-auth=yes; path=/';location.href='/member/list.php'}</script>`,
     );
   }
   if (request.url === '/5/104') {

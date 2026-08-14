@@ -11,8 +11,11 @@ import {
 import type {
   BaijiahaoBrowserLogin,
   BaijiahaoBrowserSession,
+  LiejuBrowserLoginInput,
   PlatformAccount,
 } from './platform-account.schema';
+
+type LoginMode = 'qq' | 'password';
 
 export function LiejuBrowserPanel({
   account,
@@ -23,6 +26,9 @@ export function LiejuBrowserPanel({
 }) {
   const [session, setSession] = useState<BaijiahaoBrowserSession | null>(null);
   const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
+  const [mode, setMode] = useState<LoginMode>('qq');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -63,7 +69,7 @@ export function LiejuBrowserPanel({
     return () => clearInterval(timer);
   }, [account.id, session?.status]);
 
-  async function beginLogin() {
+  async function beginLogin(input: LiejuBrowserLoginInput) {
     if (inFlight.current) return;
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
@@ -71,23 +77,25 @@ export function LiejuBrowserPanel({
     setBusy(true);
     setMessage(null);
     try {
-      const next = await startLiejuBrowserLogin(account, csrf, session?.status === 'reauth');
+      const next = await startLiejuBrowserLogin(account, csrf, input, session?.status === 'reauth');
       setSession(next);
       setLogin(next);
       setMessage(
         next.status === 'authenticated'
-          ? '当前列举网浏览器会话仍然有效。'
+          ? '列举网登录已确认。'
           : '请使用 QQ 扫描二维码。若要连接已有列举网账号，请先在列举网完成 QQ 绑定。',
       );
     } catch (error) {
       setMessage(
         error instanceof PlatformAccountRequestError && error.status === 423
-          ? '列举网要求验证码、账号选择或人工安全验证，请查看浏览器 Worker 诊断截图。'
-          : '启动列举网扫码登录失败，请检查列举网浏览器 Worker。',
+          ? '列举网拒绝了用户名或密码，或要求额外人工安全验证。'
+          : '启动列举网登录失败，请检查 API 与列举网浏览器 Worker。',
       );
     } finally {
+      if (input.method === 'password') setPassword('');
       inFlight.current = false;
       setBusy(false);
+      setLoading(false);
     }
   }
 
@@ -110,8 +118,8 @@ export function LiejuBrowserPanel({
         <div>
           <h2 className="text-xl font-semibold text-ink-950">列举网托管浏览器</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-ink-500">
-            使用 QQ 扫码建立独立登录态；系统不保存列举网或 QQ
-            密码。免费账号遇到腾讯验证码时会转人工，只有免验证码套餐或发帖包允许无人值守提交。
+            支持 QQ
+            扫码和列举网用户名密码登录。官方没有手机验证码登录入口；用户名和密码只用于本次登录，不写入数据库、日志或账号配置。
           </p>
         </div>
         <button className={secondaryButton} onClick={onClose} type="button">
@@ -125,15 +133,82 @@ export function LiejuBrowserPanel({
         <p className="mt-1 text-xs text-ink-500">
           最近核验：{formatDateTime(session?.last_verified_at)}
         </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            className={primaryButton}
-            disabled={busy}
-            onClick={() => void beginLogin()}
-            type="button"
-          >
-            {busy ? '正在启动…' : session?.status === 'reauth' ? '重新扫码' : 'QQ 扫码登录'}
-          </button>
+        <div className="mt-4 flex gap-2" role="tablist" aria-label="列举网登录方式">
+          {(['qq', 'password'] as const).map((value) => (
+            <button
+              aria-selected={mode === value}
+              className={mode === value ? primaryButton : secondaryButton}
+              key={value}
+              onClick={() => {
+                setMode(value);
+                setLogin(null);
+                setMessage(null);
+              }}
+              role="tab"
+              type="button"
+            >
+              {value === 'qq' ? 'QQ 扫码' : '账号密码'}
+            </button>
+          ))}
+        </div>
+        {mode === 'qq' ? (
+          <div className="mt-4">
+            <button
+              className={primaryButton}
+              disabled={busy}
+              onClick={() => void beginLogin({ method: 'qq' })}
+              type="button"
+            >
+              {busy ? '正在启动…' : session?.status === 'reauth' ? '重新扫码' : '生成 QQ 二维码'}
+            </button>
+            {login?.qr_image_data_url ? (
+              <div className="mt-5 w-fit rounded-xl bg-white p-4">
+                <Image
+                  alt="列举网 QQ 登录二维码"
+                  height={240}
+                  src={login.qr_image_data_url}
+                  unoptimized
+                  width={240}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-4 grid max-w-xl gap-3">
+            <label className={labelClass}>
+              列举网用户名
+              <input
+                autoComplete="username"
+                className={inputClass}
+                maxLength={120}
+                onChange={(event) => setUsername(event.target.value)}
+                value={username}
+              />
+            </label>
+            <label className={labelClass}>
+              密码
+              <input
+                autoComplete="current-password"
+                className={inputClass}
+                maxLength={256}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                value={password}
+              />
+            </label>
+            <button
+              className={primaryButton}
+              disabled={busy || !username.trim() || !password}
+              onClick={() =>
+                void beginLogin({ method: 'password', password, username: username.trim() })
+              }
+              type="button"
+            >
+              {busy ? '正在登录…' : '账号密码登录'}
+            </button>
+          </div>
+        )}
+        <div className="mt-4">
           <button
             className={secondaryButton}
             disabled={busy}
@@ -143,17 +218,6 @@ export function LiejuBrowserPanel({
             核验登录态
           </button>
         </div>
-        {login?.qr_image_data_url ? (
-          <div className="mt-5 w-fit rounded-xl bg-white p-4">
-            <Image
-              alt="列举网 QQ 登录二维码"
-              height={240}
-              src={login.qr_image_data_url}
-              unoptimized
-              width={240}
-            />
-          </div>
-        ) : null}
         <p aria-live="polite" className="mt-4 text-sm text-ink-700">
           {message}
         </p>
@@ -190,7 +254,10 @@ function readCookie(name: string) {
   return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : '';
 }
 
+const inputClass =
+  'mt-1 h-10 w-full rounded-control border border-line bg-white px-3 text-sm text-ink-900';
+const labelClass = 'text-sm font-medium text-ink-800';
 const primaryButton =
-  'h-10 rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-60';
+  'h-10 w-fit rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-60';
 const secondaryButton =
-  'h-10 rounded-control border border-line bg-white px-4 text-sm font-semibold text-ink-800 disabled:opacity-60';
+  'h-10 w-fit rounded-control border border-line bg-white px-4 text-sm font-semibold text-ink-800 disabled:opacity-60';

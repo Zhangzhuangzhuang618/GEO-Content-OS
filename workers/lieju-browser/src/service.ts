@@ -7,6 +7,7 @@ import {
   LiejuPostingProfileSchema,
 } from '@geo-content-os/adapter-platforms/lieju/delivery';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import type { LiejuBrowserLoginRequest } from '@geo-content-os/contracts';
 import {
   CredentialEnvelopeError,
   type CredentialEnvelopeService,
@@ -67,12 +68,15 @@ export class LiejuBrowserService {
     return Object.freeze({ get_status: true, metrics: false, publish: true });
   }
 
-  public async startLogin(accountId: string): Promise<Readonly<Record<string, unknown>>> {
+  public async startLogin(
+    accountId: string,
+    input: LiejuBrowserLoginRequest = { method: 'qq' },
+  ): Promise<Readonly<Record<string, unknown>>> {
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
       let result: Awaited<ReturnType<LiejuPageDriver['startLogin']>>;
       try {
-        result = await this.driver.startLogin(accountId, this.profilePath(session));
+        result = await this.driver.startLogin(accountId, this.profilePath(session), input);
       } catch (error) {
         if (
           error instanceof PageDriverError &&
@@ -83,6 +87,9 @@ export class LiejuBrowserService {
             qrExpiresAt: null,
             status: 'attention_required',
           });
+          throw new BrowserGatewayError(423, error.code, error.message);
+        }
+        if (error instanceof PageDriverError) {
           throw new BrowserGatewayError(423, error.code, error.message);
         }
         throw error;
@@ -151,8 +158,11 @@ export class LiejuBrowserService {
     });
   }
 
-  public async reauthenticate(accountId: string): Promise<Readonly<Record<string, unknown>>> {
-    return this.startLogin(accountId);
+  public async reauthenticate(
+    accountId: string,
+    input: LiejuBrowserLoginRequest = { method: 'qq' },
+  ): Promise<Readonly<Record<string, unknown>>> {
+    return this.startLogin(accountId, input);
   }
 
   public async publish(

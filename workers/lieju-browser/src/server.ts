@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 
 import { z } from 'zod';
+import { LiejuBrowserLoginRequestSchema } from '@geo-content-os/contracts';
 
 import { safeBrowserError, toGatewayError } from './service.js';
 import type { LiejuBrowserService } from './service.js';
@@ -35,11 +36,16 @@ async function route(
   }
   const loginId = sessionRoute(url.pathname, 'login');
   if (request.method === 'POST' && loginId) {
-    return send(response, 200, await service.startLogin(loginId), true);
+    return send(response, 200, await service.startLogin(loginId, await loginBody(request)), true);
   }
   const reauthId = sessionRoute(url.pathname, 'reauth');
   if (request.method === 'POST' && reauthId) {
-    return send(response, 200, await service.reauthenticate(reauthId), true);
+    return send(
+      response,
+      200,
+      await service.reauthenticate(reauthId, await loginBody(request)),
+      true,
+    );
   }
   const sessionId = /^\/sessions\/([^/]+)$/u.exec(url.pathname)?.[1];
   if (request.method === 'GET' && sessionId) {
@@ -109,6 +115,22 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
       statusCode: 400,
     });
   }
+}
+
+async function loginBody(request: IncomingMessage) {
+  const contentLength = header(request, 'content-length');
+  const transferEncoding = header(request, 'transfer-encoding');
+  if (contentLength === '0' || (contentLength === undefined && transferEncoding === undefined)) {
+    return LiejuBrowserLoginRequestSchema.parse(undefined);
+  }
+  const parsed = LiejuBrowserLoginRequestSchema.safeParse(await jsonBody(request));
+  if (!parsed.success) {
+    throw Object.assign(new Error('Login request is invalid'), {
+      code: 'SCHEMA_INVALID',
+      statusCode: 400,
+    });
+  }
+  return parsed.data;
 }
 
 async function deliveryBody(request: IncomingMessage): Promise<Readonly<Record<string, unknown>>> {

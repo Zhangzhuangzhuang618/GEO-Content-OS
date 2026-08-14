@@ -26,6 +26,30 @@ describe('Lieju browser gateway configuration', () => {
     expect(() => readLiejuBrowserGatewayCredential({})).toThrow(PlatformAccountError);
   });
 
+  it('forwards password input only in the internal request body', async () => {
+    const fetchMock = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      expect(init?.body).toBe(
+        JSON.stringify({
+          method: 'password',
+          password: 'ephemeral-password',
+          username: 'publisher',
+        }),
+      );
+      expect(init?.headers).toMatchObject({ 'content-type': 'application/json' });
+      return new Response(JSON.stringify(authenticatedLogin()), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new LiejuBrowserGatewayClient(ENVIRONMENT).login(ACCOUNT_ID, {
+        method: 'password',
+        password: 'ephemeral-password',
+        username: 'publisher',
+      }),
+    ).resolves.toMatchObject({ status: 'authenticated' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it('preserves a safe attention reason without exposing the upstream message', async () => {
     vi.stubGlobal(
       'fetch',
@@ -68,3 +92,14 @@ describe('Lieju browser gateway configuration', () => {
     });
   });
 });
+
+function authenticatedLogin() {
+  return {
+    account_id: ACCOUNT_ID,
+    authenticated_at: '2026-08-14T08:00:00.000Z',
+    last_verified_at: '2026-08-14T08:00:00.000Z',
+    qr_expires_at: null,
+    status: 'authenticated',
+    version: 1,
+  };
+}

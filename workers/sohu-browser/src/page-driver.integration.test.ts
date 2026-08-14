@@ -98,6 +98,57 @@ describe('Sohu local browser simulator', () => {
     }
   });
 
+  it('logs in with an ephemeral account password without persisting the secret', async () => {
+    const driver = new PlaywrightSohuPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000153';
+    try {
+      const login = await driver.startLogin(accountId, join(profileRoot, accountId), {
+        accepted_terms: true,
+        account: 'publisher@example.com',
+        method: 'password',
+        password: 'ephemeral-password',
+      });
+      expect(login.qrPng.byteLength).toBe(0);
+      const storageState = await driver.exportStorageState(accountId);
+      expect(storageState).not.toMatch(/publisher@example\.com|ephemeral-password/u);
+      expect(
+        await driver.verifyAuthenticated(accountId, join(profileRoot, accountId), storageState),
+      ).toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('uses a manual image CAPTCHA before sending and verifying an SMS code', async () => {
+    const driver = new PlaywrightSohuPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000154';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const prepared = await driver.startLogin(accountId, profilePath, {
+        method: 'sms_prepare',
+        mobile: '13800138000',
+      });
+      expect(prepared.captchaPng?.byteLength).toBeGreaterThan(0);
+      const sent = await driver.startLogin(accountId, profilePath, {
+        accepted_terms: true,
+        image_captcha: 'ABCD',
+        method: 'sms_send',
+        mobile: '13800138000',
+      });
+      expect(sent.smsCodeRequired).toBe(true);
+      const verified = await driver.startLogin(accountId, profilePath, {
+        accepted_terms: true,
+        method: 'sms_verify',
+        mobile: '13800138000',
+        sms_code: '123456',
+      });
+      expect(verified.qrPng.byteLength).toBe(0);
+      expect(await driver.exportStorageState(accountId)).not.toContain('13800138000');
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops when the content list contains multiple matching publications', async () => {
     const driver = new PlaywrightSohuPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000150';
@@ -196,14 +247,34 @@ function route(
     );
     return;
   }
+  if (request.url === '/captcha.svg') {
+    response.writeHead(200, { 'content-type': 'image/svg+xml' });
+    response.end(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="48"><rect width="120" height="48" fill="white"/><text x="12" y="32">ABCD</text></svg>',
+    );
+    return;
+  }
   if (request.url === '/signin') {
     return html(
       response,
       `<div data-role="login-btn">登录</div>
-       <div class="login-modal" style="display:none"><a data-login="weChat">微信登录</a></div>
+       <div class="login-modal" style="display:none">
+         <button type="button">账号登录</button><button type="button">手机登录</button>
+         <input data-role="user-passport"><input data-role="user-secret" type="password">
+         <input data-role="submit-user" type="button" value="登录">
+         <input data-role="mobilenum"><div data-role="mobilenum-captcha"><input data-role="mobilenum-tip"><img class="captcha-pic" src="/captcha.svg"></div>
+         <input data-role="mobilenum-dynamic"><a data-role="dynamic-get">获取验证码</a>
+         <input data-role="submit-mobile" type="button" value="登录/注册">
+         <em data-role="radio-protocol" class="radio-icon" style="display:inline-block;width:16px;height:16px"></em>
+         <a data-login="weChat">微信登录</a>
+       </div>
        <img class="qrcode" src="/qr.svg" style="display:none">
        <script>
          document.querySelector('[data-role="login-btn"]').onclick=()=>{document.querySelector('.login-modal').style.display='block'};
+         document.querySelector('[data-role="radio-protocol"]').onclick=(event)=>event.target.classList.add('checked');
+         document.querySelector('[data-role="submit-user"]').onclick=()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
+         document.querySelector('[data-role="dynamic-get"]').onclick=(event)=>{event.target.textContent='59秒后重试'};
+         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
          document.querySelector('[data-login="weChat"]').onclick=()=>{document.querySelector('.qrcode').style.display='block';setTimeout(()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'},1500)};
        </script>`,
     );

@@ -40,7 +40,33 @@ describe('Lieju browser gateway routes', () => {
     });
 
     expect(response.status).toBe(200);
-    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID);
+    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID, { method: 'qq' });
+  });
+
+  it('forwards ephemeral password login input without echoing it', async () => {
+    const startLogin = vi.fn(async () => ({
+      account_id: ACCOUNT_ID,
+      status: 'authenticated',
+      version: 1,
+    }));
+    const baseUrl = await listen(fakeService({ startLogin }));
+    const response = await fetch(`${baseUrl}/sessions/${ACCOUNT_ID}/login`, {
+      body: JSON.stringify({
+        method: 'password',
+        password: 'ephemeral-password',
+        username: 'lieju-user',
+      }),
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID, {
+      method: 'password',
+      password: 'ephemeral-password',
+      username: 'lieju-user',
+    });
+    expect(await response.text()).not.toMatch(/lieju-user|ephemeral-password/u);
   });
 
   it('rejects unauthorized session requests before invoking the browser', async () => {

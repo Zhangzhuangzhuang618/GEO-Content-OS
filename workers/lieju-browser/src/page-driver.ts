@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { chromium, type BrowserContext, type Locator, type Page } from 'playwright';
+import type { LiejuBrowserLoginRequest } from '@geo-content-os/contracts';
 
 import type { LiejuBrowserConfig } from './config.js';
 import type {
@@ -19,6 +20,9 @@ const SELECTORS = Object.freeze({
   contactName: '#atc_linkman',
   content: '#atc_content',
   image: '#in_url1',
+  loginPassword: 'input[name="password"]',
+  loginSubmit: 'input[type="submit"]',
+  loginUsername: 'input[name="username"]',
   mobilePhone: '#atc_mobphone',
   qq: '#atc_oicq',
   submit: '#sub',
@@ -69,11 +73,38 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
 
   public constructor(private readonly config: LiejuBrowserConfig) {}
 
-  public async startLogin(accountId: string, profilePath: string): Promise<LoginStartResult> {
+  public async startLogin(
+    accountId: string,
+    profilePath: string,
+    input: LiejuBrowserLoginRequest = { method: 'qq' },
+  ): Promise<LoginStartResult> {
     const page = await this.page(accountId, profilePath, null);
-    await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
+    const loginUrl =
+      input.method === 'password'
+        ? new URL('/login/', this.config.loginUrl).toString()
+        : this.config.loginUrl;
+    await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
     const expiresAt = new Date(Date.now() + 180_000);
     if (await this.isAuthenticated(page)) return { expiresAt, qrPng: Buffer.alloc(0) };
+    if (input.method === 'password') {
+      await page.locator(SELECTORS.loginUsername).fill(input.username);
+      await page.locator(SELECTORS.loginPassword).fill(input.password);
+      const remember = page.locator('input[name="cookietime"]');
+      if (await remember.isChecked().catch(() => false)) await remember.uncheck();
+      await page.locator(SELECTORS.loginSubmit).click();
+      const authenticated = await this.waitForAuthentication(
+        accountId,
+        new Date(Date.now() + this.config.navigationTimeoutMs),
+      );
+      if (!authenticated) {
+        await page
+          .locator(SELECTORS.loginPassword)
+          .fill('')
+          .catch(() => undefined);
+        throw new PageDriverError('AUTH_REQUIRED', 'Lieju rejected the username or password');
+      }
+      return Object.freeze({ expiresAt, qrPng: Buffer.alloc(0) });
+    }
     if (this.config.simulator) {
       const qr = page.locator('[data-lieju-qq-qr]').first();
       await qr.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });

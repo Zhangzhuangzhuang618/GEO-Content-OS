@@ -3,6 +3,7 @@ import {
   BaijiahaoBrowserSessionViewSchema,
   type BaijiahaoBrowserLoginView,
   type BaijiahaoBrowserSessionView,
+  type LiejuBrowserLoginRequest,
 } from '@geo-content-os/contracts';
 
 import { PlatformAccountError } from './platform-account.errors.js';
@@ -19,12 +20,18 @@ export class LiejuBrowserGatewayClient {
     this.timeoutMs = readGatewayTimeout(environment);
   }
 
-  public login(accountId: string): Promise<BaijiahaoBrowserLoginView> {
-    return this.write(accountId, 'login');
+  public login(
+    accountId: string,
+    input: LiejuBrowserLoginRequest = { method: 'qq' },
+  ): Promise<BaijiahaoBrowserLoginView> {
+    return this.write(accountId, 'login', input);
   }
 
-  public reauthenticate(accountId: string): Promise<BaijiahaoBrowserLoginView> {
-    return this.write(accountId, 'reauth');
+  public reauthenticate(
+    accountId: string,
+    input: LiejuBrowserLoginRequest = { method: 'qq' },
+  ): Promise<BaijiahaoBrowserLoginView> {
+    return this.write(accountId, 'reauth', input);
   }
 
   public async status(accountId: string): Promise<BaijiahaoBrowserSessionView> {
@@ -38,15 +45,20 @@ export class LiejuBrowserGatewayClient {
   private async write(
     accountId: string,
     action: 'login' | 'reauth',
+    input: LiejuBrowserLoginRequest,
   ): Promise<BaijiahaoBrowserLoginView> {
     const parsed = BaijiahaoBrowserLoginViewSchema.safeParse(
-      await this.request(`/sessions/${encodeURIComponent(accountId)}/${action}`, 'POST'),
+      await this.request(`/sessions/${encodeURIComponent(accountId)}/${action}`, 'POST', input),
     );
     if (!parsed.success) throw unavailable();
     return parsed.data;
   }
 
-  private async request(path: string, method: 'GET' | 'POST'): Promise<unknown> {
+  private async request(
+    path: string,
+    method: 'GET' | 'POST',
+    body?: LiejuBrowserLoginRequest,
+  ): Promise<unknown> {
     if (!this.token || this.token.length < 32) {
       throw new PlatformAccountError(
         'PLATFORM_ACCOUNT_STATE_INVALID',
@@ -57,7 +69,11 @@ export class LiejuBrowserGatewayClient {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await fetch(new URL(path, this.baseUrl), {
-        headers: { authorization: `Bearer ${this.token}` },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          ...(body ? { 'content-type': 'application/json' } : {}),
+        },
         method,
         signal: controller.signal,
       });

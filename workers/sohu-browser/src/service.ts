@@ -4,6 +4,7 @@ import { resolve, sep } from 'node:path';
 import { hashSohuPayload } from '@geo-content-os/adapter-platforms/sohu/delivery';
 import { SohuDeliveryInputSchema } from '@geo-content-os/adapter-platforms/sohu/delivery';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import type { SohuBrowserLoginRequest } from '@geo-content-os/contracts';
 import {
   CredentialEnvelopeError,
   type CredentialEnvelopeService,
@@ -61,12 +62,15 @@ export class SohuBrowserService {
     return Object.freeze({ get_status: true, metrics: false, publish: true });
   }
 
-  public async startLogin(accountId: string): Promise<Readonly<Record<string, unknown>>> {
+  public async startLogin(
+    accountId: string,
+    input: SohuBrowserLoginRequest = { method: 'wechat' },
+  ): Promise<Readonly<Record<string, unknown>>> {
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
       let result: Awaited<ReturnType<SohuPageDriver['startLogin']>>;
       try {
-        result = await this.driver.startLogin(accountId, this.profilePath(session));
+        result = await this.driver.startLogin(accountId, this.profilePath(session), input);
       } catch (error) {
         if (
           error instanceof PageDriverError &&
@@ -79,7 +83,30 @@ export class SohuBrowserService {
           });
           throw new BrowserGatewayError(423, error.code, error.message);
         }
+        if (error instanceof PageDriverError) {
+          throw new BrowserGatewayError(423, error.code, error.message);
+        }
         throw error;
+      }
+      if (result.captchaPng) {
+        const pending = await this.store.markSession(session, {
+          error: null,
+          qrExpiresAt: null,
+          status: 'login_required',
+        });
+        return Object.freeze({
+          ...sessionView(pending),
+          captcha_image_data_url: `data:image/png;base64,${Buffer.from(result.captchaPng).toString('base64')}`,
+          login_stage: 'captcha_required',
+        });
+      }
+      if (result.smsCodeRequired) {
+        const pending = await this.store.markSession(session, {
+          error: null,
+          qrExpiresAt: null,
+          status: 'login_required',
+        });
+        return Object.freeze({ ...sessionView(pending), login_stage: 'sms_code_required' });
       }
       if (result.qrPng.byteLength === 0) {
         const authenticated = await this.persistAuthenticatedSession(session);
@@ -145,8 +172,11 @@ export class SohuBrowserService {
     });
   }
 
-  public async reauthenticate(accountId: string): Promise<Readonly<Record<string, unknown>>> {
-    return this.startLogin(accountId);
+  public async reauthenticate(
+    accountId: string,
+    input: SohuBrowserLoginRequest = { method: 'wechat' },
+  ): Promise<Readonly<Record<string, unknown>>> {
+    return this.startLogin(accountId, input);
   }
 
   public async publish(

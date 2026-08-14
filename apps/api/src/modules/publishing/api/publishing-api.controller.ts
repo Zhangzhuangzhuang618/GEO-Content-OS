@@ -5,6 +5,7 @@ import {
   DisablePlatformAccountRequestSchema,
   ERROR_DEFINITIONS,
   GeneratePublishMediaRequestSchema,
+  LiejuBrowserLoginRequestSchema,
   PlatformAccountParamsSchema,
   PlatformAccountQuerySchema,
   OfficialSiteAutomationPolicyRequestSchema,
@@ -17,6 +18,7 @@ import {
   RefreshAccountRequestSchema,
   ResolveUnknownPublishRequestSchema,
   RetryPublishRequestSchema,
+  SohuBrowserLoginRequestSchema,
   UpdatePlatformAccountRequestSchema,
 } from '@geo-content-os/contracts';
 import {
@@ -533,15 +535,20 @@ export class PlatformAccountController {
   @RequirePermissions('publishing.manage')
   public async startSohuBrowserLogin(
     @Param() params: unknown,
+    @Body() raw: unknown,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const parsed = PlatformAccountParamsSchema.safeParse(params);
-    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    const parsedBody = SohuBrowserLoginRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
     try {
       const data = await this.sohuBrowser.login(
         requireScope(request),
         parsed.data.id,
+        parsedBody.data,
         parseIfMatch(request.headers['if-match']),
       );
       await sendData(reply, request.id, data, data.version);
@@ -554,15 +561,20 @@ export class PlatformAccountController {
   @RequirePermissions('publishing.manage')
   public async reauthenticateSohuBrowser(
     @Param() params: unknown,
+    @Body() raw: unknown,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const parsed = PlatformAccountParamsSchema.safeParse(params);
-    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    const parsedBody = SohuBrowserLoginRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
     try {
       const data = await this.sohuBrowser.reauthenticate(
         requireScope(request),
         parsed.data.id,
+        parsedBody.data,
         parseIfMatch(request.headers['if-match']),
       );
       await sendData(reply, request.id, data, data.version);
@@ -592,15 +604,20 @@ export class PlatformAccountController {
   @RequirePermissions('publishing.manage')
   public async startLiejuBrowserLogin(
     @Param() params: unknown,
+    @Body() raw: unknown,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const parsed = PlatformAccountParamsSchema.safeParse(params);
-    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    const parsedBody = LiejuBrowserLoginRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
     try {
       const data = await this.liejuBrowser.login(
         requireScope(request),
         parsed.data.id,
+        parsedBody.data,
         parseIfMatch(request.headers['if-match']),
       );
       await sendData(reply, request.id, data, data.version);
@@ -613,15 +630,20 @@ export class PlatformAccountController {
   @RequirePermissions('publishing.manage')
   public async reauthenticateLiejuBrowser(
     @Param() params: unknown,
+    @Body() raw: unknown,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const parsed = PlatformAccountParamsSchema.safeParse(params);
-    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    const parsedBody = LiejuBrowserLoginRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
     try {
       const data = await this.liejuBrowser.reauthenticate(
         requireScope(request),
         parsed.data.id,
+        parsedBody.data,
         parseIfMatch(request.headers['if-match']),
       );
       await sendData(reply, request.id, data, data.version);
