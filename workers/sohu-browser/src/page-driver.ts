@@ -17,17 +17,20 @@ const SELECTORS = Object.freeze({
   body: '.ql-editor[contenteditable="true"], #editor .ql-editor',
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
   declarationAi: 'label:has-text("包含AI创作内容")',
-  loginAccount: '.login-btn, button:has-text("登录")',
-  publish: 'button:has-text("发布"), .submit-btn button, [class*="submit-btn"] button',
-  qr: 'img[src*="qrcode"], img[src*="qr"], canvas',
+  loginAccount: '[data-role="login-btn"], .login-sohu, button:has-text("登录")',
+  managePublish: 'button:has-text("发布内容")',
+  publish:
+    'li.publish-report-btn.active, button:has-text("发布"), .submit-btn button, [class*="submit-btn"] button',
+  qr: 'img.qrcode, img[src*="qrcode"], img[src*="qr"], canvas',
   title: 'input[placeholder="请输入标题（5-72字）"]',
-  wechatLogin: '.wx-icon',
+  wechatLogin: '[data-login="weChat"], .wx-icon',
 });
 
 export class PageDriverError extends Error {
   public constructor(
     public readonly code:
       | 'AUTH_REQUIRED'
+      | 'ACCOUNT_PERMISSION_REQUIRED'
       | 'CAPTCHA_REQUIRED'
       | 'MULTIPLE_MATCHES'
       | 'PAGE_SIGNATURE_CHANGED'
@@ -75,9 +78,13 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     await this.rejectCaptcha(page);
     const expiresAt = new Date(Date.now() + 180_000);
     if (await this.isAuthenticated(page)) return { expiresAt, qrPng: Buffer.alloc(0) };
+    const accountLogin = page.locator(SELECTORS.loginAccount).first();
+    if (await accountLogin.isVisible().catch(() => false)) await accountLogin.click();
     const wechat = page.locator(SELECTORS.wechatLogin).first();
     await wechat.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
     await wechat.click();
+    await page.waitForLoadState('domcontentloaded').catch(() => undefined);
+    await this.rejectOAuthFailure(page);
     const qr = page.locator(SELECTORS.qr).first();
     await qr.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
     await page.waitForTimeout(1_000);
@@ -97,9 +104,13 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
       )
       .then(() => true)
       .catch(() => false);
-    if (!observed) return false;
-    await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+    if (!observed) {
+      await this.rejectOAuthFailure(page);
+      return false;
+    }
+    await this.openEditor(page);
     await this.rejectCaptcha(page);
+    await this.rejectMissingArticlePermission(page);
     return this.isAuthenticatedEditor(page);
   }
 
@@ -109,8 +120,9 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     storageStateJson: string | null,
   ): Promise<boolean> {
     const page = await this.page(accountId, profilePath, storageStateJson);
-    await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+    await this.openEditor(page);
     await this.rejectCaptcha(page);
+    await this.rejectMissingArticlePermission(page);
     return this.isAuthenticatedEditor(page);
   }
 
@@ -127,7 +139,7 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     let stage: PublishOperationStage = 'load_editor';
     try {
       const page = await this.page(input.accountId, input.profilePath, input.storageStateJson);
-      await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+      await this.openEditor(page);
       stage = 'verify_editor';
       await this.rejectCaptcha(page);
       await this.requireEditor(page);
@@ -192,6 +204,11 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     const page = await this.page(accountId, profilePath, storageStateJson);
     await page.goto(this.config.manageUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
+    await page
+      .locator(`${SELECTORS.managePublish}, ${SELECTORS.authenticated}, ${SELECTORS.title}`)
+      .first()
+      .waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs })
+      .catch(() => undefined);
     if (!(await this.isAuthenticated(page))) {
       throw new PageDriverError('AUTH_REQUIRED', 'Sohu browser login is required');
     }
@@ -207,11 +224,13 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
       const href = await link.getAttribute('href').catch(() => null);
       const externalId = extractExternalId(href);
       if (!externalId) continue;
+      const status = remoteStatus(text);
+      if (status === 'unknown') continue;
       matches.push(
         Object.freeze({
           externalId,
           reviewReason: failureReason(text),
-          status: remoteStatus(text),
+          status,
           url: href ? new URL(href, this.config.manageUrl).toString() : null,
         }),
       );
@@ -270,6 +289,57 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     }
   }
 
+  private async openEditor(page: Page): Promise<void> {
+    await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+    const title = page.locator(SELECTORS.title).first();
+    const publishEntry = page.locator(SELECTORS.managePublish).first();
+    const destination = await Promise.race([
+      title
+        .waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs })
+        .then(() => 'editor' as const),
+      publishEntry
+        .waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs })
+        .then(() => 'manage' as const),
+    ]).catch(() => 'unknown' as const);
+    if (destination !== 'manage') return;
+    await publishEntry.click();
+    await title
+      .waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs })
+      .catch(() => undefined);
+  }
+
+  private async rejectOAuthFailure(page: Page): Promise<void> {
+    const failedBinding =
+      page.url().includes('/spassport/bind/') ||
+      (await page
+        .getByText('服务器已被外星人劫持', { exact: false })
+        .isVisible()
+        .catch(() => false)) ||
+      (await page
+        .locator('img[src*="img_404"]')
+        .isVisible()
+        .catch(() => false));
+    if (failedBinding) {
+      throw new PageDriverError(
+        'AUTH_REQUIRED',
+        'Sohu WeChat OAuth binding failed; use an account already bound to this WeChat identity',
+      );
+    }
+  }
+
+  private async rejectMissingArticlePermission(page: Page): Promise<void> {
+    const body = await page
+      .locator('body')
+      .innerText()
+      .catch(() => '');
+    if (/您的账号未实名[\s\S]*仅支持发布动态/u.test(body)) {
+      throw new PageDriverError(
+        'ACCOUNT_PERMISSION_REQUIRED',
+        'Sohu account is not verified and cannot publish articles',
+      );
+    }
+  }
+
   private async requireEditor(page: Page): Promise<void> {
     if (await this.isAuthenticatedEditor(page)) return;
     if (!(await this.isAuthenticated(page))) {
@@ -299,6 +369,14 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
   private async isAuthenticated(page: Page): Promise<boolean> {
     if (await this.isAuthenticatedEditor(page)) return true;
     if (page.url().includes('/signin')) return false;
+    if (
+      await page
+        .locator(SELECTORS.managePublish)
+        .first()
+        .isVisible()
+        .catch(() => false)
+    )
+      return true;
     return page
       .locator(SELECTORS.authenticated)
       .first()
@@ -319,10 +397,8 @@ async function uploadImages(page: Page, input: DriverPublishInput): Promise<void
   const images = input.images;
   if (images.length === 0) return;
   for (const image of images) {
-    const chooserPromise = page.waitForEvent('filechooser', { timeout: 5_000 }).catch(() => null);
-    const trigger = page
-      .locator('.ql-image, button[title*="图片"], [class*="image"] input[type="file"]')
-      .first();
+    const initialCount = await page.locator('.ql-editor img').count();
+    const trigger = page.locator('.ql-image, button[title*="图片"]').first();
     if (!(await trigger.isVisible().catch(() => false))) {
       throw new PageDriverError(
         'PAGE_SIGNATURE_CHANGED',
@@ -330,19 +406,38 @@ async function uploadImages(page: Page, input: DriverPublishInput): Promise<void
       );
     }
     await trigger.click();
-    const chooser = await chooserPromise;
-    if (!chooser)
-      throw new PageDriverError('PAGE_SIGNATURE_CHANGED', 'Sohu image file chooser did not open');
-    await chooser.setFiles({
+    const fileInput = page.locator('#new-file, input[type="file"][accept*="image"]').last();
+    await fileInput.waitFor({ state: 'attached', timeout: 5_000 });
+    await fileInput.setInputFiles({
       buffer: Buffer.from(image.body),
       mimeType: image.mimeType,
       name: `${image.assetId}.${extension(image.mimeType)}`,
     });
-    await page.waitForFunction(
-      `(() => document.querySelectorAll('.ql-editor img').length >= ${images.indexOf(image) + 1})()`,
-      undefined,
-      { timeout: 30_000 },
-    );
+    const expectedCount = initialCount + 1;
+    const outcome = await Promise.race([
+      page
+        .waitForFunction(
+          `(() => document.querySelectorAll('.ql-editor img').length >= ${expectedCount})()`,
+          undefined,
+          { timeout: 30_000 },
+        )
+        .then(() => 'inserted' as const),
+      page
+        .getByText(/已成功上传\d+张图片/u)
+        .last()
+        .waitFor({ state: 'visible', timeout: 30_000 })
+        .then(() => 'uploaded' as const),
+    ]);
+    if (outcome === 'uploaded') {
+      const confirm = page.locator('p.button.positive-button').filter({ hasText: '确定' }).last();
+      await confirm.waitFor({ state: 'visible', timeout: 5_000 });
+      await confirm.click();
+      await page.waitForFunction(
+        `(() => document.querySelectorAll('.ql-editor img').length >= ${expectedCount})()`,
+        undefined,
+        { timeout: 30_000 },
+      );
+    }
   }
 }
 
@@ -395,7 +490,7 @@ async function waitForSubmitResult(page: Page, timeoutMs: number): Promise<void>
     failure.waitFor({ state: 'visible', timeout: timeoutMs }).then(async () => {
       throw new PageDriverError('PUBLISH_STATE_UNKNOWN', await failure.innerText());
     }),
-    page.waitForURL(/contentManagement/u, { timeout: timeoutMs }),
+    page.waitForURL((url) => !url.pathname.includes('/news/addarticle'), { timeout: timeoutMs }),
   ]).catch((error) => {
     if (error instanceof PageDriverError) throw error;
   });

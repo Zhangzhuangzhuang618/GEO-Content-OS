@@ -142,6 +142,7 @@ async function safeGatewayReason(response: Response): Promise<string> {
 }
 
 const SAFE_GATEWAY_ERROR_CODES = new Set([
+  'ACCOUNT_PERMISSION_REQUIRED',
   'AUTH_REQUIRED',
   'BROWSER_GATEWAY_UNAVAILABLE',
   'CAPTCHA_REQUIRED',

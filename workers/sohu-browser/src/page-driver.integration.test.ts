@@ -19,12 +19,14 @@ interface SubmittedPublication {
 describe('Sohu local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
+  let articlePermission = true;
   let profileRoot = '';
   let server: ReturnType<typeof createServer>;
   let submitted: SubmittedPublication | null = null;
 
   beforeEach(async () => {
     duplicateRows = false;
+    articlePermission = true;
     submitted = null;
     profileRoot = await mkdtemp(join(tmpdir(), 'geo-sohu-e2e-'));
     server = createServer((request, response) =>
@@ -33,6 +35,7 @@ describe('Sohu local browser simulator', () => {
         response,
         () => submitted,
         () => duplicateRows,
+        () => articlePermission,
         (value) => {
           submitted = value;
         },
@@ -126,6 +129,21 @@ describe('Sohu local browser simulator', () => {
       await driver.close();
     }
   });
+
+  it('reports an authenticated account that cannot publish articles', async () => {
+    const driver = new PlaywrightSohuPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000152';
+    const profilePath = join(profileRoot, accountId);
+    articlePermission = false;
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      await expect(driver.waitForAuthentication(accountId, login.expiresAt)).rejects.toMatchObject({
+        code: 'ACCOUNT_PERMISSION_REQUIRED',
+      });
+    } finally {
+      await driver.close();
+    }
+  });
 });
 
 function payload(title: string) {
@@ -168,6 +186,7 @@ function route(
   response: ServerResponse,
   readSubmitted: () => SubmittedPublication | null,
   readDuplicateRows: () => boolean,
+  readArticlePermission: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
   if (request.url === '/qr.svg') {
@@ -180,14 +199,22 @@ function route(
   if (request.url === '/signin') {
     return html(
       response,
-      `<button class="wx-icon">微信登录</button><img class="qr" src="/qr.svg" style="display:none">
-       <script>document.querySelector('.wx-icon').onclick=()=>{document.querySelector('.qr').style.display='block';setTimeout(()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'},1500)}</script>`,
+      `<div data-role="login-btn">登录</div>
+       <div class="login-modal" style="display:none"><a data-login="weChat">微信登录</a></div>
+       <img class="qrcode" src="/qr.svg" style="display:none">
+       <script>
+         document.querySelector('[data-role="login-btn"]').onclick=()=>{document.querySelector('.login-modal').style.display='block'};
+         document.querySelector('[data-login="weChat"]').onclick=()=>{document.querySelector('.qrcode').style.display='block';setTimeout(()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'},1500)};
+       </script>`,
     );
   }
   if (request.url === '/authenticated')
     return html(response, '<div class="user-info">已登录</div>');
   if (request.url === '/editor') {
     if (!authenticated(request)) return redirect(response, '/signin');
+    if (!readArticlePermission()) return redirect(response, '/manage');
+    if (!request.headers.cookie?.includes('sohu-editor-entry=yes'))
+      return redirect(response, '/manage');
     return html(
       response,
       `<div class="user-info">已登录</div>
@@ -226,13 +253,23 @@ function route(
   }
   if (request.url === '/manage') {
     if (!authenticated(request)) return redirect(response, '/signin');
+    if (!readArticlePermission()) {
+      return html(
+        response,
+        '<div class="user-info">已登录</div><p>您的账号未实名</p><p>仅支持发布动态。</p>',
+      );
+    }
     const item = readSubmitted();
     const row = item
       ? `<div class="article-item"><a href="/news?id=simulator-150">${escapeHtml(item.title)}</a>审核中</div>`
       : '';
+    const draft = item
+      ? `<div class="article-item"><a href="/news?id=simulator-draft">${escapeHtml(item.title)}</a>草稿</div>`
+      : '';
     return html(
       response,
-      `<div class="user-info">已登录</div><main>${row}${readDuplicateRows() ? row.replaceAll('simulator-150', 'simulator-151') : ''}</main>`,
+      `<div id="auth-shell" style="display:none"><div class="user-info">已登录</div><button id="publish-entry" onclick="document.cookie='sohu-editor-entry=yes; path=/';location.href='/editor'">发布内容</button></div><main>${row}${draft}${readDuplicateRows() ? row.replaceAll('simulator-150', 'simulator-151') : ''}</main>
+       <script>setTimeout(()=>{document.querySelector('#auth-shell').style.display='block'},100)</script>`,
     );
   }
   response.writeHead(404).end();
