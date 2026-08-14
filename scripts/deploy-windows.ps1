@@ -29,6 +29,7 @@ $Services = @(
     "publisher-worker",
     "baijiahao-browser",
     "sohu-browser",
+    "lieju-browser",
     "ai-worker",
     "knowledge-worker"
 )
@@ -200,6 +201,9 @@ if (-not (Get-EnvValue "BAIJIAHAO_BROWSER_GATEWAY_TOKEN")) {
 if (-not (Get-EnvValue "SOHU_BROWSER_GATEWAY_TOKEN")) {
     Set-EnvValue "SOHU_BROWSER_GATEWAY_TOKEN" (New-RandomHex 32)
 }
+if (-not (Get-EnvValue "LIEJU_BROWSER_GATEWAY_TOKEN")) {
+    Set-EnvValue "LIEJU_BROWSER_GATEWAY_TOKEN" (New-RandomHex 32)
+}
 
 if ($MockAi) {
     Set-EnvValue "AI_MODEL_DRIVER" "mock"
@@ -242,7 +246,7 @@ $UpArguments += $Services
 Invoke-Docker $UpArguments
 
 Write-Step "等待服务健康"
-foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "baijiahao-browser", "sohu-browser", "ai-worker", "knowledge-worker")) {
+foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "baijiahao-browser", "sohu-browser", "lieju-browser", "ai-worker", "knowledge-worker")) {
     Wait-ServiceHealthy $Service
 }
 

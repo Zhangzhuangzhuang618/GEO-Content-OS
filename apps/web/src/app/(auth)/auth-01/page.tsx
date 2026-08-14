@@ -23,7 +23,7 @@ export default function LoginPage() {
           让每一份内容都可追溯、可审核、可交付
         </h1>
         <p className="mt-6 max-w-lg text-lg leading-8 text-ink-500">
-          在企业工作空间内连接策略、资料、内容生产、质量审核与八平台交付。
+          在企业工作空间内连接策略、资料、内容生产、质量审核与九平台交付。
         </p>
         <dl className="mt-10 grid grid-cols-3 gap-4" aria-label="系统能力">
           <div className="rounded-2xl border border-brand-100 bg-brand-50 p-4">

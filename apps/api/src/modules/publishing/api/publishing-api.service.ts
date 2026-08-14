@@ -193,9 +193,9 @@ export class PublishingApiService {
   private async baijiahaoReconciliation(
     scope: PublishingApiScope,
     job: JobRow,
-  ): Promise<{ readonly platform_code: 'baijiahao' | 'sohu' } | null> {
+  ): Promise<{ readonly platform_code: 'baijiahao' | 'lieju' | 'sohu' } | null> {
     if (
-      (job.platformCode !== 'baijiahao' && job.platformCode !== 'sohu') ||
+      !isBrowserPlatform(job.platformCode) ||
       job.status !== 'publishing' ||
       !job.externalPostId
     ) {
@@ -556,11 +556,7 @@ function unknownResolution(
   const requiresResolution =
     latest?.status === 'unknown' ||
     (latest?.status === 'failed' && latest.errorCode === 'MANUAL_REQUIRED');
-  if (
-    job.status !== 'failed' ||
-    (job.platformCode !== 'baijiahao' && job.platformCode !== 'sohu') ||
-    !requiresResolution
-  ) {
+  if (job.status !== 'failed' || !isBrowserPlatform(job.platformCode) || !requiresResolution) {
     return null;
   }
   return {
@@ -662,12 +658,20 @@ function browserPublicationRows(
   database: postgres.Sql,
   tenantId: string,
   jobId: string,
-  platformCode: 'baijiahao' | 'sohu',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
 ): Promise<{ externalPostId: string | null; status: string }[]> {
   if (platformCode === 'sohu') {
     return database<{ externalPostId: string | null; status: string }[]>`
       SELECT external_post_id AS "externalPostId",status
       FROM sohu_browser_publications
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+      LIMIT 2
+    `;
+  }
+  if (platformCode === 'lieju') {
+    return database<{ externalPostId: string | null; status: string }[]>`
+      SELECT external_post_id AS "externalPostId",status
+      FROM lieju_browser_publications
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
       LIMIT 2
     `;
@@ -701,8 +705,12 @@ function readPublishMediaConfig(environment: NodeJS.ProcessEnv = process.env): P
   });
 }
 
-function isMediaPlatform(value: string): value is 'baijiahao' | 'official_site' | 'sohu' {
-  return value === 'baijiahao' || value === 'official_site' || value === 'sohu';
+function isMediaPlatform(value: string): value is 'baijiahao' | 'lieju' | 'official_site' | 'sohu' {
+  return ['baijiahao', 'lieju', 'official_site', 'sohu'].includes(value);
+}
+
+function isBrowserPlatform(value: string): value is 'baijiahao' | 'lieju' | 'sohu' {
+  return value === 'baijiahao' || value === 'lieju' || value === 'sohu';
 }
 
 function boundedRequestId(value: string): string {

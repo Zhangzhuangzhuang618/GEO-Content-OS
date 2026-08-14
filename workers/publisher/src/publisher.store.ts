@@ -499,8 +499,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
           requiresManualHandling ? 'manual_required' : 'publish_failed',
           error,
         );
-      } else if (claim.platformCode === 'sohu') {
-        await updateSohuPublicationFailure(transaction, claim, failure, error);
+      } else if (claim.platformCode === 'sohu' || claim.platformCode === 'lieju') {
+        await updateBrowserPublicationFailure(transaction, claim, failure, error);
       }
       await transitionVariant(
         transaction,
@@ -955,6 +955,19 @@ function updateBrowserPublicationProcessing(
       RETURNING id
     `;
   }
+  if (claim.platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      UPDATE lieju_browser_publications SET
+        status='processing',external_post_id=${delivery.externalId},
+        external_url=COALESCE(${delivery.url},external_url),
+        last_reconciled_at=now(),version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND account_id=${claim.accountId}::uuid
+        AND content_version_id=${claim.contentVersionId}::uuid
+        AND status IN ('submitting','unknown','processing')
+      RETURNING id
+    `;
+  }
   return transaction<{ id: string }[]>`
     UPDATE baijiahao_browser_publications SET
       status='processing',external_post_id=${delivery.externalId},
@@ -983,6 +996,16 @@ function selectPublishedBrowserPublication(
       FOR UPDATE
     `;
   }
+  if (claim.platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      SELECT id FROM lieju_browser_publications
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND account_id=${claim.accountId}::uuid
+        AND content_version_id=${claim.contentVersionId}::uuid
+        AND status='published' AND external_post_id=${externalId}
+      FOR UPDATE
+    `;
+  }
   return transaction<{ id: string }[]>`
     SELECT id FROM baijiahao_browser_publications
     WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
@@ -1002,6 +1025,17 @@ function updateBrowserReconciliationState(
   if (claim.platformCode === 'sohu') {
     return transaction<{ id: string }[]>`
       UPDATE sohu_browser_publications SET
+        status=${status}, external_url=COALESCE(${url}, external_url),
+        last_reconciled_at=now(), version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND external_post_id=${claim.externalId}
+        AND status IN ('submitting','unknown','processing','published')
+      RETURNING id
+    `;
+  }
+  if (claim.platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      UPDATE lieju_browser_publications SET
         status=${status}, external_url=COALESCE(${url}, external_url),
         last_reconciled_at=now(), version=version+1
       WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
@@ -1039,6 +1073,17 @@ function updateBrowserReconciliationTerminalFailure(
       RETURNING id
     `;
   }
+  if (claim.platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      UPDATE lieju_browser_publications SET
+        status=${status}, external_url=COALESCE(${url}, external_url),
+        review_reason=${reason}, last_reconciled_at=now(), version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND external_post_id=${claim.externalId}
+        AND status IN ('submitting','unknown','processing','manual_required','failed')
+      RETURNING id
+    `;
+  }
   return transaction<{ id: string }[]>`
     UPDATE baijiahao_browser_publications SET
       status=${status}, external_url=COALESCE(${url}, external_url),
@@ -1050,13 +1095,22 @@ function updateBrowserReconciliationTerminalFailure(
   `;
 }
 
-function updateSohuPublicationFailure(
+function updateBrowserPublicationFailure(
   transaction: postgres.TransactionSql,
   claim: PublishClaim,
   failure: { readonly message: string; readonly status: 'failed' | 'unknown' },
   error: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   const status = failure.status === 'unknown' ? 'manual_required' : 'failed';
+  if (claim.platformCode === 'lieju') {
+    return transaction`
+      UPDATE lieju_browser_publications SET
+        status=${status},review_reason=${String(error['message'])},
+        last_reconciled_at=now(),version=version+1
+      WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+        AND status IN ('prepared','submitting','unknown','processing')
+    `.then(() => undefined);
+  }
   return transaction`
     UPDATE sohu_browser_publications SET
       status=${status},review_reason=${String(error['message'])},
@@ -1097,7 +1151,7 @@ function selectBaijiahaoReconcileRow(
     WHERE job.id=${event.jobId}::uuid AND job.tenant_id=${event.tenantId}::uuid
       AND (
         (${event.platformCode}='baijiahao' AND job.origin IN ('manual','baijiahao_automation'))
-        OR (${event.platformCode}='sohu' AND job.origin='manual')
+        OR (${event.platformCode} IN ('sohu','lieju') AND job.origin='manual')
       )
     ${lock ? transaction`FOR UPDATE OF job, variant, package, account` : transaction``}
   `;
@@ -1182,21 +1236,27 @@ function deliveryStatus(
 
 function isBrowserOrigin(
   origin: CompletionRow['origin'],
-  platformCode: 'baijiahao' | 'sohu',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
 ): origin is 'manual' | 'baijiahao_automation' {
   return origin === 'manual' || (platformCode === 'baijiahao' && origin === 'baijiahao_automation');
 }
 
-function isBrowserPlatform(platformCode: PlatformCode): platformCode is 'baijiahao' | 'sohu' {
-  return platformCode === 'baijiahao' || platformCode === 'sohu';
+function isBrowserPlatform(
+  platformCode: PlatformCode,
+): platformCode is 'baijiahao' | 'lieju' | 'sohu' {
+  return platformCode === 'baijiahao' || platformCode === 'sohu' || platformCode === 'lieju';
 }
 
-function browserErrorPrefix(platformCode: 'baijiahao' | 'sohu'): 'BAIJIAHAO' | 'SOHU' {
-  return platformCode === 'sohu' ? 'SOHU' : 'BAIJIAHAO';
+function browserErrorPrefix(
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+): 'BAIJIAHAO' | 'LIEJU' | 'SOHU' {
+  return platformCode === 'sohu' ? 'SOHU' : platformCode === 'lieju' ? 'LIEJU' : 'BAIJIAHAO';
 }
 
-function browserPlatformName(platformCode: 'baijiahao' | 'sohu'): 'Baijiahao' | 'Sohu' {
-  return platformCode === 'sohu' ? 'Sohu' : 'Baijiahao';
+function browserPlatformName(
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+): 'Baijiahao' | 'Lieju' | 'Sohu' {
+  return platformCode === 'sohu' ? 'Sohu' : platformCode === 'lieju' ? 'Lieju' : 'Baijiahao';
 }
 
 function automatedReadyStatus(origin: CompletionRow['origin']): 'approved' | 'quality_passed' {
@@ -1292,7 +1352,7 @@ async function insertBrowserReconcileEvent(
   jobVersion: number,
   delayMinutes: number,
   reconcileAttempt = 1,
-  platformCode: 'baijiahao' | 'sohu' = 'baijiahao',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu' = 'baijiahao',
 ): Promise<void> {
   const eventId = randomUUID();
   const occurredAt = new Date().toISOString();

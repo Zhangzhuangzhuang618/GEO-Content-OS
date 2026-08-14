@@ -328,7 +328,7 @@ export class PublishJobService {
     const before = await loadJob(transaction, scope, jobId);
     if (before.version !== expectedVersion) throw versionConflict();
     if (
-      (before.platformCode !== 'baijiahao' && before.platformCode !== 'sohu') ||
+      !isBrowserPlatform(before.platformCode) ||
       before.accountPublishMode !== 'api' ||
       before.status !== 'publishing' ||
       before.variantStatus !== 'publishing' ||
@@ -399,7 +399,7 @@ export class PublishJobService {
     assertVersion(expectedVersion);
     const before = await loadJob(transaction, scope, jobId);
     if (before.version !== expectedVersion) throw versionConflict();
-    if (before.platformCode !== 'baijiahao' && before.platformCode !== 'sohu') {
+    if (!isBrowserPlatform(before.platformCode)) {
       throw stateInvalid('Only browser-published unknown publications can be resolved here');
     }
     if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
@@ -899,7 +899,7 @@ async function enqueueBrowserReconciliation(
   outbox: OutboxWriter,
   scope: PublishJobScope,
   job: Pick<JobRow, 'accountId' | 'id' | 'version'>,
-  platformCode: 'baijiahao' | 'sohu',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
 ): Promise<void> {
   await outbox.enqueue(
     {
@@ -930,7 +930,7 @@ async function latestAttemptRequiresManualResolution(
   if (!attempt) return false;
   return (
     attempt.status === 'unknown' ||
-    ((platformCode === 'baijiahao' || platformCode === 'sohu') &&
+    (['baijiahao', 'sohu', 'lieju'].includes(platformCode) &&
       attemptRequiresManualResolution(attempt))
   );
 }
@@ -939,12 +939,20 @@ function selectBrowserPublications(
   transaction: TransactionSql,
   tenantId: string,
   jobId: string,
-  platformCode: 'baijiahao' | 'sohu',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
 ): Promise<BrowserPublicationRow[]> {
   if (platformCode === 'sohu') {
     return transaction<BrowserPublicationRow[]>`
       SELECT id,external_post_id AS "externalPostId",status
       FROM sohu_browser_publications
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+      FOR UPDATE
+    `;
+  }
+  if (platformCode === 'lieju') {
+    return transaction<BrowserPublicationRow[]>`
+      SELECT id,external_post_id AS "externalPostId",status
+      FROM lieju_browser_publications
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
       FOR UPDATE
     `;
@@ -961,12 +969,22 @@ function resetBrowserPublication(
   transaction: TransactionSql,
   tenantId: string,
   publicationId: string,
-  platformCode: 'baijiahao' | 'sohu',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
 ): Promise<{ id: string }[]> {
-  const reason = `人工核实${platformCode === 'sohu' ? '搜狐号' : '百家号'}后台未创建内容，允许使用原幂等键重试。`;
+  const reason = `人工核实${browserPlatformLabel(platformCode)}后台未创建内容，允许使用原幂等键重试。`;
   if (platformCode === 'sohu') {
     return transaction<{ id: string }[]>`
       UPDATE sohu_browser_publications SET
+        status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+        submitted_at=NULL,last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('submitting','unknown','processing','manual_required')
+      RETURNING id
+    `;
+  }
+  if (platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      UPDATE lieju_browser_publications SET
         status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
         submitted_at=NULL,last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
@@ -988,14 +1006,24 @@ function confirmBrowserPublication(
   transaction: TransactionSql,
   tenantId: string,
   publicationId: string,
-  platformCode: 'baijiahao' | 'sohu',
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
   externalPostId: string | null,
   externalUrl: string,
 ): Promise<{ id: string }[]> {
-  const reason = `人工核实${platformCode === 'sohu' ? '搜狐号' : '百家号'}内容已经发布。`;
+  const reason = `人工核实${browserPlatformLabel(platformCode)}内容已经发布。`;
   if (platformCode === 'sohu') {
     return transaction<{ id: string }[]>`
       UPDATE sohu_browser_publications SET
+        status='published',external_post_id=${externalPostId},external_url=${externalUrl},
+        review_reason=${reason},last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('submitting','unknown','processing','manual_required')
+      RETURNING id
+    `;
+  }
+  if (platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      UPDATE lieju_browser_publications SET
         status='published',external_post_id=${externalPostId},external_url=${externalUrl},
         review_reason=${reason},last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
@@ -1024,6 +1052,14 @@ async function loadLatestAttempt(
     ORDER BY attempt_no DESC LIMIT 1
   `;
   return rows[0];
+}
+
+function browserPlatformLabel(platformCode: 'baijiahao' | 'lieju' | 'sohu'): string {
+  return platformCode === 'sohu' ? '搜狐号' : platformCode === 'lieju' ? '列举网' : '百家号';
+}
+
+function isBrowserPlatform(value: PlatformCode): value is 'baijiahao' | 'lieju' | 'sohu' {
+  return value === 'baijiahao' || value === 'lieju' || value === 'sohu';
 }
 
 function attemptRequiresManualResolution(attempt: LatestAttemptRow): boolean {

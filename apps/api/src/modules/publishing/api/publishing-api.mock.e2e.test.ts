@@ -20,6 +20,7 @@ import {
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
+  LiejuBrowserSessionService,
   SohuBrowserSessionService,
 } from '../accounts/index.js';
 import { PublishJobService } from '../jobs/index.js';
@@ -203,6 +204,11 @@ describe('publishing API mock E2E', () => {
     reauthenticate: vi.fn(),
     status: vi.fn(),
   };
+  const liejuBrowser = {
+    login: vi.fn(),
+    reauthenticate: vi.fn(),
+    status: vi.fn(),
+  };
   const idempotency = {
     execute: vi.fn(
       async (
@@ -223,6 +229,7 @@ describe('publishing API mock E2E', () => {
         { provide: PublishJobService, useValue: jobs },
         { provide: PublishingApiService, useValue: api },
         { provide: SohuBrowserSessionService, useValue: sohuBrowser },
+        { provide: LiejuBrowserSessionService, useValue: liejuBrowser },
       ],
     })
       .overrideGuard(PolicyGuard)

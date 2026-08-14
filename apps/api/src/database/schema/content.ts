@@ -283,7 +283,7 @@ export const contentVariants = pgTable(
       .where(sql`${table.platformAccountId} IS NOT NULL`),
     check(
       'content_variants_platform_check',
-      sql`${table.platformCode} IN ('official_site','baijiahao','sohu','toutiao','zhihu','xiaohongshu','wechat_mp','douyin')`,
+      sql`${table.platformCode} IN ('official_site','baijiahao','sohu','lieju','toutiao','zhihu','xiaohongshu','wechat_mp','douyin')`,
     ),
     check(
       'content_variants_status_check',

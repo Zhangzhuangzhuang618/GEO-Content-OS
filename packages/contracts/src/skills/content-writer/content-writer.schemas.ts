@@ -15,6 +15,7 @@ export const CONTENT_PLATFORM_CODES = Object.freeze([
   'official_site',
   'baijiahao',
   'sohu',
+  'lieju',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -42,7 +43,7 @@ export const CONTENT_WRITER_INPUT_SCHEMA: JsonSchema = Object.freeze({
         objective: { minLength: 1, type: 'string' },
         platform_codes: {
           items: { enum: CONTENT_PLATFORM_CODES },
-          maxItems: 8,
+          maxItems: 9,
           minItems: 1,
           type: 'array',
           uniqueItems: true,
@@ -92,7 +93,7 @@ export const CONTENT_WRITER_INPUT_SCHEMA: JsonSchema = Object.freeze({
         required: ['version_id', 'rules_hash', 'rules'],
         type: 'object',
       },
-      maxProperties: 8,
+      maxProperties: 9,
       minProperties: 1,
       propertyNames: { enum: CONTENT_PLATFORM_CODES },
       type: 'object',
@@ -162,6 +163,10 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
           then: { properties: { title: { maxLength: 72, minLength: 5, type: 'string' } } },
         },
         {
+          if: { properties: { platform_code: { const: 'lieju' } } },
+          then: { properties: { title: { maxLength: 30, minLength: 5, type: 'string' } } },
+        },
+        {
           if: { properties: { platform_code: { const: 'toutiao' } } },
           then: { properties: { title: { maxLength: 50, type: 'string' } } },
         },
@@ -208,7 +213,7 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
     master_content: { $ref: '#/$defs/content' },
     variants: {
       items: { $ref: '#/$defs/content' },
-      maxItems: 8,
+      maxItems: 9,
       minItems: 1,
       type: 'array',
     },

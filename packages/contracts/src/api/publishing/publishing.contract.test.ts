@@ -11,11 +11,11 @@ import {
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all thirty publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(30);
+  it('contains all thirty-three publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(33);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(30);
+    ).toBe(33);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -26,7 +26,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(30);
+    expect(operations).toHaveLength(33);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -120,6 +120,37 @@ describe('Publishing API frozen contract', () => {
         workspace_id: crypto.randomUUID(),
       }).success,
     ).toBe(false);
+  });
+
+  it('requires a posting profile for Lieju browser publishing accounts', () => {
+    const workspaceId = crypto.randomUUID();
+    expect(
+      CreatePlatformAccountRequestSchema.safeParse({
+        display_name: '列举网生产账号',
+        platform_code: 'lieju',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: workspaceId,
+      }).success,
+    ).toBe(false);
+    expect(
+      CreatePlatformAccountRequestSchema.safeParse({
+        credential: {
+          posting_profile: {
+            address: '广州市天河区',
+            category_id: '104',
+            contact_name: '测试联系人',
+            mobile_phone: '13800000000',
+            zone_id: '5',
+          },
+        },
+        display_name: '列举网生产账号',
+        platform_code: 'lieju',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: workspaceId,
+      }).success,
+    ).toBe(true);
   });
 
   it('orders calendar bounds by instant instead of timezone text', () => {

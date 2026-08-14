@@ -4,6 +4,7 @@ import { Injectable } from '@nestjs/common';
 const PLATFORM_OUTPUT_TOKEN_BUDGET = Object.freeze({
   baijiahao: 1_600,
   douyin: 900,
+  lieju: 1_600,
   official_site: 2_400,
   sohu: 1_600,
   toutiao: 1_800,

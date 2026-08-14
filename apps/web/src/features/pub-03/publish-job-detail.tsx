@@ -339,7 +339,7 @@ function DetailContent({
               >
                 {busy === 'reconcile'
                   ? '正在重新核验…'
-                  : `重新核验${detail.baijiahao_reconciliation.platform_code === 'sohu' ? '搜狐号' : '百家号'}状态`}
+                  : `重新核验${browserPlatformLabel(detail.baijiahao_reconciliation.platform_code)}状态`}
               </button>
             ) : null}
             {job.status === 'scheduled' &&
@@ -397,13 +397,13 @@ function DetailContent({
         {detail.unknown_resolution ? (
           <div className="mt-5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
             <h3 className="font-semibold">
-              {detail.unknown_resolution.platform_code === 'sohu' ? '搜狐号' : '百家号'}
+              {browserPlatformLabel(detail.unknown_resolution.platform_code)}
               发布结果需要人工核实
             </h3>
             <p className="mt-2 leading-6">
               第 {detail.unknown_resolution.latest_attempt_no}{' '}
               次发布尝试没有取得可安全重试的明确结果。请先在
-              {detail.unknown_resolution.platform_code === 'sohu' ? '搜狐号' : '百家号'}
+              {browserPlatformLabel(detail.unknown_resolution.platform_code)}
               内容管理中按标题核对；系统会保留原尝试记录，不会覆盖历史。
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
@@ -686,6 +686,10 @@ function statusLabel(status: PublishJob['status']) {
 
 function attemptStatusLabel(status: PublishAttempt['status']) {
   return { failed: '失败', running: '进行中', succeeded: '成功', unknown: '外部状态未知' }[status];
+}
+
+function browserPlatformLabel(platformCode: 'baijiahao' | 'lieju' | 'sohu'): string {
+  return platformCode === 'sohu' ? '搜狐号' : platformCode === 'lieju' ? '列举网' : '百家号';
 }
 
 function formatDate(value: string) {

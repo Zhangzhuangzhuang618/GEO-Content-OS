@@ -32,6 +32,7 @@ const PLATFORM_CODES = new Set([
   'official_site',
   'baijiahao',
   'sohu',
+  'lieju',
   'toutiao',
   'zhihu',
   'xiaohongshu',

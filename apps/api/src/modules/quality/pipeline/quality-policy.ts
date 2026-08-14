@@ -22,6 +22,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 const TITLE_LIMITS: Readonly<Record<PlatformCode, number>> = Object.freeze({
   baijiahao: 40,
   douyin: 80,
+  lieju: 30,
   official_site: 60,
   sohu: 72,
   toutiao: 50,

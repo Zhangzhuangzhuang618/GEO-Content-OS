@@ -18,7 +18,7 @@ export default function PlatformAccountsPage() {
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-ink-950">平台账号</h1>
           <p className="mt-2 text-sm leading-6 text-ink-500">
-            管理八个平台的交付模式、授权状态和能力；已保存凭证永不回显。
+            管理九个平台的交付模式、授权状态和能力；已保存凭证永不回显。
           </p>
         </div>
         <Link

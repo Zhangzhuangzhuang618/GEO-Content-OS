@@ -863,6 +863,7 @@ const PLATFORM_STRUCTURES = {
   official_site: { blocks: 8, headings: 3 },
   baijiahao: { blocks: 7, headings: 2 },
   sohu: { blocks: 7, headings: 2 },
+  lieju: { blocks: 7, headings: 2 },
   toutiao: { blocks: 7, headings: 2 },
   zhihu: { blocks: 8, headings: 3 },
   xiaohongshu: { blocks: 7, headings: 2 },

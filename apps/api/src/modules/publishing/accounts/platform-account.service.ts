@@ -5,6 +5,7 @@ import type {
   UpdatePlatformAccountRequest,
 } from '@geo-content-os/contracts';
 import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
+import { LiejuPostingProfileSchema } from '@geo-content-os/adapter-platforms/lieju/delivery';
 import type { TransactionSql } from 'postgres';
 import {
   resolveDatabaseClient,
@@ -13,6 +14,7 @@ import {
 } from '../../../database/index.js';
 import { readBaijiahaoBrowserGatewayCredential } from './baijiahao-browser-gateway.client.js';
 import { readSohuBrowserGatewayCredential } from './sohu-browser-gateway.client.js';
+import { readLiejuBrowserGatewayCredential } from './lieju-browser-gateway.client.js';
 import { PlatformAccountError } from './platform-account.errors.js';
 import type {
   PlatformAccountAudit,
@@ -114,7 +116,7 @@ export class PlatformAccountService {
       if (!credential) throw invalid();
       const probe = await this.connector.refresh({ credential, platformCode: row.platform_code });
       const stored =
-        input.credential || ['baijiahao', 'sohu'].includes(row.platform_code)
+        input.credential || ['baijiahao', 'sohu', 'lieju'].includes(row.platform_code)
           ? await encryptCredential(this.credentials, credential)
           : null;
       const rows = await tx<
@@ -358,6 +360,16 @@ async function accountCredential(
   if (publishMode !== 'api') return null;
   if (platformCode === 'baijiahao') return readBaijiahaoBrowserGatewayCredential();
   if (platformCode === 'sohu') return readSohuBrowserGatewayCredential();
+  if (platformCode === 'lieju') {
+    const raw = supplied ?? (fallback ? await fallback() : null);
+    if (!raw) return null;
+    const profileSource = raw['posting_profile'] ?? raw;
+    const profile = LiejuPostingProfileSchema.parse(profileSource);
+    return Object.freeze({
+      ...readLiejuBrowserGatewayCredential(),
+      posting_profile: profile,
+    });
+  }
   if (supplied) return supplied;
   return fallback ? fallback() : null;
 }

@@ -20,6 +20,7 @@ export function validateBaijiahaoReconcileEvent(raw: unknown): ValidatedBaijiaha
     ![
       'baijiahao.publication.reconcile_requested.v1',
       'sohu.publication.reconcile_requested.v1',
+      'lieju.publication.reconcile_requested.v1',
     ].includes(event.event_type) ||
     event.aggregate.type !== 'publish_job' ||
     !isRecord(event.data) ||
@@ -48,7 +49,11 @@ export function validateBaijiahaoReconcileEvent(raw: unknown): ValidatedBaijiaha
     occurredAt: event.occurred_at,
     reconcileAttempt,
     requestId,
-    platformCode: event.event_type.startsWith('sohu.') ? 'sohu' : 'baijiahao',
+    platformCode: event.event_type.startsWith('sohu.')
+      ? 'sohu'
+      : event.event_type.startsWith('lieju.')
+        ? 'lieju'
+        : 'baijiahao',
     tenantId: event.tenant.id,
   });
 }

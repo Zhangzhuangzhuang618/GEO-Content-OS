@@ -14,12 +14,17 @@ if (selectors.length === 1 && selectors[0] === 'sohu-browser') {
   run(['--filter', '@geo-content-os/worker-sohu-browser', 'test:integration']);
   process.exit(0);
 }
+if (selectors.length === 1 && selectors[0] === 'lieju-browser') {
+  run(['--filter', '@geo-content-os/worker-lieju-browser', 'test:integration']);
+  process.exit(0);
+}
 if (
   selectors.length === 1 &&
   [
     'official_site-delivery',
     'baijiahao-delivery',
     'sohu-delivery',
+    'lieju-delivery',
     'toutiao-delivery',
     'zhihu-delivery',
     'xiaohongshu-delivery',

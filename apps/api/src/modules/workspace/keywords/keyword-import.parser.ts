@@ -262,7 +262,7 @@ export async function previewKeywordWorkbook(input: {
 async function loadWorkbook(body: Buffer): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
   try {
-    await workbook.xlsx.load(body);
+    await workbook.xlsx.load(body as unknown as Parameters<typeof workbook.xlsx.load>[0]);
     return workbook;
   } catch {
     // Some valid XLSX writers prefix SpreadsheetML elements with `x:`. ExcelJS 4.4
@@ -291,7 +291,9 @@ async function loadWorkbook(body: Buffer): Promise<ExcelJS.Workbook> {
     if (normalizedFiles === 0) throw new Error('No prefixed SpreadsheetML XML found');
     const normalizedBody = await zip.generateAsync({ type: 'nodebuffer' });
     const normalizedWorkbook = new ExcelJS.Workbook();
-    await normalizedWorkbook.xlsx.load(normalizedBody);
+    await normalizedWorkbook.xlsx.load(
+      normalizedBody as unknown as Parameters<typeof normalizedWorkbook.xlsx.load>[0],
+    );
     return normalizedWorkbook;
   } catch {
     throw new KeywordValidationError('Keyword spreadsheet could not be parsed');

@@ -4,6 +4,7 @@ export const PlatformCodeSchema = z.enum([
   'official_website',
   'baijiahao',
   'sohu',
+  'lieju',
   'toutiao',
   'zhihu',
   'xiaohongshu',

@@ -57,10 +57,10 @@ export class PublisherWorker {
       delivery = await this.dependencies.platform.deliver(claim, credential, signal);
       if (
         delivery.mode === 'export' &&
-        ['baijiahao', 'sohu'].includes(claim.platformCode) &&
+        ['baijiahao', 'sohu', 'lieju'].includes(claim.platformCode) &&
         claim.publishMode === 'api'
       ) {
-        throw Object.assign(new Error('Baijiahao browser capability is temporarily unavailable'), {
+        throw Object.assign(new Error('Browser publishing capability is temporarily unavailable'), {
           code: 'CAPABILITY_UNAVAILABLE',
         });
       }
@@ -68,7 +68,7 @@ export class PublisherWorker {
       const failure = asDeliveryFailure(error);
       const unknown = failure.code === 'PUBLISH_STATE_UNKNOWN' || failure.code === undefined;
       if (
-        ['official_site', 'baijiahao', 'sohu'].includes(claim.platformCode) &&
+        ['official_site', 'baijiahao', 'sohu', 'lieju'].includes(claim.platformCode) &&
         claim.attempt < 3 &&
         (unknown || failure.code === 'CAPABILITY_UNAVAILABLE')
       ) {

@@ -581,6 +581,27 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_lieju_browser_session_get: {
+    idempotency: '-',
+    method: 'GET',
+    path: '/platform-accounts/{id}/lieju-browser-session',
+    permission: 'publishing.manage',
+    security: 'session',
+  },
+  account_lieju_browser_session_login: {
+    idempotency: 'resource+version',
+    method: 'POST',
+    path: '/platform-accounts/{id}/lieju-browser-session/login',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
+  account_lieju_browser_session_reauth: {
+    idempotency: 'resource+version',
+    method: 'POST',
+    path: '/platform-accounts/{id}/lieju-browser-session/reauth',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_official_site_automation_list: {
     idempotency: '-',
     method: 'GET',

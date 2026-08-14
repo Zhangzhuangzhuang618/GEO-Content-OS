@@ -2,6 +2,7 @@ export const PLATFORM_CODES = Object.freeze([
   'official_site',
   'baijiahao',
   'sohu',
+  'lieju',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -25,6 +26,11 @@ export const PLATFORM_DEFINITIONS = {
   sohu: {
     name: '搜狐号',
     contentForm: '图文',
+    delivery: 'capability_dependent',
+  },
+  lieju: {
+    name: '列举网',
+    contentForm: '分类信息/图文',
     delivery: 'capability_dependent',
   },
   toutiao: {

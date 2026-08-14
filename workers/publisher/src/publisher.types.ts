@@ -16,7 +16,7 @@ export interface ValidatedBaijiahaoReconcileEvent {
   readonly jobId: string;
   readonly jobVersion: number;
   readonly occurredAt: string;
-  readonly platformCode: 'baijiahao' | 'sohu';
+  readonly platformCode: 'baijiahao' | 'lieju' | 'sohu';
   readonly reconcileAttempt: number;
   readonly requestId: string;
   readonly tenantId: string;
@@ -70,7 +70,7 @@ export interface BaijiahaoReconcileClaim {
   readonly externalId: string;
   readonly jobId: string;
   readonly jobVersion: number;
-  readonly platformCode: 'baijiahao' | 'sohu';
+  readonly platformCode: 'baijiahao' | 'lieju' | 'sohu';
   readonly publishMode: 'api';
   readonly tenantId: string;
 }

@@ -1012,7 +1012,7 @@ function contentLengthShortfalls(
   const shortfalls: ContentLengthShortfall[] = [];
   for (const issue of issues) {
     const matched =
-      /^(master|official_site|baijiahao|toutiao|zhihu|xiaohongshu|wechat_mp|douyin):正文仅 \d+ 个有效字符，至少需要 (\d+) 个$/u.exec(
+      /^(master|official_site|baijiahao|sohu|lieju|toutiao|zhihu|xiaohongshu|wechat_mp|douyin):正文仅 \d+ 个有效字符，至少需要 (\d+) 个$/u.exec(
         issue,
       );
     if (!matched) return null;

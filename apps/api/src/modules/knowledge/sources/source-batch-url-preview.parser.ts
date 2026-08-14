@@ -55,7 +55,7 @@ export async function previewBatchUrlFile(input: ParsedBatchUpload): Promise<Bat
   try {
     if (input.filename.toLowerCase().endsWith('.xlsx')) {
       validateXlsxSignature(input.body);
-      await workbook.xlsx.load(input.body);
+      await workbook.xlsx.load(input.body as unknown as Parameters<typeof workbook.xlsx.load>[0]);
     } else if (input.filename.toLowerCase().endsWith('.csv')) {
       validateCsv(input.body);
       const rows = parseCsv(new TextDecoder('utf-8', { fatal: true }).decode(input.body));

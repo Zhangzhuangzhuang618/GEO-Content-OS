@@ -4,6 +4,7 @@ export const PlatformCodeSchema = z.enum([
   'official_site',
   'baijiahao',
   'sohu',
+  'lieju',
   'toutiao',
   'zhihu',
   'xiaohongshu',
@@ -270,14 +271,22 @@ export const BaijiahaoBrowserLoginResponseSchema = z
 
 export const PlatformAccountFormSchema = z
   .object({
+    address: z.string(),
     base_url: z.string(),
     bearer_token: z.string(),
+    category_id: z.string(),
+    contact_name: z.string(),
     display_name: z.string().trim().min(1, '请填写账号名称。').max(120),
+    mobile_phone: z.string(),
     platform_code: PlatformCodeSchema,
     publishing_url: z.string(),
     publish_mode: z.enum(['api', 'export', 'manual']),
+    qq: z.string(),
+    street_id: z.string(),
     timezone: z.string().trim().min(1, '请填写 IANA 时区。').max(64),
+    wechat: z.string(),
     workspace_id: z.string().uuid('请选择有效工作区。'),
+    zone_id: z.string(),
   })
   .superRefine((value, context) => {
     if (value.publishing_url.trim() && !isHttpUrl(value.publishing_url.trim())) {
@@ -289,6 +298,32 @@ export const PlatformAccountFormSchema = z
     }
     if (value.publish_mode !== 'api') return;
     if (value.platform_code === 'baijiahao' || value.platform_code === 'sohu') return;
+    if (value.platform_code === 'lieju') {
+      const required = [
+        ['address', value.address],
+        ['category_id', value.category_id],
+        ['contact_name', value.contact_name],
+        ['mobile_phone', value.mobile_phone],
+        ['zone_id', value.zone_id],
+      ] as const;
+      for (const [field, fieldValue] of required) {
+        if (!fieldValue.trim()) {
+          context.addIssue({
+            code: 'custom',
+            message: '请完整填写列举网发布配置。',
+            path: [field],
+          });
+        }
+      }
+      if (value.contact_name.trim().length > 25 || value.mobile_phone.trim().length > 20) {
+        context.addIssue({
+          code: 'custom',
+          message: '列举网联系方式超出长度限制。',
+          path: ['mobile_phone'],
+        });
+      }
+      return;
+    }
     if (!isValidApiBaseUrl(value.base_url.trim())) {
       context.addIssue({
         code: 'custom',
@@ -354,9 +389,14 @@ function isValidApiBaseUrl(value: string) {
   if (url.protocol === 'https:') return true;
   return (
     url.protocol === 'http:' &&
-    ['localhost', '127.0.0.1', '::1', 'baijiahao-browser', 'sohu-browser'].includes(
-      url.hostname.toLocaleLowerCase('en-US'),
-    )
+    [
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      'baijiahao-browser',
+      'sohu-browser',
+      'lieju-browser',
+    ].includes(url.hostname.toLocaleLowerCase('en-US'))
   );
 }
 

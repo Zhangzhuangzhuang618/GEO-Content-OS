@@ -54,6 +54,7 @@ import {
   PlatformAccountError,
   PlatformAccountService,
   SohuBrowserSessionService,
+  LiejuBrowserSessionService,
 } from '../accounts/index.js';
 import { PublishJobError, PublishJobService } from '../jobs/index.js';
 import { PublishingApiError } from './publishing-api.errors.js';
@@ -79,6 +80,8 @@ export class PlatformAccountController {
     private readonly baijiahaoAutomation: BaijiahaoAutomationPolicyService,
     @Inject(SohuBrowserSessionService)
     private readonly sohuBrowser: SohuBrowserSessionService,
+    @Inject(LiejuBrowserSessionService)
+    private readonly liejuBrowser: LiejuBrowserSessionService,
     @Inject(IdempotencyService) private readonly idempotency: IdempotencyService,
   ) {}
 
@@ -558,6 +561,65 @@ export class PlatformAccountController {
     if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
     try {
       const data = await this.sohuBrowser.reauthenticate(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/lieju-browser-session')
+  @RequirePermissions('publishing.manage')
+  public async getLiejuBrowserSession(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.liejuBrowser.status(requireScope(request), parsed.data.id);
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/lieju-browser-session/login')
+  @RequirePermissions('publishing.manage')
+  public async startLiejuBrowserLogin(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.liejuBrowser.login(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/lieju-browser-session/reauth')
+  @RequirePermissions('publishing.manage')
+  public async reauthenticateLiejuBrowser(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.liejuBrowser.reauthenticate(
         requireScope(request),
         parsed.data.id,
         parseIfMatch(request.headers['if-match']),

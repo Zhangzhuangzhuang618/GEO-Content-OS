@@ -52,6 +52,7 @@ export const ContentDocumentSchema = z
       'official_site',
       'baijiahao',
       'sohu',
+      'lieju',
       'toutiao',
       'zhihu',
       'xiaohongshu',

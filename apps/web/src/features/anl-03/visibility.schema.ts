@@ -4,6 +4,7 @@ const PlatformSchema = z.enum([
   'official_site',
   'baijiahao',
   'sohu',
+  'lieju',
   'toutiao',
   'zhihu',
   'xiaohongshu',

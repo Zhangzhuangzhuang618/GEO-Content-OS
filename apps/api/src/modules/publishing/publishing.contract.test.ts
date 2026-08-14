@@ -87,6 +87,21 @@ const bindings: readonly Binding[] = [
     PlatformAccountController,
     PlatformAccountController.prototype.reauthenticateSohuBrowser,
   ),
+  bind(
+    'account.lieju_browser_session.get',
+    PlatformAccountController,
+    PlatformAccountController.prototype.getLiejuBrowserSession,
+  ),
+  bind(
+    'account.lieju_browser_session.login',
+    PlatformAccountController,
+    PlatformAccountController.prototype.startLiejuBrowserLogin,
+  ),
+  bind(
+    'account.lieju_browser_session.reauth',
+    PlatformAccountController,
+    PlatformAccountController.prototype.reauthenticateLiejuBrowser,
+  ),
   bind('job.create', PublishJobController, PublishJobController.prototype.create),
   bind('job.list', PublishJobController, PublishJobController.prototype.list),
   bind('job.get', PublishJobController, PublishJobController.prototype.detail),

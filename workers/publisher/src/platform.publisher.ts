@@ -31,6 +31,14 @@ import {
   renderSohu,
   SOHU_RENDER_RULE_VERSION,
 } from '@geo-content-os/adapter-platforms/sohu/render';
+import {
+  hashLiejuPayload,
+  LiejuDeliveryAdapter,
+} from '@geo-content-os/adapter-platforms/lieju/delivery';
+import {
+  renderLieju,
+  LIEJU_RENDER_RULE_VERSION,
+} from '@geo-content-os/adapter-platforms/lieju/render';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import { createHash } from 'node:crypto';
 import {
@@ -105,14 +113,13 @@ export class PlatformPublisher implements PublisherPlatformPort {
     credential: Readonly<Record<string, unknown>>,
     signal?: AbortSignal,
   ): Promise<BaijiahaoRemoteStatus> {
+    const config = Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' });
     const adapter =
       claim.platformCode === 'sohu'
-        ? new SohuDeliveryAdapter(
-            Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' }),
-          )
-        : new BaijiahaoDeliveryAdapter(
-            Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' }),
-          );
+        ? new SohuDeliveryAdapter(config)
+        : claim.platformCode === 'lieju'
+          ? new LiejuDeliveryAdapter(config)
+          : new BaijiahaoDeliveryAdapter(config);
     const result = await adapter.getStatus(claim.externalId, signal);
     return Object.freeze({
       externalId: result.external_id,
@@ -196,6 +203,18 @@ export class PlatformPublisher implements PublisherPlatformPort {
           }),
           hashSohuPayload,
           (input) => new SohuDeliveryAdapter(config).deliver(input, signal),
+        );
+      case 'lieju':
+        return execute(
+          claim,
+          signal,
+          renderLieju({
+            citations: claim.citations,
+            content: browserArticleContentWithMedia(content, claim.mediaAssets ?? []),
+            rule_version: LIEJU_RENDER_RULE_VERSION,
+          }),
+          hashLiejuPayload,
+          (input) => new LiejuDeliveryAdapter(config).deliver(input, signal),
         );
       case 'toutiao':
         return execute(
@@ -497,7 +516,9 @@ function deliveryConfig(
   if (!credential) throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Credential is required');
   return Object.freeze({
     ...credential,
-    ...(['baijiahao', 'sohu'].includes(claim.platformCode) ? { account_id: claim.accountId } : {}),
+    ...(['baijiahao', 'sohu', 'lieju'].includes(claim.platformCode)
+      ? { account_id: claim.accountId }
+      : {}),
     mode: 'api',
   });
 }

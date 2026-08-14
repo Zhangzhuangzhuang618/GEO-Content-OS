@@ -47,14 +47,27 @@ export async function createPlatformAccount(
 ): Promise<PlatformAccount> {
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts`, {
     body: JSON.stringify({
-      ...(form.publish_mode === 'api' && !['baijiahao', 'sohu'].includes(form.platform_code)
+      ...(form.publish_mode === 'api' && form.platform_code === 'lieju'
         ? {
             credential: {
-              base_url: form.base_url.trim(),
-              bearer_token: form.bearer_token,
+              address: form.address.trim(),
+              category_id: form.category_id,
+              contact_name: form.contact_name.trim(),
+              mobile_phone: form.mobile_phone.trim(),
+              qq: form.qq.trim(),
+              street_id: form.street_id.trim() || null,
+              wechat: form.wechat.trim(),
+              zone_id: form.zone_id,
             },
           }
-        : {}),
+        : form.publish_mode === 'api' && !['baijiahao', 'sohu'].includes(form.platform_code)
+          ? {
+              credential: {
+                base_url: form.base_url.trim(),
+                bearer_token: form.bearer_token,
+              },
+            }
+          : {}),
       display_name: form.display_name.trim(),
       platform_code: form.platform_code,
       ...(form.publishing_url.trim() ? { publishing_url: form.publishing_url.trim() } : {}),
@@ -359,6 +372,40 @@ export async function startSohuBrowserLogin(
   const action = reauthenticate ? 'reauth' : 'login';
   const response = await fetch(
     `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/sohu-browser-session/${action}`,
+    {
+      credentials: 'include',
+      headers: writeHeaders(csrf, account.version),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw await parseRequestError(response);
+  const parsed = BaijiahaoBrowserLoginResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function getLiejuBrowserSession(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<BaijiahaoBrowserSession> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/lieju-browser-session`,
+    { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoBrowserSessionResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function startLiejuBrowserLogin(
+  account: PlatformAccount,
+  csrf: string,
+  reauthenticate = false,
+): Promise<BaijiahaoBrowserLogin> {
+  const action = reauthenticate ? 'reauth' : 'login';
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/lieju-browser-session/${action}`,
     {
       credentials: 'include',
       headers: writeHeaders(csrf, account.version),

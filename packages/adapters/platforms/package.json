@@ -25,6 +25,14 @@
       "types": "./dist/sohu/render/src/index.d.ts",
       "import": "./dist/sohu/render/src/index.js"
     },
+    "./lieju/delivery": {
+      "types": "./dist/lieju/delivery/src/index.d.ts",
+      "import": "./dist/lieju/delivery/src/index.js"
+    },
+    "./lieju/render": {
+      "types": "./dist/lieju/render/src/index.d.ts",
+      "import": "./dist/lieju/render/src/index.js"
+    },
     "./official_site/render": {
       "types": "./dist/official_site/render/src/index.d.ts",
       "import": "./dist/official_site/render/src/index.js"
@@ -73,8 +81,8 @@
   "scripts": {
     "build": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.build.json --pretty false",
     "test": "vitest run --config vitest.config.ts",
-    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render sohu/render toutiao/render zhihu/render xiaohongshu/render wechat_mp/render douyin/render",
-    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery sohu/delivery toutiao/delivery zhihu/delivery xiaohongshu/delivery wechat_mp/delivery douyin/delivery",
+    "test:contract": "vitest run --config vitest.config.ts official_site/render baijiahao/render sohu/render lieju/render toutiao/render zhihu/render xiaohongshu/render wechat_mp/render douyin/render",
+    "test:integration": "vitest run --config vitest.config.ts official_site/delivery baijiahao/delivery sohu/delivery lieju/delivery toutiao/delivery zhihu/delivery xiaohongshu/delivery wechat_mp/delivery douyin/delivery",
     "typecheck": "pnpm --filter @geo-content-os/contracts build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {

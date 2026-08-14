@@ -29,6 +29,7 @@ import { resolvePublishingUrl } from './platform-publishing-url';
 import { OfficialSiteAutomationPanel } from './official-site-automation-panel';
 import { BaijiahaoAutomationPanel } from './baijiahao-automation-panel';
 import { SohuBrowserPanel } from './sohu-browser-panel';
+import { LiejuBrowserPanel } from './lieju-browser-panel';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -92,6 +93,14 @@ export function PlatformAccountManager() {
     const parsed = PlatformAccountFormSchema.safeParse({
       base_url: String(data.get('base_url') ?? ''),
       bearer_token: String(data.get('bearer_token') ?? ''),
+      address: String(data.get('address') ?? ''),
+      category_id: String(data.get('category_id') ?? ''),
+      contact_name: String(data.get('contact_name') ?? ''),
+      mobile_phone: String(data.get('mobile_phone') ?? ''),
+      qq: String(data.get('qq') ?? ''),
+      street_id: String(data.get('street_id') ?? ''),
+      wechat: String(data.get('wechat') ?? ''),
+      zone_id: String(data.get('zone_id') ?? ''),
       display_name: String(data.get('display_name') ?? ''),
       platform_code: data.get('platform_code'),
       publishing_url: String(data.get('publishing_url') ?? ''),
@@ -142,7 +151,7 @@ export function PlatformAccountManager() {
       return;
     }
     if (
-      !['baijiahao', 'sohu'].includes(editingAccount.platform_code) &&
+      !['baijiahao', 'sohu', 'lieju'].includes(editingAccount.platform_code) &&
       editingAccount.publish_mode !== 'api' &&
       parsed.data.publish_mode === 'api' &&
       (!parsed.data.base_url.trim() || !parsed.data.bearer_token.trim())
@@ -309,7 +318,7 @@ export function PlatformAccountManager() {
           onPlatformChange={(next) => {
             setPlatformCode(next);
             setPublishMode(
-              ['official_site', 'baijiahao', 'sohu'].includes(next) ? 'api' : 'export',
+              ['official_site', 'baijiahao', 'sohu', 'lieju'].includes(next) ? 'api' : 'export',
             );
           }}
           onSubmit={connect}
@@ -342,6 +351,11 @@ export function PlatformAccountManager() {
           />
         ) : automationAccount.platform_code === 'sohu' ? (
           <SohuBrowserPanel
+            account={automationAccount}
+            onClose={() => setAutomationAccount(null)}
+          />
+        ) : automationAccount.platform_code === 'lieju' ? (
+          <LiejuBrowserPanel
             account={automationAccount}
             onClose={() => setAutomationAccount(null)}
           />
@@ -461,7 +475,8 @@ function EditForm({
             type="url"
           />
         </label>
-        {publishMode === 'api' && !['baijiahao', 'sohu'].includes(account.platform_code) ? (
+        {publishMode === 'api' &&
+        !['baijiahao', 'sohu', 'lieju'].includes(account.platform_code) ? (
           <>
             <label className="text-sm text-ink-700">
               新的发布 API 根地址
@@ -604,7 +619,70 @@ function ConnectForm({
             这里只用于“打开发布后台”，不参与 API 调用。
           </span>
         </label>
-        {publishMode === 'api' && !['baijiahao', 'sohu'].includes(platformCode) ? (
+        {publishMode === 'api' && platformCode === 'lieju' ? (
+          <>
+            <label className="text-sm text-ink-700">
+              广州区域
+              <select className={controlClass} defaultValue="" name="zone_id" required>
+                <option disabled value="">
+                  请选择区域
+                </option>
+                {LIEJU_ZONE_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-ink-700">
+              物流类别
+              <select className={controlClass} defaultValue="" name="category_id" required>
+                <option disabled value="">
+                  请选择类别
+                </option>
+                {LIEJU_CATEGORY_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-ink-700">
+              服务地址
+              <input className={controlClass} maxLength={120} name="address" required />
+            </label>
+            <label className="text-sm text-ink-700">
+              联系人
+              <input className={controlClass} maxLength={25} name="contact_name" required />
+            </label>
+            <label className="text-sm text-ink-700">
+              联系电话
+              <input
+                autoComplete="tel"
+                className={controlClass}
+                maxLength={20}
+                name="mobile_phone"
+                required
+                type="tel"
+              />
+            </label>
+            <label className="text-sm text-ink-700">
+              QQ（可选）
+              <input className={controlClass} maxLength={15} name="qq" />
+            </label>
+            <label className="text-sm text-ink-700">
+              微信号（可选）
+              <input className={controlClass} maxLength={25} name="wechat" />
+            </label>
+            <input name="street_id" type="hidden" value="" />
+            <input name="base_url" type="hidden" value="" />
+            <input name="bearer_token" type="hidden" value="" />
+            <p className="text-sm leading-6 text-amber-800 sm:col-span-2 lg:col-span-3">
+              联系方式会加密保存且不回显。无人值守发布要求账号已绑定
+              QQ，并具有免验证码的发布套餐或发帖包。
+            </p>
+          </>
+        ) : publishMode === 'api' && !['baijiahao', 'sohu'].includes(platformCode) ? (
           <>
             <label className="text-sm text-ink-700">
               {platformCode === 'official_site' ? '官网发布 API 根地址' : '平台 API 根地址'}
@@ -641,7 +719,8 @@ function ConnectForm({
         ) : (
           <input name="base_url" type="hidden" value="" />
         )}
-        {publishMode !== 'api' || ['baijiahao', 'sohu'].includes(platformCode) ? (
+        {platformCode !== 'lieju' &&
+        (publishMode !== 'api' || ['baijiahao', 'sohu'].includes(platformCode)) ? (
           <input name="bearer_token" type="hidden" value="" />
         ) : null}
       </div>
@@ -763,6 +842,17 @@ function ConnectionGuide({
       </div>
     );
   }
+  if (platformCode === 'lieju') {
+    return (
+      <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm leading-6 text-ink-700">
+        <p className="font-semibold text-ink-900">列举网自动发布使用独立托管浏览器</p>
+        <p className="mt-2">
+          保存后点击“列举网登录”，使用 QQ 扫码。已有列举网账号需先绑定
+          QQ；免费账号遇到腾讯验证码时会转人工，不会自动绕过。
+        </p>
+      </div>
+    );
+  }
   if (platformCode !== 'official_site') {
     return (
       <div className="mt-5 rounded-xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">
@@ -871,6 +961,16 @@ function AccountCard({
             搜狐号登录
           </button>
         ) : null}
+        {account.platform_code === 'lieju' && account.publish_mode === 'api' ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => onAutomation(account)}
+            type="button"
+          >
+            列举网登录
+          </button>
+        ) : null}
         {account.publish_mode === 'api' && !disabled ? (
           <button
             className={smallButton}
@@ -928,11 +1028,38 @@ const PLATFORM_OPTIONS = [
   ['official_site', '官网'],
   ['baijiahao', '百家号'],
   ['sohu', '搜狐号'],
+  ['lieju', '列举网'],
   ['toutiao', '头条号'],
   ['zhihu', '知乎'],
   ['xiaohongshu', '小红书'],
   ['wechat_mp', '微信公众号'],
   ['douyin', '抖音'],
+] as const;
+const LIEJU_ZONE_OPTIONS = [
+  ['73', '荔湾'],
+  ['3038', '经济开发区'],
+  ['3037', '萝岗'],
+  ['3036', '南沙'],
+  ['83', '从化'],
+  ['82', '增城'],
+  ['81', '花都'],
+  ['80', '番禺'],
+  ['79', '白云'],
+  ['78', '黄埔'],
+  ['77', '海珠'],
+  ['76', '天河'],
+  ['75', '东山'],
+  ['74', '越秀'],
+  ['3081', '广州周边'],
+] as const;
+const LIEJU_CATEGORY_OPTIONS = [
+  ['1', '国内物流'],
+  ['2', '国际物流'],
+  ['3', '报关'],
+  ['4', '仓储'],
+  ['5', '货物运输'],
+  ['6', '包车运输'],
+  ['7', '货运代理'],
 ] as const;
 const STATUS_OPTIONS = [
   ['active', '连接正常'],

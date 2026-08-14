@@ -2505,6 +2505,7 @@
                   "official_site",
                   "baijiahao",
                   "sohu",
+                  "lieju",
                   "toutiao",
                   "zhihu",
                   "xiaohongshu",
@@ -2626,6 +2627,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -3550,6 +3552,7 @@
                   "official_site",
                   "baijiahao",
                   "sohu",
+                  "lieju",
                   "toutiao",
                   "zhihu",
                   "xiaohongshu",
@@ -3837,6 +3840,7 @@
                   "official_site",
                   "baijiahao",
                   "sohu",
+                  "lieju",
                   "toutiao",
                   "zhihu",
                   "xiaohongshu",
@@ -4078,6 +4082,7 @@
                   "official_site",
                   "baijiahao",
                   "sohu",
+                  "lieju",
                   "toutiao",
                   "zhihu",
                   "xiaohongshu",
@@ -4187,6 +4192,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -6945,6 +6951,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -7059,7 +7066,7 @@
                           },
                           "platform_codes": {
                             "minItems": 1,
-                            "maxItems": 8,
+                            "maxItems": 9,
                             "type": "array",
                             "items": {
                               "type": "string",
@@ -7067,6 +7074,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -7333,7 +7341,7 @@
                   "title": { "type": "string", "minLength": 2, "maxLength": 80 },
                   "platform_codes": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -7341,6 +7349,7 @@
                         "official_site",
                         "baijiahao",
                         "sohu",
+                        "lieju",
                         "toutiao",
                         "zhihu",
                         "xiaohongshu",
@@ -7463,7 +7472,7 @@
                         },
                         "platform_codes": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -7471,6 +7480,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -7743,7 +7753,7 @@
                         },
                         "platform_codes": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -7751,6 +7761,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -8026,7 +8037,7 @@
                   "title": { "type": "string", "minLength": 2, "maxLength": 80 },
                   "platform_codes": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -8034,6 +8045,7 @@
                         "official_site",
                         "baijiahao",
                         "sohu",
+                        "lieju",
                         "toutiao",
                         "zhihu",
                         "xiaohongshu",
@@ -8135,7 +8147,7 @@
                         },
                         "platform_codes": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -8143,6 +8155,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -8359,6 +8372,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -8537,6 +8551,7 @@
                                     "official_site",
                                     "baijiahao",
                                     "sohu",
+                                    "lieju",
                                     "toutiao",
                                     "zhihu",
                                     "xiaohongshu",
@@ -9285,6 +9300,7 @@
                                         "official_site",
                                         "baijiahao",
                                         "sohu",
+                                        "lieju",
                                         "toutiao",
                                         "zhihu",
                                         "xiaohongshu",
@@ -9486,7 +9502,7 @@
                         },
                         "variants": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -9523,6 +9539,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -10197,7 +10214,7 @@
                   },
                   "platform_codes": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -10205,6 +10222,7 @@
                         "official_site",
                         "baijiahao",
                         "sohu",
+                        "lieju",
                         "toutiao",
                         "zhihu",
                         "xiaohongshu",
@@ -10832,6 +10850,7 @@
                                         "official_site",
                                         "baijiahao",
                                         "sohu",
+                                        "lieju",
                                         "toutiao",
                                         "zhihu",
                                         "xiaohongshu",
@@ -11033,7 +11052,7 @@
                         },
                         "variants": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -11070,6 +11089,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -11267,7 +11287,7 @@
                 "properties": {
                   "variant_ids": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -11447,7 +11467,7 @@
                         },
                         "variants": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -11520,6 +11540,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -11917,6 +11938,7 @@
                                         "official_site",
                                         "baijiahao",
                                         "sohu",
+                                        "lieju",
                                         "toutiao",
                                         "zhihu",
                                         "xiaohongshu",
@@ -12427,6 +12449,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -12635,6 +12658,7 @@
                                       "official_site",
                                       "baijiahao",
                                       "sohu",
+                                      "lieju",
                                       "toutiao",
                                       "zhihu",
                                       "xiaohongshu",
@@ -12938,6 +12962,7 @@
                           "official_site",
                           "baijiahao",
                           "sohu",
+                          "lieju",
                           "toutiao",
                           "zhihu",
                           "xiaohongshu",
@@ -13178,6 +13203,7 @@
                                         "official_site",
                                         "baijiahao",
                                         "sohu",
+                                        "lieju",
                                         "toutiao",
                                         "zhihu",
                                         "xiaohongshu",
@@ -13688,6 +13714,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -13896,6 +13923,7 @@
                                       "official_site",
                                       "baijiahao",
                                       "sohu",
+                                      "lieju",
                                       "toutiao",
                                       "zhihu",
                                       "xiaohongshu",
@@ -14663,6 +14691,7 @@
                                         "official_site",
                                         "baijiahao",
                                         "sohu",
+                                        "lieju",
                                         "toutiao",
                                         "zhihu",
                                         "xiaohongshu",
@@ -15173,6 +15202,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -15381,6 +15411,7 @@
                                       "official_site",
                                       "baijiahao",
                                       "sohu",
+                                      "lieju",
                                       "toutiao",
                                       "zhihu",
                                       "xiaohongshu",
@@ -16334,6 +16365,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -16962,6 +16994,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -19716,7 +19749,7 @@
                               },
                               "platform_scope": {
                                 "minItems": 1,
-                                "maxItems": 8,
+                                "maxItems": 9,
                                 "type": "array",
                                 "items": {
                                   "type": "string",
@@ -19724,6 +19757,7 @@
                                     "official_site",
                                     "baijiahao",
                                     "sohu",
+                                    "lieju",
                                     "toutiao",
                                     "zhihu",
                                     "xiaohongshu",
@@ -20271,7 +20305,7 @@
                 "properties": {
                   "platform_scope": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -20279,6 +20313,7 @@
                         "official_site",
                         "baijiahao",
                         "sohu",
+                        "lieju",
                         "toutiao",
                         "zhihu",
                         "xiaohongshu",
@@ -21125,7 +21160,7 @@
                           },
                           "platform_scope": {
                             "minItems": 1,
-                            "maxItems": 8,
+                            "maxItems": 9,
                             "type": "array",
                             "items": {
                               "type": "string",
@@ -21133,6 +21168,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -21324,7 +21360,7 @@
                         },
                         "platform_scope": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -21332,6 +21368,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -21414,7 +21451,7 @@
                           },
                           "platform_scope": {
                             "minItems": 1,
-                            "maxItems": 8,
+                            "maxItems": 9,
                             "type": "array",
                             "items": {
                               "type": "string",
@@ -21422,6 +21459,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -23127,6 +23165,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -23212,6 +23251,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -23371,6 +23411,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -23430,6 +23471,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -23611,6 +23653,7 @@
                       "official_site",
                       "baijiahao",
                       "sohu",
+                      "lieju",
                       "toutiao",
                       "zhihu",
                       "xiaohongshu",
@@ -23672,6 +23715,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -23895,6 +23939,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -24144,6 +24189,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -26143,6 +26189,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -26244,6 +26291,584 @@
               }
             },
             "description": "PlatformAccountView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/platform-accounts/{id}/lieju-browser-session": {
+      "get": {
+        "operationId": "account_lieju_browser_session_get",
+        "tags": ["Platform Accounts"],
+        "x-contract-key": "account.lieju_browser_session.get",
+        "x-idempotency": "-",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "account_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "authenticated_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "last_verified_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "qr_expires_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "login_required",
+                            "qr_ready",
+                            "authenticated",
+                            "reauth",
+                            "attention_required",
+                            "disabled"
+                          ]
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "account_id",
+                        "authenticated_at",
+                        "last_verified_at",
+                        "qr_expires_at",
+                        "status",
+                        "version"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "BaijiahaoBrowserSessionView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "sessionCookie": [] }]
+      }
+    },
+    "/platform-accounts/{id}/lieju-browser-session/login": {
+      "post": {
+        "operationId": "account_lieju_browser_session_login",
+        "tags": ["Platform Accounts"],
+        "x-contract-key": "account.lieju_browser_session.login",
+        "x-idempotency": "resource+version",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "account_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "authenticated_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "last_verified_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "qr_expires_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "login_required",
+                            "qr_ready",
+                            "authenticated",
+                            "reauth",
+                            "attention_required",
+                            "disabled"
+                          ]
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "qr_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        }
+                      },
+                      "required": [
+                        "account_id",
+                        "authenticated_at",
+                        "last_verified_at",
+                        "qr_expires_at",
+                        "status",
+                        "version"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "BaijiahaoBrowserLoginView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/platform-accounts/{id}/lieju-browser-session/reauth": {
+      "post": {
+        "operationId": "account_lieju_browser_session_reauth",
+        "tags": ["Platform Accounts"],
+        "x-contract-key": "account.lieju_browser_session.reauth",
+        "x-idempotency": "resource+version",
+        "x-permission": "publishing.manage",
+        "x-policy": "publisher_or_admin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": true,
+            "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "account_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "authenticated_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "last_verified_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "qr_expires_at": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "date-time",
+                              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "login_required",
+                            "qr_ready",
+                            "authenticated",
+                            "reauth",
+                            "attention_required",
+                            "disabled"
+                          ]
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "qr_image_data_url": {
+                          "type": "string",
+                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                        }
+                      },
+                      "required": [
+                        "account_id",
+                        "authenticated_at",
+                        "last_verified_at",
+                        "qr_expires_at",
+                        "status",
+                        "version"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "BaijiahaoBrowserLoginView"
           },
           "default": {
             "content": {
@@ -27674,6 +28299,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -27897,6 +28523,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -29811,6 +30438,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -29873,6 +30501,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -30099,6 +30728,7 @@
                       "official_site",
                       "baijiahao",
                       "sohu",
+                      "lieju",
                       "toutiao",
                       "zhihu",
                       "xiaohongshu",
@@ -30178,6 +30808,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -30430,6 +31061,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -30676,6 +31308,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -33363,6 +33996,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -34028,7 +34662,10 @@
                             {
                               "type": "object",
                               "properties": {
-                                "platform_code": { "type": "string", "enum": ["baijiahao", "sohu"] }
+                                "platform_code": {
+                                  "type": "string",
+                                  "enum": ["baijiahao", "lieju", "sohu"]
+                                }
                               },
                               "required": ["platform_code"],
                               "additionalProperties": false
@@ -34273,7 +34910,10 @@
                                   "minimum": 1,
                                   "maximum": 20
                                 },
-                                "platform_code": { "type": "string", "enum": ["baijiahao", "sohu"] }
+                                "platform_code": {
+                                  "type": "string",
+                                  "enum": ["baijiahao", "lieju", "sohu"]
+                                }
                               },
                               "required": ["can_retry", "latest_attempt_no", "platform_code"],
                               "additionalProperties": false
@@ -36011,6 +36651,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -36157,7 +36798,7 @@
                           },
                           "platform_codes": {
                             "minItems": 1,
-                            "maxItems": 8,
+                            "maxItems": 9,
                             "type": "array",
                             "items": {
                               "type": "string",
@@ -36165,6 +36806,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -36184,7 +36826,7 @@
                               { "type": "null" }
                             ]
                           },
-                          "variant_count": { "type": "integer", "minimum": 1, "maximum": 8 },
+                          "variant_count": { "type": "integer", "minimum": 1, "maximum": 9 },
                           "workspace_id": {
                             "type": "string",
                             "format": "uuid",
@@ -36385,7 +37027,7 @@
                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                               },
                               "variant_ids": {
-                                "maxItems": 8,
+                                "maxItems": 9,
                                 "type": "array",
                                 "items": {
                                   "type": "string",
@@ -36612,7 +37254,7 @@
                             },
                             "variants": {
                               "minItems": 1,
-                              "maxItems": 8,
+                              "maxItems": 9,
                               "type": "array",
                               "items": {
                                 "type": "object",
@@ -36685,6 +37327,7 @@
                                       "official_site",
                                       "baijiahao",
                                       "sohu",
+                                      "lieju",
                                       "toutiao",
                                       "zhihu",
                                       "xiaohongshu",
@@ -36767,7 +37410,7 @@
                         },
                         "variants": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -36814,6 +37457,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -37058,7 +37702,7 @@
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                           },
                           "variant_ids": {
-                            "maxItems": 8,
+                            "maxItems": 9,
                             "type": "array",
                             "items": {
                               "type": "string",
@@ -37204,7 +37848,7 @@
                   },
                   "variant_ids": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -37266,7 +37910,7 @@
                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                               },
                               "variant_ids": {
-                                "maxItems": 8,
+                                "maxItems": 9,
                                 "type": "array",
                                 "items": {
                                   "type": "string",
@@ -37493,7 +38137,7 @@
                             },
                             "variants": {
                               "minItems": 1,
-                              "maxItems": 8,
+                              "maxItems": 9,
                               "type": "array",
                               "items": {
                                 "type": "object",
@@ -37566,6 +38210,7 @@
                                       "official_site",
                                       "baijiahao",
                                       "sohu",
+                                      "lieju",
                                       "toutiao",
                                       "zhihu",
                                       "xiaohongshu",
@@ -37648,7 +38293,7 @@
                         },
                         "variants": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -37695,6 +38340,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -38119,7 +38765,7 @@
                   },
                   "variant_ids": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -38181,7 +38827,7 @@
                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                               },
                               "variant_ids": {
-                                "maxItems": 8,
+                                "maxItems": 9,
                                 "type": "array",
                                 "items": {
                                   "type": "string",
@@ -38408,7 +39054,7 @@
                             },
                             "variants": {
                               "minItems": 1,
-                              "maxItems": 8,
+                              "maxItems": 9,
                               "type": "array",
                               "items": {
                                 "type": "object",
@@ -38481,6 +39127,7 @@
                                       "official_site",
                                       "baijiahao",
                                       "sohu",
+                                      "lieju",
                                       "toutiao",
                                       "zhihu",
                                       "xiaohongshu",
@@ -38563,7 +39210,7 @@
                         },
                         "variants": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "object",
@@ -38610,6 +39257,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -41642,6 +42290,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -41812,7 +42461,7 @@
                           "intent": { "type": "string", "minLength": 1, "maxLength": 32 },
                           "platform_codes": {
                             "minItems": 1,
-                            "maxItems": 8,
+                            "maxItems": 9,
                             "type": "array",
                             "items": {
                               "type": "string",
@@ -41820,6 +42469,7 @@
                                 "official_site",
                                 "baijiahao",
                                 "sohu",
+                                "lieju",
                                 "toutiao",
                                 "zhihu",
                                 "xiaohongshu",
@@ -42164,7 +42814,7 @@
                         },
                         "platform_codes": {
                           "minItems": 1,
-                          "maxItems": 8,
+                          "maxItems": 9,
                           "type": "array",
                           "items": {
                             "type": "string",
@@ -42172,6 +42822,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -42382,7 +43033,7 @@
                   "max_topics": { "default": 10, "type": "integer", "minimum": 1, "maximum": 50 },
                   "platform_codes": {
                     "minItems": 1,
-                    "maxItems": 8,
+                    "maxItems": 9,
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -42390,6 +43041,7 @@
                         "official_site",
                         "baijiahao",
                         "sohu",
+                        "lieju",
                         "toutiao",
                         "zhihu",
                         "xiaohongshu",
@@ -43050,6 +43702,7 @@
                       "official_site",
                       "baijiahao",
                       "sohu",
+                      "lieju",
                       "toutiao",
                       "zhihu",
                       "xiaohongshu",
@@ -43138,6 +43791,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -43335,6 +43989,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -43416,6 +44071,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -43586,6 +44242,7 @@
                 "official_site",
                 "baijiahao",
                 "sohu",
+                "lieju",
                 "toutiao",
                 "zhihu",
                 "xiaohongshu",
@@ -43666,6 +44323,7 @@
                               "official_site",
                               "baijiahao",
                               "sohu",
+                              "lieju",
                               "toutiao",
                               "zhihu",
                               "xiaohongshu",
@@ -43858,6 +44516,7 @@
                                     "official_site",
                                     "baijiahao",
                                     "sohu",
+                                    "lieju",
                                     "toutiao",
                                     "zhihu",
                                     "xiaohongshu",
@@ -44072,6 +44731,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -44157,6 +44817,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -44383,6 +45044,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -44605,6 +45267,7 @@
                             "official_site",
                             "baijiahao",
                             "sohu",
+                            "lieju",
                             "toutiao",
                             "zhihu",
                             "xiaohongshu",
@@ -44689,6 +45352,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
@@ -44934,6 +45598,7 @@
                                   "official_site",
                                   "baijiahao",
                                   "sohu",
+                                  "lieju",
                                   "toutiao",
                                   "zhihu",
                                   "xiaohongshu",
