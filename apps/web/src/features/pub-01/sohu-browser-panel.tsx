@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
   getSohuBrowserSession,
@@ -27,46 +27,16 @@ export function SohuBrowserPanel({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const autoStarted = useRef(false);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    void getSohuBrowserSession(account.id, controller.signal)
-      .then(setSession)
-      .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setMessage(
-            error instanceof PlatformAccountRequestError && error.status === 404
-              ? '尚未建立搜狐号托管会话。'
-              : '读取搜狐号登录态失败。',
-          );
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [account.id]);
-
-  useEffect(() => {
-    if (session?.status !== 'qr_ready') return;
-    const timer = setInterval(() => {
-      void getSohuBrowserSession(account.id)
-        .then((next) => {
-          setSession(next);
-          if (next.status === 'authenticated') {
-            setLogin(null);
-            setMessage('微信扫码登录已确认，搜狐号自动发布可以使用。');
-          }
-        })
-        .catch(() => undefined);
-    }, 3_000);
-    return () => clearInterval(timer);
-  }, [account.id, session?.status]);
-
-  async function beginLogin() {
+  const beginLogin = useCallback(async () => {
     if (inFlight.current) return;
     const csrf = readCookie('geo_csrf');
-    if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+    if (!csrf) {
+      setLoading(false);
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
@@ -88,8 +58,31 @@ export function SohuBrowserPanel({
     } finally {
       inFlight.current = false;
       setBusy(false);
+      setLoading(false);
     }
-  }
+  }, [account, session?.status]);
+
+  useEffect(() => {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    void beginLogin();
+  }, [beginLogin]);
+
+  useEffect(() => {
+    if (session?.status !== 'qr_ready') return;
+    const timer = setInterval(() => {
+      void getSohuBrowserSession(account.id)
+        .then((next) => {
+          setSession(next);
+          if (next.status === 'authenticated') {
+            setLogin(null);
+            setMessage('微信扫码登录已确认，搜狐号自动发布可以使用。');
+          }
+        })
+        .catch(() => undefined);
+    }, 3_000);
+    return () => clearInterval(timer);
+  }, [account.id, session?.status]);
 
   async function refresh() {
     setBusy(true);
