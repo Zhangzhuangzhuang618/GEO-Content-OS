@@ -58,6 +58,16 @@ const bindings: readonly Binding[] = [
     PlatformAccountController.prototype.updateBaijiahaoAutomation,
   ),
   bind(
+    'account.browser_platform_automation.list',
+    PlatformAccountController,
+    PlatformAccountController.prototype.listBrowserPlatformAutomation,
+  ),
+  bind(
+    'account.browser_platform_automation.put',
+    PlatformAccountController,
+    PlatformAccountController.prototype.updateBrowserPlatformAutomation,
+  ),
+  bind(
     'account.baijiahao_browser_session.get',
     PlatformAccountController,
     PlatformAccountController.prototype.getBaijiahaoBrowserSession,

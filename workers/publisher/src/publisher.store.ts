@@ -34,7 +34,12 @@ interface JobRow {
   readonly currentContentVersionId: string | null;
   readonly id: string;
   readonly idempotencyKey: string;
-  readonly origin: 'manual' | 'official_site_automation' | 'baijiahao_automation';
+  readonly origin:
+    | 'manual'
+    | 'official_site_automation'
+    | 'baijiahao_automation'
+    | 'sohu_automation'
+    | 'lieju_automation';
   readonly packageId: string;
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
@@ -60,7 +65,12 @@ interface CompletionRow {
   readonly packageStatus: ContentPackageStatus;
   readonly packageVersion: number;
   readonly projectId: string;
-  readonly origin: 'manual' | 'official_site_automation' | 'baijiahao_automation';
+  readonly origin:
+    | 'manual'
+    | 'official_site_automation'
+    | 'baijiahao_automation'
+    | 'sohu_automation'
+    | 'lieju_automation';
   readonly status: 'cancel_requested' | 'publishing';
   readonly variantId: string;
   readonly variantStatus: ContentVariantStatus;
@@ -322,6 +332,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
             WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
               AND status='scheduled'
           `;
+        } else if (isBrowserPlatformAutomationOrigin(row.origin)) {
+          await markBrowserPlatformAutomationProcessing(transaction, claim.tenantId, claim.jobId);
         }
         await insertBrowserReconcileEvent(
           transaction,
@@ -394,6 +406,14 @@ export class PostgresPublisherStore implements PublisherStorePort {
             null,
           );
           await completeBaijiahaoDailyBatchItem(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'published',
+            null,
+          );
+        } else if (isBrowserPlatformAutomationOrigin(row.origin)) {
+          await completeBrowserPlatformAutomation(
             transaction,
             claim.tenantId,
             claim.jobId,
@@ -501,6 +521,16 @@ export class PostgresPublisherStore implements PublisherStorePort {
         );
       } else if (claim.platformCode === 'sohu' || claim.platformCode === 'lieju') {
         await updateBrowserPublicationFailure(transaction, claim, failure, error);
+        if (isBrowserPlatformAutomationOrigin(row.origin)) {
+          const manual = failure.status === 'unknown' || failure.code === 'MANUAL_REQUIRED';
+          await completeBrowserPlatformAutomation(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            manual ? 'manual_required' : 'publish_failed',
+            error,
+          );
+        }
       }
       await transitionVariant(
         transaction,
@@ -572,6 +602,18 @@ export class PostgresPublisherStore implements PublisherStorePort {
               code: 'PUBLISH_CANCELLED_BY_USER',
               message: failure.message,
               schema_version: 'baijiahao-automation-error@1',
+            },
+          );
+        } else if (isBrowserPlatformAutomationOrigin(row.origin)) {
+          await completeBrowserPlatformAutomation(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'disabled',
+            {
+              code: 'PUBLISH_CANCELLED_BY_USER',
+              message: failure.message,
+              schema_version: 'browser-platform-automation-error@1',
             },
           );
         }
@@ -787,6 +829,14 @@ export class PostgresPublisherStore implements PublisherStorePort {
             'published',
             null,
           );
+        } else if (isBrowserPlatformAutomationOrigin(row.origin)) {
+          await completeBrowserPlatformAutomation(
+            transaction,
+            claim.tenantId,
+            claim.jobId,
+            'published',
+            null,
+          );
         }
         const browserPublications = await updateBrowserReconciliationState(
           transaction,
@@ -886,6 +936,14 @@ export class PostgresPublisherStore implements PublisherStorePort {
             error,
           );
         }
+      } else if (isBrowserPlatformAutomationOrigin(row.origin)) {
+        await completeBrowserPlatformAutomation(
+          transaction,
+          claim.tenantId,
+          claim.jobId,
+          manualRequired ? 'manual_required' : 'publish_failed',
+          error,
+        );
       }
       const browserPublications = await updateBrowserReconciliationTerminalFailure(
         transaction,
@@ -1151,7 +1209,8 @@ function selectBaijiahaoReconcileRow(
     WHERE job.id=${event.jobId}::uuid AND job.tenant_id=${event.tenantId}::uuid
       AND (
         (${event.platformCode}='baijiahao' AND job.origin IN ('manual','baijiahao_automation'))
-        OR (${event.platformCode} IN ('sohu','lieju') AND job.origin='manual')
+        OR (${event.platformCode}='sohu' AND job.origin IN ('manual','sohu_automation'))
+        OR (${event.platformCode}='lieju' AND job.origin IN ('manual','lieju_automation'))
       )
     ${lock ? transaction`FOR UPDATE OF job, variant, package, account` : transaction``}
   `;
@@ -1237,8 +1296,19 @@ function deliveryStatus(
 function isBrowserOrigin(
   origin: CompletionRow['origin'],
   platformCode: 'baijiahao' | 'lieju' | 'sohu',
-): origin is 'manual' | 'baijiahao_automation' {
-  return origin === 'manual' || (platformCode === 'baijiahao' && origin === 'baijiahao_automation');
+): origin is 'manual' | 'baijiahao_automation' | 'sohu_automation' | 'lieju_automation' {
+  return (
+    origin === 'manual' ||
+    (platformCode === 'baijiahao' && origin === 'baijiahao_automation') ||
+    (platformCode === 'sohu' && origin === 'sohu_automation') ||
+    (platformCode === 'lieju' && origin === 'lieju_automation')
+  );
+}
+
+function isBrowserPlatformAutomationOrigin(
+  origin: CompletionRow['origin'],
+): origin is 'lieju_automation' | 'sohu_automation' {
+  return origin === 'sohu_automation' || origin === 'lieju_automation';
 }
 
 function isBrowserPlatform(
@@ -1297,6 +1367,74 @@ async function completeBaijiahaoAutomationRun(
     RETURNING id
   `;
   if (rows.length !== 1) throw stateInvalid();
+}
+
+async function markBrowserPlatformAutomationProcessing(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+) {
+  const rows = await transaction<{ id: string }[]>`
+    UPDATE browser_platform_automation_runs SET status='processing',last_error_json=NULL,
+      finished_at=NULL,version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publishing')
+    RETURNING id
+  `;
+  if (rows.length !== 1) throw stateInvalid();
+  await transaction`
+    UPDATE browser_platform_daily_batch_items SET status='processing',last_error_json=NULL
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status='scheduled'
+  `;
+}
+
+async function completeBrowserPlatformAutomation(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  status: 'disabled' | 'manual_required' | 'publish_failed' | 'published',
+  error: Readonly<Record<string, unknown>> | null,
+) {
+  const rows = await transaction<{ id: string }[]>`
+    UPDATE browser_platform_automation_runs SET status=${status},
+      last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb,
+      finished_at=now(),version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publishing','processing')
+    RETURNING id
+  `;
+  if (rows.length !== 1) throw stateInvalid();
+  const items = await transaction<{ batchId: string }[]>`
+    UPDATE browser_platform_daily_batch_items SET status=${status === 'disabled' ? 'manual_required' : status},
+      published_at=CASE WHEN ${status}='published' THEN now() ELSE NULL END,
+      last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','processing')
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  if (status !== 'published') {
+    await transaction`
+      UPDATE browser_platform_daily_batches SET status='attention_required',
+        last_error_json=${error ? JSON.stringify(error) : null}::text::jsonb,version=version+1
+      WHERE id=${batchId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('running','scheduled')
+    `;
+    return;
+  }
+  await transaction`
+    UPDATE browser_platform_daily_batches AS batch SET status='completed',completed_at=now(),
+      last_error_json=NULL,version=version+1
+    WHERE batch.id=${batchId}::uuid AND batch.tenant_id=${tenantId}::uuid
+      AND batch.status='scheduled'
+      AND NOT EXISTS (
+        SELECT 1 FROM browser_platform_daily_batch_items AS item
+        WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+          AND item.status NOT IN ('published','retired')
+      )
+  `;
 }
 
 async function insertPublishedEvent(

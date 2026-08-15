@@ -574,6 +574,20 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_browser_platform_automation_list: {
+    idempotency: '-',
+    method: 'GET',
+    path: '/platform-accounts/{id}/content-automation',
+    permission: 'publishing.manage',
+    security: 'session',
+  },
+  account_browser_platform_automation_put: {
+    idempotency: '-',
+    method: 'PUT',
+    path: '/platform-accounts/{id}/content-automation',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_disable: {
     idempotency: 'resource+version',
     method: 'POST',

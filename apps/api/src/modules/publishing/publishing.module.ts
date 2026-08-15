@@ -14,6 +14,7 @@ import {
 import { PublishingApiService } from './api/publishing-api.service.js';
 import {
   BaijiahaoAutomationPolicyService,
+  BrowserPlatformAutomationPolicyService,
   BaijiahaoBrowserGatewayClient,
   OfficialSiteAutomationPolicyService,
   PlatformAccountService,
@@ -57,6 +58,12 @@ import {
       provide: OfficialSiteAutomationPolicyService,
       useFactory: (database: IdentityAuthDatabase) =>
         new OfficialSiteAutomationPolicyService(database),
+    },
+    {
+      inject: [IdentityAuthDatabase],
+      provide: BrowserPlatformAutomationPolicyService,
+      useFactory: (database: IdentityAuthDatabase) =>
+        new BrowserPlatformAutomationPolicyService(database),
     },
     {
       provide: BaijiahaoBrowserGatewayClient,

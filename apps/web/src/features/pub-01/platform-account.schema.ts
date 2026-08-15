@@ -258,6 +258,55 @@ export const BaijiahaoAutomationPolicySchema = z
     workspace_id: z.string().uuid(),
   })
   .strict();
+export const BrowserPlatformAutomationPolicySchema = z
+  .object({
+    account_id: z.string().uuid(),
+    brand_consistency_min: z.literal(90),
+    daily_candidate_limit: z.number().int().min(1).max(30),
+    daily_enabled: z.boolean(),
+    daily_generation_time: z.string(),
+    daily_schedule_times: z.array(z.string()).min(1).max(10),
+    daily_target_count: z.number().int().min(1).max(10),
+    daily_timezone: z.literal('Asia/Shanghai'),
+    enabled: z.boolean(),
+    factual_accuracy_min: z.literal(90),
+    geo_total_min: z.literal(85),
+    id: z.string().uuid(),
+    max_rewrites: z.literal(3),
+    platform_code: z.enum(['sohu', 'lieju']),
+    platform_fit_min: z.literal(80),
+    project_id: z.string().uuid(),
+    publish_attempt_limit: z.literal(3),
+    question_coverage_min: z.literal(80),
+    readability_safety_min: z.literal(85),
+    tenant_id: z.string().uuid(),
+    today_batch: z
+      .object({
+        attempted_count: z.number().int().min(0).max(30),
+        business_date: z.iso.date(),
+        in_progress_count: z.number().int().min(0).max(30),
+        last_error_message: z.string().nullable(),
+        manual_required_count: z.number().int().min(0).max(30),
+        published_count: z.number().int().min(0).max(10),
+        retired_count: z.number().int().min(0).max(30),
+        scheduled_count: z.number().int().min(0).max(10),
+        status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
+        target_count: z.number().int().min(1).max(10),
+        version: z.number().int().positive(),
+      })
+      .strict()
+      .nullable(),
+    updated_at: z.iso.datetime(),
+    version: z.number().int().positive(),
+    workspace_id: z.string().uuid(),
+  })
+  .strict();
+export const BrowserPlatformAutomationPolicyPageSchema = z
+  .object({ data: z.array(BrowserPlatformAutomationPolicySchema), meta: ResponseMetaSchema })
+  .strict();
+export const BrowserPlatformAutomationPolicyResponseSchema = z
+  .object({ data: BrowserPlatformAutomationPolicySchema, meta: ResponseMetaSchema })
+  .strict();
 export const BaijiahaoAutomationPolicyPageSchema = z
   .object({ data: z.array(BaijiahaoAutomationPolicySchema), meta: ResponseMetaSchema })
   .strict();
@@ -409,6 +458,7 @@ export type PlatformAccountStatus = z.infer<typeof PlatformAccountStatusSchema>;
 export type PlatformCode = z.infer<typeof PlatformCodeSchema>;
 export type OfficialSiteAutomationPolicy = z.infer<typeof OfficialSiteAutomationPolicySchema>;
 export type BaijiahaoAutomationPolicy = z.infer<typeof BaijiahaoAutomationPolicySchema>;
+export type BrowserPlatformAutomationPolicy = z.infer<typeof BrowserPlatformAutomationPolicySchema>;
 export type BaijiahaoBrowserSession = z.infer<typeof BaijiahaoBrowserSessionSchema>;
 export type BaijiahaoBrowserLogin = z.infer<typeof BaijiahaoBrowserLoginSchema>;
 export type SohuBrowserLoginInput =

@@ -14,6 +14,7 @@ import type {
   LiejuBrowserLoginInput,
   PlatformAccount,
 } from './platform-account.schema';
+import { BrowserPlatformAutomationPanel } from './browser-platform-automation-panel';
 
 type LoginMode = 'qq' | 'password';
 
@@ -222,6 +223,7 @@ export function LiejuBrowserPanel({
           {message}
         </p>
       </div>
+      <BrowserPlatformAutomationPanel account={account} />
     </section>
   );
 }

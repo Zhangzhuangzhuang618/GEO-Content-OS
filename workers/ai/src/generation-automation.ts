@@ -1,6 +1,7 @@
 import type postgres from 'postgres';
 
 import type { BaijiahaoAutomation } from './baijiahao-automation.js';
+import type { BrowserPlatformAutomation } from './browser-platform-automation.js';
 import type { OfficialSiteAutomation } from './official-site-automation.js';
 import type { GeneratedContent, ValidatedGenerationEvent } from './generation.types.js';
 
@@ -19,6 +20,7 @@ export class GenerationAutomationCoordinator implements GenerationAutomationPort
   public constructor(
     private readonly officialSite: OfficialSiteAutomation,
     private readonly baijiahao: BaijiahaoAutomation,
+    private readonly browserPlatform: BrowserPlatformAutomation,
   ) {}
 
   public async queueQualityAfterGeneration(
@@ -43,6 +45,13 @@ export class GenerationAutomationCoordinator implements GenerationAutomationPort
       contentVersionId,
       generatedHash,
       content,
+    );
+    await this.browserPlatform.queueQualityAfterGeneration(
+      transaction,
+      event,
+      variantId,
+      contentVersionId,
+      generatedHash,
     );
   }
 }

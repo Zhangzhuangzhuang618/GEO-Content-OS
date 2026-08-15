@@ -1,6 +1,7 @@
 export * from './platform-account.errors.js';
 export * from './official-site-automation-policy.service.js';
 export * from './baijiahao-automation-policy.service.js';
+export * from './browser-platform-automation-policy.service.js';
 export * from './baijiahao-browser-gateway.client.js';
 export * from './sohu-browser-gateway.client.js';
 export * from './sohu-browser-session.service.js';

@@ -12,6 +12,8 @@ import { ContentGenerationWorker } from './generation.worker.js';
 import { GenerationAutomationCoordinator } from './generation-automation.js';
 import { BaijiahaoAutomation } from './baijiahao-automation.js';
 import { BaijiahaoDailyScheduler } from './baijiahao-daily-scheduler.js';
+import { BrowserPlatformAutomation } from './browser-platform-automation.js';
+import { BrowserPlatformDailyScheduler } from './browser-platform-daily-scheduler.js';
 import { OfficialSiteAutomation } from './official-site-automation.js';
 import { OfficialSiteDailyScheduler } from './official-site-daily-scheduler.js';
 import { AiQueueConsumer } from './queue.consumer.js';
@@ -43,6 +45,11 @@ async function main(): Promise<void> {
   );
   const automation = new OfficialSiteAutomation(database, writer, config.automation);
   const baijiahaoAutomation = new BaijiahaoAutomation(database, writer, config.automation);
+  const browserPlatformAutomation = new BrowserPlatformAutomation(
+    database,
+    writer,
+    config.automation,
+  );
   const mediaAutomation = new ContentMediaAutomation(config.media, {
     generationModel: imageConfiguration.provider?.generationModel ?? null,
     inspectionModel: imageConfiguration.provider?.inspectionModel ?? null,
@@ -52,8 +59,13 @@ async function main(): Promise<void> {
     automation,
     baijiahaoAutomation,
     mediaAutomation,
+    browserPlatformAutomation,
   );
-  const generationAutomation = new GenerationAutomationCoordinator(automation, baijiahaoAutomation);
+  const generationAutomation = new GenerationAutomationCoordinator(
+    automation,
+    baijiahaoAutomation,
+    browserPlatformAutomation,
+  );
   const dailyScheduler = new OfficialSiteDailyScheduler(database, config.automation, {
     onError: (error) => console.error('Official-site daily scheduler error', error),
     tickMs: config.dailySchedulerTickMs,
@@ -62,6 +74,14 @@ async function main(): Promise<void> {
     onError: (error) => console.error('Baijiahao daily scheduler error', error),
     tickMs: config.dailySchedulerTickMs,
   });
+  const browserPlatformDailyScheduler = new BrowserPlatformDailyScheduler(
+    database,
+    config.automation,
+    {
+      onError: (error) => console.error('Browser platform daily scheduler error', error),
+      tickMs: config.dailySchedulerTickMs,
+    },
+  );
   const generation = new ContentGenerationWorker(
     new PostgresGenerationStore(database, 60_000, generationAutomation),
     writer,
@@ -87,12 +107,14 @@ async function main(): Promise<void> {
     automation,
     baijiahaoAutomation,
     config.media,
+    browserPlatformAutomation,
   );
   const consumer = new AiQueueConsumer(
     generation,
     quality,
     automation,
     baijiahaoAutomation,
+    browserPlatformAutomation,
     visibility,
     media,
     {
@@ -134,6 +156,7 @@ async function main(): Promise<void> {
     }
     dailyScheduler.start();
     baijiahaoDailyScheduler.start();
+    browserPlatformDailyScheduler.start();
     ready = true;
     await new Promise<void>((resolve) => {
       process.once('SIGINT', resolve);
@@ -145,6 +168,7 @@ async function main(): Promise<void> {
       consumer.close(),
       dailyScheduler.stop(),
       baijiahaoDailyScheduler.stop(),
+      browserPlatformDailyScheduler.stop(),
       database.end({ timeout: 5 }),
       new Promise<void>((resolve, reject) => {
         health.close((error) => (error ? reject(error) : resolve()));

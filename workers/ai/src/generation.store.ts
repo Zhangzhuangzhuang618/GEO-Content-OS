@@ -298,7 +298,12 @@ export class PostgresGenerationStore implements GenerationStorePort {
       if (pointed.length !== 1) throw stateInvalid();
       await succeedRun(transaction, event, claim.run.runId, claim.leaseVersion);
       await insertAudit(transaction, event, versionId, claim.run.platformCode);
-      if (claim.run.platformCode === 'official_site' || claim.run.platformCode === 'baijiahao') {
+      if (
+        claim.run.platformCode === 'official_site' ||
+        claim.run.platformCode === 'baijiahao' ||
+        claim.run.platformCode === 'sohu' ||
+        claim.run.platformCode === 'lieju'
+      ) {
         await this.automation?.queueQualityAfterGeneration(
           transaction,
           event,

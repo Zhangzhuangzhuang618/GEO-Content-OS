@@ -575,6 +575,60 @@ describe('publisher worker', () => {
     ]);
   });
 
+  it('completes the Sohu automation run and daily batch after remote publication', async () => {
+    const database = requireClient(client);
+    await enableSohuAutomationPublishing(database);
+    const platform = new FakePlatform(
+      {
+        externalId: 'sohu-automation-t153',
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [
+        {
+          externalId: 'sohu-automation-t153',
+          status: 'published',
+          url: 'https://mp.sohu.com/profile?contentId=sohu-automation-t153',
+        },
+      ],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(
+      worker.reconcileBaijiahao(await latestSohuReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(
+      await database<
+        {
+          automationStatus: string;
+          batchStatus: string;
+          itemStatus: string;
+          jobStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          item.status AS "itemStatus",batch.status AS "batchStatus"
+        FROM publish_jobs AS job
+        JOIN browser_platform_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN browser_platform_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN browser_platform_daily_batches AS batch ON batch.id=item.batch_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'published',
+        batchStatus: 'completed',
+        itemStatus: 'published',
+        jobStatus: 'published',
+      },
+    ]);
+  });
+
   it('requires manual handling when review is still processing after twelve reconciliations', async () => {
     const database = requireClient(client);
     await enableBaijiahaoAutomation(database);
@@ -946,7 +1000,10 @@ async function enableBaijiahaoAutomation(
   `;
 }
 
-async function enableSohuManualPublishing(database: Sql): Promise<void> {
+async function enableSohuManualPublishing(
+  database: Sql,
+  origin: 'manual' | 'sohu_automation' = 'manual',
+): Promise<void> {
   await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
   await database`
     UPDATE briefs SET platform_codes=ARRAY['sohu']::varchar[]
@@ -972,7 +1029,7 @@ async function enableSohuManualPublishing(database: Sql): Promise<void> {
     ) VALUES(
       ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
       ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
-      ${CONTENT_HASH},'scheduled','manual',${USER_ID}::uuid
+      ${CONTENT_HASH},'scheduled',${origin},${USER_ID}::uuid
     )
   `;
   await database`
@@ -993,6 +1050,47 @@ async function enableSohuManualPublishing(database: Sql): Promise<void> {
       ${ACCOUNT_ID}::uuid,${JOB_ID}::uuid,${VERSION_ID}::uuid,
       'publish-job-125-stable',${CONTENT_HASH},${'c'.repeat(64)},
       '搜狐号测试文章','submitting','{}'::jsonb,now()
+    )
+  `;
+}
+
+async function enableSohuAutomationPublishing(database: Sql): Promise<void> {
+  await enableSohuManualPublishing(database, 'sohu_automation');
+  await database`
+    INSERT INTO browser_platform_automation_policies(
+      id,tenant_id,workspace_id,project_id,account_id,platform_code,
+      enabled,daily_enabled,created_by
+    ) VALUES(
+      ${POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'sohu',true,true,${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO browser_platform_automation_runs(
+      id,tenant_id,policy_id,platform_code,variant_id,content_version_id,
+      status,publish_job_id
+    ) VALUES(
+      ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,'sohu',
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,'scheduled',${JOB_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO browser_platform_daily_batches(
+      id,tenant_id,policy_id,business_date,status,scheduled_at
+    ) VALUES(
+      ${DAILY_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2026-08-16','scheduled',now()
+    )
+  `;
+  await database`
+    INSERT INTO browser_platform_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,
+      variant_id,content_version_id,publish_job_id,status,qualified_at,scheduled_at
+    ) VALUES(
+      ${DAILY_ITEM_ID}::uuid,${TENANT_ID}::uuid,${DAILY_BATCH_ID}::uuid,1,
+      ${AUTOMATION_RUN_ID}::uuid,${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${JOB_ID}::uuid,
+      'scheduled',now(),now()
     )
   `;
 }

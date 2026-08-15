@@ -11,6 +11,11 @@ import type {
   OfficialSiteAutomationPolicy,
   OfficialSiteQualityGate,
 } from './official-site-automation.js';
+import type {
+  BrowserPlatformAutomation,
+  BrowserPlatformAutomationPolicy,
+  BrowserPlatformQualityGate,
+} from './browser-platform-automation.js';
 import type { ValidatedQualityEvent } from './quality.event.js';
 import type { ContentMediaAutomation } from './content-media-automation.js';
 
@@ -18,9 +23,11 @@ type AutomationSql = postgres.Sql | postgres.TransactionSql;
 
 export type QualityAutomationPolicy =
   | { readonly kind: 'baijiahao'; readonly value: BaijiahaoAutomationPolicy }
+  | { readonly kind: 'browser_platform'; readonly value: BrowserPlatformAutomationPolicy }
   | { readonly kind: 'official_site'; readonly value: OfficialSiteAutomationPolicy };
 
-export type QualityAutomationGate = BaijiahaoQualityGate | OfficialSiteQualityGate;
+export type QualityAutomationGate =
+  BaijiahaoQualityGate | BrowserPlatformQualityGate | OfficialSiteQualityGate;
 
 export interface QualityAutomationPort {
   advanceAfterQuality(
@@ -53,6 +60,7 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
     private readonly officialSite: OfficialSiteAutomation,
     private readonly baijiahao: BaijiahaoAutomation,
     private readonly media?: ContentMediaAutomation,
+    private readonly browserPlatform?: BrowserPlatformAutomation,
   ) {}
 
   public async loadGatePolicy(
@@ -63,7 +71,15 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
     const official = await this.officialSite.loadGatePolicy(transaction, tenantId, variantId);
     if (official) return Object.freeze({ kind: 'official_site', value: official });
     const baijiahao = await this.baijiahao.loadGatePolicy(transaction, tenantId, variantId);
-    return baijiahao ? Object.freeze({ kind: 'baijiahao', value: baijiahao }) : null;
+    if (baijiahao) return Object.freeze({ kind: 'baijiahao', value: baijiahao });
+    const browserPlatform = await this.browserPlatform?.loadGatePolicy(
+      transaction,
+      tenantId,
+      variantId,
+    );
+    return browserPlatform
+      ? Object.freeze({ kind: 'browser_platform', value: browserPlatform })
+      : null;
   }
 
   public calculateGate(
@@ -71,9 +87,14 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
     result: QualityCheckerData,
     geoScores: QualityGeoScores,
   ): QualityAutomationGate {
-    return policy.kind === 'official_site'
-      ? this.officialSite.calculateGate(policy.value, result, geoScores)
-      : this.baijiahao.calculateGate(policy.value, result, geoScores);
+    if (policy.kind === 'official_site') {
+      return this.officialSite.calculateGate(policy.value, result, geoScores);
+    }
+    if (policy.kind === 'baijiahao') {
+      return this.baijiahao.calculateGate(policy.value, result, geoScores);
+    }
+    if (!this.browserPlatform) throw new Error('Browser platform automation is unavailable');
+    return this.browserPlatform.calculateGate(policy.value, result, geoScores);
   }
 
   public advanceAfterQuality(
@@ -100,10 +121,24 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
         result,
       );
     }
-    if (gate.schema_version !== 'baijiahao-quality-gate@1') {
-      throw new Error('Baijiahao quality gate type is invalid');
+    if (policy.kind === 'baijiahao') {
+      if (gate.schema_version !== 'baijiahao-quality-gate@1') {
+        throw new Error('Baijiahao quality gate type is invalid');
+      }
+      return this.baijiahao.advanceAfterQuality(
+        transaction,
+        event,
+        policy.value,
+        reportId,
+        gate,
+        result,
+      );
     }
-    return this.baijiahao.advanceAfterQuality(
+    if (gate.schema_version !== 'browser-platform-quality-gate@1') {
+      throw new Error('Browser platform quality gate type is invalid');
+    }
+    if (!this.browserPlatform) throw new Error('Browser platform automation is unavailable');
+    return this.browserPlatform.advanceAfterQuality(
       transaction,
       event,
       policy.value,
@@ -120,5 +155,6 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
   ): Promise<void> {
     await this.officialSite.failQualityExecution(transaction, event, error);
     await this.baijiahao.failQualityExecution(transaction, event, error);
+    await this.browserPlatform?.failQualityExecution(transaction, event, error);
   }
 }

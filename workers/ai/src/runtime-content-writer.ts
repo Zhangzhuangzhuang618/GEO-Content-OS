@@ -253,6 +253,46 @@ export class RuntimeContentWriter implements ContentWriterPort {
     return content;
   }
 
+  public async rewriteBrowserPlatformVariant(input: {
+    readonly context: ContentWriterRunContext;
+    readonly currentContent: GeneratedContent;
+    readonly issues: readonly string[];
+    readonly platformCode: 'lieju' | 'sohu';
+    readonly requestId: string;
+    readonly signal?: AbortSignal;
+    readonly writerInput: JsonObject;
+  }): Promise<GeneratedContent> {
+    const current = browserPlatformSourceContent(input.currentContent, input.platformCode);
+    const revision: ContentWriterRevision = Object.freeze({
+      candidate: Object.freeze({
+        master_content: browserPlatformSourceContent(input.currentContent, 'master'),
+        variants: Object.freeze([current]),
+      }),
+      issues: Object.freeze([
+        `这是 ${input.platformCode} 独立内容的质量重写：保留原选题，只修复当前质量报告列出的问题，不得增加输入材料之外的事实。`,
+        ...(input.platformCode === 'lieju'
+          ? [
+              '允许介绍本企业服务并使用自然咨询引导，但不得在正文写电话、微信、QQ 或网址，不得添加极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。',
+            ]
+          : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),
+        ...input.issues,
+      ]),
+    });
+    const output = await this.execute(input, revision);
+    const variant = output.data.variants.find(
+      (candidate) => candidate.platform_code === input.platformCode,
+    );
+    if (!variant) {
+      throw new GenerationWorkerError(
+        'GENERATED_CONTENT_INVALID',
+        `Content Writer omitted ${input.platformCode} during automated rewrite`,
+      );
+    }
+    const content = generated(variant);
+    assertCompanyNamePolicy(content, input.platformCode);
+    return content;
+  }
+
   private async executeOfficialSiteArticle(
     input: {
       readonly context: ContentWriterRunContext;
@@ -1485,4 +1525,15 @@ function baijiahaoSourceContent(
     summary,
     title,
   });
+}
+
+function browserPlatformSourceContent(
+  source: GeneratedContent,
+  platformCode: 'lieju' | 'master' | 'sohu',
+): ContentWriterContent {
+  const normalized = baijiahaoSourceContent(
+    source,
+    platformCode === 'master' ? 'master' : 'baijiahao',
+  );
+  return Object.freeze({ ...normalized, platform_code: platformCode }) as ContentWriterContent;
 }

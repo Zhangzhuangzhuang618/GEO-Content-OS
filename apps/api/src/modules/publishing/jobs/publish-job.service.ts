@@ -96,6 +96,12 @@ interface BrowserPublicationRow {
   readonly status: string;
 }
 
+type AutomatedOrigin = Exclude<PublishJobView['origin'], 'manual'>;
+type BrowserPlatformAutomatedOrigin = Extract<
+  AutomatedOrigin,
+  'lieju_automation' | 'sohu_automation'
+>;
+
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/u;
 
 export class PublishJobService {
@@ -229,7 +235,7 @@ export class PublishJobService {
       if (resolution.variantStatus === 'approved') {
         const restoredStatus = isAutomatedOrigin(before.origin) ? 'quality_passed' : 'approved';
         const cause = isAutomatedOrigin(before.origin)
-          ? before.origin
+          ? automationTransitionCause(before.origin)
           : before.variantStatus === 'publishing'
             ? 'publish_cancel_before_call'
             : 'normal';
@@ -501,6 +507,13 @@ export class PublishJobService {
         before.id,
         publishedAt,
       );
+    } else if (isBrowserPlatformAutomatedOrigin(before.origin)) {
+      await confirmBrowserPlatformAutomationPublished(
+        transaction,
+        scope.tenantId,
+        before.id,
+        publishedAt,
+      );
     }
     await projectPackage(
       transaction,
@@ -607,7 +620,9 @@ export class PublishJobService {
       `;
     const after = requireChangedJob(rows, before);
     if (before.status !== 'scheduled') {
-      const transitionCause = isAutomatedOrigin(before.origin) ? before.origin : 'normal';
+      const transitionCause = isAutomatedOrigin(before.origin)
+        ? automationTransitionCause(before.origin)
+        : 'normal';
       if (before.status === 'failed') {
         assertContentVariantTransition({
           cause: transitionCause,
@@ -1107,11 +1122,49 @@ async function confirmBaijiahaoAutomationPublished(
   `;
 }
 
+async function confirmBrowserPlatformAutomationPublished(
+  transaction: TransactionSql,
+  tenantId: string,
+  publishJobId: string,
+  publishedAt: Date,
+): Promise<void> {
+  const runs = await transaction<{ id: string }[]>`
+    UPDATE browser_platform_automation_runs SET
+      status='published',last_error_json=NULL,finished_at=${publishedAt.toISOString()}::timestamptz,
+      version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publishing','processing','manual_required','publish_failed')
+    RETURNING id
+  `;
+  if (runs.length !== 1) throw stateInvalid('Browser-platform automation run is inconsistent');
+  const items = await transaction<{ batchId: string }[]>`
+    UPDATE browser_platform_daily_batch_items SET
+      status='published',published_at=${publishedAt.toISOString()}::timestamptz,last_error_json=NULL
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','processing','manual_required','publish_failed')
+    RETURNING batch_id AS "batchId"
+  `;
+  const batchId = items[0]?.batchId;
+  if (!batchId) return;
+  await transaction`
+    UPDATE browser_platform_daily_batches AS batch SET
+      status='completed',completed_at=${publishedAt.toISOString()}::timestamptz,
+      last_error_json=NULL,version=version+1
+    WHERE batch.id=${batchId}::uuid AND batch.tenant_id=${tenantId}::uuid
+      AND batch.status IN ('running','scheduled','attention_required')
+      AND NOT EXISTS (
+        SELECT 1 FROM browser_platform_daily_batch_items AS item
+        WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+          AND item.status NOT IN ('published','retired')
+      )
+  `;
+}
+
 async function disableAutomationRun(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
-  origin: 'baijiahao_automation' | 'official_site_automation',
+  origin: AutomatedOrigin,
   reason: string,
 ): Promise<void> {
   if (origin === 'baijiahao_automation') {
@@ -1140,6 +1193,32 @@ async function disableAutomationRun(
     `;
     return;
   }
+  if (isBrowserPlatformAutomatedOrigin(origin)) {
+    const rows = await transaction<{ id: string }[]>`
+      UPDATE browser_platform_automation_runs SET
+        status='disabled',
+        last_error_json=${JSON.stringify({
+          code: 'PUBLISH_CANCELLED_BY_USER',
+          message: reason,
+          schema_version: 'browser-platform-automation-error@1',
+        })}::text::jsonb,
+        finished_at=now(),version=version+1
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status IN ('scheduled','publishing','processing')
+      RETURNING id
+    `;
+    if (rows.length !== 1) throw stateInvalid('Browser-platform automation run is inconsistent');
+    await transaction`
+      UPDATE browser_platform_daily_batch_items SET status='retired',
+        last_error_json=jsonb_build_object(
+          'code','PUBLISH_CANCELLED_BY_USER','message',${reason},
+          'schema_version','browser-platform-daily-error@1'
+        )
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status IN ('scheduled','processing')
+    `;
+    return;
+  }
   const rows = await transaction<{ id: string }[]>`
     UPDATE official_site_automation_runs SET
       status='disabled',
@@ -1160,7 +1239,7 @@ async function restartAutomationRun(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
-  origin: 'baijiahao_automation' | 'official_site_automation',
+  origin: AutomatedOrigin,
   expectedStatus: 'disabled' | 'manual_required' | 'publish_failed',
 ): Promise<void> {
   if (origin === 'baijiahao_automation') {
@@ -1172,6 +1251,17 @@ async function restartAutomationRun(
       RETURNING id
     `;
     if (rows.length !== 1) throw stateInvalid('Baijiahao automation run is inconsistent');
+    return;
+  }
+  if (isBrowserPlatformAutomatedOrigin(origin)) {
+    const rows = await transaction<{ id: string }[]>`
+      UPDATE browser_platform_automation_runs SET
+        status='scheduled',last_error_json=NULL,finished_at=NULL,version=version+1
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status=${expectedStatus}
+      RETURNING id
+    `;
+    if (rows.length !== 1) throw stateInvalid('Browser-platform automation run is inconsistent');
     return;
   }
   const rows = await transaction<{ id: string }[]>`
@@ -1188,12 +1278,21 @@ async function syncDailyBatchSchedule(
   transaction: TransactionSql,
   tenantId: string,
   publishJobId: string,
-  origin: 'baijiahao_automation' | 'official_site_automation',
+  origin: AutomatedOrigin,
   scheduledAtIso: string,
 ): Promise<void> {
   if (origin === 'baijiahao_automation') {
     await transaction`
       UPDATE baijiahao_daily_batch_items SET
+        status='scheduled',scheduled_at=${scheduledAtIso}::timestamptz,last_error_json=NULL
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        AND status IN ('retired','scheduled','manual_required','publish_failed')
+    `;
+    return;
+  }
+  if (isBrowserPlatformAutomatedOrigin(origin)) {
+    await transaction`
+      UPDATE browser_platform_daily_batch_items SET
         status='scheduled',scheduled_at=${scheduledAtIso}::timestamptz,last_error_json=NULL
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
         AND status IN ('retired','scheduled','manual_required','publish_failed')
@@ -1236,10 +1335,20 @@ async function syncDailyBatchSchedule(
   `;
 }
 
-function isAutomatedOrigin(
-  origin: JobRow['origin'],
-): origin is 'baijiahao_automation' | 'official_site_automation' {
+function isAutomatedOrigin(origin: JobRow['origin']): origin is AutomatedOrigin {
   return origin !== 'manual';
+}
+
+function isBrowserPlatformAutomatedOrigin(
+  origin: JobRow['origin'],
+): origin is BrowserPlatformAutomatedOrigin {
+  return origin === 'sohu_automation' || origin === 'lieju_automation';
+}
+
+function automationTransitionCause(
+  origin: AutomatedOrigin,
+): 'baijiahao_automation' | 'browser_platform_automation' | 'official_site_automation' {
+  return isBrowserPlatformAutomatedOrigin(origin) ? 'browser_platform_automation' : origin;
 }
 
 async function supersedePendingExecution(

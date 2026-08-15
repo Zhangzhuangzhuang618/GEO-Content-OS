@@ -224,6 +224,41 @@ export const BaijiahaoAutomationPolicyRequestSchema = z
       });
     }
   });
+export const BrowserPlatformAutomationPolicyRequestSchema = z
+  .object({
+    daily_candidate_limit: z.number().int().min(1).max(30),
+    daily_enabled: z.boolean(),
+    daily_generation_time: TimeOfDaySchema.default('00:30:00'),
+    daily_schedule_times: z.array(TimeOfDaySchema).min(1).max(10),
+    daily_target_count: z.number().int().min(1).max(10),
+    enabled: z.boolean(),
+    expected_version: VersionSchema.optional(),
+    project_id: UuidSchema,
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.daily_candidate_limit < value.daily_target_count) {
+      context.addIssue({
+        code: 'custom',
+        message: 'daily_candidate_limit must be at least daily_target_count',
+        path: ['daily_candidate_limit'],
+      });
+    }
+    if (value.daily_schedule_times.length !== value.daily_target_count) {
+      context.addIssue({
+        code: 'custom',
+        message: 'daily_schedule_times must match daily_target_count',
+        path: ['daily_schedule_times'],
+      });
+    }
+    if (value.daily_enabled && !value.enabled) {
+      context.addIssue({
+        code: 'custom',
+        message: 'daily automation requires enabled',
+        path: ['daily_enabled'],
+      });
+    }
+  });
 export const BaijiahaoDailyBatchSummarySchema = z
   .object({
     active_items: z
@@ -415,6 +450,62 @@ export const BaijiahaoAutomationPolicyViewSchema = z
     message: 'daily schedule count must match target count',
     path: ['daily_schedule_times'],
   });
+export const BrowserPlatformDailyBatchSummarySchema = z
+  .object({
+    attempted_count: z.number().int().min(0).max(30),
+    business_date: z.iso.date(),
+    in_progress_count: z.number().int().min(0).max(30),
+    last_error_message: z.string().nullable(),
+    manual_required_count: z.number().int().min(0).max(30),
+    published_count: z.number().int().min(0).max(10),
+    retired_count: z.number().int().min(0).max(30),
+    scheduled_count: z.number().int().min(0).max(10),
+    status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
+    target_count: z.number().int().min(1).max(10),
+    version: VersionSchema,
+  })
+  .strict();
+export const BrowserPlatformAutomationPolicyViewSchema = z
+  .object({
+    account_id: UuidSchema,
+    brand_consistency_min: z.literal(90),
+    daily_candidate_limit: z.number().int().min(1).max(30),
+    daily_enabled: z.boolean(),
+    daily_generation_time: TimeOfDaySchema,
+    daily_schedule_times: z.array(TimeOfDaySchema).min(1).max(10),
+    daily_target_count: z.number().int().min(1).max(10),
+    daily_timezone: z.literal('Asia/Shanghai'),
+    enabled: z.boolean(),
+    factual_accuracy_min: z.literal(90),
+    geo_total_min: z.literal(85),
+    id: UuidSchema,
+    max_rewrites: z.literal(3),
+    platform_code: z.enum(['sohu', 'lieju']),
+    platform_fit_min: z.literal(80),
+    project_id: UuidSchema,
+    publish_attempt_limit: z.literal(3),
+    question_coverage_min: z.literal(80),
+    readability_safety_min: z.literal(85),
+    tenant_id: UuidSchema,
+    today_batch: BrowserPlatformDailyBatchSummarySchema.nullable(),
+    updated_at: IsoDateTimeSchema,
+    version: VersionSchema,
+    workspace_id: UuidSchema,
+  })
+  .strict()
+  .refine((value) => value.daily_schedule_times.length === value.daily_target_count, {
+    message: 'daily schedule count must match target count',
+    path: ['daily_schedule_times'],
+  });
+export const BrowserPlatformAutomationPolicyResponseSchema = createDataResponseSchema(
+  BrowserPlatformAutomationPolicyViewSchema,
+);
+export const BrowserPlatformAutomationPolicyPageSchema = z
+  .object({
+    data: z.array(BrowserPlatformAutomationPolicyViewSchema),
+    meta: z.object({ request_id: z.string().min(1) }).strict(),
+  })
+  .strict();
 export const BaijiahaoAutomationPolicyResponseSchema = createDataResponseSchema(
   BaijiahaoAutomationPolicyViewSchema,
 );
@@ -456,6 +547,12 @@ export type BaijiahaoAutomationPolicyRequest = z.infer<
   typeof BaijiahaoAutomationPolicyRequestSchema
 >;
 export type BaijiahaoAutomationPolicyView = z.infer<typeof BaijiahaoAutomationPolicyViewSchema>;
+export type BrowserPlatformAutomationPolicyRequest = z.infer<
+  typeof BrowserPlatformAutomationPolicyRequestSchema
+>;
+export type BrowserPlatformAutomationPolicyView = z.infer<
+  typeof BrowserPlatformAutomationPolicyViewSchema
+>;
 export type BaijiahaoBrowserSessionView = z.infer<typeof BaijiahaoBrowserSessionViewSchema>;
 export type BaijiahaoBrowserLoginView = z.infer<typeof BaijiahaoBrowserLoginViewSchema>;
 export type SohuBrowserLoginRequest = z.infer<typeof SohuBrowserLoginRequestSchema>;

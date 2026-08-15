@@ -17,6 +17,7 @@ import { IdempotencyService } from '../../../common/idempotency/index.js';
 import { PolicyGuard, setPolicyContext } from '../../identity/rbac/index.js';
 import {
   BaijiahaoAutomationPolicyService,
+  BrowserPlatformAutomationPolicyService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
@@ -199,6 +200,10 @@ describe('publishing API mock E2E', () => {
   const baijiahaoAutomation = {
     startLogin: vi.fn(),
   };
+  const browserPlatformAutomation = {
+    list: vi.fn(async () => []),
+    update: vi.fn(),
+  };
   const sohuBrowser = {
     login: vi.fn(),
     reauthenticate: vi.fn(),
@@ -224,6 +229,7 @@ describe('publishing API mock E2E', () => {
       providers: [
         { provide: IdempotencyService, useValue: idempotency },
         { provide: BaijiahaoAutomationPolicyService, useValue: baijiahaoAutomation },
+        { provide: BrowserPlatformAutomationPolicyService, useValue: browserPlatformAutomation },
         { provide: OfficialSiteAutomationPolicyService, useValue: automation },
         { provide: PlatformAccountService, useValue: {} },
         { provide: PublishJobService, useValue: jobs },
@@ -261,6 +267,22 @@ describe('publishing API mock E2E', () => {
         limit: 50,
         platform_code: 'official_site',
       }),
+    );
+  });
+
+  it('lists browser-platform automation policies for an account', async () => {
+    const response = await application.inject({
+      method: 'GET',
+      url: `/platform-accounts/${ACCOUNT_ID}/content-automation`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract('account.browser_platform_automation.list').responseSchema.parse(
+      response.json(),
+    );
+    expect(browserPlatformAutomation.list).toHaveBeenCalledWith(
+      { tenantId: TENANT_ID, userId: USER_ID },
+      ACCOUNT_ID,
     );
   });
 

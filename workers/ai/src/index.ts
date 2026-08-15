@@ -44,6 +44,8 @@ export {
   sourceSimilarity,
 } from './baijiahao-automation.js';
 export { BaijiahaoDailyScheduler } from './baijiahao-daily-scheduler.js';
+export { BrowserPlatformAutomation } from './browser-platform-automation.js';
+export { BrowserPlatformDailyScheduler } from './browser-platform-daily-scheduler.js';
 export { validateBaijiahaoAdaptationEvent } from './baijiahao-adaptation.event.js';
 export { validatePublishingPublishedEvent } from './publishing-published.event.js';
 export {

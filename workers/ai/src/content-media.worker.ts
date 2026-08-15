@@ -15,6 +15,10 @@ import { randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { BaijiahaoAutomation, BaijiahaoQualityGate } from './baijiahao-automation.js';
+import type {
+  BrowserPlatformAutomation,
+  BrowserPlatformQualityGate,
+} from './browser-platform-automation.js';
 import type { ContentMediaAutomationConfig } from './config.js';
 import { validateMediaGenerationEvent } from './media-generation.event.js';
 import type { ArticleImagePlan, ArticleImagePlanner } from './media-planner.js';
@@ -37,7 +41,7 @@ interface MediaClaim {
   readonly generationModel: string | null;
   readonly inspectionModel: string | null;
   readonly manualPublishJobId: string | null;
-  readonly platformCode: 'baijiahao' | 'official_site';
+  readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
   readonly provider: string | null;
   readonly version: number;
 }
@@ -76,7 +80,7 @@ interface RecoverableMediaRun {
   readonly createdBy: string;
   readonly id: string;
   readonly packageId: string;
-  readonly platformCode: 'baijiahao' | 'official_site';
+  readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
   readonly projectId: string;
   readonly qualityReportId: string;
   readonly tenantId: string;
@@ -96,6 +100,7 @@ export class ContentMediaWorker {
     private readonly officialSite: OfficialSiteAutomation,
     private readonly baijiahao: BaijiahaoAutomation,
     private readonly config: ContentMediaAutomationConfig,
+    private readonly browserPlatform?: BrowserPlatformAutomation,
   ) {}
 
   public recoverStaleRuns(staleBefore = new Date(Date.now() - 10 * 60_000)): Promise<number> {
@@ -127,6 +132,16 @@ export class ContentMediaWorker {
                   AND automation.variant_id=run.variant_id
                   AND automation.content_version_id=run.content_version_id
                   AND automation.last_quality_report_id=run.quality_report_id
+                  AND automation.status='media_pending'
+              )
+            ) OR (
+              run.platform_code IN ('sohu','lieju') AND EXISTS (
+                SELECT 1 FROM browser_platform_automation_runs AS automation
+                WHERE automation.tenant_id=run.tenant_id
+                  AND automation.variant_id=run.variant_id
+                  AND automation.content_version_id=run.content_version_id
+                  AND automation.last_quality_report_id=run.quality_report_id
+                  AND automation.platform_code=run.platform_code
                   AND automation.status='media_pending'
               )
             )
@@ -628,7 +643,7 @@ export class ContentMediaWorker {
           gate,
           result,
         );
-      } else {
+      } else if (claim.platformCode === 'baijiahao') {
         const policy = await this.baijiahao.loadGatePolicy(
           transaction,
           event.tenantId,
@@ -654,6 +669,40 @@ export class ContentMediaWorker {
           throw new Error('Stored Baijiahao quality gate is invalid');
         }
         await this.baijiahao.advanceAfterQuality(
+          transaction,
+          qualityEvent,
+          policy,
+          event.data.qualityReportId,
+          gate,
+          result,
+        );
+      } else {
+        const policy = await this.browserPlatform?.loadGatePolicy(
+          transaction,
+          event.tenantId,
+          event.data.variantId,
+        );
+        if (!policy) throw new Error('Browser platform automation policy is unavailable');
+        const runs = await transaction<{ id: string }[]>`
+          UPDATE browser_platform_automation_runs SET status='quality_pending',version=version+1
+          WHERE tenant_id=${event.tenantId}::uuid AND variant_id=${event.data.variantId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND platform_code=${claim.platformCode} AND status='media_pending'
+          RETURNING id
+        `;
+        const automationRunId = runs[0]?.id;
+        if (!automationRunId) throw new Error('Browser platform media state was not resumed');
+        await transaction`
+          UPDATE browser_platform_daily_batch_items SET status='quality_check'
+          WHERE tenant_id=${event.tenantId}::uuid AND automation_run_id=${automationRunId}::uuid
+            AND content_version_id=${event.data.contentVersionId}::uuid
+            AND status='media_pending'
+        `;
+        if (gate.schema_version !== 'browser-platform-quality-gate@1') {
+          throw new Error('Stored browser platform quality gate is invalid');
+        }
+        if (!this.browserPlatform) throw new Error('Browser platform automation is unavailable');
+        await this.browserPlatform.advanceAfterQuality(
           transaction,
           qualityEvent,
           policy,
@@ -687,16 +736,21 @@ function parseQualityResult(row: StoredQualityRow): QualityCheckerData {
 
 function parseQualityGate(
   value: unknown,
-  platformCode: 'baijiahao' | 'official_site',
-): BaijiahaoQualityGate | OfficialSiteQualityGate {
+  platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu',
+): BaijiahaoQualityGate | BrowserPlatformQualityGate | OfficialSiteQualityGate {
   if (!record(value) || value['passed'] !== true || !Array.isArray(value['blocking_rules'])) {
     throw new Error('Stored quality gate is invalid');
   }
   const expected =
-    platformCode === 'official_site' ? 'official-site-quality-gate@1' : 'baijiahao-quality-gate@1';
+    platformCode === 'official_site'
+      ? 'official-site-quality-gate@1'
+      : platformCode === 'baijiahao'
+        ? 'baijiahao-quality-gate@1'
+        : 'browser-platform-quality-gate@1';
   if (value['schema_version'] !== expected)
     throw new Error('Stored quality gate platform is invalid');
-  return value as unknown as BaijiahaoQualityGate | OfficialSiteQualityGate;
+  return value as unknown as
+    BaijiahaoQualityGate | BrowserPlatformQualityGate | OfficialSiteQualityGate;
 }
 
 function templateQuality(): Readonly<Record<string, unknown>> {

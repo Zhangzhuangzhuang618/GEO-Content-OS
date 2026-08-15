@@ -35,7 +35,7 @@ export interface ArticleImagePlannerResponseDiagnostic {
 
 export interface ArticleImagePlannerInput {
   readonly content: Readonly<Record<string, unknown>>;
-  readonly platformCode: 'baijiahao' | 'official_site';
+  readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
   readonly requestId: string;
   readonly scope: {
     readonly packageId: string;

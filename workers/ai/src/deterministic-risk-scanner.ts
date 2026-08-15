@@ -126,6 +126,7 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
   addCompanyNameIssues(issues, input);
   addOfficialSiteTechnicalIssues(issues, input);
   addBaijiahaoPlatformIssues(issues, input);
+  addLiejuPlatformIssues(issues, input);
 
   for (const section of contentSections(input.content)) {
     for (const rule of RISK_RULES) {
@@ -150,6 +151,34 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
     }
   }
   return Object.freeze(deduplicate(issues));
+}
+
+function addLiejuPlatformIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
+  if (input.platformCode !== 'lieju') return;
+  const publishText = contentSections(input.content)
+    .map((section) => section.text)
+    .join('\n');
+  const prohibitedPatterns: readonly [RegExp, string, string][] = [
+    [/(?:https?:\/\/|www\.)\S+/iu, 'external_url', '网址'],
+    [
+      /(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)/u,
+      'phone',
+      '电话号码',
+    ],
+    [/(?:微信|QQ)(?:号|账号|ID)?[：:\s]+[A-Za-z0-9_-]{4,}/iu, 'external_account', '微信或 QQ 账号'],
+  ];
+  for (const [pattern, code, label] of prohibitedPatterns) {
+    if (!pattern.test(publishText)) continue;
+    issues.push(
+      issue(
+        `deterministic.lieju.${code}_forbidden`,
+        'compliance',
+        'content',
+        `列举网标题或正文包含禁止的${label}。`,
+        `删除${label}；联系方式只由发布账号配置写入平台表单。`,
+      ),
+    );
+  }
 }
 
 function addBaijiahaoPlatformIssues(

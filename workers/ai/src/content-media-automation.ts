@@ -37,7 +37,7 @@ export class ContentMediaAutomation {
         ${event.tenantId}::uuid,${event.data.workspaceId}::uuid,
         ${event.data.projectId}::uuid,${event.data.packageId}::uuid,
         ${event.data.variantId}::uuid,${event.data.contentVersionId}::uuid,
-        ${reportId}::uuid,${policy.kind},${this.config.plannerModelKey},
+        ${reportId}::uuid,${policy.kind === 'browser_platform' ? policy.value.platformCode : policy.kind},${this.config.plannerModelKey},
         ${this.provider.provider},${this.provider.generationModel},
         ${this.provider.inspectionModel},${event.data.actorUserId}::uuid
       )
@@ -70,7 +70,7 @@ export class ContentMediaAutomation {
           AND content_version_id=${event.data.contentVersionId}::uuid
           AND status='quality_check'
       `;
-    } else {
+    } else if (policy.kind === 'baijiahao') {
       const changed = await transaction<{ id: string }[]>`
         UPDATE baijiahao_automation_runs SET
           status='media_pending',last_quality_report_id=${reportId}::uuid,
@@ -93,6 +93,28 @@ export class ContentMediaAutomation {
           AND content_version_id=${event.data.contentVersionId}::uuid
           AND status='quality_check'
       `;
+    } else {
+      const changed = await transaction<{ id: string }[]>`
+        UPDATE browser_platform_automation_runs SET
+          status='media_pending',last_quality_report_id=${reportId}::uuid,
+          last_error_json=NULL,version=version+1
+        WHERE tenant_id=${event.tenantId}::uuid AND policy_id=${policy.value.id}::uuid
+          AND variant_id=${event.data.variantId}::uuid
+          AND content_version_id=${event.data.contentVersionId}::uuid
+          AND status='quality_pending'
+        RETURNING id
+      `;
+      const automationRunId = changed[0]?.id;
+      if (!automationRunId) {
+        await cancelUnclaimedMediaRun(transaction, event.tenantId, mediaRun.id);
+        return;
+      }
+      await transaction`
+        UPDATE browser_platform_daily_batch_items SET status='media_pending',last_error_json=NULL
+        WHERE tenant_id=${event.tenantId}::uuid AND automation_run_id=${automationRunId}::uuid
+          AND content_version_id=${event.data.contentVersionId}::uuid
+          AND status='quality_check'
+      `;
     }
 
     const queued = DomainEventEnvelopeSchema.parse({
@@ -103,7 +125,7 @@ export class ContentMediaAutomation {
         content_version_id: event.data.contentVersionId,
         media_run_id: mediaRun.id,
         package_id: event.data.packageId,
-        platform_code: policy.kind,
+        platform_code: policy.kind === 'browser_platform' ? policy.value.platformCode : policy.kind,
         project_id: event.data.projectId,
         quality_report_id: reportId,
         request_id: boundedRequestId(`media-${mediaRun.id}`),

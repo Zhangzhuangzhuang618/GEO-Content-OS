@@ -35,7 +35,12 @@ export interface ValidatedPublishingPublishedEvent {
     readonly externalUrl: string | null;
     readonly jobId: string;
     readonly jobVersion: number;
-    readonly origin: 'baijiahao_automation' | 'manual' | 'official_site_automation';
+    readonly origin:
+      | 'baijiahao_automation'
+      | 'lieju_automation'
+      | 'manual'
+      | 'official_site_automation'
+      | 'sohu_automation';
     readonly packageId: string;
     readonly platformCode: PlatformCode;
     readonly projectId: string;
@@ -82,7 +87,13 @@ export function validatePublishingPublishedEvent(raw: unknown): ValidatedPublish
     !REQUEST_ID.test(data.requestId) ||
     data.jobVersion < 1 ||
     !PLATFORM_CODES.includes(data.platformCode as PlatformCode) ||
-    !['manual', 'official_site_automation', 'baijiahao_automation'].includes(data.origin) ||
+    ![
+      'manual',
+      'official_site_automation',
+      'baijiahao_automation',
+      'sohu_automation',
+      'lieju_automation',
+    ].includes(data.origin) ||
     (data.externalUrl !== null && !validUrl(data.externalUrl)) ||
     !validDate(data.publishedAt) ||
     data.externalPostId.length < 1 ||

@@ -1,5 +1,6 @@
 import {
   BaijiahaoAutomationPolicyRequestSchema,
+  BrowserPlatformAutomationPolicyRequestSchema,
   CreatePlatformAccountRequestSchema,
   CreatePublishJobRequestSchema,
   DisablePlatformAccountRequestSchema,
@@ -52,6 +53,7 @@ import {
 import { getPolicyContext, PolicyGuard, RequirePermissions } from '../../identity/rbac/index.js';
 import {
   BaijiahaoAutomationPolicyService,
+  BrowserPlatformAutomationPolicyService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
@@ -80,6 +82,8 @@ export class PlatformAccountController {
     private readonly automation: OfficialSiteAutomationPolicyService,
     @Inject(BaijiahaoAutomationPolicyService)
     private readonly baijiahaoAutomation: BaijiahaoAutomationPolicyService,
+    @Inject(BrowserPlatformAutomationPolicyService)
+    private readonly browserPlatformAutomation: BrowserPlatformAutomationPolicyService,
     @Inject(SohuBrowserSessionService)
     private readonly sohuBrowser: SohuBrowserSessionService,
     @Inject(LiejuBrowserSessionService)
@@ -404,6 +408,49 @@ export class PlatformAccountController {
         HttpStatus.OK,
       );
       await sendVersioned(reply, result.response.statusCode, result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/content-automation')
+  @RequirePermissions('publishing.manage')
+  public async listBrowserPlatformAutomation(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.browserPlatformAutomation.list(requireScope(request), parsed.data.id);
+      await reply.status(HttpStatus.OK).send({ data, meta: { request_id: request.id } });
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Put(':id/content-automation')
+  @RequirePermissions('publishing.manage')
+  public async updateBrowserPlatformAutomation(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = BrowserPlatformAutomationPolicyRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    try {
+      const data = await this.browserPlatformAutomation.update(
+        requireScope(request),
+        parsedParams.data.id,
+        parsedBody.data,
+        audit(request),
+      );
+      await sendData(reply, request.id, data, data.version);
     } catch (error) {
       await sendPublishingError(reply, request.id, error);
     }

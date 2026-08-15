@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   CreatePlatformAccountRequestSchema,
+  BrowserPlatformAutomationPolicyRequestSchema,
   OfficialSiteDailyBatchCancelRequestSchema,
   OfficialSiteDailyBatchRestartRequestSchema,
   PUBLISHING_API_CONTRACTS,
@@ -13,11 +14,11 @@ import {
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
-  it('contains all thirty-three publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(33);
+  it('contains all thirty-five publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(35);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(33);
+    ).toBe(35);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -28,7 +29,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(33);
+    expect(operations).toHaveLength(35);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
@@ -37,6 +38,31 @@ describe('Publishing API frozen contract', () => {
       expect(operation['x-permission']).toBe(contract.permission);
       expect(operation['x-policy']).toBe(contract.policy);
     }
+  });
+
+  it('keeps browser-platform automation within frozen quality gates', () => {
+    expect(
+      BrowserPlatformAutomationPolicyRequestSchema.safeParse({
+        daily_candidate_limit: 10,
+        daily_enabled: true,
+        daily_generation_time: '00:30:00',
+        daily_schedule_times: ['09:30:00', '15:30:00'],
+        daily_target_count: 2,
+        enabled: true,
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      BrowserPlatformAutomationPolicyRequestSchema.safeParse({
+        daily_candidate_limit: 2,
+        daily_enabled: true,
+        daily_schedule_times: ['09:30:00'],
+        daily_target_count: 1,
+        enabled: true,
+        geo_total_min: 84,
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
   });
 
   it('requires evidence before confirming an unknown publish as published', () => {

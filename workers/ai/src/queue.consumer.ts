@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import type { ContentGenerationWorker } from './generation.worker.js';
 import type { BaijiahaoAutomation } from './baijiahao-automation.js';
 import type { OfficialSiteAutomation } from './official-site-automation.js';
+import type { BrowserPlatformAutomation } from './browser-platform-automation.js';
 import type { QualityCheckWorker } from './quality.worker.js';
 import type { VisibilityProbeWorker } from './visibility.worker.js';
 import type { ContentMediaWorker } from './content-media.worker.js';
@@ -24,6 +25,7 @@ export class AiQueueConsumer {
     quality: QualityCheckWorker,
     automation: OfficialSiteAutomation,
     baijiahaoAutomation: BaijiahaoAutomation,
+    browserPlatformAutomation: BrowserPlatformAutomation,
     visibility: VisibilityProbeWorker,
     media: ContentMediaWorker,
     options: AiQueueConsumerOptions,
@@ -61,6 +63,9 @@ export class AiQueueConsumer {
         }
         if (job.name === 'content.variant.baijiahao_adaptation_requested.v1') {
           return baijiahaoAutomation.runAdaptation(job.data);
+        }
+        if (job.name === 'content.variant.browser_platform_rewrite_requested.v1') {
+          return browserPlatformAutomation.runRewrite(job.data);
         }
         if (job.name === 'analytics.visibility.probe_requested.v1') {
           return visibility.run(job.data);

@@ -5,6 +5,8 @@ import {
   BaijiahaoAutomationPolicyResponseSchema,
   BaijiahaoBrowserLoginResponseSchema,
   BaijiahaoBrowserSessionResponseSchema,
+  BrowserPlatformAutomationPolicyPageSchema,
+  BrowserPlatformAutomationPolicyResponseSchema,
   CapabilityResponseSchema,
   PlatformAccountPageSchema,
   PlatformAccountResponseSchema,
@@ -22,6 +24,7 @@ import type {
   BaijiahaoAutomationPolicy,
   BaijiahaoBrowserLogin,
   BaijiahaoBrowserSession,
+  BrowserPlatformAutomationPolicy,
 } from './platform-account.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
@@ -272,6 +275,58 @@ export async function listBaijiahaoAutomationPolicies(
   );
   if (!response.ok) throw new PlatformAccountRequestError(response.status);
   const parsed = BaijiahaoAutomationPolicyPageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function listBrowserPlatformAutomationPolicies(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<readonly BrowserPlatformAutomationPolicy[]> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation`,
+    { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BrowserPlatformAutomationPolicyPageSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function saveBrowserPlatformAutomationPolicy(
+  accountId: string,
+  input: {
+    readonly dailyCandidateLimit: number;
+    readonly dailyEnabled: boolean;
+    readonly dailyGenerationTime: string;
+    readonly dailyScheduleTimes: readonly string[];
+    readonly dailyTargetCount: number;
+    readonly enabled: boolean;
+    readonly expectedVersion?: number;
+    readonly projectId: string;
+  },
+  csrf: string,
+): Promise<BrowserPlatformAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation`,
+    {
+      body: JSON.stringify({
+        daily_candidate_limit: input.dailyCandidateLimit,
+        daily_enabled: input.dailyEnabled,
+        daily_generation_time: input.dailyGenerationTime,
+        daily_schedule_times: input.dailyScheduleTimes,
+        daily_target_count: input.dailyTargetCount,
+        enabled: input.enabled,
+        ...(input.expectedVersion === undefined ? {} : { expected_version: input.expectedVersion }),
+        project_id: input.projectId,
+      }),
+      credentials: 'include',
+      headers: jsonWriteHeaders(csrf),
+      method: 'PUT',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BrowserPlatformAutomationPolicyResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PlatformAccountRequestError(502);
   return parsed.data.data;
 }

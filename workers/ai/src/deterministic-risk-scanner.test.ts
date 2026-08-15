@@ -468,6 +468,58 @@ describe('deterministic pre-publish risk scanner', () => {
       ]),
     );
   });
+
+  it('allows bounded Lieju service promotion and a page-contact CTA', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'service',
+            '广州志远搬家服务有限公司可根据物品范围、楼层条件和搬运时间安排搬家服务，具体方案需在核对现场条件后确认。',
+          ),
+        ],
+        cta: '可通过页面联系方式说明搬运需求。',
+        platform_code: 'lieju',
+        platform_meta: { content_type: 'logistics_freight' },
+        title: '广州搬家服务准备说明',
+      }),
+      platformCode: 'lieju',
+    });
+
+    expect(issues.filter((item) => item.category === 'compliance')).toEqual([]);
+  });
+
+  it('blocks contact details in Lieju content even when they exist in the brand profile', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: {
+        ...brand(),
+        contact: { phone: '02085627757', website: 'https://example.test' },
+      },
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'contact',
+            '欢迎致电02085627757，或访问https://example.test，也可添加微信 zybj2026。',
+          ),
+        ],
+        platform_code: 'lieju',
+        platform_meta: { content_type: 'logistics_freight' },
+        title: '广州搬家服务联系方式',
+      }),
+      platformCode: 'lieju',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toEqual(
+      expect.arrayContaining([
+        'deterministic.lieju.external_account_forbidden',
+        'deterministic.lieju.external_url_forbidden',
+        'deterministic.lieju.phone_forbidden',
+      ]),
+    );
+  });
 });
 
 function assessment(): QualityCheckerData {

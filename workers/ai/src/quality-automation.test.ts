@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type postgres from 'postgres';
 
 import { ContentMediaAutomation } from './content-media-automation.js';
 import { QualityAutomationCoordinator } from './quality-automation.js';
@@ -46,6 +47,63 @@ describe('quality automation media handoff', () => {
 
     expect(enqueue).toHaveBeenCalledOnce();
     expect(officialAdvance).not.toHaveBeenCalled();
+  });
+
+  it('emits the concrete Sohu platform code for browser-platform media work', async () => {
+    const payloads: string[] = [];
+    const transaction = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('?');
+      if (query.includes('INSERT INTO content_media_runs'))
+        return [{ id: crypto.randomUUID(), status: 'queued' }];
+      if (query.includes('UPDATE browser_platform_automation_runs'))
+        return [{ id: crypto.randomUUID() }];
+      if (query.includes('UPDATE browser_platform_daily_batch_items')) return [];
+      if (query.includes('INSERT INTO outbox_events')) {
+        payloads.push(
+          values.find(
+            (value) =>
+              typeof value === 'string' &&
+              value.startsWith('{') &&
+              value.includes('media_generation_requested'),
+          ) as string,
+        );
+        return [];
+      }
+      throw new Error(`Unexpected SQL: ${query}`);
+    }) as unknown as postgres.TransactionSql;
+    const media = new ContentMediaAutomation(
+      {
+        enabled: true,
+        generationSteps: 4,
+        plannerModelKey: 'deepseek-v4-flash',
+        publicBaseUrl: null,
+      },
+      { generationModel: null, inspectionModel: null, provider: null },
+    );
+    const id = () => crypto.randomUUID();
+
+    await media.enqueue(
+      transaction,
+      {
+        data: {
+          actorUserId: id(),
+          contentHash: 'a'.repeat(64),
+          contentVersionId: id(),
+          generationRunId: id(),
+          packageId: id(),
+          projectId: id(),
+          requestId: 'sohu-media-handoff',
+          variantId: id(),
+          workspaceId: id(),
+        },
+        eventId: id(),
+        tenantId: id(),
+      },
+      { kind: 'browser_platform', value: { id: id(), platformCode: 'sohu' } as never },
+      id(),
+    );
+
+    expect(JSON.parse(payloads[0]!).data.platform_code).toBe('sohu');
   });
 
   it('keeps failed quality gates on the existing rewrite or block path', async () => {

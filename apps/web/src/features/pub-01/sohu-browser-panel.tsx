@@ -14,6 +14,7 @@ import type {
   PlatformAccount,
   SohuBrowserLoginInput,
 } from './platform-account.schema';
+import { BrowserPlatformAutomationPanel } from './browser-platform-automation-panel';
 
 type LoginMode = 'wechat' | 'password' | 'sms';
 
@@ -335,6 +336,7 @@ export function SohuBrowserPanel({
           {message}
         </p>
       </div>
+      <BrowserPlatformAutomationPanel account={account} />
     </section>
   );
 }

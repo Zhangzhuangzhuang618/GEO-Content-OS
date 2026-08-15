@@ -507,6 +507,8 @@ function DetailContent({
 function originLabel(origin: PublishJob['origin']) {
   if (origin === 'official_site_automation') return '官网机器质检通过后自动创建';
   if (origin === 'baijiahao_automation') return '百家号自动化创建';
+  if (origin === 'sohu_automation') return '搜狐号自动化创建';
+  if (origin === 'lieju_automation') return '列举网自动化创建';
   return '人工创建';
 }
 

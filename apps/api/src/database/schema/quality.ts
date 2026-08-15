@@ -38,16 +38,18 @@ export interface QualityGeoScoresDocument extends QualityGeoScores {
   readonly schema_version: 'geo-scores@1';
 }
 
-export interface OfficialSiteAutomationGateDocument {
+export interface AutomationGateDocument {
   readonly blocking_rules: readonly string[];
   readonly brand_consistency: number;
   readonly factual_accuracy: number;
   readonly geo_total: number;
   readonly passed: boolean;
   readonly platform_fit: number;
+  readonly platform_code?: 'lieju' | 'sohu';
   readonly question_coverage: number;
   readonly readability_safety: number;
-  readonly schema_version: 'official-site-quality-gate@1';
+  readonly schema_version:
+    'baijiahao-quality-gate@1' | 'browser-platform-quality-gate@1' | 'official-site-quality-gate@1';
 }
 
 export const factCheckResults = pgTable(
@@ -194,7 +196,7 @@ export const qualityReports = pgTable(
     decision: varchar({ length: 16 }).$type<QualityDecision>().notNull(),
     issuesJson: jsonb('issues_json').$type<QualityIssuesDocument>().notNull(),
     geoScoresJson: jsonb('geo_scores_json').$type<QualityGeoScoresDocument>().notNull(),
-    automationGateJson: jsonb('automation_gate_json').$type<OfficialSiteAutomationGateDocument>(),
+    automationGateJson: jsonb('automation_gate_json').$type<AutomationGateDocument>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

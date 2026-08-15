@@ -296,6 +296,43 @@ describe('PublishJobService rescheduling', () => {
     expect(sqlStatements.some((sql) => sql.includes('UPDATE publish_attempts'))).toBe(false);
     expect(outbox.enqueue).not.toHaveBeenCalled();
   });
+
+  it('closes a manually verified Sohu automation run and daily item as published', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 2,
+      origin: 'sohu_automation',
+      packageStatus: 'publish_failed',
+      platformCode: 'sohu',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'published', {
+      attemptNo: 2,
+      errorCode: 'MANUAL_REQUIRED',
+      status: 'failed',
+    });
+    const { outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      external_post_id: 'sohu-post-153',
+      external_url: 'https://www.sohu.com/a/153',
+      resolution: 'published',
+    });
+
+    expect(result).toMatchObject({ status: 'published', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE browser_platform_automation_runs') &&
+          sql.includes("status='published'"),
+      ),
+    ).toBe(true);
+    expect(
+      sqlStatements.some((sql) => sql.includes('UPDATE browser_platform_daily_batch_items')),
+    ).toBe(true);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+  });
 });
 
 function createService() {
@@ -364,16 +401,28 @@ function createUnknownResolutionTransaction(
     sqlStatements.push(sql);
     if (sql.includes('FROM publish_jobs AS job')) return [before];
     if (sql.includes('FROM publish_attempts')) return [latestAttempt];
-    if (sql.includes('FROM baijiahao_browser_publications') && sql.includes('FOR UPDATE')) {
+    if (sql.includes('_browser_publications') && sql.includes('FOR UPDATE')) {
       return [{ externalPostId: null, id: PUBLICATION_ID }];
     }
-    if (sql.includes('UPDATE baijiahao_browser_publications')) return [{ id: PUBLICATION_ID }];
+    if (sql.includes('UPDATE') && sql.includes('_browser_publications')) {
+      return [{ id: PUBLICATION_ID }];
+    }
     if (sql.includes('UPDATE publish_jobs SET')) {
       return [
         {
           ...before,
-          externalPostId: resolution === 'published' ? 'baijiahao-post-130' : null,
-          externalUrl: resolution === 'published' ? 'https://baijiahao.baidu.com/s?id=130' : null,
+          externalPostId:
+            resolution === 'published'
+              ? before.platformCode === 'sohu'
+                ? 'sohu-post-153'
+                : 'baijiahao-post-130'
+              : null,
+          externalUrl:
+            resolution === 'published'
+              ? before.platformCode === 'sohu'
+                ? 'https://www.sohu.com/a/153'
+                : 'https://baijiahao.baidu.com/s?id=130'
+              : null,
           publishedAt: resolution === 'published' ? new Date() : null,
           scheduledAt: resolution === 'not_published' ? new Date() : before.scheduledAt,
           status: resolution === 'published' ? 'published' : 'scheduled',
@@ -392,6 +441,10 @@ function createUnknownResolutionTransaction(
     }
     if (sql.includes('UPDATE content_packages')) return [{ id: PACKAGE_ID }];
     if (sql.includes('UPDATE baijiahao_automation_runs')) return [{ id: AUTOMATION_ID }];
+    if (sql.includes('UPDATE browser_platform_automation_runs')) return [{ id: AUTOMATION_ID }];
+    if (sql.includes('UPDATE browser_platform_daily_batch_items')) {
+      return [{ batchId: DAILY_BATCH_ID }];
+    }
     return [];
   }) as unknown as TransactionSql;
 }
@@ -406,9 +459,14 @@ function jobRow({
   variantVersion = 2,
 }: {
   attemptCount?: number;
-  origin: 'baijiahao_automation' | 'manual' | 'official_site_automation';
+  origin:
+    | 'baijiahao_automation'
+    | 'lieju_automation'
+    | 'manual'
+    | 'official_site_automation'
+    | 'sohu_automation';
   packageStatus?: 'generated' | 'publish_failed' | 'scheduled';
-  platformCode?: 'baijiahao' | 'official_site';
+  platformCode?: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
   status: 'cancelled' | 'failed' | 'scheduled';
   variantStatus: 'publish_failed' | 'quality_passed' | 'scheduled';
   variantVersion?: number;
