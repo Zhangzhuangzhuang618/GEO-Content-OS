@@ -92,6 +92,7 @@ export function PlatformAccountManager() {
     const data = new FormData(form);
     const parsed = PlatformAccountFormSchema.safeParse({
       base_url: String(data.get('base_url') ?? ''),
+      api_key: String(data.get('api_key') ?? ''),
       bearer_token: String(data.get('bearer_token') ?? ''),
       address: String(data.get('address') ?? ''),
       category_id: String(data.get('category_id') ?? ''),
@@ -139,6 +140,7 @@ export function PlatformAccountManager() {
     if (!editingAccount) return;
     const data = new FormData(event.currentTarget);
     const parsed = PlatformAccountEditSchema.safeParse({
+      api_key: String(data.get('api_key') ?? ''),
       base_url: String(data.get('base_url') ?? ''),
       bearer_token: String(data.get('bearer_token') ?? ''),
       display_name: String(data.get('display_name') ?? ''),
@@ -475,6 +477,24 @@ function EditForm({
             type="url"
           />
         </label>
+        {publishMode === 'api' && account.platform_code === 'lieju' ? (
+          <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+            新的列举网官方 API Key
+            <input
+              autoComplete="new-password"
+              className={controlClass}
+              maxLength={256}
+              name="api_key"
+              placeholder="不更换可留空"
+              type="password"
+            />
+            <span className="mt-2 block text-xs leading-5 text-ink-500">
+              填写后账号将使用列举网官方 API；原 Key 不会回显。
+            </span>
+          </label>
+        ) : (
+          <input name="api_key" type="hidden" value="" />
+        )}
         {publishMode === 'api' &&
         !['baijiahao', 'sohu', 'lieju'].includes(account.platform_code) ? (
           <>
@@ -621,6 +641,20 @@ function ConnectForm({
         </label>
         {publishMode === 'api' && platformCode === 'lieju' ? (
           <>
+            <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+              列举网官方 API Key
+              <input
+                autoComplete="new-password"
+                className={controlClass}
+                maxLength={256}
+                name="api_key"
+                required
+                type="password"
+              />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                由列举网提供；加密保存且不会回显。固定发布到广州“生活服务 / 搬家”。
+              </span>
+            </label>
             <label className="text-sm text-ink-700">
               广州区域
               <select className={controlClass} defaultValue="" name="zone_id" required>
@@ -633,23 +667,6 @@ function ConnectForm({
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="text-sm text-ink-700">
-              搬家类别
-              <select className={controlClass} defaultValue="" name="category_id" required>
-                <option disabled value="">
-                  请选择类别
-                </option>
-                {LIEJU_CATEGORY_OPTIONS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm text-ink-700">
-              服务地址
-              <input className={controlClass} maxLength={120} name="address" required />
             </label>
             <label className="text-sm text-ink-700">
               联系人
@@ -675,11 +692,13 @@ function ConnectForm({
               <input className={controlClass} maxLength={25} name="wechat" />
             </label>
             <input name="street_id" type="hidden" value="" />
+            <input name="address" type="hidden" value="" />
+            <input name="category_id" type="hidden" value="73" />
             <input name="base_url" type="hidden" value="" />
             <input name="bearer_token" type="hidden" value="" />
             <p className="text-sm leading-6 text-amber-800 sm:col-span-2 lg:col-span-3">
-              联系方式会加密保存且不回显。无人值守发布要求账号已绑定
-              QQ，并具有免验证码的发布套餐或发帖包。
+              联系方式会加密保存且不回显。官方 API
+              不依赖浏览器登录；接口未提供状态查询，超时或返回不明确时会停止重试并等待人工确认。
             </p>
           </>
         ) : publishMode === 'api' && !['baijiahao', 'sohu'].includes(platformCode) ? (
@@ -845,10 +864,11 @@ function ConnectionGuide({
   if (platformCode === 'lieju') {
     return (
       <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm leading-6 text-ink-700">
-        <p className="font-semibold text-ink-900">列举网自动发布使用独立托管浏览器</p>
+        <p className="font-semibold text-ink-900">列举网自动发布使用官方 API</p>
         <p className="mt-2">
-          保存后点击“列举网登录”，使用 QQ 扫码。已有列举网账号需先绑定
-          QQ；免费账号遇到腾讯验证码时会转人工，不会自动绕过。
+          填写列举网提供的 API
+          Key、广州区域和联系方式后即可自动发布，不需要扫码或保存列举网密码。API
+          返回不明确时系统会停止自动重试，避免重复发布。
         </p>
       </div>
     );
@@ -968,7 +988,9 @@ function AccountCard({
             onClick={() => onAutomation(account)}
             type="button"
           >
-            列举网登录
+            {account.capabilities['delivery_method'] === 'official_api'
+              ? '列举网自动化'
+              : '列举网登录'}
           </button>
         ) : null}
         {account.publish_mode === 'api' && !disabled ? (
@@ -1051,14 +1073,6 @@ const LIEJU_ZONE_OPTIONS = [
   ['75', '东山'],
   ['74', '越秀'],
   ['3081', '广州周边'],
-] as const;
-const LIEJU_CATEGORY_OPTIONS = [
-  ['1', '空调拆装'],
-  ['2', '公司搬家'],
-  ['3', '设备搬迁'],
-  ['4', '搬家搬场'],
-  ['5', '长途搬家'],
-  ['6', '起重吊装'],
 ] as const;
 const STATUS_OPTIONS = [
   ['active', '连接正常'],

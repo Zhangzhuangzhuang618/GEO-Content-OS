@@ -34,8 +34,17 @@ export class PlatformDeliveryAccountConnector implements PlatformAccountConnecto
         publishMode === 'api' ? { ...(credential ?? {}), mode: 'api' } : { mode: 'export_only' };
       const adapter = deliveryAdapter(platformCode, config);
       const capabilities = await adapter.capabilities();
+      const deliveryMethod =
+        platformCode === 'lieju' && credential?.['delivery_method'] === 'official_api'
+          ? 'official_api'
+          : platformCode === 'lieju'
+            ? 'browser_gateway'
+            : undefined;
       return Object.freeze({
-        capabilities: Object.freeze({ ...capabilities }),
+        capabilities: Object.freeze({
+          ...capabilities,
+          ...(deliveryMethod ? { delivery_method: deliveryMethod } : {}),
+        }),
         providerAccountId: null,
         publishMode,
         scopes: Object.freeze([]),

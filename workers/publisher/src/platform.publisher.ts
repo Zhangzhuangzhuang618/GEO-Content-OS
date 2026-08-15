@@ -99,6 +99,7 @@ type DeliveryResult =
       readonly publish: {
         readonly external_id: string;
         readonly published_at?: string;
+        readonly response_hash?: string;
         readonly status: 'processing' | 'published';
         readonly url: string | null;
       };
@@ -214,7 +215,14 @@ export class PlatformPublisher implements PublisherPlatformPort {
             rule_version: LIEJU_RENDER_RULE_VERSION,
           }),
           hashLiejuPayload,
-          (input) => new LiejuDeliveryAdapter(config).deliver(input, signal),
+          (input) =>
+            new LiejuDeliveryAdapter(config).deliver(
+              {
+                ...input,
+                image_urls: publicLiejuImageUrls(claim.mediaAssets ?? []),
+              },
+              signal,
+            ),
         );
       case 'toutiao':
         return execute(
@@ -352,11 +360,23 @@ async function execute<TPayload>(
     payloadHash,
     response: Object.freeze({
       ...(result.publish.published_at ? { published_at: result.publish.published_at } : {}),
+      ...(result.publish.response_hash ? { response_hash: result.publish.response_hash } : {}),
       ...(responseDetails ?? {}),
       status: result.publish.status,
     }),
     url: result.publish.url,
   });
+}
+
+function publicLiejuImageUrls(
+  assets: readonly NonNullable<PublishClaim['mediaAssets']>[number][],
+): readonly string[] {
+  return Object.freeze(
+    assets
+      .map((asset) => asset.publicUrl)
+      .filter((url): url is string => typeof url === 'string' && url.startsWith('https://'))
+      .slice(0, 5),
+  );
 }
 
 interface PreparedOfficialSiteMedia {

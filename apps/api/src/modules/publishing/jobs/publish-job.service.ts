@@ -408,22 +408,34 @@ export class PublishJobService {
     if (!isBrowserPlatform(before.platformCode)) {
       throw stateInvalid('Only browser-published unknown publications can be resolved here');
     }
-    if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
+    const processingOfficial =
+      isLiejuOfficialJob(before) &&
+      before.status === 'publishing' &&
+      before.variantStatus === 'publishing';
+    if (
+      !processingOfficial &&
+      (before.status !== 'failed' || before.variantStatus !== 'publish_failed')
+    ) {
       throw stateInvalid('Publish job is not waiting for unknown-state resolution');
     }
     if (before.variantCurrentContentVersionId !== before.contentVersionId) {
       throw stateInvalid('The publish job no longer points to the current content version');
     }
     const latestAttempt = await loadLatestAttempt(transaction, scope.tenantId, before.id);
-    if (!latestAttempt || !attemptRequiresManualResolution(latestAttempt)) {
+    if (
+      !latestAttempt ||
+      (!processingOfficial && !attemptRequiresManualResolution(latestAttempt))
+    ) {
       throw stateInvalid('Latest publish attempt does not require manual resolution');
     }
-    const publications = await selectBrowserPublications(
-      transaction,
-      scope.tenantId,
-      before.id,
-      before.platformCode,
-    );
+    const publications = isLiejuOfficialJob(before)
+      ? await selectLiejuOfficialPublications(transaction, scope.tenantId, before.id)
+      : await selectBrowserPublications(
+          transaction,
+          scope.tenantId,
+          before.id,
+          before.platformCode,
+        );
     const publication = publications[0];
 
     if (input.resolution === 'not_published') {
@@ -431,15 +443,20 @@ export class PublishJobService {
         throw stateInvalid('A remote publication is already linked to this publish job');
       }
       if (publication) {
-        const reset = await resetBrowserPublication(
-          transaction,
-          scope.tenantId,
-          publication.id,
-          before.platformCode,
-        );
+        const reset = isLiejuOfficialJob(before)
+          ? await resetLiejuOfficialPublication(transaction, scope.tenantId, publication.id)
+          : await resetBrowserPublication(
+              transaction,
+              scope.tenantId,
+              publication.id,
+              before.platformCode,
+            );
         if (reset.length !== 1) throw stateInvalid('Browser publication state changed');
       }
-      return this.retryInTransaction(transaction, scope, jobId, expectedVersion, {}, new Date(), {
+      const retryVersion = processingOfficial
+        ? await markProcessingJobNotPublished(transaction, scope.tenantId, before)
+        : expectedVersion;
+      return this.retryInTransaction(transaction, scope, jobId, retryVersion, {}, new Date(), {
         attemptNo: latestAttempt.attemptNo,
         automationStatus:
           latestAttempt.errorCode === 'MANUAL_REQUIRED' ? 'manual_required' : 'publish_failed',
@@ -455,14 +472,22 @@ export class PublishJobService {
     }
     const externalPostId = input.external_post_id ?? publication?.externalPostId ?? null;
     if (publication) {
-      const linked = await confirmBrowserPublication(
-        transaction,
-        scope.tenantId,
-        publication.id,
-        before.platformCode,
-        externalPostId,
-        input.external_url,
-      );
+      const linked = isLiejuOfficialJob(before)
+        ? await confirmLiejuOfficialPublication(
+            transaction,
+            scope.tenantId,
+            publication.id,
+            externalPostId,
+            input.external_url,
+          )
+        : await confirmBrowserPublication(
+            transaction,
+            scope.tenantId,
+            publication.id,
+            before.platformCode,
+            externalPostId,
+            input.external_url,
+          );
       if (linked.length !== 1) throw stateInvalid('Browser publication state changed');
     }
     const publishedAt = new Date();
@@ -471,7 +496,7 @@ export class PublishJobService {
         status='published',external_post_id=${externalPostId},external_url=${input.external_url},
         published_at=${publishedAt.toISOString()}::timestamptz,last_error_json=NULL,version=version+1
       WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
-        AND version=${expectedVersion} AND status='failed'
+        AND version=${expectedVersion} AND status IN ('failed','publishing')
       RETURNING
         id,tenant_id AS "tenantId",variant_id AS "variantId",
         content_version_id AS "contentVersionId",account_id AS "accountId",
@@ -482,21 +507,23 @@ export class PublishJobService {
         created_by AS "createdBy",version,created_at AS "createdAt",updated_at AS "updatedAt"
     `;
     const after = requireChangedJob(rows, before);
-    assertContentVariantTransition({ from: 'publish_failed', to: 'publishing' });
-    await updateVariant(
-      transaction,
-      scope.tenantId,
-      before.variantId,
-      before.variantVersion,
-      'publish_failed',
-      'publishing',
-    );
+    if (before.variantStatus === 'publish_failed') {
+      assertContentVariantTransition({ from: 'publish_failed', to: 'publishing' });
+      await updateVariant(
+        transaction,
+        scope.tenantId,
+        before.variantId,
+        before.variantVersion,
+        'publish_failed',
+        'publishing',
+      );
+    }
     assertContentVariantTransition({ from: 'publishing', to: 'published' });
     await updateVariant(
       transaction,
       scope.tenantId,
       before.variantId,
-      before.variantVersion + 1,
+      before.variantVersion + (before.variantStatus === 'publish_failed' ? 1 : 0),
       'publishing',
       'published',
     );
@@ -978,6 +1005,95 @@ function selectBrowserPublications(
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
     FOR UPDATE
   `;
+}
+
+function isLiejuOfficialJob(job: Pick<JobRow, 'accountCapabilities' | 'platformCode'>): boolean {
+  return (
+    job.platformCode === 'lieju' && job.accountCapabilities['delivery_method'] === 'official_api'
+  );
+}
+
+function selectLiejuOfficialPublications(
+  transaction: TransactionSql,
+  tenantId: string,
+  jobId: string,
+): Promise<BrowserPublicationRow[]> {
+  return transaction<BrowserPublicationRow[]>`
+    SELECT id,remote_reference AS "externalPostId",status
+    FROM lieju_api_publications
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+    FOR UPDATE
+  `;
+}
+
+function resetLiejuOfficialPublication(
+  transaction: TransactionSql,
+  tenantId: string,
+  publicationId: string,
+): Promise<{ id: string }[]> {
+  return transaction<{ id: string }[]>`
+    UPDATE lieju_api_publications SET
+      status='not_published',remote_reference=NULL,external_url=NULL,response_hash=NULL,
+      submitted_at=NULL,last_error_json=NULL,version=version+1
+    WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+      AND status IN ('reserved','processing','manual_required')
+    RETURNING id
+  `;
+}
+
+function confirmLiejuOfficialPublication(
+  transaction: TransactionSql,
+  tenantId: string,
+  publicationId: string,
+  externalPostId: string | null,
+  externalUrl: string,
+): Promise<{ id: string }[]> {
+  return transaction<{ id: string }[]>`
+    UPDATE lieju_api_publications SET
+      status='published',remote_reference=${externalPostId},external_url=${externalUrl},
+      submitted_at=COALESCE(submitted_at,now()),last_error_json=NULL,version=version+1
+    WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+      AND status IN ('reserved','processing','manual_required')
+    RETURNING id
+  `;
+}
+
+async function markProcessingJobNotPublished(
+  transaction: TransactionSql,
+  tenantId: string,
+  job: JobRow,
+): Promise<number> {
+  const rows = await transaction<{ version: number }[]>`
+    UPDATE publish_jobs SET status='failed',version=version+1
+    WHERE id=${job.id}::uuid AND tenant_id=${tenantId}::uuid
+      AND version=${job.version} AND status='publishing'
+    RETURNING version
+  `;
+  const version = rows[0]?.version;
+  if (!version) throw stateInvalid('Publish job state changed');
+  assertContentVariantTransition({ from: 'publishing', to: 'publish_failed' });
+  await updateVariant(
+    transaction,
+    tenantId,
+    job.variantId,
+    job.variantVersion,
+    'publishing',
+    'publish_failed',
+  );
+  if (job.origin === 'lieju_automation') {
+    await transaction`
+      UPDATE browser_platform_automation_runs SET
+        status='publish_failed',finished_at=now(),version=version+1
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${job.id}::uuid
+        AND platform_code='lieju' AND status='processing'
+    `;
+    await transaction`
+      UPDATE browser_platform_daily_batch_items SET status='publish_failed'
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${job.id}::uuid
+        AND status='processing'
+    `;
+  }
+  return version;
 }
 
 function resetBrowserPublication(

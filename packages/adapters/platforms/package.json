@@ -87,6 +87,7 @@
   },
   "dependencies": {
     "@geo-content-os/contracts": "workspace:*",
+    "iconv-lite": "0.7.3",
     "zod": "4.4.3"
   },
   "devDependencies": {

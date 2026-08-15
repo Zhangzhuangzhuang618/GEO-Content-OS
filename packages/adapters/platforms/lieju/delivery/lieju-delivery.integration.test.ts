@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { decode } from 'iconv-lite';
 
 import { describe, expect, it } from 'vitest';
 
@@ -101,6 +102,67 @@ describe('lieju delivery integration', () => {
       code: 'PUBLISH_STATE_UNKNOWN',
     });
     expect(transport.requests).toHaveLength(2);
+  });
+
+  it('publishes through the fixed official API using GBK multipart fields', async () => {
+    const transport = new FakeTransport([
+      response(200, {
+        info_id: 104561172,
+        message: '信息发布成功',
+        url: 'https://gz.lieju.com/banjia/104561172.html',
+      }),
+      response(200, '<html><title>广州搬家服务测试标题</title></html>'),
+    ]);
+    const input = {
+      ...(await deliveryInput()),
+      image_urls: ['https://cdn.example.com/cover.jpg'],
+      payload: {
+        ...(await deliveryInput()).payload,
+        title: '广州搬家服务测试标题',
+      },
+    };
+    const officialInput = { ...input, payload_hash: hashLiejuPayload(input.payload) };
+    const adapter = officialApiAdapter(transport);
+
+    await expect(adapter.capabilities()).resolves.toMatchObject({
+      get_status: false,
+      publish: true,
+      warnings: ['OFFICIAL_API_STATUS_UNAVAILABLE'],
+    });
+    const result = await adapter.publish(officialInput);
+
+    expect(result).toMatchObject({
+      external_id: '104561172',
+      status: 'published',
+      url: 'https://gz.lieju.com/banjia/104561172.html',
+    });
+    expect(result.response_hash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(transport.requests).toHaveLength(2);
+    const request = transport.requests[0];
+    expect(request).toMatchObject({
+      method: 'POST',
+      response_encoding: 'gbk',
+      url: 'https://post.lieju.com/post_api.php?action=postnew',
+    });
+    expect(request?.headers['referer']).toBe('https://post.lieju.com/post_api.php');
+    expect(request?.body).toBeInstanceOf(Uint8Array);
+    const multipart = decode(Buffer.from(request?.body as Uint8Array), 'gbk');
+    expect(multipart).toContain('name="api_key"\r\n\r\nofficial-api-key-123456');
+    expect(multipart).toContain('name="postdb[fid]"\r\n\r\n73');
+    expect(multipart).toContain('name="postdb[city_id]"\r\n\r\n5');
+    expect(multipart).toContain('name="postdb[zone_id]"\r\n\r\n76');
+    expect(multipart).toContain('[img]https://cdn.example.com/cover.jpg[/img]');
+    expect(JSON.stringify(result)).not.toContain('official-api-key-123456');
+  });
+
+  it('does not infer official API success from an unrecognized response', async () => {
+    const transport = new FakeTransport([response(200, '请求已受理')]);
+    await expect(
+      officialApiAdapter(transport).publish(await deliveryInput()),
+    ).rejects.toMatchObject({
+      code: 'PUBLISH_STATE_UNKNOWN',
+    });
+    expect(transport.requests).toHaveLength(1);
   });
 
   it('treats an invalid successful publish response as an unknown state', async () => {
@@ -239,6 +301,24 @@ function apiAdapter(transport: LiejuHttpTransport) {
       bearer_token: 'test-secret',
       mode: 'api',
       posting_profile: POSTING_PROFILE,
+    },
+    transport,
+  );
+}
+
+function officialApiAdapter(transport: LiejuHttpTransport) {
+  return new LiejuDeliveryAdapter(
+    {
+      api_key: 'official-api-key-123456',
+      delivery_method: 'official_api',
+      mode: 'api',
+      posting_profile: {
+        contact_name: '广州志远搬家服务有限公司',
+        mobile_phone: '02085627757',
+        qq: '',
+        wechat: '',
+        zone_id: '76',
+      },
     },
     transport,
   );

@@ -337,6 +337,13 @@
       "when": 1786896000000,
       "tag": "0047_browser_platform_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1786899600000,
+      "tag": "0048_lieju_official_api",
+      "breakpoints": true
     }
   ]
 }

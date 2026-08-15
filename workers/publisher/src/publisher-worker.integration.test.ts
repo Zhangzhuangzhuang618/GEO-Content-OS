@@ -145,6 +145,30 @@ describe('publisher worker', () => {
     ).toEqual([{ batchStatus: 'attention_required', itemStatus: 'publish_failed' }]);
   });
 
+  it('reserves an official Lieju submission and never retries an ambiguous response', async () => {
+    const database = requireClient(client);
+    await enableLiejuOfficialPublishing(database);
+    const platform = new FakePlatform(undefined, 'PUBLISH_STATE_UNKNOWN');
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'unknown' });
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(platform.claims).toHaveLength(1);
+    expect(
+      await database<{ attemptNo: number; status: string }[]>`
+        SELECT attempt_no AS "attemptNo",status FROM lieju_api_publications
+        WHERE publish_job_id=${JOB_ID}::uuid
+      `,
+    ).toEqual([{ attemptNo: 1, status: 'manual_required' }]);
+    await expect(state(database)).resolves.toMatchObject({
+      attemptCount: 1,
+      attemptStatus: ['unknown'],
+      jobStatus: 'failed',
+      variantStatus: 'publish_failed',
+    });
+  });
+
   it('stops a Baijiahao unknown state after attempt three without claiming rejection', async () => {
     const database = requireClient(client);
     await enableBaijiahaoAutomation(database);
@@ -1050,6 +1074,41 @@ async function enableSohuManualPublishing(
       ${ACCOUNT_ID}::uuid,${JOB_ID}::uuid,${VERSION_ID}::uuid,
       'publish-job-125-stable',${CONTENT_HASH},${'c'.repeat(64)},
       '搜狐号测试文章','submitting','{}'::jsonb,now()
+    )
+  `;
+}
+
+async function enableLiejuOfficialPublishing(database: Sql): Promise<void> {
+  await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+  await database`
+    UPDATE briefs SET platform_codes=ARRAY['lieju']::varchar[]
+    WHERE id=${BRIEF_ID}::uuid
+  `;
+  await database`
+    UPDATE platform_accounts SET
+      platform_code='lieju',provider_account_id=NULL,display_name='Lieju Official API',
+      capabilities_json=${database.json({
+        delivery_method: 'official_api',
+        get_status: false,
+        metrics: false,
+        publish: true,
+      })},publish_mode='api',status='active'
+    WHERE id=${ACCOUNT_ID}::uuid
+  `;
+  await database`
+    UPDATE content_variants SET
+      platform_code='lieju',platform_account_id=${ACCOUNT_ID}::uuid,
+      status='scheduled',is_required=true
+    WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    INSERT INTO publish_jobs(
+      id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+      idempotency_key,payload_hash,status,origin,created_by
+    ) VALUES(
+      ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
+      ${CONTENT_HASH},'scheduled','manual',${USER_ID}::uuid
     )
   `;
 }

@@ -34,6 +34,7 @@ interface JobRow {
   readonly id: string;
   readonly idempotencyKey: string;
   readonly lastError: Readonly<Record<string, unknown>> | null;
+  readonly liejuDeliveryMethod: string | null;
   readonly origin: PublishJobView['origin'];
   readonly payloadHash: string;
   readonly platformCode: string;
@@ -136,6 +137,7 @@ export class PublishingApiService {
         job.attempt_count AS "attemptCount", job.external_post_id AS "externalPostId",
         job.external_url AS "externalUrl", job.last_error_json AS "lastError", job.origin,
         job.published_at AS "publishedAt", variant.platform_code AS "platformCode",
+        account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
         job.created_by AS "createdBy", job.created_at AS "createdAt",
         job.updated_at AS "updatedAt", job.version
       FROM publish_jobs AS job
@@ -143,6 +145,8 @@ export class PublishingApiService {
         ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
       JOIN content_packages AS package
         ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+      JOIN platform_accounts AS account
+        ON account.id=job.account_id AND account.tenant_id=job.tenant_id
       WHERE job.tenant_id=${scope.tenantId}::uuid
         AND (${query.workspace_id ?? null}::uuid IS NULL OR package.workspace_id=${query.workspace_id ?? null}::uuid)
         AND (${query.platform_code ?? null}::varchar IS NULL OR variant.platform_code=${query.platform_code ?? null})
@@ -276,10 +280,12 @@ export class PublishingApiService {
         job.external_post_id AS "externalPostId",job.external_url AS "externalUrl",
         job.last_error_json AS "lastError",job.origin,job.published_at AS "publishedAt",
         job.created_by AS "createdBy",variant.platform_code AS "platformCode",
+        account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
         job.created_at AS "createdAt",job.updated_at AS "updatedAt",job.version
       FROM publish_jobs AS job
       JOIN content_variants AS variant ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
       JOIN content_packages AS package ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+      JOIN platform_accounts AS account ON account.id=job.account_id AND account.tenant_id=job.tenant_id
       WHERE job.id=${jobId}::uuid AND job.tenant_id=${scope.tenantId}::uuid
         AND has_project_scope_access(package.tenant_id,package.workspace_id,package.project_id,${scope.userId}::uuid)
       LIMIT 1
@@ -555,8 +561,16 @@ function unknownResolution(
   const latest = attempts.at(-1);
   const requiresResolution =
     latest?.status === 'unknown' ||
-    (latest?.status === 'failed' && latest.errorCode === 'MANUAL_REQUIRED');
-  if (job.status !== 'failed' || !isBrowserPlatform(job.platformCode) || !requiresResolution) {
+    (latest?.status === 'failed' && latest.errorCode === 'MANUAL_REQUIRED') ||
+    (job.platformCode === 'lieju' &&
+      job.liejuDeliveryMethod === 'official_api' &&
+      job.status === 'publishing' &&
+      latest?.status === 'succeeded');
+  if (
+    !['failed', 'publishing'].includes(job.status) ||
+    !isBrowserPlatform(job.platformCode) ||
+    !requiresResolution
+  ) {
     return null;
   }
   return {

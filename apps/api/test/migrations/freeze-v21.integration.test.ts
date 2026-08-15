@@ -10,7 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 
-const FREEZE_TABLE_COUNT = 86;
+const FREEZE_TABLE_COUNT = 87;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -75,7 +75,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T153 with browser publishing automation tables', async () => {
+  it('migrates an empty database through T154 with official Lieju publishing state', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -117,6 +117,7 @@ describe('freeze v2.1 database verification', () => {
         'lieju_browser_sessions',
         'lieju_browser_publications',
         'lieju_browser_artifacts',
+        'lieju_api_publications',
         'browser_platform_automation_policies',
         'browser_platform_automation_runs',
         'browser_platform_daily_batches',

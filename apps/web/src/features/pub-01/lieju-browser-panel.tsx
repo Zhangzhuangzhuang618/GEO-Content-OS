@@ -25,6 +25,46 @@ export function LiejuBrowserPanel({
   readonly account: PlatformAccount;
   readonly onClose: () => void;
 }) {
+  return account.capabilities['delivery_method'] === 'official_api' ? (
+    <LiejuOfficialApiPanel account={account} onClose={onClose} />
+  ) : (
+    <LiejuBrowserGatewayPanel account={account} onClose={onClose} />
+  );
+}
+
+function LiejuOfficialApiPanel({
+  account,
+  onClose,
+}: {
+  readonly account: PlatformAccount;
+  readonly onClose: () => void;
+}) {
+  return (
+    <section className="mt-5 rounded-2xl border border-brand-200 bg-white p-5 shadow-panel sm:p-7">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-ink-950">列举网官方 API</h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-ink-500">
+            API Key 已加密保存，无需浏览器登录。固定发布到广州“生活服务 /
+            搬家”；接口状态不明确时会转人工确认，不会自动重复提交。
+          </p>
+        </div>
+        <button className={secondaryButton} onClick={onClose} type="button">
+          关闭
+        </button>
+      </div>
+      <BrowserPlatformAutomationPanel account={account} />
+    </section>
+  );
+}
+
+function LiejuBrowserGatewayPanel({
+  account,
+  onClose,
+}: {
+  readonly account: PlatformAccount;
+  readonly onClose: () => void;
+}) {
   const [session, setSession] = useState<BaijiahaoBrowserSession | null>(null);
   const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
   const [mode, setMode] = useState<LoginMode>('qq');

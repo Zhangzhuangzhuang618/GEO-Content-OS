@@ -315,6 +315,78 @@ describe('publish jobs', () => {
     );
   });
 
+  it('allows manual completion of an unverified Lieju official API success', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    await database`UPDATE briefs SET platform_codes=ARRAY['lieju']::varchar[] WHERE id=${BRIEF_ID}::uuid`;
+    await database`
+      UPDATE platform_accounts SET platform_code='lieju',display_name='Lieju Official API',
+        capabilities_json=${database.json({ delivery_method: 'official_api', publish: true })}
+      WHERE id=${ACCOUNT_ID}::uuid
+    `;
+    await database`
+      UPDATE content_variants SET platform_code='lieju' WHERE id=${VARIANT_ID}::uuid
+    `;
+    const job = await schedule(service);
+    await database.begin(async (transaction) => {
+      await transaction`
+        UPDATE publish_jobs SET status='publishing',attempt_count=1,
+          external_post_id='api-lieju-124',version=2 WHERE id=${job.id}::uuid
+      `;
+      await transaction`
+        UPDATE content_variants SET status='publishing',version=3 WHERE id=${VARIANT_ID}::uuid
+      `;
+      await transaction`
+        UPDATE content_packages SET status='publishing',version=3 WHERE id=${PACKAGE_ID}::uuid
+      `;
+      await transaction`
+        INSERT INTO publish_attempts(
+          tenant_id,publish_job_id,attempt_no,adapter_code,status,request_hash,
+          response_json,started_at,finished_at
+        ) VALUES(
+          ${TENANT_ID}::uuid,${job.id}::uuid,1,'lieju-delivery@1.2.0','succeeded',
+          ${'b'.repeat(64)},${transaction.json({ status: 'processing' })},now(),now()
+        )
+      `;
+      await transaction`
+        INSERT INTO lieju_api_publications(
+          id,tenant_id,account_id,publish_job_id,content_version_id,idempotency_key,
+          payload_hash,attempt_no,status,remote_reference,submitted_at
+        ) VALUES(
+          ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,
+          ${job.id}::uuid,${VERSION_ID}::uuid,${job.idempotency_key},${CONTENT_HASH},1,
+          'processing','api-lieju-124',now()
+        )
+      `;
+    });
+
+    const detail = await new PublishingApiService(database, {} as ObjectStorageAdapter).detail(
+      SCOPE,
+      job.id,
+    );
+    expect(detail.unknown_resolution).toMatchObject({
+      latest_attempt_no: 1,
+      platform_code: 'lieju',
+    });
+    const resolved = await service.resolveUnknown(
+      { ...SCOPE, requestId: 'req-lieju-official-published-124' },
+      job.id,
+      2,
+      {
+        external_post_id: 'api-lieju-124',
+        external_url: 'https://gz.lieju.com/banjia/104561172.html',
+        resolution: 'published',
+      },
+    );
+
+    expect(resolved).toMatchObject({ status: 'published', version: 3 });
+    expect(
+      await database<{ status: string }[]>`
+        SELECT status FROM lieju_api_publications WHERE id=${BROWSER_PUBLICATION_ID}::uuid
+      `,
+    ).toEqual([{ status: 'published' }]);
+  });
+
   it('requeues only terminal Baijiahao reconciliation for a stuck publishing job', async () => {
     const database = requireClient(client);
     const service = new PublishJobService(database);

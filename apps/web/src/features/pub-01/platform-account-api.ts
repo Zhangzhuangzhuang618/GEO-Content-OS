@@ -55,14 +55,15 @@ export async function createPlatformAccount(
       ...(form.publish_mode === 'api' && form.platform_code === 'lieju'
         ? {
             credential: {
-              address: form.address.trim(),
-              category_id: form.category_id,
-              contact_name: form.contact_name.trim(),
-              mobile_phone: form.mobile_phone.trim(),
-              qq: form.qq.trim(),
-              street_id: form.street_id.trim() || null,
-              wechat: form.wechat.trim(),
-              zone_id: form.zone_id,
+              api_key: form.api_key.trim(),
+              delivery_method: 'official_api',
+              posting_profile: {
+                contact_name: form.contact_name.trim(),
+                mobile_phone: form.mobile_phone.trim(),
+                qq: form.qq.trim(),
+                wechat: form.wechat.trim(),
+                zone_id: form.zone_id,
+              },
             },
           }
         : form.publish_mode === 'api' && !['baijiahao', 'sohu'].includes(form.platform_code)
@@ -104,11 +105,14 @@ export async function updatePlatformAccount(
 ) {
   const baseUrl = form.base_url.trim();
   const token = form.bearer_token.trim();
+  const liejuApiKey = form.api_key.trim();
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}`, {
     body: JSON.stringify({
-      ...(baseUrl && token
-        ? { credential: { base_url: baseUrl, bearer_token: form.bearer_token } }
-        : {}),
+      ...(account.platform_code === 'lieju' && liejuApiKey
+        ? { credential: { api_key: liejuApiKey, delivery_method: 'official_api' } }
+        : baseUrl && token
+          ? { credential: { base_url: baseUrl, bearer_token: form.bearer_token } }
+          : {}),
       display_name: form.display_name.trim(),
       publishing_url: form.publishing_url.trim() || null,
       publish_mode: form.publish_mode,

@@ -1,0 +1,153 @@
+import { createHash } from 'node:crypto';
+
+import { encode } from 'iconv-lite';
+
+import type { LiejuDeliveryConfig } from './config.js';
+import { LiejuDeliveryError } from './errors.js';
+import type { LiejuDeliveryInput, LiejuPublishResult } from './types.js';
+
+type OfficialConfig = Extract<LiejuDeliveryConfig, { readonly delivery_method: 'official_api' }>;
+
+export interface LiejuOfficialApiRequest {
+  readonly body: Uint8Array;
+  readonly contentType: string;
+}
+
+export function buildLiejuOfficialApiRequest(
+  configuration: OfficialConfig,
+  input: LiejuDeliveryInput,
+): LiejuOfficialApiRequest {
+  const boundary = `----geo-content-os-${sha256(input.idempotency_key).slice(0, 24)}`;
+  const imageMarkup = (input.image_urls ?? []).map((url) => `[img]${url}[/img]`).join('\r\n');
+  const content = imageMarkup
+    ? `${input.payload.body_text}\r\n\r\n${imageMarkup}`
+    : input.payload.body_text;
+  const fields = Object.freeze([
+    ['api', '1'],
+    ['api_key', configuration.api_key],
+    ['postdb[fid]', configuration.fid],
+    ['postdb[city_id]', configuration.city_id],
+    ['postdb[zone_id]', configuration.posting_profile.zone_id],
+    ['postdb[title]', input.payload.title],
+    ['postdb[content]', content],
+    ['postdb[mobphone]', configuration.posting_profile.mobile_phone],
+    ['postdb[oicq]', configuration.posting_profile.qq],
+    ['postdb[wechat]', configuration.posting_profile.wechat],
+    ['postdb[linkman]', configuration.posting_profile.contact_name],
+  ] as const);
+  const chunks: Buffer[] = [];
+  for (const [name, value] of fields) {
+    chunks.push(
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n`,
+        'ascii',
+      ),
+      encode(value, 'gbk'),
+      Buffer.from('\r\n', 'ascii'),
+    );
+  }
+  chunks.push(Buffer.from(`--${boundary}--\r\n`, 'ascii'));
+  return Object.freeze({
+    body: new Uint8Array(Buffer.concat(chunks)),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  });
+}
+
+export function parseLiejuOfficialApiResponse(
+  value: unknown,
+  idempotencyKey: string,
+): LiejuPublishResult {
+  const normalized = responseText(value);
+  const responseHash = sha256(normalized);
+  if (REJECTION.test(normalized)) {
+    throw new LiejuDeliveryError('PUBLISH_REJECTED', 'Lieju official API rejected publication');
+  }
+  if (!explicitSuccess(value, normalized)) {
+    throw new LiejuDeliveryError(
+      'PUBLISH_STATE_UNKNOWN',
+      'Lieju official API returned an unrecognized publication response',
+    );
+  }
+  const url = findPublicUrl(value, normalized);
+  return Object.freeze({
+    external_id: findRemoteReference(value, url) ?? `api-${sha256(idempotencyKey).slice(0, 32)}`,
+    response_hash: responseHash,
+    status: 'processing',
+    url,
+  });
+}
+
+const REJECTION =
+  /(?:发布失败|提交失败|错误|无效|过期|未授权|禁止|余额不足|次数不足|验证码|api[_ ]?key[^\n]{0,20}(?:错误|无效))/iu;
+const SUCCESS = /(?:发布成功|提交成功|信息发布成功)/u;
+
+function explicitSuccess(value: unknown, normalized: string): boolean {
+  if (SUCCESS.test(normalized)) return true;
+  if (!record(value)) return false;
+  const code = value['code'];
+  return (
+    value['success'] === true ||
+    ['ok', 'success'].includes(String(value['status'] ?? '').toLowerCase()) ||
+    code === 0 ||
+    code === 200 ||
+    code === '0' ||
+    code === '200'
+  );
+}
+
+function findPublicUrl(value: unknown, normalized: string): string | null {
+  const values = strings(value);
+  values.push(...(normalized.match(/https:\/\/[^\s"'<>]+/giu) ?? []));
+  for (const candidate of values) {
+    try {
+      const url = new URL(candidate.replace(/[),，。]+$/u, ''));
+      if (
+        url.protocol === 'https:' &&
+        (url.hostname === 'lieju.com' || url.hostname.endsWith('.lieju.com'))
+      ) {
+        return url.toString();
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function findRemoteReference(value: unknown, url: string | null): string | null {
+  if (record(value)) {
+    for (const key of ['external_id', 'post_id', 'info_id', 'id']) {
+      const candidate = value[key];
+      if (typeof candidate === 'string' || typeof candidate === 'number') {
+        const normalized = String(candidate).trim();
+        if (/^[A-Za-z0-9._:-]{1,240}$/u.test(normalized)) return normalized;
+      }
+    }
+    if (record(value['data'])) return findRemoteReference(value['data'], url);
+  }
+  return url ? (/\/(\d+)\.html(?:$|\?)/u.exec(url)?.[1] ?? null) : null;
+}
+
+function responseText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  try {
+    return JSON.stringify(value) || '';
+  } catch {
+    return '';
+  }
+}
+
+function strings(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(strings);
+  if (record(value)) return Object.values(value).flatMap(strings);
+  return [];
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value, 'utf8').digest('hex');
+}

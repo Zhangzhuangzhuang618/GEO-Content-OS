@@ -5,7 +5,10 @@ import type {
   UpdatePlatformAccountRequest,
 } from '@geo-content-os/contracts';
 import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
-import { LiejuPostingProfileSchema } from '@geo-content-os/adapter-platforms/lieju/delivery';
+import {
+  LiejuDeliveryConfigSchema,
+  LiejuPostingProfileSchema,
+} from '@geo-content-os/adapter-platforms/lieju/delivery';
 import type { TransactionSql } from 'postgres';
 import {
   resolveDatabaseClient,
@@ -361,17 +364,91 @@ async function accountCredential(
   if (platformCode === 'baijiahao') return readBaijiahaoBrowserGatewayCredential();
   if (platformCode === 'sohu') return readSohuBrowserGatewayCredential();
   if (platformCode === 'lieju') {
-    const raw = supplied ?? (fallback ? await fallback() : null);
+    const previous = fallback ? await fallback() : null;
+    const raw = supplied ? mergeLiejuCredential(previous, supplied) : previous;
     if (!raw) return null;
+    if (raw['delivery_method'] === 'official_api' || typeof raw['api_key'] === 'string') {
+      const officialProfile = record(raw['posting_profile']) ?? raw;
+      const parsed = LiejuDeliveryConfigSchema.parse({
+        api_key: raw['api_key'],
+        ...(raw['city_id'] === undefined ? {} : { city_id: raw['city_id'] }),
+        delivery_method: 'official_api',
+        ...(raw['endpoint'] === undefined ? {} : { endpoint: raw['endpoint'] }),
+        ...(raw['fid'] === undefined ? {} : { fid: raw['fid'] }),
+        mode: 'api',
+        posting_profile: pickLiejuOfficialProfileFields(officialProfile),
+        ...(raw['timeout_ms'] === undefined ? {} : { timeout_ms: raw['timeout_ms'] }),
+      });
+      if (parsed.mode !== 'api' || parsed.delivery_method !== 'official_api') throw invalid();
+      return Object.freeze({
+        api_key: parsed.api_key,
+        city_id: parsed.city_id,
+        delivery_method: parsed.delivery_method,
+        endpoint: parsed.endpoint,
+        fid: parsed.fid,
+        posting_profile: parsed.posting_profile,
+        timeout_ms: parsed.timeout_ms,
+      });
+    }
     const profileSource = raw['posting_profile'] ?? raw;
     const profile = LiejuPostingProfileSchema.parse(profileSource);
     return Object.freeze({
       ...readLiejuBrowserGatewayCredential(),
+      delivery_method: 'browser_gateway',
       posting_profile: profile,
     });
   }
   if (supplied) return supplied;
   return fallback ? fallback() : null;
+}
+
+function mergeLiejuCredential(
+  previous: Readonly<Record<string, unknown>> | null,
+  supplied: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  if (!previous) return supplied;
+  const previousProfile = record(previous['posting_profile']);
+  const suppliedProfile = record(supplied['posting_profile']) ?? pickLiejuProfileFields(supplied);
+  return Object.freeze({
+    ...previous,
+    ...supplied,
+    posting_profile: Object.freeze({ ...(previousProfile ?? {}), ...suppliedProfile }),
+  });
+}
+
+function pickLiejuOfficialProfileFields(
+  value: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const profile: Record<string, unknown> = {};
+  for (const key of ['contact_name', 'mobile_phone', 'qq', 'wechat', 'zone_id']) {
+    if (key in value) profile[key] = value[key];
+  }
+  return profile;
+}
+
+function pickLiejuProfileFields(
+  value: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const profile: Record<string, unknown> = {};
+  for (const key of [
+    'address',
+    'category_id',
+    'contact_name',
+    'mobile_phone',
+    'qq',
+    'street_id',
+    'wechat',
+    'zone_id',
+  ]) {
+    if (key in value) profile[key] = value[key];
+  }
+  return profile;
+}
+
+function record(value: unknown): Readonly<Record<string, unknown>> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : null;
 }
 
 function jsonbText(client: Client, value: unknown) {

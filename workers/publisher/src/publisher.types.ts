@@ -51,6 +51,7 @@ export interface PublishClaim {
   readonly credentialKeyVersion: string | null;
   readonly citations: readonly PublishCitationLink[];
   readonly idempotencyKey: string;
+  readonly liejuDeliveryMethod?: 'browser_gateway' | 'official_api';
   readonly jobId: string;
   readonly mediaAssets?: readonly PublishMediaAsset[];
   readonly payloadHash: string;
@@ -121,6 +122,7 @@ export interface PublisherPlatformPort {
 
 export interface PublisherStorePort {
   claim(event: ValidatedPublishEvent): Promise<PublishClaimResult>;
+  reserveLiejuOfficialSubmission?(claim: PublishClaim): Promise<boolean>;
   complete(
     event: ValidatedPublishEvent,
     claim: PublishClaim,

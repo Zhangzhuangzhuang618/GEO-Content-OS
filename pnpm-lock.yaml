@@ -267,6 +267,9 @@ importers:
       '@geo-content-os/contracts':
         specifier: workspace:*
         version: link:../../contracts
+      iconv-lite:
+        specifier: 0.7.3
+        version: 0.7.3
       zod:
         specifier: 4.4.3
         version: 4.4.3

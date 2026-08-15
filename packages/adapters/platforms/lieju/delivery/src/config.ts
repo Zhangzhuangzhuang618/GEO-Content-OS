@@ -1,5 +1,26 @@
 import { z } from 'zod';
 
+export const LIEJU_OFFICIAL_API_ENDPOINT =
+  'https://post.lieju.com/post_api.php?action=postnew' as const;
+
+const ZoneIdSchema = z.enum([
+  '73',
+  '3038',
+  '3037',
+  '3036',
+  '83',
+  '82',
+  '81',
+  '80',
+  '79',
+  '78',
+  '77',
+  '76',
+  '75',
+  '74',
+  '3081',
+]);
+
 const ApiPathSchema = z
   .string()
   .regex(/^\/(?!\/)[A-Za-z0-9/_-]*$/u)
@@ -27,35 +48,32 @@ export const LiejuPostingProfileSchema = z
       .nullable()
       .default(null),
     wechat: z.string().trim().max(25).default(''),
-    zone_id: z.enum([
-      '73',
-      '3038',
-      '3037',
-      '3036',
-      '83',
-      '82',
-      '81',
-      '80',
-      '79',
-      '78',
-      '77',
-      '76',
-      '75',
-      '74',
-      '3081',
-    ]),
+    zone_id: ZoneIdSchema,
   })
   .strict();
 
 export type LiejuPostingProfile = z.infer<typeof LiejuPostingProfileSchema>;
 
-export const LiejuDeliveryConfigSchema = z.discriminatedUnion('mode', [
+export const LiejuOfficialPostingProfileSchema = z
+  .object({
+    contact_name: z.string().trim().min(1).max(25),
+    mobile_phone: z.string().trim().min(6).max(20),
+    qq: z.string().trim().max(15).default(''),
+    wechat: z.string().trim().max(25).default(''),
+    zone_id: ZoneIdSchema,
+  })
+  .strict();
+
+export type LiejuOfficialPostingProfile = z.infer<typeof LiejuOfficialPostingProfileSchema>;
+
+export const LiejuDeliveryConfigSchema = z.union([
   z.object({ mode: z.literal('export_only') }).strict(),
   z
     .object({
       account_id: z.string().uuid().optional(),
       base_url: z.url().refine(isSafeBaseUrl),
       bearer_token: z.string().trim().min(1),
+      delivery_method: z.literal('browser_gateway').default('browser_gateway'),
       endpoints: EndpointSchema.default({
         capabilities: '/capabilities',
         metrics: '/metrics',
@@ -65,6 +83,23 @@ export const LiejuDeliveryConfigSchema = z.discriminatedUnion('mode', [
       mode: z.literal('api'),
       posting_profile: LiejuPostingProfileSchema,
       timeout_ms: z.number().int().min(100).max(60_000).default(60_000),
+    })
+    .strict(),
+  z
+    .object({
+      api_key: z
+        .string()
+        .trim()
+        .min(16)
+        .max(256)
+        .regex(/^[\x21-\x7e]+$/u),
+      city_id: z.literal('5').default('5'),
+      delivery_method: z.literal('official_api'),
+      endpoint: z.literal(LIEJU_OFFICIAL_API_ENDPOINT).default(LIEJU_OFFICIAL_API_ENDPOINT),
+      fid: z.literal('73').default('73'),
+      mode: z.literal('api'),
+      posting_profile: LiejuOfficialPostingProfileSchema,
+      timeout_ms: z.number().int().min(100).max(60_000).default(20_000),
     })
     .strict(),
 ]);

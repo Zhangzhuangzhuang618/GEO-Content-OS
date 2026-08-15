@@ -1,6 +1,6 @@
 import type { LiejuPayload } from '../../render/src/types.js';
 
-export const LIEJU_DELIVERY_VERSION = 'lieju-delivery@1.1.0' as const;
+export const LIEJU_DELIVERY_VERSION = 'lieju-delivery@1.2.0' as const;
 export const LIEJU_EXPORT_SCHEMA_VERSION = 'lieju-export@1' as const;
 
 export interface LiejuCapabilities {
@@ -9,11 +9,14 @@ export interface LiejuCapabilities {
   readonly metrics: boolean;
   readonly publish: boolean;
   readonly version: typeof LIEJU_DELIVERY_VERSION;
-  readonly warnings: readonly ('CAPABILITY_PROBE_FAILED' | 'EXPORT_ONLY')[];
+  readonly warnings: readonly (
+    'CAPABILITY_PROBE_FAILED' | 'EXPORT_ONLY' | 'OFFICIAL_API_STATUS_UNAVAILABLE'
+  )[];
 }
 
 export interface LiejuDeliveryInput {
   readonly content_version_id: string;
+  readonly image_urls?: readonly string[];
   readonly idempotency_key: string;
   readonly payload: LiejuPayload;
   readonly payload_hash: string;
@@ -21,6 +24,7 @@ export interface LiejuDeliveryInput {
 
 export interface LiejuPublishResult {
   readonly external_id: string;
+  readonly response_hash?: string;
   readonly status: 'processing' | 'published';
   readonly url: string | null;
 }
@@ -57,9 +61,10 @@ export type LiejuDeliveryResult =
   | { readonly export: LiejuExportBundle; readonly mode: 'export' };
 
 export interface LiejuHttpRequest {
-  readonly body?: unknown;
+  readonly body?: Readonly<Record<string, unknown>> | Uint8Array;
   readonly headers: Readonly<Record<string, string>>;
   readonly method: 'GET' | 'POST';
+  readonly response_encoding?: 'gbk' | 'utf-8';
   readonly signal?: AbortSignal;
   readonly url: string;
 }

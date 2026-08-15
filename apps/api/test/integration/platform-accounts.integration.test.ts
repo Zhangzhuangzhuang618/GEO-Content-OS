@@ -302,6 +302,67 @@ describe('platform accounts', () => {
     });
   });
 
+  it('stores Lieju official API credentials without probing or exposing the API key', async () => {
+    const fetchSpy = vi.fn(() => Promise.reject(new Error('network must not be used')));
+    vi.stubGlobal('fetch', fetchSpy);
+    const database = requireClient(client);
+    const envelope = new CredentialEnvelopeService(requireKms(kms));
+    const service = new PlatformAccountService(
+      database,
+      envelope,
+      new PlatformDeliveryAccountConnector(),
+    );
+    const apiKey = 'lieju-official-key-1234567890';
+
+    const connected = await service.create(
+      SCOPE,
+      {
+        credential: {
+          api_key: apiKey,
+          delivery_method: 'official_api',
+          posting_profile: {
+            contact_name: '广州志远搬家服务有限公司',
+            mobile_phone: '02085627757',
+            qq: '',
+            wechat: '',
+            zone_id: '76',
+          },
+        },
+        display_name: '列举网官方 API',
+        platform_code: 'lieju',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: WORKSPACE_ID,
+      },
+      { requestId: 'req-lieju-official-api' },
+    );
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(connected).toMatchObject({
+      capabilities: {
+        delivery_method: 'official_api',
+        get_status: false,
+        publish: true,
+      },
+      status: 'active',
+    });
+    expect(JSON.stringify(connected)).not.toContain(apiKey);
+    const rows = await database<{ credentialCiphertext: string; credentialKeyVersion: string }[]>`
+      SELECT credential_ciphertext AS "credentialCiphertext",
+        credential_key_version AS "credentialKeyVersion"
+      FROM platform_accounts WHERE id=${connected.id}::uuid
+    `;
+    const stored = rows[0];
+    if (!stored) throw new Error('Lieju credential was not stored');
+    const decrypted = JSON.parse(await envelope.decrypt(stored)) as Record<string, unknown>;
+    expect(decrypted).toMatchObject({
+      api_key: apiKey,
+      city_id: '5',
+      delivery_method: 'official_api',
+      fid: '73',
+    });
+  });
+
   it('configures one fixed official-site automation policy per project and disables it with the account', async () => {
     const database = requireClient(client);
     const accounts = createService(database, requireKms(kms));

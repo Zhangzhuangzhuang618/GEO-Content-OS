@@ -149,7 +149,7 @@ export class PostgresLiejuBrowserStore {
         WHERE tenant_id=${account.tenantId}::uuid AND account_id=${accountId}::uuid
           AND content_version_id=${input.contentVersionId}::uuid
           AND idempotency_key=${input.idempotencyKey}
-          AND origin='manual' AND status='publishing'
+          AND origin IN ('manual','lieju_automation') AND status='publishing'
         FOR UPDATE
       `;
       const job = jobs[0];

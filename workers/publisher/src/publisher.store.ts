@@ -34,6 +34,7 @@ interface JobRow {
   readonly currentContentVersionId: string | null;
   readonly id: string;
   readonly idempotencyKey: string;
+  readonly liejuDeliveryMethod: 'browser_gateway' | 'official_api' | null;
   readonly origin:
     | 'manual'
     | 'official_site_automation'
@@ -132,6 +133,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           account.credential_ciphertext AS "credentialCiphertext",
           account.credential_key_version AS "credentialKeyVersion",
           account.publish_mode AS "publishMode", account.status AS "accountStatus",
+          account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
           account.token_expires_at AS "accountTokenExpiresAt",
           account.deleted_at AS "accountDeletedAt"
         FROM publish_jobs AS job
@@ -259,6 +261,9 @@ export class PostgresPublisherStore implements PublisherStorePort {
           credentialCiphertext: row.credentialCiphertext,
           credentialKeyVersion: row.credentialKeyVersion,
           idempotencyKey: row.idempotencyKey,
+          ...(row.platformCode === 'lieju'
+            ? { liejuDeliveryMethod: row.liejuDeliveryMethod ?? 'browser_gateway' }
+            : {}),
           jobId: row.id,
           mediaAssets: Object.freeze(
             mediaAssets.map((asset) =>
@@ -271,6 +276,39 @@ export class PostgresPublisherStore implements PublisherStorePort {
           tenantId: row.tenantId,
         }),
       } as const;
+    });
+  }
+
+  public reserveLiejuOfficialSubmission(claim: PublishClaim): Promise<boolean> {
+    if (claim.platformCode !== 'lieju' || claim.liejuDeliveryMethod !== 'official_api') {
+      return Promise.resolve(true);
+    }
+    return this.client.begin(async (transaction) => {
+      const reset = await transaction<{ id: string }[]>`
+        UPDATE lieju_api_publications SET
+          status='reserved',attempt_no=${claim.attempt},last_error_json=NULL,
+          remote_reference=NULL,external_url=NULL,response_hash=NULL,submitted_at=NULL,
+          version=version+1
+        WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+          AND account_id=${claim.accountId}::uuid
+          AND idempotency_key=${claim.idempotencyKey}
+          AND status IN ('rejected','not_published')
+        RETURNING id
+      `;
+      if (reset.length === 1) return true;
+      const rows = await transaction<{ id: string }[]>`
+        INSERT INTO lieju_api_publications (
+          tenant_id,account_id,publish_job_id,content_version_id,idempotency_key,
+          payload_hash,attempt_no,status
+        ) VALUES (
+          ${claim.tenantId}::uuid,${claim.accountId}::uuid,${claim.jobId}::uuid,
+          ${claim.contentVersionId}::uuid,${claim.idempotencyKey},${claim.payloadHash},
+          ${claim.attempt},'reserved'
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING id
+      `;
+      return rows.length === 1;
     });
   }
 
@@ -298,9 +336,11 @@ export class PostgresPublisherStore implements PublisherStorePort {
         status: 'succeeded',
       });
       if (delivery.mode === 'api' && deliveryStatus(delivery) === 'processing') {
+        const liejuOfficial = isLiejuOfficial(claim);
         if (
-          !isBrowserPlatform(claim.platformCode) ||
-          !isBrowserOrigin(row.origin, claim.platformCode)
+          !liejuOfficial &&
+          (!isBrowserPlatform(claim.platformCode) ||
+            !isBrowserOrigin(row.origin, claim.platformCode))
         ) {
           throw stateInvalid();
         }
@@ -314,12 +354,22 @@ export class PostgresPublisherStore implements PublisherStorePort {
         `;
         const job = processing[0];
         if (!job) throw leaseLost();
-        const browserPublications = await updateBrowserPublicationProcessing(
-          transaction,
-          claim,
-          delivery,
-        );
-        if (browserPublications.length !== 1) throw stateInvalid();
+        if (liejuOfficial) {
+          const official = await updateLiejuOfficialPublication(
+            transaction,
+            claim,
+            delivery,
+            'processing',
+          );
+          if (official.length !== 1) throw stateInvalid();
+        } else {
+          const browserPublications = await updateBrowserPublicationProcessing(
+            transaction,
+            claim,
+            delivery,
+          );
+          if (browserPublications.length !== 1) throw stateInvalid();
+        }
         if (row.origin === 'baijiahao_automation') {
           await transaction`
             UPDATE baijiahao_automation_runs SET
@@ -335,16 +385,18 @@ export class PostgresPublisherStore implements PublisherStorePort {
         } else if (isBrowserPlatformAutomationOrigin(row.origin)) {
           await markBrowserPlatformAutomationProcessing(transaction, claim.tenantId, claim.jobId);
         }
-        await insertBrowserReconcileEvent(
-          transaction,
-          event,
-          claim,
-          row,
-          job.version,
-          5,
-          1,
-          claim.platformCode,
-        );
+        if (!liejuOfficial && isBrowserPlatform(claim.platformCode)) {
+          await insertBrowserReconcileEvent(
+            transaction,
+            event,
+            claim,
+            row,
+            job.version,
+            5,
+            1,
+            claim.platformCode,
+          );
+        }
         await writeAudit(
           transaction,
           event,
@@ -386,17 +438,28 @@ export class PostgresPublisherStore implements PublisherStorePort {
       `;
       const publishedJob = updated[0];
       if (!publishedJob) throw leaseLost();
+      if (delivery.mode === 'api' && isLiejuOfficial(claim)) {
+        const official = await updateLiejuOfficialPublication(
+          transaction,
+          claim,
+          delivery,
+          'published',
+        );
+        if (official.length !== 1) throw stateInvalid();
+      }
       if (row.origin === 'official_site_automation') {
         await completeAutomationRun(transaction, claim.tenantId, claim.jobId, 'published', null);
         await completeDailyBatchItem(transaction, claim.tenantId, claim.jobId, delivery);
       } else if (isBrowserPlatform(claim.platformCode)) {
         if (delivery.mode !== 'api') throw stateInvalid();
-        const browserPublications = await selectPublishedBrowserPublication(
-          transaction,
-          claim,
-          delivery.externalId,
-        );
-        if (browserPublications.length !== 1) throw stateInvalid();
+        if (!isLiejuOfficial(claim)) {
+          const browserPublications = await selectPublishedBrowserPublication(
+            transaction,
+            claim,
+            delivery.externalId,
+          );
+          if (browserPublications.length !== 1) throw stateInvalid();
+        }
         if (row.origin === 'baijiahao_automation') {
           await completeBaijiahaoAutomationRun(
             transaction,
@@ -520,7 +583,11 @@ export class PostgresPublisherStore implements PublisherStorePort {
           error,
         );
       } else if (claim.platformCode === 'sohu' || claim.platformCode === 'lieju') {
-        await updateBrowserPublicationFailure(transaction, claim, failure, error);
+        if (isLiejuOfficial(claim)) {
+          await updateLiejuOfficialPublicationFailure(transaction, claim, failure, error);
+        } else {
+          await updateBrowserPublicationFailure(transaction, claim, failure, error);
+        }
         if (isBrowserPlatformAutomationOrigin(row.origin)) {
           const manual = failure.status === 'unknown' || failure.code === 'MANUAL_REQUIRED';
           await completeBrowserPlatformAutomation(
@@ -993,6 +1060,51 @@ export class PostgresPublisherStore implements PublisherStorePort {
       return 'completed' as const;
     });
   }
+}
+
+function isLiejuOfficial(claim: PublishClaim): boolean {
+  return claim.platformCode === 'lieju' && claim.liejuDeliveryMethod === 'official_api';
+}
+
+function updateLiejuOfficialPublication(
+  transaction: postgres.TransactionSql,
+  claim: PublishClaim,
+  delivery: Extract<PlatformDelivery, { readonly mode: 'api' }>,
+  status: 'processing' | 'published',
+): Promise<{ id: string }[]> {
+  const responseHash =
+    typeof delivery.response['response_hash'] === 'string'
+      ? delivery.response['response_hash']
+      : null;
+  const remoteReference = delivery.externalId.startsWith('api-') ? null : delivery.externalId;
+  return transaction<{ id: string }[]>`
+    UPDATE lieju_api_publications SET
+      status=${status},remote_reference=${remoteReference},external_url=${delivery.url},
+      response_hash=${responseHash},submitted_at=COALESCE(submitted_at,now()),
+      last_error_json=NULL,version=version+1
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND account_id=${claim.accountId}::uuid
+      AND content_version_id=${claim.contentVersionId}::uuid
+      AND status='reserved'
+    RETURNING id
+  `;
+}
+
+function updateLiejuOfficialPublicationFailure(
+  transaction: postgres.TransactionSql,
+  claim: PublishClaim,
+  failure: { readonly code: string; readonly status: 'failed' | 'unknown' },
+  error: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  const status = failure.status === 'unknown' ? 'manual_required' : 'rejected';
+  return transaction`
+    UPDATE lieju_api_publications SET
+      status=${status},last_error_json=${JSON.stringify(error)}::text::jsonb,
+      submitted_at=CASE WHEN ${failure.status}='unknown' THEN COALESCE(submitted_at,now()) ELSE submitted_at END,
+      version=version+1
+    WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
+      AND account_id=${claim.accountId}::uuid AND status='reserved'
+  `.then(() => undefined);
 }
 
 function updateBrowserPublicationProcessing(

@@ -87,7 +87,7 @@ describe('Postgres Lieju browser store', () => {
     expect(authenticated.status).toBe('authenticated');
   });
 
-  it('accepts a manual Lieju publish job for browser submission', async () => {
+  it('accepts a Lieju automation publish job for browser submission', async () => {
     const database = requireClient(client);
     await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
     await database`
@@ -97,7 +97,7 @@ describe('Postgres Lieju browser store', () => {
       ) VALUES(
         ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
         ${ACCOUNT_ID}::uuid,now(),'lieju-t150-publication',${CONTENT_HASH},
-        'publishing','manual',1,${USER_ID}::uuid
+        'publishing','lieju_automation',1,${USER_ID}::uuid
       )
     `;
     const store = new PostgresLiejuBrowserStore(database);

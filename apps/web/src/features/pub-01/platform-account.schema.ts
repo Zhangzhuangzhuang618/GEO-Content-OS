@@ -323,6 +323,7 @@ export const BaijiahaoBrowserLoginResponseSchema = z
 export const PlatformAccountFormSchema = z
   .object({
     address: z.string(),
+    api_key: z.string(),
     base_url: z.string(),
     bearer_token: z.string(),
     category_id: z.string(),
@@ -351,8 +352,7 @@ export const PlatformAccountFormSchema = z
     if (value.platform_code === 'baijiahao' || value.platform_code === 'sohu') return;
     if (value.platform_code === 'lieju') {
       const required = [
-        ['address', value.address],
-        ['category_id', value.category_id],
+        ['api_key', value.api_key],
         ['contact_name', value.contact_name],
         ['mobile_phone', value.mobile_phone],
         ['zone_id', value.zone_id],
@@ -371,6 +371,13 @@ export const PlatformAccountFormSchema = z
           code: 'custom',
           message: '列举网联系方式超出长度限制。',
           path: ['mobile_phone'],
+        });
+      }
+      if (!/^[\x21-\x7e]{16,256}$/u.test(value.api_key.trim())) {
+        context.addIssue({
+          code: 'custom',
+          message: '请输入列举网提供的有效 API Key。',
+          path: ['api_key'],
         });
       }
       return;
@@ -393,6 +400,7 @@ export const PlatformAccountFormSchema = z
 
 export const PlatformAccountEditSchema = z
   .object({
+    api_key: z.string(),
     base_url: z.string(),
     bearer_token: z.string(),
     display_name: z.string().trim().min(1, '请填写账号名称。').max(120),
@@ -410,6 +418,13 @@ export const PlatformAccountEditSchema = z
     }
     const baseUrl = value.base_url.trim();
     const token = value.bearer_token.trim();
+    if (value.api_key.trim() && !/^[\x21-\x7e]{16,256}$/u.test(value.api_key.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: '请输入列举网提供的有效 API Key。',
+        path: ['api_key'],
+      });
+    }
     if (!baseUrl && !token) return;
     if (!isValidApiBaseUrl(baseUrl)) {
       context.addIssue({

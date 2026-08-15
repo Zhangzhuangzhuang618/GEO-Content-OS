@@ -7,13 +7,18 @@ export class FetchLiejuTransport implements LiejuHttpTransport {
     const timeout = AbortSignal.timeout(this.timeoutMs);
     const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
     const response = await fetch(input.url, {
-      ...(input.body === undefined ? {} : { body: JSON.stringify(input.body) }),
+      ...(input.body === undefined
+        ? {}
+        : { body: input.body instanceof Uint8Array ? input.body : JSON.stringify(input.body) }),
       headers: { ...input.headers },
       method: input.method,
       redirect: 'error',
       signal,
     });
-    const text = await response.text();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const text = new TextDecoder(
+      input.response_encoding ?? responseCharset(response.headers.get('content-type')),
+    ).decode(bytes);
     let body: unknown = null;
     if (text.length > 0) {
       try {
@@ -24,4 +29,8 @@ export class FetchLiejuTransport implements LiejuHttpTransport {
     }
     return { body, status_code: response.status };
   }
+}
+
+function responseCharset(contentType: string | null): 'gbk' | 'utf-8' {
+  return /charset\s*=\s*(?:gbk|gb2312|gb18030)/iu.test(contentType ?? '') ? 'gbk' : 'utf-8';
 }

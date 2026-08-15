@@ -52,6 +52,19 @@ export class PublisherWorker {
       return terminal(event, claim, 'processed');
     }
 
+    if (claim.liejuDeliveryMethod === 'official_api') {
+      const reserve = this.dependencies.store.reserveLiejuOfficialSubmission;
+      if (!reserve || !(await reserve.call(this.dependencies.store, claim))) {
+        await this.dependencies.store.fail(event, claim, {
+          code: 'PUBLISH_STATE_UNKNOWN',
+          message: '列举网官方 API 提交状态未确认，已阻止自动重复提交',
+          requestHash: claim.payloadHash,
+          status: 'unknown',
+        });
+        return terminal(event, claim, 'unknown');
+      }
+    }
+
     let delivery: PlatformDelivery;
     try {
       delivery = await this.dependencies.platform.deliver(claim, credential, signal);
@@ -69,6 +82,7 @@ export class PublisherWorker {
       const unknown = failure.code === 'PUBLISH_STATE_UNKNOWN' || failure.code === undefined;
       if (
         ['official_site', 'baijiahao', 'sohu', 'lieju'].includes(claim.platformCode) &&
+        claim.liejuDeliveryMethod !== 'official_api' &&
         claim.attempt < 3 &&
         (unknown || failure.code === 'CAPABILITY_UNAVAILABLE')
       ) {

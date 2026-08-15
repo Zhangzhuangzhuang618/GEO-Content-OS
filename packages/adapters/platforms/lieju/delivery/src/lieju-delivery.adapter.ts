@@ -3,6 +3,7 @@ import type { z } from 'zod';
 import { parseLiejuDeliveryConfig, type LiejuDeliveryConfig } from './config.js';
 import { LiejuDeliveryError } from './errors.js';
 import { exportLieju, hashLiejuPayload } from './export.js';
+import { buildLiejuOfficialApiRequest, parseLiejuOfficialApiResponse } from './official-api.js';
 import {
   LiejuCapabilityResponseSchema,
   LiejuDeliveryInputSchema,
@@ -25,6 +26,8 @@ import {
 } from './types.js';
 
 type ApiConfig = Extract<LiejuDeliveryConfig, { readonly mode: 'api' }>;
+type BrowserConfig = Extract<ApiConfig, { readonly delivery_method: 'browser_gateway' }>;
+type OfficialConfig = Extract<ApiConfig, { readonly delivery_method: 'official_api' }>;
 
 export class LiejuDeliveryAdapter {
   private readonly configuration: LiejuDeliveryConfig;
@@ -41,8 +44,19 @@ export class LiejuDeliveryAdapter {
 
   public async capabilities(signal?: AbortSignal): Promise<LiejuCapabilities> {
     if (this.configuration.mode === 'export_only') return exportOnlyCapabilities('EXPORT_ONLY');
+    if (this.configuration.delivery_method === 'official_api') {
+      void signal;
+      return Object.freeze({
+        export: true,
+        get_status: false,
+        metrics: false,
+        publish: true,
+        version: LIEJU_DELIVERY_VERSION,
+        warnings: Object.freeze(['OFFICIAL_API_STATUS_UNAVAILABLE'] as const),
+      });
+    }
     try {
-      const response = await this.requestApi(
+      const response = await this.requestBrowserApi(
         this.configuration,
         'GET',
         this.configuration.endpoints.capabilities,
@@ -80,9 +94,12 @@ export class LiejuDeliveryAdapter {
     const configuration = this.requireApi('publish');
     const parsed = requireDeliveryInput(input);
     requirePayloadHash(parsed);
+    if (configuration.delivery_method === 'official_api') {
+      return this.publishOfficial(configuration, parsed, signal);
+    }
     let response: LiejuHttpResponse;
     try {
-      response = await this.requestApi(
+      response = await this.requestBrowserApi(
         configuration,
         'POST',
         configuration.endpoints.publish,
@@ -138,7 +155,15 @@ export class LiejuDeliveryAdapter {
 
   public async getStatus(externalId: string, signal?: AbortSignal): Promise<LiejuStatusResult> {
     const configuration = this.requireApi('get_status');
-    const response = await this.requestApi(
+    if (configuration.delivery_method === 'official_api') {
+      void signal;
+      return Object.freeze({
+        external_id: requireExternalId(externalId),
+        status: 'unknown',
+        url: null,
+      });
+    }
+    const response = await this.requestBrowserApi(
       configuration,
       'GET',
       `${configuration.endpoints.status}/${encodeURIComponent(requireExternalId(externalId))}`,
@@ -150,7 +175,13 @@ export class LiejuDeliveryAdapter {
 
   public async metrics(externalId: string, signal?: AbortSignal): Promise<LiejuMetricsResult> {
     const configuration = this.requireApi('metrics');
-    const response = await this.requestApi(
+    if (configuration.delivery_method === 'official_api') {
+      throw new LiejuDeliveryError(
+        'CAPABILITY_UNAVAILABLE',
+        'Lieju official API does not provide metrics',
+      );
+    }
+    const response = await this.requestBrowserApi(
       configuration,
       'GET',
       `${configuration.endpoints.metrics}/${encodeURIComponent(requireExternalId(externalId))}`,
@@ -170,16 +201,17 @@ export class LiejuDeliveryAdapter {
     return this.configuration;
   }
 
-  private requestApi(
-    configuration: ApiConfig,
+  private requestBrowserApi(
+    configuration: BrowserConfig,
     method: 'GET' | 'POST',
     path: string,
     signal?: AbortSignal,
     body?: unknown,
     idempotencyKey?: string,
   ): Promise<LiejuHttpResponse> {
+    const requestBody = body === undefined ? undefined : requireRecord(body);
     return this.transport.request({
-      ...(body === undefined ? {} : { body }),
+      ...(requestBody === undefined ? {} : { body: requestBody }),
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${configuration.bearer_token}`,
@@ -191,6 +223,66 @@ export class LiejuDeliveryAdapter {
       ...(signal ? { signal } : {}),
       url: new URL(path, normalizedBaseUrl(configuration.base_url)).toString(),
     });
+  }
+
+  private async publishOfficial(
+    configuration: OfficialConfig,
+    input: LiejuDeliveryInput,
+    signal?: AbortSignal,
+  ): Promise<LiejuPublishResult> {
+    const request = buildLiejuOfficialApiRequest(configuration, input);
+    let response: LiejuHttpResponse;
+    try {
+      response = await this.transport.request({
+        body: request.body,
+        headers: {
+          accept: 'application/json,text/plain,text/html;q=0.9',
+          'content-type': request.contentType,
+          referer: 'https://post.lieju.com/post_api.php',
+        },
+        method: 'POST',
+        response_encoding: 'gbk',
+        ...(signal ? { signal } : {}),
+        url: configuration.endpoint,
+      });
+    } catch {
+      throw new LiejuDeliveryError(
+        'PUBLISH_STATE_UNKNOWN',
+        'Lieju official API request ended without a conclusive response',
+      );
+    }
+    if (response.status_code >= 500) {
+      throw new LiejuDeliveryError(
+        'PUBLISH_STATE_UNKNOWN',
+        'Lieju official API may have accepted the publication request',
+      );
+    }
+    if (!isSuccess(response.status_code)) {
+      throw new LiejuDeliveryError('PUBLISH_REJECTED', 'Lieju official API rejected publication');
+    }
+    const result = parseLiejuOfficialApiResponse(response.body, input.idempotency_key);
+    if (!result.url) return result;
+    return (await this.verifyPublicPublication(result.url, input.payload.title, signal))
+      ? Object.freeze({ ...result, status: 'published' as const })
+      : result;
+  }
+
+  private async verifyPublicPublication(
+    url: string,
+    title: string,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    try {
+      const response = await this.transport.request({
+        headers: { accept: 'text/html' },
+        method: 'GET',
+        ...(signal ? { signal } : {}),
+        url,
+      });
+      return isSuccess(response.status_code) && responseText(response.body).includes(title);
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -205,6 +297,10 @@ function exportOnlyCapabilities(
     version: LIEJU_DELIVERY_VERSION,
     warnings: Object.freeze([warning]),
   });
+}
+
+function responseText(value: unknown): string {
+  return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
 function requireDeliveryInput(input: unknown): LiejuDeliveryInput {
@@ -254,4 +350,11 @@ function responseCode(value: unknown): string {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? String((value as Readonly<Record<string, unknown>>)['code'] ?? '')
     : '';
+}
+
+function requireRecord(value: unknown): Readonly<Record<string, unknown>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new LiejuDeliveryError('REMOTE_RESPONSE_INVALID', 'Lieju request body is invalid');
+  }
+  return value as Readonly<Record<string, unknown>>;
 }
