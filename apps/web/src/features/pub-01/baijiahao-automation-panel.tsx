@@ -19,6 +19,7 @@ import type {
   BaijiahaoBrowserSession,
   PlatformAccount,
 } from './platform-account.schema';
+import { automaticBaijiahaoScheduleTimes } from './baijiahao-schedule';
 
 export function BaijiahaoAutomationPanel({
   account,
@@ -34,6 +35,7 @@ export function BaijiahaoAutomationPanel({
   const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
   const [loginPending, setLoginPending] = useState(false);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
+  const [dailyTargetCount, setDailyTargetCount] = useState(1);
   const loginInFlight = useRef(false);
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
   const [message, setMessage] = useState<string | null>(null);
@@ -41,6 +43,14 @@ export function BaijiahaoAutomationPanel({
     () => policies.find((policy) => policy.project_id === projectId),
     [policies, projectId],
   );
+  const automaticScheduleTimes = useMemo(
+    () => automaticBaijiahaoScheduleTimes(dailyTargetCount),
+    [dailyTargetCount],
+  );
+
+  useEffect(() => {
+    setDailyTargetCount(selected?.daily_target_count ?? 1);
+  }, [selected?.daily_target_count, selected?.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,22 +140,17 @@ export function BaijiahaoAutomationPanel({
     const csrf = readCookie('geo_csrf');
     if (!csrf || !projectId) return setMessage('缺少项目或安全令牌，请刷新后重试。');
     const form = new FormData(event.currentTarget);
-    const target = Number(form.get('daily_target_count'));
+    const target = dailyTargetCount;
     const candidateLimit = Number(form.get('daily_candidate_limit'));
-    const schedules = String(form.get('daily_schedule_times') ?? '')
-      .split(',')
-      .map(normalizeTime)
-      .filter((value): value is string => value !== null);
     if (
       !Number.isInteger(target) ||
       target < 1 ||
       target > 10 ||
       !Number.isInteger(candidateLimit) ||
       candidateLimit < target ||
-      candidateLimit > 30 ||
-      schedules.length !== target
+      candidateLimit > 30
     ) {
-      return setMessage('每日目标为 1～10，候选上限不得低于目标；发布时间数量必须与目标一致。');
+      return setMessage('每日目标为 1～10，候选上限不得低于目标。');
     }
     const enabled = form.get('enabled') === 'on';
     const sourceMode =
@@ -163,7 +168,7 @@ export function BaijiahaoAutomationPanel({
           dailyEnabled: enabled && form.get('daily_enabled') === 'on',
           dailyGenerationTime:
             normalizeTime(String(form.get('daily_generation_time'))) ?? '00:30:00',
-          dailyScheduleTimes: schedules,
+          dailyScheduleTimes: automaticScheduleTimes,
           dailyTargetCount: target,
           enabled,
           ...(selected ? { expectedVersion: selected.version } : {}),
@@ -309,11 +314,16 @@ export function BaijiahaoAutomationPanel({
                 每日合格目标
                 <input
                   className={controlClass}
-                  defaultValue={selected?.daily_target_count ?? 1}
                   max={10}
                   min={1}
-                  name="daily_target_count"
+                  onChange={(event) => {
+                    const nextTarget = event.currentTarget.valueAsNumber;
+                    if (Number.isInteger(nextTarget) && nextTarget >= 1 && nextTarget <= 10) {
+                      setDailyTargetCount(nextTarget);
+                    }
+                  }}
                   type="number"
+                  value={dailyTargetCount}
                 />
               </label>
               <label className={labelClass}>
@@ -327,16 +337,15 @@ export function BaijiahaoAutomationPanel({
                   type="number"
                 />
               </label>
-              <label className={labelClass}>
-                发布时间（逗号分隔）
-                <input
-                  className={controlClass}
-                  defaultValue={(selected?.daily_schedule_times ?? ['10:00:00'])
-                    .map((value) => value.slice(0, 5))
-                    .join(',')}
-                  name="daily_schedule_times"
-                />
-              </label>
+              <div className={labelClass}>
+                系统自动排期
+                <output className={`${controlClass} block min-h-11`}>
+                  {automaticScheduleTimes.map((value) => value.slice(0, 5)).join('、')}
+                </output>
+                <span className="mt-1 block text-xs leading-5 text-ink-500">
+                  根据每日目标自动分布，无需手工填写；保存后每天按这些北京时间发布。
+                </span>
+              </div>
             </div>
             <div className="mt-5 space-y-3 text-sm text-ink-700">
               <Check
