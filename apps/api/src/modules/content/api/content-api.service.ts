@@ -198,6 +198,20 @@ export class ContentApiService {
         AND (${query.created_by ?? null}::uuid IS NULL OR package.created_by = ${query.created_by ?? null}::uuid)
         AND (${query.status ?? null}::text IS NULL OR package.status = ${query.status ?? null})
         AND (
+          ${query.attention_required === 'true'}::boolean = false
+          OR package.status IN ('all_failed', 'rejected', 'publish_failed')
+          OR EXISTS (
+            SELECT 1
+            FROM content_variants AS attention_variant
+            WHERE attention_variant.tenant_id = package.tenant_id
+              AND attention_variant.package_id = package.id
+              AND attention_variant.is_required = true
+              AND attention_variant.status IN (
+                'generation_failed', 'quality_failed', 'review_rejected', 'publish_failed'
+              )
+          )
+        )
+        AND (
           ${query.platform_code ?? null}::text IS NULL
           OR EXISTS (
             SELECT 1 FROM content_variants AS variant

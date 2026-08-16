@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { PLATFORM_CODES } from '../../platforms.js';
+
 import {
   CursorSchema,
   IsoDateTimeSchema,
@@ -22,7 +24,7 @@ const PlatformCodeSchema = z.enum([
 ]);
 const OptionalPlatformCodesSchema = z.preprocess(
   (value) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value),
-  z.array(PlatformCodeSchema).max(8).optional(),
+  z.array(PlatformCodeSchema).max(PLATFORM_CODES.length).optional(),
 );
 
 export const AiVisibilityIntentCodeSchema = z.enum([

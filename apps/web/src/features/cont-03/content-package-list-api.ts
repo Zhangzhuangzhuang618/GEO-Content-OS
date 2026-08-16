@@ -19,6 +19,7 @@ export async function listContentPackages(
   signal?: AbortSignal,
 ): Promise<{ readonly items: PackageListItem[]; readonly nextCursor: string | null }> {
   const query = new URLSearchParams({ limit: '10' });
+  if (filters.attentionRequired) query.set('attention_required', 'true');
   if (filters.createdBy) query.set('created_by', filters.createdBy);
   if (filters.cursor) query.set('cursor', filters.cursor);
   if (filters.platformCode) query.set('platform_code', filters.platformCode);

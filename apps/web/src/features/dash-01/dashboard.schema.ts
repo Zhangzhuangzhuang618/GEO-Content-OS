@@ -95,6 +95,7 @@ export interface DashboardFilters {
 }
 
 export interface DashboardData {
+  readonly attentionPackages: readonly DashboardContentPackage[];
   readonly costCents: number | null;
   readonly packages: readonly DashboardContentPackage[];
 }

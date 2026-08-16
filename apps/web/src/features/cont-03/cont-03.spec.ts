@@ -205,8 +205,15 @@ test('keeps filters and cursor pagination reproducible', async ({ page }) => {
   await page.getByLabel('搜索主题').fill('广州搬家');
   await page.getByLabel('当前进度').selectOption('generated');
   await page.getByRole('combobox', { name: '平台', exact: true }).selectOption('zhihu');
+  await page.getByRole('checkbox', { name: '只看待处理' }).check();
+  const attentionRequest = page.waitForRequest(
+    (request) =>
+      request.url().includes('/api/v1/content-packages?') &&
+      new URL(request.url()).searchParams.get('attention_required') === 'true',
+  );
   await page.getByRole('button', { name: '查找' }).click();
-  await expect(page).toHaveURL(/search=.*status=generated.*platform_code=zhihu/u);
+  await attentionRequest;
+  await expect(page).toHaveURL(/attention=1.*search=.*status=generated.*platform_code=zhihu/u);
   await page.getByRole('button', { name: '查看更早内容' }).click();
   await expect(page).toHaveURL(new RegExp(`cursor=${NEXT_CURSOR}`, 'u'));
   await page.reload();

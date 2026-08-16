@@ -16,7 +16,7 @@ export const WorkspaceSettingsSchema = z
     default_platform_codes: z
       .array(z.enum(PLATFORM_CODES))
       .min(1)
-      .max(8)
+      .max(PLATFORM_CODES.length)
       .refine((values) => new Set(values).size === values.length, {
         message: 'Default workspace platforms must be unique',
       })

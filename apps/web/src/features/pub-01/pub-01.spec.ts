@@ -581,6 +581,52 @@ test('shows actionable Baijiahao manual-required items', async ({ page }) => {
   );
 });
 
+test('shows actionable Sohu daily-batch items', async ({ page }) => {
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [sohuAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '搜狐自动化项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, { data: [browserPlatformPolicy()], meta: { request_id: 'automation' } }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session/login`,
+    (route) =>
+      json(route, {
+        data: {
+          account_id: ACCOUNT_ID,
+          authenticated_at: '2026-08-16T00:00:00.000Z',
+          last_verified_at: '2026-08-16T00:00:00.000Z',
+          qr_expires_at: null,
+          status: 'authenticated',
+          version: 1,
+        },
+        meta: { request_id: 'sohu-login' },
+      }),
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '搜狐号登录' }).click();
+  await expect(page.getByRole('heading', { name: '搜狐号托管浏览器' })).toBeVisible();
+  await expect(page.getByText('需要处理的内容')).toBeVisible();
+  await expect(page.getByText('候选 1 · 广州搬家准备清单')).toBeVisible();
+  await expect(page.getByRole('link', { name: '查看全文和处理' })).toHaveAttribute(
+    'href',
+    `/cont-04?id=${MANUAL_PACKAGE_ID}`,
+  );
+  await expect(page.getByRole('link', { name: '查看质量报告' })).toHaveAttribute(
+    'href',
+    `/qual-01?id=${MANUAL_VARIANT_ID}`,
+  );
+});
+
 test('distinguishes Baijiahao browser attention from login expiry and allows re-verification', async ({
   page,
 }) => {
@@ -685,6 +731,74 @@ function baijiahaoAccount() {
     provider_account_id: null,
     publishing_url: null,
     token_expires_at: null,
+  };
+}
+
+function sohuAccount() {
+  return {
+    ...account({ version: 1 }),
+    display_name: '搜狐号生产账号',
+    id: ACCOUNT_ID,
+    platform_code: 'sohu',
+    provider_account_id: null,
+    publishing_url: 'https://mp.sohu.com/',
+    token_expires_at: null,
+  };
+}
+
+function browserPlatformPolicy() {
+  return {
+    account_id: ACCOUNT_ID,
+    brand_consistency_min: 90,
+    daily_candidate_limit: 3,
+    daily_enabled: true,
+    daily_generation_time: '00:30:00',
+    daily_schedule_times: ['10:00:00'],
+    daily_target_count: 1,
+    daily_timezone: 'Asia/Shanghai',
+    enabled: true,
+    factual_accuracy_min: 90,
+    geo_total_min: 85,
+    id: POLICY_ID,
+    max_rewrites: 3,
+    platform_code: 'sohu',
+    platform_fit_min: 80,
+    project_id: PROJECT_ID,
+    publish_attempt_limit: 3,
+    question_coverage_min: 80,
+    readability_safety_min: 85,
+    tenant_id: TENANT_ID,
+    today_batch: {
+      attempted_count: 1,
+      business_date: '2026-08-16',
+      in_progress_count: 0,
+      last_error_message: '需要人工处理',
+      manual_items: [
+        {
+          automation_run_id: MANUAL_RUN_ID,
+          candidate_no: 1,
+          content_version_id: MANUAL_VERSION_ID,
+          last_error: { code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES' },
+          package_id: MANUAL_PACKAGE_ID,
+          publish_job_id: null,
+          quality_report_id: MANUAL_REPORT_ID,
+          rewrite_count: 3,
+          title: '广州搬家准备清单',
+          updated_at: '2026-08-16T01:00:00.000Z',
+          variant_id: MANUAL_VARIANT_ID,
+        },
+      ],
+      manual_required_count: 1,
+      published_count: 0,
+      retired_count: 0,
+      scheduled_count: 0,
+      status: 'attention_required',
+      target_count: 1,
+      version: 1,
+    },
+    updated_at: '2026-08-16T01:00:00.000Z',
+    version: 1,
+    workspace_id: WORKSPACE_ID,
   };
 }
 

@@ -27,7 +27,7 @@ export const ReviewInboxItemSchema = z
     model_key: z.string().min(1),
     package_id: z.string().uuid(),
     pending_signoff_count: z.number().int().nonnegative(),
-    platform_codes: z.array(PlatformCodeSchema).min(1).max(8),
+    platform_codes: z.array(PlatformCodeSchema).min(1).max(9),
     platform_rules_hash: z.string().length(64),
     project_id: z.string().uuid(),
     prompt_version_id: z.string().uuid(),
@@ -37,7 +37,7 @@ export const ReviewInboxItemSchema = z
     status: ReviewStatusSchema,
     tenant_id: z.string().uuid(),
     updated_at: z.iso.datetime(),
-    variant_count: z.number().int().min(1).max(8),
+    variant_count: z.number().int().min(1).max(9),
     version: z.number().int().positive(),
     workspace_id: z.string().uuid(),
   })

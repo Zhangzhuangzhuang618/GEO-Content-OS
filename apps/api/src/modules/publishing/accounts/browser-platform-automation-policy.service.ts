@@ -30,6 +30,21 @@ interface PolicyRow {
   readonly id: string;
   readonly inProgressCount: number | null;
   readonly manualRequiredCount: number | null;
+  readonly manualItems:
+    | readonly {
+        readonly automation_run_id: string;
+        readonly candidate_no: number;
+        readonly content_version_id: string | null;
+        readonly last_error: Readonly<Record<string, unknown>> | null;
+        readonly package_id: string;
+        readonly publish_job_id: string | null;
+        readonly quality_report_id: string | null;
+        readonly rewrite_count: number;
+        readonly title: string | null;
+        readonly updated_at: Date | string;
+        readonly variant_id: string;
+      }[]
+    | null;
   readonly platformCode: Platform;
   readonly projectId: string;
   readonly publishedCount: number | null;
@@ -153,7 +168,8 @@ export class BrowserPlatformAutomationPolicyService {
         batch.version AS "batchVersion",batch.last_error_json->>'message' AS "batchLastErrorMessage",
         counts.attempted AS "attemptedCount",counts.in_progress AS "inProgressCount",
         counts.manual_required AS "manualRequiredCount",counts.retired AS "retiredCount",
-        counts.scheduled AS "scheduledCount",counts.published AS "publishedCount"
+        counts.scheduled AS "scheduledCount",counts.published AS "publishedCount",
+        manual.items AS "manualItems"
       FROM browser_platform_automation_policies AS policy
       LEFT JOIN LATERAL (
         SELECT candidate.* FROM browser_platform_daily_batches AS candidate
@@ -167,13 +183,40 @@ export class BrowserPlatformAutomationPolicyService {
           count(*) FILTER (WHERE item.status IN (
             'generating','quality_check','rewriting','media_pending'
           ))::integer AS in_progress,
-          count(*) FILTER (WHERE item.status='manual_required')::integer AS manual_required,
+          count(*) FILTER (WHERE item.status IN ('manual_required','publish_failed'))::integer AS manual_required,
           count(*) FILTER (WHERE item.status='retired')::integer AS retired,
           count(*) FILTER (WHERE item.status IN ('scheduled','processing','published'))::integer AS scheduled,
           count(*) FILTER (WHERE item.status='published')::integer AS published
         FROM browser_platform_daily_batch_items AS item
         WHERE item.tenant_id=policy.tenant_id AND item.batch_id=batch.id
       ) AS counts ON batch.id IS NOT NULL
+      LEFT JOIN LATERAL (
+        SELECT coalesce(
+          jsonb_agg(
+            jsonb_build_object(
+              'automation_run_id',run.id,
+              'candidate_no',item.candidate_no,
+              'content_version_id',run.content_version_id,
+              'last_error',coalesce(item.last_error_json,run.last_error_json),
+              'package_id',item.package_id,
+              'publish_job_id',coalesce(item.publish_job_id,run.publish_job_id),
+              'quality_report_id',run.last_quality_report_id,
+              'rewrite_count',run.rewrite_count,
+              'title',version.content_json->>'title',
+              'updated_at',greatest(item.updated_at,run.updated_at),
+              'variant_id',item.variant_id
+            ) ORDER BY item.candidate_no
+          ),
+          '[]'::jsonb
+        ) AS items
+        FROM browser_platform_daily_batch_items AS item
+        JOIN browser_platform_automation_runs AS run
+          ON run.id=item.automation_run_id AND run.tenant_id=item.tenant_id
+        LEFT JOIN content_versions AS version
+          ON version.id=run.content_version_id AND version.tenant_id=run.tenant_id
+        WHERE item.tenant_id=policy.tenant_id AND item.batch_id=batch.id
+          AND item.status IN ('manual_required','publish_failed')
+      ) AS manual ON batch.id IS NOT NULL
       WHERE policy.tenant_id=${scope.tenantId}::uuid AND policy.account_id=${accountId}::uuid
         AND (${policyId ?? null}::uuid IS NULL OR policy.id=${policyId ?? null}::uuid)
         AND has_project_scope_access(
@@ -238,6 +281,10 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
             business_date: new Date(row.batchBusinessDate).toISOString().slice(0, 10),
             in_progress_count: row.inProgressCount ?? 0,
             last_error_message: row.batchLastErrorMessage,
+            manual_items: (row.manualItems ?? []).map((item) => ({
+              ...item,
+              updated_at: new Date(item.updated_at).toISOString(),
+            })),
             manual_required_count: row.manualRequiredCount ?? 0,
             published_count: row.publishedCount ?? 0,
             retired_count: row.retiredCount ?? 0,

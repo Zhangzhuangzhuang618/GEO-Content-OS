@@ -714,6 +714,8 @@ function readCookie(name: string) {
 const PLATFORM_OPTIONS = [
   ['official_site', '官网'],
   ['baijiahao', '百家号'],
+  ['sohu', '搜狐号'],
+  ['lieju', '列举网'],
   ['toutiao', '头条号'],
   ['zhihu', '知乎'],
   ['xiaohongshu', '小红书'],

@@ -81,7 +81,7 @@ export const ContentVariantSchema = z
 
 export const ContentPackageListItemSchema = ContentPackageSchema.extend({
   brief_title: z.string().trim().min(1).max(240),
-  variants: z.array(ContentVariantSchema).max(8),
+  variants: z.array(ContentVariantSchema).max(9),
 }).strict();
 
 export const ContentPackagePageSchema = z
@@ -105,7 +105,7 @@ export const ContentPackageDetailResponseSchema = z
         generation_runs: z.array(z.unknown()),
         master_content: z.unknown().nullable(),
         package: ContentPackageSchema,
-        variants: z.array(ContentVariantSchema).min(1).max(8),
+        variants: z.array(ContentVariantSchema).min(1).max(9),
       })
       .strict(),
     meta: z.object({ request_id: z.string().min(1) }).passthrough(),
@@ -141,6 +141,7 @@ export type ContentVariant = z.infer<typeof ContentVariantSchema>;
 export type PlatformCode = z.infer<typeof PlatformCodeSchema>;
 
 export interface PackageFilters {
+  readonly attentionRequired?: boolean;
   readonly createdBy?: string;
   readonly cursor?: string;
   readonly platformCode?: PlatformCode;

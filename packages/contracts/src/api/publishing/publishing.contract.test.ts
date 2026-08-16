@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  CreatePlatformAccountRequestSchema,
   BrowserPlatformAutomationPolicyRequestSchema,
+  BrowserPlatformDailyBatchSummarySchema,
+  CreatePlatformAccountRequestSchema,
   OfficialSiteDailyBatchCancelRequestSchema,
   OfficialSiteDailyBatchRestartRequestSchema,
   PUBLISHING_API_CONTRACTS,
@@ -14,6 +15,38 @@ import {
 } from './index.js';
 
 describe('Publishing API frozen contract', () => {
+  it('returns actionable browser-platform daily batch items', () => {
+    const parsed = BrowserPlatformDailyBatchSummarySchema.parse({
+      attempted_count: 1,
+      business_date: '2026-08-16',
+      in_progress_count: 0,
+      last_error_message: '需要人工处理',
+      manual_items: [
+        {
+          automation_run_id: '10000000-0000-4000-8000-000000000001',
+          candidate_no: 1,
+          content_version_id: '20000000-0000-4000-8000-000000000001',
+          last_error: { code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES' },
+          package_id: '30000000-0000-4000-8000-000000000001',
+          publish_job_id: null,
+          quality_report_id: '40000000-0000-4000-8000-000000000001',
+          rewrite_count: 3,
+          title: '广州搬家准备清单',
+          updated_at: '2026-08-16T01:00:00.000Z',
+          variant_id: '50000000-0000-4000-8000-000000000001',
+        },
+      ],
+      manual_required_count: 1,
+      published_count: 0,
+      retired_count: 0,
+      scheduled_count: 0,
+      status: 'attention_required',
+      target_count: 1,
+      version: 1,
+    });
+    expect(parsed.manual_items[0]?.quality_report_id).toBe('40000000-0000-4000-8000-000000000001');
+  });
+
   it('contains all thirty-five publishing endpoints exactly once', () => {
     expect(PUBLISHING_API_CONTRACTS).toHaveLength(35);
     expect(

@@ -122,6 +122,7 @@ export function ContentPackageList() {
     const status = ContentPackageStatusSchema.safeParse(data.get('status'));
     const search = String(data.get('search') ?? '').trim();
     const next: PackageFilters = {
+      ...(data.get('attention_required') === 'on' ? { attentionRequired: true } : {}),
       ...(platform.success ? { platformCode: platform.data } : {}),
       ...(search ? { search } : {}),
       ...(status.success ? { status: status.data } : {}),
@@ -239,7 +240,7 @@ export function ContentPackageList() {
           key={filterFormKey(filters)}
           onSubmit={applyFilters}
         >
-          <div className="grid gap-4 md:grid-cols-[minmax(240px,1fr)_220px_220px_auto]">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_190px_190px_auto_auto]">
             <TextField
               defaultValue={filters.search}
               label="搜索主题"
@@ -258,6 +259,14 @@ export function ContentPackageList() {
               options={PLATFORM_OPTIONS}
               value={filters.platformCode}
             />
+            <label className="flex h-11 items-center gap-2 self-end text-sm font-medium text-ink-700">
+              <input
+                defaultChecked={filters.attentionRequired}
+                name="attention_required"
+                type="checkbox"
+              />
+              只看待处理
+            </label>
             <div className="flex items-end gap-3">
               <button className={primaryButton} type="submit">
                 查找
@@ -486,6 +495,8 @@ const UNPRODUCED = new Set(['draft', 'generating', 'generation_failed', 'cancell
 const PLATFORM_OPTIONS = [
   ['official_site', '官网'],
   ['baijiahao', '百家号'],
+  ['sohu', '搜狐号'],
+  ['lieju', '列举网'],
   ['toutiao', '头条号'],
   ['zhihu', '知乎'],
   ['xiaohongshu', '小红书'],
@@ -610,7 +621,12 @@ function hasActiveFilters(filters: PackageFilters) {
   return Object.values(filters).some(Boolean);
 }
 function filterFormKey(filters: PackageFilters) {
-  return [filters.search ?? '', filters.status ?? '', filters.platformCode ?? ''].join('|');
+  return [
+    filters.search ?? '',
+    filters.status ?? '',
+    filters.platformCode ?? '',
+    filters.attentionRequired ? 'attention' : '',
+  ].join('|');
 }
 function isAccessError(error: unknown) {
   const status = errorStatus(error);
@@ -632,6 +648,7 @@ function readFilters(): PackageFilters {
   const search = query.get('search');
   const workspaceId = query.get('workspace_id');
   return {
+    ...(query.get('attention') === '1' ? { attentionRequired: true } : {}),
     ...(createdBy ? { createdBy } : {}),
     ...(cursor ? { cursor } : {}),
     ...(platform.success ? { platformCode: platform.data } : {}),
@@ -643,6 +660,7 @@ function readFilters(): PackageFilters {
 }
 function writeFilters(filters: PackageFilters) {
   const query = new URLSearchParams();
+  if (filters.attentionRequired) query.set('attention', '1');
   if (filters.workspaceId) query.set('workspace_id', filters.workspaceId);
   if (filters.projectId) query.set('project_id', filters.projectId);
   if (filters.createdBy) query.set('created_by', filters.createdBy);

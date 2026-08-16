@@ -21,7 +21,7 @@ const WorkspaceSettingsSchema = z
       })
       .strict()
       .optional(),
-    default_platform_codes: z.array(PlatformCodeSchema).min(1).max(8).optional(),
+    default_platform_codes: z.array(PlatformCodeSchema).min(1).max(9).optional(),
     review_policy: z
       .object({
         minimum_approvals: z.number().int().min(1).max(5),

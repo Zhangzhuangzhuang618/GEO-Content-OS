@@ -395,6 +395,7 @@ test('creates and starts all-platform content from one human-friendly form', asy
     'official_site',
     'baijiahao',
     'sohu',
+    'lieju',
     'toutiao',
     'zhihu',
     'xiaohongshu',
@@ -646,11 +647,11 @@ function project() {
 
 function contentPackage(status: 'in_review' | 'publish_failed', id: string) {
   return {
-    created_at: '2026-07-15T00:00:00.000Z',
+    created_at: '2026-08-15T00:00:00.000Z',
     id,
     project_id: PROJECT_ID,
     status,
-    updated_at: '2026-07-15T01:00:00.000Z',
+    updated_at: '2026-08-15T01:00:00.000Z',
     workspace_id: WORKSPACE_ID,
   };
 }

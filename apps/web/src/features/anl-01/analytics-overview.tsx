@@ -380,6 +380,8 @@ function exportStatusLabel(value: ExportJob['status']) {
 const PLATFORMS = [
   ['official_site', '官网'],
   ['baijiahao', '百家号'],
+  ['sohu', '搜狐号'],
+  ['lieju', '列举网'],
   ['toutiao', '头条号'],
   ['zhihu', '知乎'],
   ['xiaohongshu', '小红书'],

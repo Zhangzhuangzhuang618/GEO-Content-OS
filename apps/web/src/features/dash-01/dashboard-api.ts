@@ -56,10 +56,12 @@ export async function createProject(
 
 export async function listContentPackages(
   filters: DashboardFilters,
+  attentionRequired = false,
   signal?: AbortSignal,
 ): Promise<DashboardContentPackage[]> {
   const contentQuery = new URLSearchParams({ limit: '100', workspace_id: filters.workspaceId });
   if (filters.projectId) contentQuery.set('project_id', filters.projectId);
+  if (attentionRequired) contentQuery.set('attention_required', 'true');
   const response = await request(`/api/v1/content-packages?${contentQuery}`, signal);
   const parsed = ContentPackagePageSchema.safeParse(await response.json());
   if (!parsed.success) throw new DashboardRequestError(502);

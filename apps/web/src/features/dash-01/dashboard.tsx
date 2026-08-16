@@ -29,7 +29,6 @@ import { QuickCreate } from './quick-create';
 const COST_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'analyst']);
 const REVIEW_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'reviewer']);
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
-const FAILURE_STATUSES = new Set(['all_failed', 'publish_failed']);
 const PUBLISH_TODO_STATUSES = new Set(['scheduled', 'publishing', 'publish_failed']);
 
 interface ReadyState {
@@ -169,15 +168,22 @@ export function Dashboard() {
       return;
     }
     if (section === 'packages') {
-      const result = await attempt(listContentPackages(current.filters));
+      const [result, attentionResult] = await Promise.all([
+        attempt(listContentPackages(current.filters)),
+        attempt(listContentPackages(current.filters, true)),
+      ]);
       if (!result.ok && redirectForExpiredSession(result.error)) return;
+      if (!attentionResult.ok && redirectForExpiredSession(attentionResult.error)) return;
       setState({
         ...current,
         data: {
           ...current.data,
+          attentionPackages: attentionResult.ok
+            ? attentionResult.value
+            : current.data.attentionPackages,
           packages: result.ok ? result.value : current.data.packages,
         },
-        issues: { ...current.issues, packages: !result.ok },
+        issues: { ...current.issues, packages: !result.ok || !attentionResult.ok },
       });
       return;
     }
@@ -234,7 +240,7 @@ export function Dashboard() {
   if (state.status !== 'ready') return null;
 
   const packages = withinRange(state.data.packages, state.filters.from, state.filters.to);
-  const failed = packages.filter((item) => FAILURE_STATUSES.has(item.status));
+  const failed = withinRange(state.data.attentionPackages, state.filters.from, state.filters.to);
   const inReview = packages.filter((item) => item.status === 'in_review');
   const publishingTodos = packages.filter((item) => PUBLISH_TODO_STATUSES.has(item.status));
   const latest = [...packages].sort((left, right) =>
@@ -296,9 +302,9 @@ export function Dashboard() {
             description={
               latestFailed
                 ? `${statusLabel(latestFailed.status)}，打开后可以查看原因并继续处理。`
-                : '当前没有生成或发布失败的内容。'
+                : '当前没有需要人工处理的内容。'
             }
-            href={latestFailed ? `/cont-04?id=${latestFailed.id}` : '/cont-03'}
+            href="/cont-03?attention=1"
             label="需要处理的异常"
             tone={failed.length ? 'danger' : 'success'}
           />
@@ -648,29 +654,34 @@ async function loadSections(
   readonly error: unknown;
   readonly issues: Pick<DashboardIssues, 'cost' | 'packages'>;
 }> {
-  const [packagesResult, costResult] = await Promise.all([
-    attempt(listContentPackages(filters, signal)),
+  const [packagesResult, attentionResult, costResult] = await Promise.all([
+    attempt(listContentPackages(filters, false, signal)),
+    attempt(listContentPackages(filters, true, signal)),
     canReadCost
       ? attempt(loadCostCents(filters, signal))
       : Promise.resolve({ ok: true, value: null } as const),
   ]);
   const packagesError = packagesResult.ok ? undefined : packagesResult.error;
+  const attentionError = attentionResult.ok ? undefined : attentionResult.error;
   const costError = costResult.ok ? undefined : costResult.error;
   const error =
     requestStatus(packagesError) === 401
       ? packagesError
       : requestStatus(costError) === 401
         ? costError
-        : (packagesError ?? costError);
+        : requestStatus(attentionError) === 401
+          ? attentionError
+          : (packagesError ?? attentionError ?? costError);
   return {
     data: {
+      attentionPackages: attentionResult.ok ? attentionResult.value : [],
       costCents: costResult.ok ? costResult.value : null,
       packages: packagesResult.ok ? packagesResult.value : [],
     },
     error,
     issues: {
       cost: !costResult.ok,
-      packages: !packagesResult.ok,
+      packages: !packagesResult.ok || !attentionResult.ok,
     },
   };
 }
@@ -728,11 +739,16 @@ function formatCost(cents: number) {
 }
 
 function statusLabel(status: DashboardContentPackage['status']) {
-  return status === 'all_failed'
-    ? '生成全部失败'
-    : status === 'publish_failed'
-      ? '发布失败'
-      : status;
+  return (
+    (
+      {
+        all_failed: '生成失败',
+        generated: '质量检查未通过',
+        publish_failed: '发布失败',
+        rejected: '审核退回',
+      } as const
+    )[status as 'all_failed' | 'generated' | 'publish_failed' | 'rejected'] ?? status
+  );
 }
 
 function isAccessError(error: unknown): boolean {

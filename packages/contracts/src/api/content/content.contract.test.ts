@@ -236,6 +236,9 @@ describe('Content API frozen contract', () => {
       }).success,
     ).toBe(false);
     expect(ContentPackageQuerySchema.parse({ limit: '20' }).limit).toBe(20);
+    expect(ContentPackageQuerySchema.parse({ attention_required: 'true' }).attention_required).toBe(
+      'true',
+    );
   });
 
   it('requires structured immutable content for variant updates', () => {

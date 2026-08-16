@@ -138,7 +138,7 @@ export const ContentPackageBaseDetailResponseSchema = z
         generation_runs: z.array(GenerationRunSchema),
         master_content: ContentVersionSchema.nullable(),
         package: ContentPackageSchema,
-        variants: z.array(ContentVariantSchema).min(1).max(8),
+        variants: z.array(ContentVariantSchema).min(1).max(9),
       })
       .strict(),
     meta: z.object({ request_id: z.string().min(1) }).passthrough(),

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { listProjects } from '../know-02/source-upload-api';
@@ -206,6 +207,45 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           ) : null}
         </div>
       </form>
+      {selected?.today_batch?.manual_items.length ? (
+        <section className="mt-5 border-t border-line pt-4">
+          <h4 className="font-semibold text-ink-950">需要处理的内容</h4>
+          <p className="mt-1 text-xs leading-5 text-ink-500">
+            内容问题请编辑后重新质检；发布问题请进入发布任务核验、重试或人工对账。
+          </p>
+          <div className="mt-3 space-y-3">
+            {selected.today_batch.manual_items.map((item) => (
+              <article
+                className="rounded-xl border border-amber-200 bg-amber-50 p-4"
+                key={item.automation_run_id}
+              >
+                <p className="font-semibold text-ink-950">
+                  候选 {item.candidate_no} · {item.title ?? `未命名${platformName}内容`}
+                </p>
+                <p className="mt-1 text-xs text-ink-600">已自动重写 {item.rewrite_count}/3 次</p>
+                <p className="mt-3 text-sm leading-6 text-amber-950">
+                  {manualErrorSummary(item.last_error)}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link className={primaryLink} href={`/cont-04?id=${item.package_id}`}>
+                    查看全文和处理
+                  </Link>
+                  {item.quality_report_id ? (
+                    <Link className={secondaryLink} href={`/qual-01?id=${item.variant_id}`}>
+                      查看质量报告
+                    </Link>
+                  ) : null}
+                  {item.publish_job_id ? (
+                    <Link className={secondaryLink} href={`/pub-03?id=${item.publish_job_id}`}>
+                      查看发布任务
+                    </Link>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {message ? (
         <p aria-live="polite" className="mt-3 text-sm text-ink-700">
           {message}
@@ -213,6 +253,13 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       ) : null}
     </div>
   );
+}
+
+function manualErrorSummary(value: Readonly<Record<string, unknown>> | null): string {
+  if (!value) return '未记录具体失败原因，请打开内容或发布任务查看当前状态。';
+  const code = typeof value['code'] === 'string' ? value['code'] : '';
+  const message = typeof value['message'] === 'string' ? value['message'] : '';
+  return [code, message].filter(Boolean).join('：') || '未记录具体失败原因。';
 }
 
 function normalizeTime(value: string): string | null {
@@ -229,3 +276,8 @@ function readCookie(name: string): string | null {
     .find((value) => value.startsWith(prefix));
   return item ? decodeURIComponent(item.slice(prefix.length)) : null;
 }
+
+const primaryLink =
+  'rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700';
+const secondaryLink =
+  'rounded-lg border border-line bg-white px-3 py-2 text-xs font-semibold text-ink-700 hover:bg-surface-subtle';

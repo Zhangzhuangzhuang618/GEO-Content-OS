@@ -84,6 +84,7 @@ export const CreateContentPackageRequestSchema = z
 
 export const ContentPackageQuerySchema = z
   .object({
+    attention_required: z.enum(['true', 'false']).optional(),
     created_by: UuidSchema.optional(),
     cursor: CursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -174,7 +175,7 @@ export const ContentVariantViewSchema = z
 
 export const ContentPackageListItemSchema = ContentPackageViewSchema.extend({
   brief_title: z.string().trim().min(1).max(240),
-  variants: z.array(ContentVariantViewSchema).max(8),
+  variants: z.array(ContentVariantViewSchema).max(PLATFORM_CODES.length),
 }).strict();
 
 export const ContentBlockViewSchema = z
