@@ -164,7 +164,7 @@ export class BrowserPlatformDailyScheduler {
           transaction,
           batch,
           'DAILY_CANDIDATE_LIMIT_REACHED',
-          `当天已尝试 ${batch.candidateLimit} 篇，仍未获得 ${batch.targetCount} 篇合格内容。`,
+          candidateLimitAttentionMessage(batch, count.qualified),
         );
         return;
       }
@@ -483,6 +483,13 @@ async function attention(
     WHERE id=${batch.id}::uuid AND tenant_id=${batch.tenantId}::uuid
       AND status='running' AND version=${batch.version}
   `;
+}
+
+export function candidateLimitAttentionMessage(
+  batch: Pick<BatchRow, 'candidateLimit' | 'targetCount'>,
+  scheduledCount: number,
+): string {
+  return `当天已尝试 ${batch.candidateLimit} 篇；已有 ${scheduledCount} 篇完成排期（含发布中或已发布），仍缺 ${Math.max(batch.targetCount - scheduledCount, 0)} 篇，批次已转为需要处理。`;
 }
 
 const ANGLES = Object.freeze([

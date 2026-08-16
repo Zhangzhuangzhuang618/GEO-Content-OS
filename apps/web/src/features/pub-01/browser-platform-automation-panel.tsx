@@ -151,6 +151,9 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
             name="daily_candidate_limit"
             type="number"
           />
+          <span className="mt-1 block text-xs leading-5 text-ink-500">
+            当天最多尝试篇数；耗尽后，已合格内容照常排期，未完成名额转为需要处理。
+          </span>
         </label>
         <label className="text-sm text-ink-700 md:col-span-2">
           发布时间（英文逗号分隔）
