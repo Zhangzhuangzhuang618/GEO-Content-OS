@@ -9,18 +9,29 @@ import {
   saveBrowserPlatformAutomationPolicy,
 } from './platform-account-api';
 import type { BrowserPlatformAutomationPolicy, PlatformAccount } from './platform-account.schema';
+import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
 
 export function BrowserPlatformAutomationPanel({ account }: { readonly account: PlatformAccount }) {
+  const defaultTarget = account.platform_code === 'lieju' ? 1 : 3;
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
   const [policies, setPolicies] = useState<readonly BrowserPlatformAutomationPolicy[]>([]);
   const [projectId, setProjectId] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [dailyTargetCount, setDailyTargetCount] = useState(defaultTarget);
   const selected = useMemo(
     () => policies.find((policy) => policy.project_id === projectId),
     [policies, projectId],
   );
+  const automaticScheduleTimes = useMemo(
+    () => automaticDailyScheduleTimes(dailyTargetCount),
+    [dailyTargetCount],
+  );
   const platformName = account.platform_code === 'lieju' ? '列举网' : '搜狐号';
+
+  useEffect(() => {
+    setDailyTargetCount(selected?.daily_target_count ?? defaultTarget);
+  }, [defaultTarget, selected?.daily_target_count, selected?.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -42,22 +53,17 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     const csrf = readCookie('geo_csrf');
     if (!csrf || !projectId) return setMessage('缺少项目或安全令牌，请刷新后重试。');
     const form = new FormData(event.currentTarget);
-    const target = Number(form.get('daily_target_count'));
+    const target = dailyTargetCount;
     const limit = Number(form.get('daily_candidate_limit'));
-    const schedules = String(form.get('daily_schedule_times') ?? '')
-      .split(',')
-      .map(normalizeTime)
-      .filter((value): value is string => value !== null);
     if (
       !Number.isInteger(target) ||
       target < 1 ||
       target > 10 ||
       !Number.isInteger(limit) ||
       limit < target ||
-      limit > 30 ||
-      schedules.length !== target
+      limit > 30
     ) {
-      return setMessage('每日目标为 1～10；候选上限不得低于目标；发布时间数量必须与目标一致。');
+      return setMessage('每日目标为 1～10；候选上限不得低于目标。');
     }
     const enabled = form.get('enabled') === 'on';
     setBusy(true);
@@ -70,7 +76,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           dailyEnabled: enabled && form.get('daily_enabled') === 'on',
           dailyGenerationTime:
             normalizeTime(String(form.get('daily_generation_time'))) ?? '00:30:00',
-          dailyScheduleTimes: schedules,
+          dailyScheduleTimes: automaticScheduleTimes,
           dailyTargetCount: target,
           enabled,
           ...(selected ? { expectedVersion: selected.version } : {}),
@@ -90,8 +96,6 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     }
   }
 
-  const defaultTarget = account.platform_code === 'lieju' ? 1 : 3;
-  const defaultSchedules = account.platform_code === 'lieju' ? '10:00' : '10:00,15:00,20:00';
   return (
     <div className="mt-6 border-t border-ink-100 pt-6">
       <h3 className="text-base font-semibold text-ink-950">全链路自动化</h3>
@@ -132,12 +136,16 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           每日目标
           <input
             className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2"
-            defaultValue={selected?.daily_target_count ?? defaultTarget}
-            key={`${projectId}-target`}
             max={10}
             min={1}
-            name="daily_target_count"
+            onChange={(event) => {
+              const nextTarget = event.currentTarget.valueAsNumber;
+              if (Number.isInteger(nextTarget) && nextTarget >= 1 && nextTarget <= 10) {
+                setDailyTargetCount(nextTarget);
+              }
+            }}
             type="number"
+            value={dailyTargetCount}
           />
         </label>
         <label className="text-sm text-ink-700">
@@ -155,18 +163,15 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
             当天最多尝试篇数；耗尽后，已合格内容照常排期，未完成名额转为需要处理。
           </span>
         </label>
-        <label className="text-sm text-ink-700 md:col-span-2">
-          发布时间（英文逗号分隔）
-          <input
-            className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2"
-            defaultValue={
-              selected?.daily_schedule_times.map((time) => time.slice(0, 5)).join(',') ??
-              defaultSchedules
-            }
-            key={`${projectId}-schedules`}
-            name="daily_schedule_times"
-          />
-        </label>
+        <div className="text-sm text-ink-700 md:col-span-2">
+          系统自动排期
+          <output className="mt-1 block min-h-10 w-full rounded-lg border border-ink-200 px-3 py-2">
+            {automaticScheduleTimes.map((time) => time.slice(0, 5)).join('、')}
+          </output>
+          <span className="mt-1 block text-xs leading-5 text-ink-500">
+            根据每日目标自动分布，无需手工填写；保存后每天按这些北京时间发布。
+          </span>
+        </div>
         <label className="flex items-center gap-2 text-sm text-ink-700">
           <input
             defaultChecked={selected?.enabled ?? false}

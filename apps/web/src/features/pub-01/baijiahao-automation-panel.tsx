@@ -19,7 +19,7 @@ import type {
   BaijiahaoBrowserSession,
   PlatformAccount,
 } from './platform-account.schema';
-import { automaticBaijiahaoScheduleTimes } from './baijiahao-schedule';
+import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
 
 export function BaijiahaoAutomationPanel({
   account,
@@ -44,7 +44,7 @@ export function BaijiahaoAutomationPanel({
     [policies, projectId],
   );
   const automaticScheduleTimes = useMemo(
-    () => automaticBaijiahaoScheduleTimes(dailyTargetCount),
+    () => automaticDailyScheduleTimes(dailyTargetCount),
     [dailyTargetCount],
   );
 

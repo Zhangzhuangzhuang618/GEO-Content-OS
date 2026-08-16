@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { automaticBaijiahaoScheduleTimes } from './baijiahao-schedule';
+import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
 
-describe('automatic Baijiahao schedule', () => {
+describe('automatic daily schedule', () => {
   it('keeps the existing single-article default', () => {
-    expect(automaticBaijiahaoScheduleTimes(1)).toEqual(['10:00:00']);
+    expect(automaticDailyScheduleTimes(1)).toEqual(['10:00:00']);
   });
 
   it('spreads ten articles across the frozen official-site slots', () => {
-    expect(automaticBaijiahaoScheduleTimes(10)).toEqual([
+    expect(automaticDailyScheduleTimes(10)).toEqual([
       '08:00:00',
       '09:30:00',
       '11:00:00',
@@ -24,7 +24,7 @@ describe('automatic Baijiahao schedule', () => {
 
   it('returns the requested number of unique ordered slots for every valid target', () => {
     for (let target = 1; target <= 10; target += 1) {
-      const slots = automaticBaijiahaoScheduleTimes(target);
+      const slots = automaticDailyScheduleTimes(target);
       expect(slots).toHaveLength(target);
       expect(new Set(slots)).toHaveLength(target);
       expect([...slots].sort()).toEqual([...slots]);

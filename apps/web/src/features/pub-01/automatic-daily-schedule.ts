@@ -11,9 +11,9 @@ const DAILY_SCHEDULE_TEMPLATE = Object.freeze([
   '21:30:00',
 ] as const);
 
-export function automaticBaijiahaoScheduleTimes(targetCount: number): readonly string[] {
+export function automaticDailyScheduleTimes(targetCount: number): readonly string[] {
   if (!Number.isInteger(targetCount) || targetCount < 1 || targetCount > 10) {
-    throw new RangeError('Baijiahao daily target must be between 1 and 10');
+    throw new RangeError('Daily target must be between 1 and 10');
   }
   if (targetCount === 1) return Object.freeze(['10:00:00']);
   const lastIndex = DAILY_SCHEDULE_TEMPLATE.length - 1;
