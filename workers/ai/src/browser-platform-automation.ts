@@ -662,14 +662,20 @@ export class BrowserPlatformAutomation {
     await transaction`
       UPDATE browser_platform_daily_batches AS batch SET
         status=CASE WHEN (
-          SELECT count(*) FROM browser_platform_daily_batch_items AS item
-          WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
-            AND item.status IN ('scheduled','processing','published')
+          SELECT count(*) FROM browser_platform_daily_batches AS day_batch
+          JOIN browser_platform_daily_batch_items AS item
+            ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND item.status IN ('scheduled','processing','published','publish_failed')
         ) >= policy.daily_target_count THEN 'scheduled' ELSE 'running' END,
         scheduled_at=CASE WHEN (
-          SELECT count(*) FROM browser_platform_daily_batch_items AS item
-          WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
-            AND item.status IN ('scheduled','processing','published')
+          SELECT count(*) FROM browser_platform_daily_batches AS day_batch
+          JOIN browser_platform_daily_batch_items AS item
+            ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND item.status IN ('scheduled','processing','published','publish_failed')
         ) >= policy.daily_target_count THEN COALESCE(batch.scheduled_at,now()) ELSE batch.scheduled_at END,
         version=batch.version+1
       FROM browser_platform_automation_policies AS policy

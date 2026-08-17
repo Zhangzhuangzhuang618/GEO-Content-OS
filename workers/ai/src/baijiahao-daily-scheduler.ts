@@ -18,6 +18,7 @@ const QUALIFIED_STATUSES = [
   'scheduled',
   'processing',
   'published',
+  'publish_failed',
   'reserve',
 ] as const;
 const MAX_ACTIVE_CANDIDATES = 2;
@@ -299,13 +300,25 @@ async function loadCounts(
 ): Promise<BatchCounts> {
   const rows = await transaction<BatchCounts[]>`
     SELECT
-      count(*)::integer AS attempted,
-      count(*) FILTER (WHERE status=ANY(${[...ACTIVE_STATUSES]}::varchar[]))::integer
-        AS "inProgress",
-      count(*) FILTER (WHERE status=ANY(${[...QUALIFIED_STATUSES]}::varchar[]))::integer
+      (
+        SELECT count(*)::integer FROM baijiahao_daily_batch_items AS current_item
+        WHERE current_item.tenant_id=${batch.tenantId}::uuid
+          AND current_item.batch_id=${batch.id}::uuid
+      ) AS attempted,
+      (
+        SELECT count(*)::integer FROM baijiahao_daily_batch_items AS current_item
+        WHERE current_item.tenant_id=${batch.tenantId}::uuid
+          AND current_item.batch_id=${batch.id}::uuid
+          AND current_item.status=ANY(${[...ACTIVE_STATUSES]}::varchar[])
+      ) AS "inProgress",
+      count(*) FILTER (WHERE item.status=ANY(${[...QUALIFIED_STATUSES]}::varchar[]))::integer
         AS qualified
-    FROM baijiahao_daily_batch_items
-    WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid
+    FROM baijiahao_daily_batches AS day_batch
+    JOIN baijiahao_daily_batch_items AS item
+      ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+    WHERE day_batch.tenant_id=${batch.tenantId}::uuid
+      AND day_batch.policy_id=${batch.policyId}::uuid
+      AND day_batch.business_date=${batch.businessDate}::date
   `;
   return rows[0] ?? { attempted: 0, inProgress: 0, qualified: 0 };
 }

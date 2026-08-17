@@ -1,7 +1,9 @@
 import {
   BaijiahaoAutomationPolicyRequestSchema,
+  BaijiahaoDailyBatchRestartRequestSchema,
   BrowserPlatformAutomationPolicyRequestSchema,
   BrowserPlatformDailyBatchRetryRequestSchema,
+  BrowserPlatformDailyBatchRestartRequestSchema,
   CreatePlatformAccountRequestSchema,
   CreatePublishJobRequestSchema,
   DisablePlatformAccountRequestSchema,
@@ -495,6 +497,44 @@ export class PlatformAccountController {
     }
   }
 
+  @Post(':id/content-automation/daily-batch/restart')
+  @RequirePermissions('publishing.manage')
+  public async restartBrowserPlatformDailyBatch(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = BrowserPlatformDailyBatchRestartRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    const scope = requireScope(request);
+    try {
+      const route = `/platform-accounts/${parsedParams.data.id}/content-automation/daily-batch/restart`;
+      const result = await idempotent(
+        this.idempotency,
+        request,
+        scope,
+        route,
+        parsedBody.data as JsonValue,
+        (transaction) =>
+          this.browserPlatformAutomation.restartDailyBatchInTransaction(
+            transaction,
+            scope,
+            parsedParams.data.id,
+            parsedBody.data,
+            audit(request),
+          ),
+        HttpStatus.CREATED,
+      );
+      await sendVersioned(reply, result.response.statusCode, result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
   @Get(':id/baijiahao-automation')
   @RequirePermissions('publishing.manage')
   public async listBaijiahaoAutomation(
@@ -533,6 +573,44 @@ export class PlatformAccountController {
         audit(request),
       );
       await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/baijiahao-automation/daily-batch/restart')
+  @RequirePermissions('publishing.manage')
+  public async restartBaijiahaoDailyBatch(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = BaijiahaoDailyBatchRestartRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    }
+    const scope = requireScope(request);
+    try {
+      const route = `/platform-accounts/${parsedParams.data.id}/baijiahao-automation/daily-batch/restart`;
+      const result = await idempotent(
+        this.idempotency,
+        request,
+        scope,
+        route,
+        parsedBody.data as JsonValue,
+        (transaction) =>
+          this.baijiahaoAutomation.restartDailyBatchInTransaction(
+            transaction,
+            scope,
+            parsedParams.data.id,
+            parsedBody.data,
+            audit(request),
+          ),
+        HttpStatus.CREATED,
+      );
+      await sendVersioned(reply, result.response.statusCode, result.response.body);
     } catch (error) {
       await sendPublishingError(reply, request.id, error);
     }

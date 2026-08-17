@@ -384,6 +384,32 @@ export async function retryBrowserPlatformDailyBatch(
   return parsed.data.data;
 }
 
+export async function restartBrowserPlatformDailyBatch(
+  accountId: string,
+  input: {
+    readonly expectedBatchVersion: number;
+    readonly projectId: string;
+  },
+  csrf: string,
+): Promise<BrowserPlatformAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation/daily-batch/restart`,
+    {
+      body: JSON.stringify({
+        expected_batch_version: input.expectedBatchVersion,
+        project_id: input.projectId,
+      }),
+      credentials: 'include',
+      headers: jsonWriteHeaders(csrf, undefined, 'browser-platform-daily-batch-restart'),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BrowserPlatformAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
 export async function saveBaijiahaoAutomationPolicy(
   accountId: string,
   input: {
@@ -418,6 +444,32 @@ export async function saveBaijiahaoAutomationPolicy(
       credentials: 'include',
       headers: jsonWriteHeaders(csrf),
       method: 'PUT',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function restartBaijiahaoDailyBatch(
+  accountId: string,
+  input: {
+    readonly expectedBatchVersion: number;
+    readonly projectId: string;
+  },
+  csrf: string,
+): Promise<BaijiahaoAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/baijiahao-automation/daily-batch/restart`,
+    {
+      body: JSON.stringify({
+        expected_batch_version: input.expectedBatchVersion,
+        project_id: input.projectId,
+      }),
+      credentials: 'include',
+      headers: jsonWriteHeaders(csrf, undefined, 'baijiahao-daily-batch-restart'),
+      method: 'POST',
     },
   );
   if (!response.ok) throw new PlatformAccountRequestError(response.status);

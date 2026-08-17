@@ -560,6 +560,13 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_baijiahao_automation_daily_batch_restart: {
+    idempotency: 'key+body_hash',
+    method: 'POST',
+    path: '/platform-accounts/{id}/baijiahao-automation/daily-batch/restart',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_baijiahao_browser_session_get: {
     idempotency: '-',
     method: 'GET',
@@ -592,6 +599,13 @@ export const operations = {
     idempotency: '-',
     method: 'PUT',
     path: '/platform-accounts/{id}/content-automation',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
+  account_browser_platform_automation_daily_batch_restart: {
+    idempotency: 'key+body_hash',
+    method: 'POST',
+    path: '/platform-accounts/{id}/content-automation/daily-batch/restart',
     permission: 'publishing.manage',
     security: 'session_csrf',
   },

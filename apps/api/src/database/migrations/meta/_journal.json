@@ -344,6 +344,13 @@
       "when": 1786899600000,
       "tag": "0048_lieju_official_api",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1786971600000,
+      "tag": "0049_cross_platform_daily_batch_attempts",
+      "breakpoints": true
     }
   ]
 }

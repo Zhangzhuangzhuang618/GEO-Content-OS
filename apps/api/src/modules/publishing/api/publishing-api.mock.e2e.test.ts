@@ -183,6 +183,7 @@ const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
   readability_safety_min: 85,
   tenant_id: TENANT_ID,
   today_batch: {
+    attempt_no: 1,
     attempted_count: 0,
     business_date: '2026-08-17',
     in_progress_count: 0,
@@ -190,6 +191,7 @@ const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
     manual_items: [],
     manual_required_count: 0,
     published_count: 0,
+    restart_allowed: false,
     retired_count: 0,
     retry_allowed: false,
     scheduled_count: 0,
@@ -240,10 +242,12 @@ describe('publishing API mock E2E', () => {
     restartDailyBatchInTransaction: vi.fn(async () => automationPolicy),
   };
   const baijiahaoAutomation = {
+    restartDailyBatchInTransaction: vi.fn(),
     startLogin: vi.fn(),
   };
   const browserPlatformAutomation = {
     list: vi.fn(async () => []),
+    restartDailyBatchInTransaction: vi.fn(async () => browserAutomationPolicy),
     retryDailyBatchInTransaction: vi.fn(async () => browserAutomationPolicy),
     update: vi.fn(),
   };
@@ -521,6 +525,27 @@ describe('publishing API mock E2E', () => {
         idempotencyKey: 'daily-batch-restart-0001',
       }),
       expect.any(Function),
+    );
+  });
+
+  it('restarts an exhausted browser-platform batch without replacing history', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'browser-daily-batch-restart-0001' },
+      method: 'POST',
+      payload: { expected_batch_version: 2, project_id: PROJECT_ID },
+      url: `/platform-accounts/${ACCOUNT_ID}/content-automation/daily-batch/restart`,
+    });
+
+    expect(response.statusCode).toBe(201);
+    findPublishingApiContract(
+      'account.browser_platform_automation.daily_batch.restart',
+    ).responseSchema.parse(response.json());
+    expect(browserPlatformAutomation.restartDailyBatchInTransaction).toHaveBeenCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      ACCOUNT_ID,
+      { expected_batch_version: 2, project_id: PROJECT_ID },
+      expect.objectContaining({ requestId: REQUEST_ID }),
     );
   });
 

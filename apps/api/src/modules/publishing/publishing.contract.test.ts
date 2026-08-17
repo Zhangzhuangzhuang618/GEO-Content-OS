@@ -58,6 +58,11 @@ const bindings: readonly Binding[] = [
     PlatformAccountController.prototype.updateBaijiahaoAutomation,
   ),
   bind(
+    'account.baijiahao_automation.daily_batch.restart',
+    PlatformAccountController,
+    PlatformAccountController.prototype.restartBaijiahaoDailyBatch,
+  ),
+  bind(
     'account.browser_platform_automation.list',
     PlatformAccountController,
     PlatformAccountController.prototype.listBrowserPlatformAutomation,
@@ -71,6 +76,11 @@ const bindings: readonly Binding[] = [
     'account.browser_platform_automation.daily_batch.retry',
     PlatformAccountController,
     PlatformAccountController.prototype.retryBrowserPlatformDailyBatch,
+  ),
+  bind(
+    'account.browser_platform_automation.daily_batch.restart',
+    PlatformAccountController,
+    PlatformAccountController.prototype.restartBrowserPlatformDailyBatch,
   ),
   bind(
     'account.baijiahao_browser_session.get',

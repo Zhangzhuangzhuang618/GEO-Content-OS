@@ -149,13 +149,29 @@ export class BrowserPlatformDailyScheduler {
       const counts = await transaction<
         { attempted: number; inProgress: number; qualified: number }[]
       >`
-        SELECT count(*)::integer AS attempted,
-          count(*) FILTER (WHERE status IN (
-            'generating','quality_check','rewriting','media_pending'
-          ))::integer AS "inProgress",
-          count(*) FILTER (WHERE status IN ('scheduled','processing','published'))::integer AS qualified
-        FROM browser_platform_daily_batch_items
-        WHERE tenant_id=${batch.tenantId}::uuid AND batch_id=${batch.id}::uuid
+        SELECT
+          (
+            SELECT count(*)::integer FROM browser_platform_daily_batch_items AS current_item
+            WHERE current_item.tenant_id=${batch.tenantId}::uuid
+              AND current_item.batch_id=${batch.id}::uuid
+          ) AS attempted,
+          (
+            SELECT count(*)::integer FROM browser_platform_daily_batch_items AS current_item
+            WHERE current_item.tenant_id=${batch.tenantId}::uuid
+              AND current_item.batch_id=${batch.id}::uuid
+              AND current_item.status IN (
+                'generating','quality_check','rewriting','media_pending'
+              )
+          ) AS "inProgress",
+          count(*) FILTER (WHERE item.status IN (
+            'scheduled','processing','published','publish_failed'
+          ))::integer AS qualified
+        FROM browser_platform_daily_batches AS day_batch
+        JOIN browser_platform_daily_batch_items AS item
+          ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+        WHERE day_batch.tenant_id=${batch.tenantId}::uuid
+          AND day_batch.policy_id=${batch.policyId}::uuid
+          AND day_batch.business_date=${batch.businessDate}::date
       `;
       const count = counts[0] ?? { attempted: 0, inProgress: 0, qualified: 0 };
       if (count.qualified >= batch.targetCount) return;

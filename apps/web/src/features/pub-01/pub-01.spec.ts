@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 
 import {
   BaijiahaoAutomationPolicySchema,
+  BrowserPlatformAutomationPolicySchema,
   PlatformAccountResponseSchema,
 } from './platform-account.schema';
 
@@ -581,6 +582,70 @@ test('shows actionable Baijiahao manual-required items', async ({ page }) => {
   );
 });
 
+test('restarts an exhausted Baijiahao batch without hiding the previous attempt', async ({
+  page,
+}) => {
+  const base = baijiahaoPolicy();
+  let current = BaijiahaoAutomationPolicySchema.parse({
+    ...base,
+    today_batch: {
+      ...base.today_batch!,
+      active_items: [],
+      attempted_count: 3,
+      in_progress_count: 0,
+      last_error_message: '候选上限已耗尽。',
+      manual_items: [],
+      manual_required_count: 0,
+      restart_allowed: true,
+      status: 'attention_required' as const,
+      version: 4,
+    },
+  });
+  let restartRequest: Record<string, unknown> | null = null;
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '百家号内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/baijiahao-automation/daily-batch/restart')) {
+      restartRequest = request.postDataJSON() as Record<string, unknown>;
+      current = BaijiahaoAutomationPolicySchema.parse({
+        ...current,
+        today_batch: {
+          ...current.today_batch,
+          attempt_no: 2,
+          attempted_count: 0,
+          last_error_message: null,
+          restart_allowed: false,
+          status: 'running',
+          version: 1,
+        },
+      });
+      await json(route, { data: current, meta: { request_id: 'daily-restart' } }, 201);
+      return;
+    }
+    if (path.endsWith('/baijiahao-automation')) {
+      await json(route, { data: [current], meta: { request_id: 'baijiahao-policy' } });
+      return;
+    }
+    await json(route, { data: [baijiahaoAccount()], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '百家号自动化' }).click();
+  await expect(page.getByText(/第 1 次尝试/u)).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '保留历史并重新发起' }).click();
+
+  await expect(page.getByText('已创建今日第 2 次尝试，历史候选保持不变。')).toBeVisible();
+  await expect(page.getByText('等待下一次后台巡检（第 2 次尝试）')).toBeVisible();
+  expect(restartRequest).toEqual({ expected_batch_version: 4, project_id: PROJECT_ID });
+});
+
 test('shows actionable Sohu daily-batch items', async ({ page }) => {
   let keywordSyncRequest: Record<string, unknown> | null = null;
   await page.route('**/api/v1/platform-accounts**', (route) =>
@@ -715,6 +780,70 @@ test('retries a prerequisite-blocked Sohu daily batch after explicit confirmatio
   await page.getByRole('button', { name: '重试今日批次' }).click();
   await expect(page.getByText('今日搜狐号批次已恢复运行，调度器将继续生成候选。')).toBeVisible();
   expect(retryRequest).toEqual({ expected_batch_version: 4, project_id: PROJECT_ID });
+});
+
+test('restarts an exhausted Sohu batch as a new attempt', async ({ page }) => {
+  const base = browserPlatformPolicy();
+  let current = BrowserPlatformAutomationPolicySchema.parse({
+    ...base,
+    today_batch: {
+      ...base.today_batch!,
+      attempted_count: 3,
+      last_error_message: '候选上限已耗尽。',
+      manual_items: [],
+      manual_required_count: 0,
+      restart_allowed: true,
+      status: 'attention_required' as const,
+      version: 5,
+    },
+  });
+  let restartRequest: Record<string, unknown> | null = null;
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [sohuAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '搜狐自动化项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation**`,
+    async (route) => {
+      if (route.request().url().endsWith('/daily-batch/restart')) {
+        restartRequest = route.request().postDataJSON() as Record<string, unknown>;
+        current = BrowserPlatformAutomationPolicySchema.parse({
+          ...current,
+          today_batch: {
+            ...current.today_batch,
+            attempt_no: 2,
+            attempted_count: 0,
+            last_error_message: null,
+            restart_allowed: false,
+            status: 'running',
+            version: 1,
+          },
+        });
+        await json(route, { data: current, meta: { request_id: 'daily-restart' } }, 201);
+        return;
+      }
+      await json(route, { data: [current], meta: { request_id: 'automation' } });
+    },
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '搜狐号登录' }).click();
+  await expect(page.getByText(/今日第 1 次尝试/u)).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '保留历史并重新发起' }).click();
+
+  await expect(page.getByText('已创建今日第 2 次尝试，历史候选保持不变。')).toBeVisible();
+  await expect(
+    page.getByText('今日第 2 次尝试：本次已尝试 0，当天累计已排期 0，已发布 0'),
+  ).toBeVisible();
+  expect(restartRequest).toEqual({ expected_batch_version: 5, project_id: PROJECT_ID });
 });
 
 test('distinguishes Baijiahao browser attention from login expiry and allows re-verification', async ({
@@ -859,6 +988,7 @@ function browserPlatformPolicy() {
     readability_safety_min: 85,
     tenant_id: TENANT_ID,
     today_batch: {
+      attempt_no: 1,
       attempted_count: 1,
       business_date: '2026-08-16',
       in_progress_count: 0,
@@ -880,6 +1010,7 @@ function browserPlatformPolicy() {
       ],
       manual_required_count: 1,
       published_count: 0,
+      restart_allowed: false,
       retry_allowed: false,
       retired_count: 0,
       scheduled_count: 0,
@@ -926,6 +1057,7 @@ function baijiahaoPolicy() {
     source_mode: 'official_site_derived',
     tenant_id: TENANT_ID,
     today_batch: {
+      attempt_no: 1,
       active_items: [
         {
           automation_run_id: 'a5000000-0000-4000-8000-000000000001',
@@ -962,6 +1094,7 @@ function baijiahaoPolicy() {
       ],
       manual_required_count: 1,
       published_count: 0,
+      restart_allowed: false,
       retired_count: 0,
       scheduled_count: 0,
       skipped_count: 0,

@@ -768,6 +768,61 @@ describe('Baijiahao official-site derived automation', () => {
     ).toEqual([]);
   });
 
+  it('preserves exhausted candidates and creates a new daily attempt for the remaining target', async () => {
+    const database = requireClient(client);
+    await seedGeneratedIndependentCandidate(database);
+    await database`
+      UPDATE baijiahao_automation_policies SET daily_enabled=true
+      WHERE id=${POLICY_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_daily_batch_items SET status='retired'
+      WHERE id=${INDEPENDENT_ITEM_ID}::uuid
+    `;
+    await database`
+      UPDATE baijiahao_daily_batches SET status='attention_required',
+        last_error_json=${database.json({
+          code: 'DAILY_CANDIDATE_LIMIT_REACHED',
+          schema_version: 'baijiahao-daily-error@1',
+        })},version=version+1
+      WHERE id=${INDEPENDENT_BATCH_ID}::uuid
+    `;
+
+    const policies = new BaijiahaoAutomationPolicyService(database, {} as never);
+    const restarted = await database.begin((transaction) =>
+      policies.restartDailyBatchInTransaction(
+        transaction,
+        { tenantId: TENANT_ID, userId: USER_ID },
+        BAIJIAHAO_ACCOUNT_ID,
+        { expected_batch_version: 2, project_id: PROJECT_ID },
+        { requestId: 'baijiahao-daily-restart-integration' },
+      ),
+    );
+
+    expect(restarted.today_batch).toMatchObject({
+      attempt_no: 2,
+      attempted_count: 0,
+      restart_allowed: false,
+      status: 'running',
+    });
+    expect(
+      await database<{ attemptNo: number; status: string }[]>`
+        SELECT attempt_no AS "attemptNo",status FROM baijiahao_daily_batches
+        WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
+        ORDER BY attempt_no
+      `,
+    ).toEqual([
+      { attemptNo: 1, status: 'cancelled' },
+      { attemptNo: 2, status: 'running' },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM baijiahao_daily_batch_items
+        WHERE tenant_id=${TENANT_ID}::uuid AND batch_id=${INDEPENDENT_BATCH_ID}::uuid
+      `,
+    ).toEqual([{ count: 1 }]);
+  });
+
   it('does not turn a browser publication ambiguity into a new quality check', async () => {
     const database = requireClient(client);
     const generatedHash = await seedGeneratedIndependentCandidate(database);

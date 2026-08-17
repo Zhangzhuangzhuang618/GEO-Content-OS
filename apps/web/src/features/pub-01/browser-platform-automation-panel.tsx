@@ -8,6 +8,7 @@ import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
   listBrowserPlatformAutomationPolicies,
   PlatformAccountRequestError,
+  restartBrowserPlatformDailyBatch,
   retryBrowserPlatformDailyBatch,
   saveBrowserPlatformAutomationPolicy,
   syncProjectKeywordPlatformScope,
@@ -162,6 +163,42 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     }
   }
 
+  async function restartTodayBatch() {
+    const batch = selected?.today_batch;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf || !selected || !batch?.restart_allowed || retryingBatch) return;
+    if (
+      !window.confirm(
+        `确认重新发起今日${platformName}第 ${batch.attempt_no + 1} 次尝试？\n\n历史候选、质量报告和发布记录都会保留；系统只按原质量标准补足当天缺口，不会替换发布失败的原任务。`,
+      )
+    )
+      return;
+    setRetryingBatch(true);
+    setMessage(null);
+    try {
+      const restarted = await restartBrowserPlatformDailyBatch(
+        account.id,
+        { expectedBatchVersion: batch.version, projectId: selected.project_id },
+        csrf,
+      );
+      setPolicies((current) => [
+        ...current.filter((policy) => policy.project_id !== restarted.project_id),
+        restarted,
+      ]);
+      setMessage(
+        `已创建今日第 ${restarted.today_batch?.attempt_no ?? batch.attempt_no + 1} 次尝试，历史候选保持不变。`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof PlatformAccountRequestError && error.status === 409
+          ? '批次状态已变化，请关闭面板后重新打开再试。'
+          : `重新发起今日${platformName}批次失败。`,
+      );
+    } finally {
+      setRetryingBatch(false);
+    }
+  }
+
   return (
     <div className="mt-6 border-t border-ink-100 pt-6">
       <h3 className="text-base font-semibold text-ink-950">全链路自动化</h3>
@@ -276,7 +313,8 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           </button>
           {selected?.today_batch ? (
             <span className="text-sm text-ink-500">
-              今日：已尝试 {selected.today_batch.attempted_count}，已排期{' '}
+              今日第 {selected.today_batch.attempt_no} 次尝试：本次已尝试{' '}
+              {selected.today_batch.attempted_count}，当天累计已排期{' '}
               {selected.today_batch.scheduled_count}，已发布 {selected.today_batch.published_count}
             </span>
           ) : null}
@@ -296,6 +334,23 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
             type="button"
           >
             {retryingBatch ? '正在重试…' : '重试今日批次'}
+          </button>
+        </section>
+      ) : null}
+      {selected?.today_batch?.restart_allowed ? (
+        <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-950">本次候选已耗尽，今日目标尚未补足</p>
+          <p className="mt-1 text-sm leading-6 text-amber-900">
+            可保留前 {selected.today_batch.attempt_no}{' '}
+            次尝试的全部记录，创建新尝试继续补足；旧质量报告不会重新评估。
+          </p>
+          <button
+            className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            disabled={retryingBatch || syncingKeywords || busy}
+            onClick={() => void restartTodayBatch()}
+            type="button"
+          >
+            {retryingBatch ? '正在重新发起…' : '保留历史并重新发起'}
           </button>
         </section>
       ) : null}

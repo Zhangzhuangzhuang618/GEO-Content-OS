@@ -460,6 +460,103 @@ describe('platform accounts', () => {
     ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
   });
 
+  it('starts a new browser-platform attempt without rewriting the exhausted batch', async () => {
+    const database = requireClient(client);
+    const accounts = new PlatformAccountService(
+      database,
+      new CredentialEnvelopeService(requireKms(kms)),
+      new PlatformDeliveryAccountConnector(),
+    );
+    const policies = new BrowserPlatformAutomationPolicyService(database);
+    const account = await accounts.create(
+      SCOPE,
+      {
+        credential: {
+          api_key: 'lieju-restart-test-api-key',
+          delivery_method: 'official_api',
+          posting_profile: {
+            contact_name: '测试搬家服务公司',
+            mobile_phone: '02000000000',
+            qq: '',
+            wechat: '',
+            zone_id: '76',
+          },
+        },
+        display_name: '列举网每日批次恢复测试',
+        platform_code: 'lieju',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: WORKSPACE_ID,
+      },
+      { requestId: 'req-lieju-restart-account' },
+    );
+    const policy = await policies.update(
+      SCOPE,
+      account.id,
+      {
+        daily_candidate_limit: 3,
+        daily_enabled: true,
+        daily_generation_time: '00:30:00',
+        daily_schedule_times: ['10:00:00'],
+        daily_target_count: 1,
+        enabled: true,
+        project_id: PROJECT_ID,
+      },
+      { requestId: 'req-lieju-restart-policy' },
+    );
+    await database`
+      INSERT INTO browser_platform_daily_batches(
+        tenant_id,policy_id,business_date,status,last_error_json
+      ) VALUES(
+        ${TENANT_ID}::uuid,${policy.id}::uuid,
+        (now() AT TIME ZONE 'Asia/Shanghai')::date,'attention_required',
+        '{"code":"DAILY_CANDIDATE_LIMIT_REACHED","message":"候选上限已耗尽。"}'::jsonb
+      )
+    `;
+
+    expect((await policies.list(SCOPE, account.id))[0]?.today_batch).toMatchObject({
+      attempt_no: 1,
+      restart_allowed: true,
+      status: 'attention_required',
+      version: 1,
+    });
+    const restarted = await database.begin((transaction) =>
+      policies.restartDailyBatchInTransaction(
+        transaction,
+        SCOPE,
+        account.id,
+        { expected_batch_version: 1, project_id: PROJECT_ID },
+        { requestId: 'req-lieju-daily-restart' },
+      ),
+    );
+
+    expect(restarted.today_batch).toMatchObject({
+      attempt_no: 2,
+      attempted_count: 0,
+      restart_allowed: false,
+      status: 'running',
+      version: 1,
+    });
+    expect(
+      await database<{ attemptNo: number; status: string }[]>`
+        SELECT attempt_no AS "attemptNo",status
+        FROM browser_platform_daily_batches
+        WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${policy.id}::uuid
+        ORDER BY attempt_no
+      `,
+    ).toEqual([
+      { attemptNo: 1, status: 'cancelled' },
+      { attemptNo: 2, status: 'running' },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND action='browser_platform.daily_batch.restarted'
+      `,
+    ).toEqual([{ count: 1 }]);
+  });
+
   it('configures one fixed official-site automation policy per project and disables it with the account', async () => {
     const database = requireClient(client);
     const accounts = createService(database, requireKms(kms));

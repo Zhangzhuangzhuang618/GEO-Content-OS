@@ -101,12 +101,15 @@ export const OfficialSiteAutomationPolicyRequestSchema = z
     project_id: UuidSchema,
   })
   .strict();
-export const OfficialSiteDailyBatchRestartRequestSchema = z
+export const DailyBatchRestartRequestSchema = z
   .object({
     expected_batch_version: VersionSchema,
     project_id: UuidSchema,
   })
   .strict();
+export const OfficialSiteDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema;
+export const BaijiahaoDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema;
+export const BrowserPlatformDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema;
 export const OfficialSiteDailyBatchCancelRequestSchema = z
   .object({
     expected_batch_version: VersionSchema,
@@ -267,6 +270,7 @@ export const BrowserPlatformDailyBatchRetryRequestSchema = z
   .strict();
 export const BaijiahaoDailyBatchSummarySchema = z
   .object({
+    attempt_no: z.number().int().positive(),
     active_items: z
       .array(
         z
@@ -337,6 +341,7 @@ export const BaijiahaoDailyBatchSummarySchema = z
       .default([]),
     manual_required_count: z.number().int().min(0).max(30),
     published_count: z.number().int().min(0).max(10),
+    restart_allowed: z.boolean(),
     retired_count: z.number().int().min(0).max(30),
     scheduled_count: z.number().int().min(0).max(10),
     skipped_count: z.number().int().min(0).max(30),
@@ -458,6 +463,7 @@ export const BaijiahaoAutomationPolicyViewSchema = z
   });
 export const BrowserPlatformDailyBatchSummarySchema = z
   .object({
+    attempt_no: z.number().int().positive(),
     attempted_count: z.number().int().min(0).max(30),
     business_date: z.iso.date(),
     in_progress_count: z.number().int().min(0).max(30),
@@ -484,6 +490,7 @@ export const BrowserPlatformDailyBatchSummarySchema = z
       .default([]),
     manual_required_count: z.number().int().min(0).max(30),
     published_count: z.number().int().min(0).max(10),
+    restart_allowed: z.boolean(),
     retry_allowed: z.boolean(),
     retired_count: z.number().int().min(0).max(30),
     scheduled_count: z.number().int().min(0).max(10),
@@ -573,12 +580,18 @@ export type OfficialSiteAutomationPolicyView = z.infer<
 export type BaijiahaoAutomationPolicyRequest = z.infer<
   typeof BaijiahaoAutomationPolicyRequestSchema
 >;
+export type BaijiahaoDailyBatchRestartRequest = z.infer<
+  typeof BaijiahaoDailyBatchRestartRequestSchema
+>;
 export type BaijiahaoAutomationPolicyView = z.infer<typeof BaijiahaoAutomationPolicyViewSchema>;
 export type BrowserPlatformAutomationPolicyRequest = z.infer<
   typeof BrowserPlatformAutomationPolicyRequestSchema
 >;
 export type BrowserPlatformDailyBatchRetryRequest = z.infer<
   typeof BrowserPlatformDailyBatchRetryRequestSchema
+>;
+export type BrowserPlatformDailyBatchRestartRequest = z.infer<
+  typeof BrowserPlatformDailyBatchRestartRequestSchema
 >;
 export type BrowserPlatformAutomationPolicyView = z.infer<
   typeof BrowserPlatformAutomationPolicyViewSchema

@@ -1,6 +1,7 @@
 import type {
   BrowserPlatformAutomationPolicyRequest,
   BrowserPlatformAutomationPolicyView,
+  BrowserPlatformDailyBatchRestartRequest,
   BrowserPlatformDailyBatchRetryRequest,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
@@ -14,8 +15,10 @@ type Platform = 'lieju' | 'sohu';
 interface PolicyRow {
   readonly accountId: string;
   readonly attemptedCount: number | null;
+  readonly batchAttemptNo: number | null;
   readonly batchBusinessDate: Date | string | null;
   readonly batchLastErrorMessage: string | null;
+  readonly batchRestartAllowed: boolean | null;
   readonly batchStatus: BrowserPlatformAutomationPolicyView['today_batch'] extends infer T
     ? T extends { status: infer S }
       ? S
@@ -191,6 +194,7 @@ export class BrowserPlatformAutomationPolicyService {
         AND has_project_scope_access(
           policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
         )
+      ORDER BY batch.attempt_no DESC LIMIT 1
       FOR UPDATE OF policy,batch
     `;
     const before = rows[0];
@@ -242,6 +246,123 @@ export class BrowserPlatformAutomationPolicyService {
     return mapPolicy(policy);
   }
 
+  public async restartDailyBatchInTransaction(
+    transaction: TransactionSql,
+    scope: PlatformAccountScope,
+    accountId: string,
+    input: BrowserPlatformDailyBatchRestartRequest,
+    audit: PlatformAccountAudit,
+  ): Promise<BrowserPlatformAutomationPolicyView> {
+    const account = await this.requireAccount(scope, accountId, transaction);
+    if (account.status !== 'active' || account.publishMode !== 'api') {
+      throw stateInvalid('只有正常状态的自动发布账号可以重新发起今日批次。');
+    }
+    const rows = await transaction<
+      {
+        attemptNo: number;
+        batchId: string;
+        batchStatus: 'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled';
+        batchVersion: number;
+        businessDate: Date | string;
+        dailyEnabled: boolean;
+        enabled: boolean;
+        errorCode: string | null;
+        platformCode: Platform;
+        policyId: string;
+        successfulCount: number;
+        targetCount: number;
+      }[]
+    >`
+      SELECT policy.id AS "policyId",policy.platform_code AS "platformCode",
+        policy.enabled,policy.daily_enabled AS "dailyEnabled",
+        policy.daily_target_count AS "targetCount",batch.id AS "batchId",
+        batch.attempt_no AS "attemptNo",batch.business_date AS "businessDate",
+        batch.status AS "batchStatus",batch.version AS "batchVersion",
+        batch.last_error_json->>'code' AS "errorCode",
+        (
+          SELECT count(*)::integer
+          FROM browser_platform_daily_batches AS day_batch
+          JOIN browser_platform_daily_batch_items AS item
+            ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND item.status IN ('scheduled','processing','published','publish_failed')
+        ) AS "successfulCount"
+      FROM browser_platform_automation_policies AS policy
+      JOIN browser_platform_daily_batches AS batch
+        ON batch.policy_id=policy.id AND batch.tenant_id=policy.tenant_id
+        AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
+      WHERE policy.tenant_id=${scope.tenantId}::uuid
+        AND policy.account_id=${accountId}::uuid
+        AND policy.project_id=${input.project_id}::uuid
+        AND has_project_scope_access(
+          policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
+        )
+      ORDER BY batch.attempt_no DESC LIMIT 1
+      FOR UPDATE OF policy,batch
+    `;
+    const before = rows[0];
+    if (!before) throw stateInvalid('今天没有可重新发起的自动化批次。');
+    if (!before.enabled || !before.dailyEnabled) throw stateInvalid('请先启用自动化和每日批次。');
+    if (before.batchVersion !== input.expected_batch_version) throw versionConflict();
+    const restartable =
+      (before.batchStatus === 'attention_required' &&
+        before.errorCode === 'DAILY_CANDIDATE_LIMIT_REACHED') ||
+      (before.batchStatus === 'cancelled' && before.errorCode === 'DAILY_BATCH_MANUALLY_CANCELLED');
+    if (!restartable) throw stateInvalid('仅候选上限耗尽或人工终止的批次可以重新发起。');
+    if (before.successfulCount >= before.targetCount) {
+      throw stateInvalid('今日合格内容已达到目标；发布失败请处理原发布任务。');
+    }
+    const cancelled = await transaction<{ version: number }[]>`
+      UPDATE browser_platform_daily_batches SET status='cancelled',
+        last_error_json=COALESCE(last_error_json,'{}'::jsonb) || jsonb_build_object(
+          'restarted_at',now(),'restarted_by',${scope.userId}::uuid
+        ),version=version+1
+      WHERE id=${before.batchId}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND status=${before.batchStatus} AND version=${before.batchVersion}
+      RETURNING version
+    `;
+    if (!cancelled[0]) throw versionConflict();
+    const created = await transaction<{ id: string; attemptNo: number }[]>`
+      INSERT INTO browser_platform_daily_batches (
+        tenant_id,policy_id,business_date,attempt_no,status
+      ) VALUES (
+        ${scope.tenantId}::uuid,${before.policyId}::uuid,
+        ${dateOnly(before.businessDate)}::date,${before.attemptNo + 1},'running'
+      ) RETURNING id,attempt_no AS "attemptNo"
+    `;
+    const next = created[0];
+    if (!next) throw stateInvalid('新的平台日批尝试创建失败。');
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,ip,request_id
+      ) VALUES (
+        ${scope.tenantId}::uuid,${scope.userId}::uuid,
+        'browser_platform.daily_batch.restarted','browser_platform_daily_batch',${next.id}::uuid,
+        ${JSON.stringify({
+          attempt_no: before.attemptNo,
+          batch_id: before.batchId,
+          platform_code: before.platformCode,
+          retained_success_count: before.successfulCount,
+          status: before.batchStatus,
+        })}::text::jsonb,
+        ${JSON.stringify({
+          attempt_no: next.attemptNo,
+          batch_id: next.id,
+          missing_count: before.targetCount - before.successfulCount,
+          platform_code: before.platformCode,
+          restarted_from_batch_id: before.batchId,
+          retained_success_count: before.successfulCount,
+          status: 'running',
+        })}::text::jsonb,${audit.ip ?? null},${audit.requestId}
+      )
+    `;
+    const selected = await this.select(scope, accountId, before.policyId, transaction);
+    const policy = selected[0];
+    if (!policy) throw notFound();
+    return mapPolicy(policy);
+  }
+
   private select(
     scope: PlatformAccountScope,
     accountId: string,
@@ -259,8 +380,19 @@ export class BrowserPlatformAutomationPolicyService {
         policy.daily_generation_time::text AS "dailyGenerationTime",
         policy.daily_schedule_times::text[] AS "dailyScheduleTimes",
         policy.version,policy.updated_at AS "updatedAt",
+        batch.attempt_no AS "batchAttemptNo",
         batch.business_date AS "batchBusinessDate",batch.status AS "batchStatus",
         batch.version AS "batchVersion",batch.last_error_json->>'message' AS "batchLastErrorMessage",
+        (
+          (
+            batch.status='attention_required'
+            AND batch.last_error_json->>'code'='DAILY_CANDIDATE_LIMIT_REACHED'
+          ) OR (
+            batch.status='cancelled'
+            AND batch.last_error_json->>'code'='DAILY_BATCH_MANUALLY_CANCELLED'
+          )
+        ) AND coalesce(day_counts.successful,0) < policy.daily_target_count
+          AS "batchRestartAllowed",
         (
           policy.enabled AND policy.daily_enabled
           AND batch.status='attention_required'
@@ -269,14 +401,14 @@ export class BrowserPlatformAutomationPolicyService {
         ) AS "retryAllowed",
         counts.attempted AS "attemptedCount",counts.in_progress AS "inProgressCount",
         counts.manual_required AS "manualRequiredCount",counts.retired AS "retiredCount",
-        counts.scheduled AS "scheduledCount",counts.published AS "publishedCount",
+        day_counts.scheduled AS "scheduledCount",day_counts.published AS "publishedCount",
         manual.items AS "manualItems"
       FROM browser_platform_automation_policies AS policy
       LEFT JOIN LATERAL (
         SELECT candidate.* FROM browser_platform_daily_batches AS candidate
         WHERE candidate.tenant_id=policy.tenant_id AND candidate.policy_id=policy.id
           AND candidate.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
-        ORDER BY candidate.started_at DESC,candidate.id DESC LIMIT 1
+        ORDER BY candidate.attempt_no DESC LIMIT 1
       ) AS batch ON true
       LEFT JOIN LATERAL (
         SELECT
@@ -291,6 +423,21 @@ export class BrowserPlatformAutomationPolicyService {
         FROM browser_platform_daily_batch_items AS item
         WHERE item.tenant_id=policy.tenant_id AND item.batch_id=batch.id
       ) AS counts ON batch.id IS NOT NULL
+      LEFT JOIN LATERAL (
+        SELECT
+          count(*) FILTER (WHERE item.status IN (
+            'scheduled','processing','published','publish_failed'
+          ))::integer AS successful,
+          count(*) FILTER (WHERE item.status IN (
+            'scheduled','processing','published','publish_failed'
+          ))::integer AS scheduled,
+          count(*) FILTER (WHERE item.status='published')::integer AS published
+        FROM browser_platform_daily_batches AS day_batch
+        JOIN browser_platform_daily_batch_items AS item
+          ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+        WHERE day_batch.tenant_id=policy.tenant_id AND day_batch.policy_id=policy.id
+          AND day_batch.business_date=batch.business_date
+      ) AS day_counts ON batch.id IS NOT NULL
       LEFT JOIN LATERAL (
         SELECT coalesce(
           jsonb_agg(
@@ -378,6 +525,7 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
     today_batch:
       row.batchBusinessDate && row.batchStatus && row.batchVersion
         ? {
+            attempt_no: row.batchAttemptNo ?? 1,
             attempted_count: row.attemptedCount ?? 0,
             business_date: new Date(row.batchBusinessDate).toISOString().slice(0, 10),
             in_progress_count: row.inProgressCount ?? 0,
@@ -388,6 +536,7 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
             })),
             manual_required_count: row.manualRequiredCount ?? 0,
             published_count: row.publishedCount ?? 0,
+            restart_allowed: row.batchRestartAllowed ?? false,
             retry_allowed: row.retryAllowed ?? false,
             retired_count: row.retiredCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,
@@ -412,4 +561,8 @@ function stateInvalid(message: string) {
 
 function versionConflict() {
   return new PlatformAccountError('PLATFORM_ACCOUNT_VERSION_CONFLICT', '自动化策略版本已变化。');
+}
+
+function dateOnly(value: Date | string): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : value.slice(0, 10);
 }

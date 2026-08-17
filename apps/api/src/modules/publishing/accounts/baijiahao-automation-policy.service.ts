@@ -2,6 +2,7 @@ import type {
   BaijiahaoAutomationPolicyRequest,
   BaijiahaoAutomationPolicyView,
   BaijiahaoBrowserSessionView,
+  BaijiahaoDailyBatchRestartRequest,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
@@ -18,8 +19,10 @@ interface PolicyRow {
   readonly activeItems: readonly ActiveItem[] | null;
   readonly accountId: string;
   readonly attemptedCount: number | null;
+  readonly batchAttemptNo: number | null;
   readonly batchBusinessDate: Date | string | null;
   readonly batchLastErrorMessage: string | null;
+  readonly batchRestartAllowed: boolean | null;
   readonly batchStatus:
     'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled' | null;
   readonly batchVersion: number | null;
@@ -172,6 +175,121 @@ export class BaijiahaoAutomationPolicyService {
     return this.gateway.status(accountId);
   }
 
+  public async restartDailyBatchInTransaction(
+    transaction: TransactionSql,
+    scope: PlatformAccountScope,
+    accountId: string,
+    input: BaijiahaoDailyBatchRestartRequest,
+    audit: PlatformAccountAudit,
+  ): Promise<BaijiahaoAutomationPolicyView> {
+    const account = await this.requireAccount(transaction, scope, accountId, true);
+    if (account.status !== 'active' || account.publishMode !== 'api') {
+      throw stateInvalid('只有正常状态的百家号自动发布账号可以重新发起今日批次。');
+    }
+    const rows = await transaction<
+      {
+        attemptNo: number;
+        batchId: string;
+        batchStatus: 'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled';
+        batchVersion: number;
+        businessDate: Date | string;
+        dailyEnabled: boolean;
+        enabled: boolean;
+        errorCode: string | null;
+        policyId: string;
+        successfulCount: number;
+        targetCount: number;
+      }[]
+    >`
+      SELECT policy.id AS "policyId",policy.enabled,policy.daily_enabled AS "dailyEnabled",
+        policy.daily_target_count AS "targetCount",batch.id AS "batchId",
+        batch.attempt_no AS "attemptNo",batch.business_date AS "businessDate",
+        batch.status AS "batchStatus",batch.version AS "batchVersion",
+        batch.last_error_json->>'code' AS "errorCode",
+        (
+          SELECT count(*)::integer
+          FROM baijiahao_daily_batches AS day_batch
+          JOIN baijiahao_daily_batch_items AS item
+            ON item.batch_id=day_batch.id AND item.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND item.status IN (
+              'qualified','scheduled','processing','published','publish_failed','reserve'
+            )
+        ) AS "successfulCount"
+      FROM baijiahao_automation_policies AS policy
+      JOIN baijiahao_daily_batches AS batch
+        ON batch.policy_id=policy.id AND batch.tenant_id=policy.tenant_id
+        AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
+      WHERE policy.tenant_id=${scope.tenantId}::uuid
+        AND policy.account_id=${accountId}::uuid
+        AND policy.project_id=${input.project_id}::uuid
+        AND has_project_scope_access(
+          policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
+        )
+      ORDER BY batch.attempt_no DESC LIMIT 1
+      FOR UPDATE OF policy,batch
+    `;
+    const before = rows[0];
+    if (!before) throw stateInvalid('今天没有可重新发起的百家号批次。');
+    if (!before.enabled || !before.dailyEnabled) throw stateInvalid('请先启用自动化和每日批次。');
+    if (before.batchVersion !== input.expected_batch_version) throw versionConflict();
+    const restartable =
+      (before.batchStatus === 'attention_required' &&
+        before.errorCode === 'DAILY_CANDIDATE_LIMIT_REACHED') ||
+      (before.batchStatus === 'cancelled' && before.errorCode === 'DAILY_BATCH_MANUALLY_CANCELLED');
+    if (!restartable) throw stateInvalid('仅候选上限耗尽或人工终止的批次可以重新发起。');
+    if (before.successfulCount >= before.targetCount) {
+      throw stateInvalid('今日合格内容已达到目标；发布失败请处理原发布任务。');
+    }
+    const cancelled = await transaction<{ version: number }[]>`
+      UPDATE baijiahao_daily_batches SET status='cancelled',
+        last_error_json=COALESCE(last_error_json,'{}'::jsonb) || jsonb_build_object(
+          'restarted_at',now(),'restarted_by',${scope.userId}::uuid
+        ),version=version+1
+      WHERE id=${before.batchId}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND status=${before.batchStatus} AND version=${before.batchVersion}
+      RETURNING version
+    `;
+    if (!cancelled[0]) throw versionConflict();
+    const created = await transaction<{ id: string; attemptNo: number }[]>`
+      INSERT INTO baijiahao_daily_batches (
+        tenant_id,policy_id,business_date,attempt_no,status
+      ) VALUES (
+        ${scope.tenantId}::uuid,${before.policyId}::uuid,
+        ${dateOnly(before.businessDate)}::date,${before.attemptNo + 1},'running'
+      ) RETURNING id,attempt_no AS "attemptNo"
+    `;
+    const next = created[0];
+    if (!next) throw stateInvalid('新的百家号日批尝试创建失败。');
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,ip,request_id
+      ) VALUES (
+        ${scope.tenantId}::uuid,${scope.userId}::uuid,'baijiahao.daily_batch.restarted',
+        'baijiahao_daily_batch',${next.id}::uuid,
+        ${jsonbText(transaction, {
+          attempt_no: before.attemptNo,
+          batch_id: before.batchId,
+          retained_success_count: before.successfulCount,
+          status: before.batchStatus,
+        })}::jsonb,
+        ${jsonbText(transaction, {
+          attempt_no: next.attemptNo,
+          batch_id: next.id,
+          missing_count: before.targetCount - before.successfulCount,
+          restarted_from_batch_id: before.batchId,
+          retained_success_count: before.successfulCount,
+          status: 'running',
+        })}::jsonb,${audit.ip ?? null},${audit.requestId}
+      )
+    `;
+    const selected = await this.selectPolicies(scope, accountId, transaction, input.project_id);
+    const policy = selected[0];
+    if (!policy) throw notFound();
+    return mapPolicy(policy);
+  }
+
   public async startLogin(
     scope: PlatformAccountScope,
     accountId: string,
@@ -227,8 +345,10 @@ export class BaijiahaoAutomationPolicyService {
         session.qr_expires_at AS "sessionQrExpiresAt",
         session.authenticated_at AS "sessionAuthenticatedAt",
         session.last_verified_at AS "sessionLastVerifiedAt",session.version AS "sessionVersion",
+        today.attempt_no AS "batchAttemptNo",
         today.business_date AS "batchBusinessDate",today.status AS "batchStatus",
         today.version AS "batchVersion",today.last_error_message AS "batchLastErrorMessage",
+        today.restart_allowed AS "batchRestartAllowed",
         today.attempted_count AS "attemptedCount",today.in_progress_count AS "inProgressCount",
         today.last_activity_at AS "lastActivityAt",
         today.scheduled_count AS "scheduledCount",today.published_count AS "publishedCount",
@@ -239,9 +359,28 @@ export class BaijiahaoAutomationPolicyService {
       LEFT JOIN baijiahao_browser_sessions AS session
         ON session.tenant_id=policy.tenant_id AND session.account_id=policy.account_id
       LEFT JOIN LATERAL (
-        SELECT batch.business_date,batch.status,batch.version,
+        SELECT batch.attempt_no,batch.business_date,batch.status,batch.version,
           COALESCE(batch.last_error_json->>'message',batch.last_error_json->>'code')
             AS last_error_message,
+          (
+            (
+              batch.status='attention_required'
+              AND batch.last_error_json->>'code'='DAILY_CANDIDATE_LIMIT_REACHED'
+            ) OR (
+              batch.status='cancelled'
+              AND batch.last_error_json->>'code'='DAILY_BATCH_MANUALLY_CANCELLED'
+            )
+          ) AND (
+            SELECT count(*)
+            FROM baijiahao_daily_batches AS day_batch
+            JOIN baijiahao_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date
+              AND day_item.status IN (
+                'qualified','scheduled','processing','published','publish_failed','reserve'
+              )
+          ) < policy.daily_target_count AS restart_allowed,
           count(item.id)::integer AS attempted_count,
           count(item.id) FILTER (WHERE item.status IN (
             'pending','adapting','generating','quality_check','rewriting','media_pending',
@@ -251,9 +390,21 @@ export class BaijiahaoAutomationPolicyService {
             'rewrite_pending','rewriting','media_pending','publish_pending','scheduled',
             'publishing','processing'
           ))::integer AS in_progress_count,
-          count(item.id) FILTER (WHERE item.status IN ('scheduled','processing','published'))::integer
-            AS scheduled_count,
-          count(item.id) FILTER (WHERE item.status='published')::integer AS published_count,
+          (
+            SELECT count(*)::integer FROM baijiahao_daily_batches AS day_batch
+            JOIN baijiahao_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date
+              AND day_item.status IN ('scheduled','processing','published','publish_failed')
+          ) AS scheduled_count,
+          (
+            SELECT count(*)::integer FROM baijiahao_daily_batches AS day_batch
+            JOIN baijiahao_daily_batch_items AS day_item
+              ON day_item.batch_id=day_batch.id AND day_item.tenant_id=day_batch.tenant_id
+            WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+              AND day_batch.business_date=batch.business_date AND day_item.status='published'
+          ) AS published_count,
           count(item.id) FILTER (WHERE item.status='skipped')::integer AS skipped_count,
           count(item.id) FILTER (WHERE item.status='retired')::integer AS retired_count,
           count(item.id) FILTER (WHERE item.status='manual_required')::integer
@@ -390,6 +541,7 @@ function mapPolicy(row: PolicyRow): BaijiahaoAutomationPolicyView {
     today_batch:
       row.batchBusinessDate && row.batchStatus && row.batchVersion
         ? {
+            attempt_no: row.batchAttemptNo ?? 1,
             active_items: (row.activeItems ?? []).map((item) => ({
               ...item,
               updated_at: new Date(item.updated_at).toISOString(),
@@ -405,6 +557,7 @@ function mapPolicy(row: PolicyRow): BaijiahaoAutomationPolicyView {
             })),
             manual_required_count: row.manualRequiredCount ?? 0,
             published_count: row.publishedCount ?? 0,
+            restart_allowed: row.batchRestartAllowed ?? false,
             retired_count: row.retiredCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,
             skipped_count: row.skippedCount ?? 0,

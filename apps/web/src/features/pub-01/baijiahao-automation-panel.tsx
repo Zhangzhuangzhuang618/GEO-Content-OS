@@ -10,6 +10,7 @@ import {
   getBaijiahaoBrowserSession,
   listBaijiahaoAutomationPolicies,
   PlatformAccountRequestError,
+  restartBaijiahaoDailyBatch,
   saveBaijiahaoAutomationPolicy,
   startBaijiahaoBrowserLogin,
 } from './platform-account-api';
@@ -35,6 +36,7 @@ export function BaijiahaoAutomationPanel({
   const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
   const [loginPending, setLoginPending] = useState(false);
   const [sessionRefreshing, setSessionRefreshing] = useState(false);
+  const [restartingBatch, setRestartingBatch] = useState(false);
   const [dailyTargetCount, setDailyTargetCount] = useState(1);
   const loginInFlight = useRef(false);
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'error'>('loading');
@@ -189,6 +191,42 @@ export function BaijiahaoAutomationPanel({
     } catch {
       setMessage('保存失败。账号、项目、登录态或策略版本可能已经变化。');
       setState('ready');
+    }
+  }
+
+  async function restartTodayBatch() {
+    const batch = selected?.today_batch;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf || !selected || !batch?.restart_allowed || restartingBatch) return;
+    if (
+      !window.confirm(
+        `确认重新发起今日百家号第 ${batch.attempt_no + 1} 次尝试？\n\n历史候选、质量报告和发布记录都会保留；系统只按原质量标准补足当天缺口，不会替换发布失败的原任务。`,
+      )
+    )
+      return;
+    setRestartingBatch(true);
+    setMessage(null);
+    try {
+      const restarted = await restartBaijiahaoDailyBatch(
+        account.id,
+        { expectedBatchVersion: batch.version, projectId: selected.project_id },
+        csrf,
+      );
+      setPolicies((current) => [
+        ...current.filter((policy) => policy.project_id !== restarted.project_id),
+        restarted,
+      ]);
+      setMessage(
+        `已创建今日第 ${restarted.today_batch?.attempt_no ?? batch.attempt_no + 1} 次尝试，历史候选保持不变。`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof PlatformAccountRequestError && error.status === 409
+          ? '批次状态已变化，请关闭面板后重新打开再试。'
+          : '重新发起今日百家号批次失败。',
+      );
+    } finally {
+      setRestartingBatch(false);
     }
   }
 
@@ -368,7 +406,13 @@ export function BaijiahaoAutomationPanel({
               冻结门槛：总分 85、事实 90、品牌 90、可读与安全 85、问题覆盖 80、平台适配
               80；任一阻断不发布，最多重写 3 次。来源相似度上限 0.82。
             </div>
-            {selected?.today_batch ? <BatchSummary policy={selected} /> : null}
+            {selected?.today_batch ? (
+              <BatchSummary
+                onRestart={() => void restartTodayBatch()}
+                policy={selected}
+                restarting={restartingBatch}
+              />
+            ) : null}
             <div aria-live="polite" className="mt-4 min-h-6 text-sm text-ink-700">
               {message}
             </div>
@@ -403,7 +447,15 @@ function Check({
   );
 }
 
-function BatchSummary({ policy }: { readonly policy: BaijiahaoAutomationPolicy }) {
+function BatchSummary({
+  policy,
+  onRestart,
+  restarting,
+}: {
+  readonly onRestart: () => void;
+  readonly policy: BaijiahaoAutomationPolicy;
+  readonly restarting: boolean;
+}) {
   const batch = policy.today_batch;
   if (!batch) return null;
   const state = batchState(batch.status, batch.in_progress_count);
@@ -411,13 +463,15 @@ function BatchSummary({ policy }: { readonly policy: BaijiahaoAutomationPolicy }
     <div className="mt-5 rounded-xl border border-line p-4 text-sm">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-lg bg-surface-subtle p-3">
         <div>
-          <p className="font-semibold text-ink-950">{state.title}</p>
+          <p className="font-semibold text-ink-950">
+            {state.title}（第 {batch.attempt_no} 次尝试）
+          </p>
           <p className="mt-1 text-xs leading-5 text-ink-600">{state.description}</p>
         </div>
         <p className="text-xs text-ink-500">最后活动：{formatDateTime(batch.last_activity_at)}</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <p>今日候选：{batch.attempted_count}</p>
+        <p>本次候选：{batch.attempted_count}</p>
         <p>处理中：{batch.in_progress_count}</p>
         <p>已排期：{batch.scheduled_count}</p>
         <p>已发布：{batch.published_count}</p>
@@ -429,6 +483,22 @@ function BatchSummary({ policy }: { readonly policy: BaijiahaoAutomationPolicy }
         <p className="mt-3 rounded-lg bg-red-50 p-3 text-red-800">
           批次错误：{batch.last_error_message}
         </p>
+      ) : null}
+      {batch.restart_allowed ? (
+        <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-950">本次候选已耗尽，今日目标尚未补足</p>
+          <p className="mt-1 text-xs leading-5 text-amber-900">
+            重新发起会保留历史候选、质量报告和发布记录，只创建新候选补足缺口；旧报告不会重新评估。
+          </p>
+          <button
+            className={`${primaryButton} mt-3`}
+            disabled={restarting}
+            onClick={onRestart}
+            type="button"
+          >
+            {restarting ? '正在重新发起…' : '保留历史并重新发起'}
+          </button>
+        </section>
       ) : null}
       {batch.active_items.length > 0 ? (
         <section

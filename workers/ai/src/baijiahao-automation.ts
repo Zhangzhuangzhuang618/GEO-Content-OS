@@ -699,10 +699,19 @@ export class BaijiahaoAutomation {
     packageId: string,
   ): Promise<void> {
     const batches = await transaction<{ id: string }[]>`
-      INSERT INTO baijiahao_daily_batches (tenant_id,policy_id,business_date,status)
+      INSERT INTO baijiahao_daily_batches (
+        tenant_id,policy_id,business_date,attempt_no,status
+      )
       VALUES (
         ${event.tenantId}::uuid,${policy.id}::uuid,
-        (now() AT TIME ZONE 'Asia/Shanghai')::date,'running'
+        (now() AT TIME ZONE 'Asia/Shanghai')::date,
+        COALESCE((
+          SELECT max(existing.attempt_no)
+          FROM baijiahao_daily_batches AS existing
+          WHERE existing.tenant_id=${event.tenantId}::uuid
+            AND existing.policy_id=${policy.id}::uuid
+            AND existing.business_date=(now() AT TIME ZONE 'Asia/Shanghai')::date
+        ),1),'running'
       )
       ON CONFLICT (tenant_id,policy_id,business_date,attempt_no) DO UPDATE SET
         policy_id=EXCLUDED.policy_id
@@ -1317,14 +1326,20 @@ export class BaijiahaoAutomation {
     await transaction`
       UPDATE baijiahao_daily_batches AS batch SET
         status=CASE WHEN (
-          SELECT count(*) FROM baijiahao_daily_batch_items AS qualified
-          WHERE qualified.tenant_id=batch.tenant_id AND qualified.batch_id=batch.id
-            AND qualified.status IN ('scheduled','processing','published')
+          SELECT count(*) FROM baijiahao_daily_batches AS day_batch
+          JOIN baijiahao_daily_batch_items AS qualified
+            ON qualified.batch_id=day_batch.id AND qualified.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND qualified.status IN ('scheduled','processing','published','publish_failed')
         ) >= policy.daily_target_count THEN 'scheduled' ELSE 'running' END,
         scheduled_at=CASE WHEN (
-          SELECT count(*) FROM baijiahao_daily_batch_items AS qualified
-          WHERE qualified.tenant_id=batch.tenant_id AND qualified.batch_id=batch.id
-            AND qualified.status IN ('scheduled','processing','published')
+          SELECT count(*) FROM baijiahao_daily_batches AS day_batch
+          JOIN baijiahao_daily_batch_items AS qualified
+            ON qualified.batch_id=day_batch.id AND qualified.tenant_id=day_batch.tenant_id
+          WHERE day_batch.tenant_id=batch.tenant_id AND day_batch.policy_id=batch.policy_id
+            AND day_batch.business_date=batch.business_date
+            AND qualified.status IN ('scheduled','processing','published','publish_failed')
         ) >= policy.daily_target_count THEN COALESCE(scheduled_at,now()) ELSE scheduled_at END,
         version=batch.version+1
       FROM baijiahao_automation_policies AS policy

@@ -151,6 +151,8 @@ HOTFIX-20260817-04 补齐浏览器发布任务达到重试上限后的未发布�
 
 HOTFIX-20260817-05 修正搜狐号与列举网日批的两处生成运行时错误：`get_platform_rules` 改为复用统一九平台枚举，避免 `sohu`、`lieju` 被工具参数校验拒绝；浏览器平台自动化改为写入 Outbox 的实际列 `next_attempt_at`。新增 SchemaGuard 全平台覆盖和 Outbox SQL 回归。质量门禁、候选上限和旧批次状态不变，已耗尽批次不会因部署自动重跑。
 
+HOTFIX-20260817-06 统一官网、百家号、搜狐号和列举网的“保留历史候选、重新发起新尝试”恢复能力：候选耗尽后创建下一 `attempt_no`，旧候选、旧质量报告、旧发布任务和审计保持不变；新尝试只按当天跨尝试累计结果补足缺口，发布失败继续处理原任务而不生成替代文章。前置资料缺失且零候选仍使用原地重试。后续平台接入日批时必须复用同一契约和计数规则；当前无日批能力的平台不新增虚假入口。
+
 ### 托管浏览器临时凭据登录（ADR-0036 / T152）
 
 搜狐账号密码、手机号、图形码和短信码，以及列举网用户名密码，只在单次同步请求和 Worker 当前浏览器内存中存在，不进入平台账号凭据、数据库、Outbox、幂等记录、审计详情、日志或测试快照。短信只能由用户明确点击发送；图形验证码必须人工查看和输入。Worker 重启后未完成挑战失效。新增登录方式不改变质量门禁、发布状态判定或真实发布授权边界。
@@ -277,7 +279,7 @@ RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_ran
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，后续 Hotfix 补充配图恢复等既有流程端点，并以 HOTFIX-20260805-11 增加百家号未知发布结果人工处置端点、HOTFIX-20260808-01 增加百家号终态重新对账端点，ADR-0033 增加平台企业所有者邀请重发端点，ADR-0034 增加搜狐号浏览器会话 3 个端点，ADR-0035 增加列举网浏览器会话 3 个端点，ADR-0037 增加搜狐号与列举网自动化策略读写 2 个端点，HOTFIX-20260817-01 增加项目关键词平台范围同步端点，当前可执行端点数为 156。ADR-0036 只扩展既有登录请求体，不增加端点。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，后续 Hotfix 补充配图恢复等既有流程端点，并以 HOTFIX-20260805-11 增加百家号未知发布结果人工处置端点、HOTFIX-20260808-01 增加百家号终态重新对账端点，ADR-0033 增加平台企业所有者邀请重发端点，ADR-0034 增加搜狐号浏览器会话 3 个端点，ADR-0035 增加列举网浏览器会话 3 个端点，ADR-0037 增加搜狐号与列举网自动化策略读写 2 个端点，HOTFIX-20260817-01 增加项目关键词平台范围同步端点，HOTFIX-20260817-03 增加浏览器平台零候选日批重试端点，ADR-0039 增加百家号和浏览器平台保留历史日批重发 2 个端点，当前可执行端点数为 159。ADR-0036 只扩展既有登录请求体，不增加端点。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -391,8 +393,11 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 发布 | POST | `/platform-accounts/{id}/official-site-automation/daily-batch/restart` | publisher_or_admin | OfficialSiteDailyBatchRestartRequest | OfficialSiteAutomationPolicyView | key+body_hash |
 | 发布 | GET | `/platform-accounts/{id}/baijiahao-automation` | publisher_or_admin | - | BaijiahaoAutomationPolicyPage | - |
 | 发布 | PUT | `/platform-accounts/{id}/baijiahao-automation` | publisher_or_admin | BaijiahaoAutomationPolicyRequest | BaijiahaoAutomationPolicyView | expected_version |
+| 发布 | POST | `/platform-accounts/{id}/baijiahao-automation/daily-batch/restart` | publisher_or_admin | BaijiahaoDailyBatchRestartRequest | BaijiahaoAutomationPolicyView | key+body_hash |
 | 发布 | GET | `/platform-accounts/{id}/content-automation` | publisher_or_admin | - | BrowserPlatformAutomationPolicyPage | - |
 | 发布 | PUT | `/platform-accounts/{id}/content-automation` | publisher_or_admin | BrowserPlatformAutomationPolicyRequest | BrowserPlatformAutomationPolicyView | expected_version |
+| 发布 | POST | `/platform-accounts/{id}/content-automation/daily-batch/retry` | publisher_or_admin | BrowserPlatformDailyBatchRetryRequest | BrowserPlatformAutomationPolicyView | key+body_hash |
+| 发布 | POST | `/platform-accounts/{id}/content-automation/daily-batch/restart` | publisher_or_admin | BrowserPlatformDailyBatchRestartRequest | BrowserPlatformAutomationPolicyView | key+body_hash |
 | 发布 | GET | `/platform-accounts/{id}/baijiahao-browser-session` | publisher_or_admin | - | BaijiahaoBrowserSessionView | - |
 | 发布 | POST | `/platform-accounts/{id}/baijiahao-browser-session/login` | publisher_or_admin | - | BaijiahaoBrowserLoginView | resource+version |
 | 发布 | POST | `/platform-accounts/{id}/baijiahao-browser-session/reauth` | publisher_or_admin | - | BaijiahaoBrowserLoginView | resource+version |

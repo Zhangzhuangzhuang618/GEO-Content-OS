@@ -189,6 +189,7 @@ export const BaijiahaoAutomationPolicySchema = z
     tenant_id: z.string().uuid(),
     today_batch: z
       .object({
+        attempt_no: z.number().int().positive(),
         active_items: z
           .array(
             z
@@ -259,6 +260,7 @@ export const BaijiahaoAutomationPolicySchema = z
           .default([]),
         manual_required_count: z.number().int().min(0).max(30),
         published_count: z.number().int().min(0).max(10),
+        restart_allowed: z.boolean(),
         retired_count: z.number().int().min(0).max(30),
         scheduled_count: z.number().int().min(0).max(10),
         skipped_count: z.number().int().min(0).max(30),
@@ -297,6 +299,7 @@ export const BrowserPlatformAutomationPolicySchema = z
     tenant_id: z.string().uuid(),
     today_batch: z
       .object({
+        attempt_no: z.number().int().positive(),
         attempted_count: z.number().int().min(0).max(30),
         business_date: z.iso.date(),
         in_progress_count: z.number().int().min(0).max(30),
@@ -323,6 +326,7 @@ export const BrowserPlatformAutomationPolicySchema = z
           .default([]),
         manual_required_count: z.number().int().min(0).max(30),
         published_count: z.number().int().min(0).max(10),
+        restart_allowed: z.boolean(),
         retry_allowed: z.boolean(),
         retired_count: z.number().int().min(0).max(30),
         scheduled_count: z.number().int().min(0).max(10),

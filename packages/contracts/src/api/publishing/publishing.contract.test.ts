@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BaijiahaoDailyBatchRestartRequestSchema,
   BrowserPlatformAutomationPolicyRequestSchema,
+  BrowserPlatformDailyBatchRestartRequestSchema,
   BrowserPlatformDailyBatchRetryRequestSchema,
   BrowserPlatformDailyBatchSummarySchema,
   CreatePlatformAccountRequestSchema,
@@ -18,6 +20,7 @@ import {
 describe('Publishing API frozen contract', () => {
   it('returns actionable browser-platform daily batch items', () => {
     const parsed = BrowserPlatformDailyBatchSummarySchema.parse({
+      attempt_no: 1,
       attempted_count: 1,
       business_date: '2026-08-16',
       in_progress_count: 0,
@@ -39,6 +42,7 @@ describe('Publishing API frozen contract', () => {
       ],
       manual_required_count: 1,
       published_count: 0,
+      restart_allowed: false,
       retry_allowed: false,
       retired_count: 0,
       scheduled_count: 0,
@@ -49,11 +53,11 @@ describe('Publishing API frozen contract', () => {
     expect(parsed.manual_items[0]?.quality_report_id).toBe('40000000-0000-4000-8000-000000000001');
   });
 
-  it('contains all thirty-six publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(36);
+  it('contains all thirty-eight publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(38);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(36);
+    ).toBe(38);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -73,12 +77,18 @@ describe('Publishing API frozen contract', () => {
     ).toBe(false);
   });
 
+  it('uses one optimistic restart contract across daily automation platforms', () => {
+    const body = { expected_batch_version: 2, project_id: crypto.randomUUID() };
+    expect(BaijiahaoDailyBatchRestartRequestSchema.safeParse(body).success).toBe(true);
+    expect(BrowserPlatformDailyBatchRestartRequestSchema.safeParse(body).success).toBe(true);
+  });
+
   it('projects the aggregate into OpenAPI 3.1 with frozen guards', () => {
     expect(PUBLISHING_OPENAPI_DOCUMENT.openapi).toBe('3.1.0');
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(36);
+    expect(operations).toHaveLength(38);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()
