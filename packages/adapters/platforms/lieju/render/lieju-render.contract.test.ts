@@ -52,16 +52,29 @@ describe('Lieju render contract', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('continues to block explicit first-place promotional claims', async () => {
+  it('allows ordinary ordinal wording without treating it as a ranking claim', async () => {
     const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
-    input.content.blocks[0]!.text += '本公司是广州行业第一。';
+    input.content.blocks[0]!.text +=
+      '第一步先盘点物品，第一阶段核对清单，第一时间记录异常，第一年资料按合同留存。';
 
     const result = validateLiejuContent(input);
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
+    expect(result.ok).toBe(true);
   });
+
+  it.each(['广州行业第一', '本地排名第一', '第一品牌', '自称第一。'])(
+    'continues to block explicit first-place promotional claim: %s',
+    async (claim) => {
+      const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
+      input.content.blocks[0]!.text += `本公司${claim}`;
+
+      const result = validateLiejuContent(input);
+
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
+    },
+  );
 });
 
 async function fixture(): Promise<unknown> {
