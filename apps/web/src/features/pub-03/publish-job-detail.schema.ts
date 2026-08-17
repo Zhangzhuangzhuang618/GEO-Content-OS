@@ -59,6 +59,10 @@ export const PublishJobDetailResponseSchema = z
         media: PublishMediaStateSchema,
         unknown_resolution: z
           .object({
+            blocked_reason: z
+              .enum(['content_state_changed', 'content_version_changed'])
+              .nullable()
+              .optional(),
             can_retry: z.boolean(),
             latest_attempt_no: z.number().int().min(1).max(20),
             platform_code: z.enum(['baijiahao', 'lieju', 'sohu']),

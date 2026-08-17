@@ -17,6 +17,7 @@ import { resolveDatabaseClient, type DatabaseClientSource } from '../../../datab
 import { RequiredAuditWriter } from '../../audit/index.js';
 import { PackageStatusProjector } from '../../content/status/index.js';
 import { OutboxWriter } from '../../outbox/index.js';
+import { assessUnknownPublishResolution } from './publish-job-unknown-resolution.js';
 import { PublishJobError } from './publish-job.errors.js';
 import type { PublishJobScope } from './publish-job.types.js';
 
@@ -408,26 +409,29 @@ export class PublishJobService {
     if (!isBrowserPlatform(before.platformCode)) {
       throw stateInvalid('Only browser-published unknown publications can be resolved here');
     }
-    const processingOfficial =
-      isLiejuOfficialJob(before) &&
-      before.status === 'publishing' &&
-      before.variantStatus === 'publishing';
-    if (
-      !processingOfficial &&
-      (before.status !== 'failed' || before.variantStatus !== 'publish_failed')
-    ) {
-      throw stateInvalid('Publish job is not waiting for unknown-state resolution');
-    }
-    if (before.variantCurrentContentVersionId !== before.contentVersionId) {
-      throw stateInvalid('The publish job no longer points to the current content version');
-    }
     const latestAttempt = await loadLatestAttempt(transaction, scope.tenantId, before.id);
-    if (
-      !latestAttempt ||
-      (!processingOfficial && !attemptRequiresManualResolution(latestAttempt))
-    ) {
+    if (!latestAttempt) {
       throw stateInvalid('Latest publish attempt does not require manual resolution');
     }
+    const assessment = assessUnknownPublishResolution({
+      contentVersionId: before.contentVersionId,
+      jobStatus: before.status,
+      latestAttempt,
+      liejuOfficial: isLiejuOfficialJob(before),
+      platformCode: before.platformCode,
+      variantCurrentContentVersionId: before.variantCurrentContentVersionId,
+      variantStatus: before.variantStatus,
+    });
+    if (!assessment) {
+      throw stateInvalid('Latest publish attempt does not require manual resolution');
+    }
+    if (assessment.blockedReason === 'content_state_changed') {
+      throw stateInvalid('Publish job is not waiting for unknown-state resolution');
+    }
+    if (assessment.blockedReason === 'content_version_changed') {
+      throw stateInvalid('The publish job no longer points to the current content version');
+    }
+    const processingOfficial = assessment.processingOfficial;
     const publications = isLiejuOfficialJob(before)
       ? await selectLiejuOfficialPublications(transaction, scope.tenantId, before.id)
       : await selectBrowserPublications(

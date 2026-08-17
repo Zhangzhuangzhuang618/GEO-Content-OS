@@ -131,6 +131,38 @@ test('requires manual verification before retrying an unknown Baijiahao publicat
   );
 });
 
+test('does not expose stale unknown-publication actions after content processing has moved on', async ({
+  page,
+}) => {
+  const currentJob = {
+    ...job({ attemptCount: 1, status: 'failed', version: 12 }),
+    last_error: { code: 'PUBLISH_STATE_UNKNOWN' },
+    origin: 'lieju_automation',
+  };
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    await json(
+      route,
+      detail(currentJob, [attempt(1, 'unknown')], null, {
+        blocked_reason: 'content_state_changed',
+        can_retry: false,
+        latest_attempt_no: 1,
+        platform_code: 'lieju',
+      }),
+    );
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await expect(
+    page.getByText(
+      '当前内容已经进入重新质检或其他处理流程，这条旧发布任务不能再重试或人工确认结果。请从内容详情继续处理当前状态。',
+    ),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: '确认未发布并重试' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认未发布并结束任务' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认已经发布' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '重试', exact: true })).toHaveCount(0);
+});
+
 test('routes a manual-required Baijiahao automation through verified resolution', async ({
   page,
 }) => {

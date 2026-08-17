@@ -37679,6 +37679,15 @@
                             {
                               "type": "object",
                               "properties": {
+                                "blocked_reason": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "enum": ["content_state_changed", "content_version_changed"]
+                                    },
+                                    { "type": "null" }
+                                  ]
+                                },
                                 "can_retry": { "type": "boolean" },
                                 "latest_attempt_no": {
                                   "type": "integer",

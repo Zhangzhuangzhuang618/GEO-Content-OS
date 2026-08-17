@@ -1,6 +1,8 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import type {
+  ContentVariantStatus,
   ExportArtifactView,
+  PlatformCode,
   PublishAttemptView,
   PublishJobDetail,
   PublishJobQuery,
@@ -14,6 +16,7 @@ import type postgres from 'postgres';
 
 import { resolveDatabaseClient, type DatabaseClientSource } from '../../../database/index.js';
 import { OutboxWriter } from '../../outbox/index.js';
+import { assessUnknownPublishResolution } from '../jobs/publish-job-unknown-resolution.js';
 import { PublishingApiError } from './publishing-api.errors.js';
 
 export interface PublishingApiScope {
@@ -37,13 +40,15 @@ interface JobRow {
   readonly liejuDeliveryMethod: string | null;
   readonly origin: PublishJobView['origin'];
   readonly payloadHash: string;
-  readonly platformCode: string;
+  readonly platformCode: PlatformCode;
   readonly publishedAt: DatabaseDate | null;
   readonly scheduledAt: DatabaseDate;
   readonly status: PublishJobView['status'];
   readonly tenantId: string;
   readonly updatedAt: DatabaseDate;
   readonly variantId: string;
+  readonly variantCurrentContentVersionId: string | null;
+  readonly variantStatus: ContentVariantStatus;
   readonly version: number;
 }
 
@@ -137,6 +142,8 @@ export class PublishingApiService {
         job.attempt_count AS "attemptCount", job.external_post_id AS "externalPostId",
         job.external_url AS "externalUrl", job.last_error_json AS "lastError", job.origin,
         job.published_at AS "publishedAt", variant.platform_code AS "platformCode",
+        variant.status AS "variantStatus",
+        variant.current_content_version_id AS "variantCurrentContentVersionId",
         account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
         job.created_by AS "createdBy", job.created_at AS "createdAt",
         job.updated_at AS "updatedAt", job.version
@@ -280,6 +287,8 @@ export class PublishingApiService {
         job.external_post_id AS "externalPostId",job.external_url AS "externalUrl",
         job.last_error_json AS "lastError",job.origin,job.published_at AS "publishedAt",
         job.created_by AS "createdBy",variant.platform_code AS "platformCode",
+        variant.status AS "variantStatus",
+        variant.current_content_version_id AS "variantCurrentContentVersionId",
         account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
         job.created_at AS "createdAt",job.updated_at AS "updatedAt",job.version
       FROM publish_jobs AS job
@@ -559,22 +568,21 @@ function unknownResolution(
   attempts: readonly AttemptRow[],
 ): PublishJobDetail['unknown_resolution'] {
   const latest = attempts.at(-1);
-  const requiresResolution =
-    latest?.status === 'unknown' ||
-    (latest?.status === 'failed' && latest.errorCode === 'MANUAL_REQUIRED') ||
-    (job.platformCode === 'lieju' &&
-      job.liejuDeliveryMethod === 'official_api' &&
-      job.status === 'publishing' &&
-      latest?.status === 'succeeded');
-  if (
-    !['failed', 'publishing'].includes(job.status) ||
-    !isBrowserPlatform(job.platformCode) ||
-    !requiresResolution
-  ) {
-    return null;
-  }
+  if (!isBrowserPlatform(job.platformCode)) return null;
+  const assessment = assessUnknownPublishResolution({
+    contentVersionId: job.contentVersionId,
+    jobStatus: job.status,
+    latestAttempt: latest,
+    liejuOfficial: job.liejuDeliveryMethod === 'official_api',
+    platformCode: job.platformCode,
+    variantCurrentContentVersionId: job.variantCurrentContentVersionId,
+    variantStatus: job.variantStatus,
+  });
+  if (!assessment || !latest) return null;
   return {
-    can_retry: job.attemptCount < (job.origin === 'manual' ? 20 : 3),
+    blocked_reason: assessment.blockedReason,
+    can_retry:
+      assessment.blockedReason === null && job.attemptCount < (job.origin === 'manual' ? 20 : 3),
     latest_attempt_no: latest.attemptNo,
     platform_code: job.platformCode,
   };

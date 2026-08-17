@@ -415,36 +415,44 @@ function DetailContent({
               {browserPlatformLabel(detail.unknown_resolution.platform_code)}
               内容管理中按标题核对；系统会保留原尝试记录，不会覆盖历史。
             </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {detail.unknown_resolution.can_retry ? (
+            {detail.unknown_resolution.blocked_reason ? (
+              <p className="mt-3 rounded-lg bg-white/70 p-3 leading-6 text-amber-900">
+                {detail.unknown_resolution.blocked_reason === 'content_version_changed'
+                  ? '内容已经产生新版本，这条旧发布任务已冻结，不能再重试或人工确认结果。请处理当前内容版本对应的任务。'
+                  : '当前内容已经进入重新质检或其他处理流程，这条旧发布任务不能再重试或人工确认结果。请从内容详情继续处理当前状态。'}
+              </p>
+            ) : (
+              <div className="mt-4 flex flex-wrap gap-3">
+                {detail.unknown_resolution.can_retry ? (
+                  <button
+                    className={primaryButton}
+                    disabled={busy !== null}
+                    onClick={() => void onResolveUnknown('not_published')}
+                    type="button"
+                  >
+                    {busy === 'resolve' ? '正在处理…' : '确认未发布并重试'}
+                  </button>
+                ) : job.status === 'failed' ? (
+                  <button
+                    className={dangerButton}
+                    disabled={busy !== null}
+                    onClick={() => void onResolveUnknown('not_published_closed')}
+                    type="button"
+                  >
+                    {busy === 'resolve' ? '正在处理…' : '确认未发布并结束任务'}
+                  </button>
+                ) : null}
                 <button
-                  className={primaryButton}
+                  className={secondaryButton}
                   disabled={busy !== null}
-                  onClick={() => void onResolveUnknown('not_published')}
+                  onClick={() => void onResolveUnknown('published')}
                   type="button"
                 >
-                  {busy === 'resolve' ? '正在处理…' : '确认未发布并重试'}
+                  {busy === 'resolve' ? '正在处理…' : '确认已经发布'}
                 </button>
-              ) : job.status === 'failed' ? (
-                <button
-                  className={dangerButton}
-                  disabled={busy !== null}
-                  onClick={() => void onResolveUnknown('not_published_closed')}
-                  type="button"
-                >
-                  {busy === 'resolve' ? '正在处理…' : '确认未发布并结束任务'}
-                </button>
-              ) : null}
-              <button
-                className={secondaryButton}
-                disabled={busy !== null}
-                onClick={() => void onResolveUnknown('published')}
-                type="button"
-              >
-                {busy === 'resolve' ? '正在处理…' : '确认已经发布'}
-              </button>
-            </div>
-            {!detail.unknown_resolution.can_retry ? (
+              </div>
+            )}
+            {!detail.unknown_resolution.blocked_reason && !detail.unknown_resolution.can_retry ? (
               <p className="mt-3 text-xs leading-5 text-amber-800">
                 当前任务已达到发布重试上限，不能继续请求目标平台；请在平台后台核实后确认已发布，或确认未发布并结束任务。
               </p>
