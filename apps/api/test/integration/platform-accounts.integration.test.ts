@@ -11,6 +11,9 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
+import { ContentApiService } from '../../src/modules/content/api/content-api.service.js';
+import type { IdentityAuthDatabase } from '../../src/modules/identity/auth/auth.database.js';
+import { OutboxWriter } from '../../src/modules/outbox/index.js';
 import {
   BrowserPlatformAutomationPolicyService,
   OfficialSiteAutomationPolicyService,
@@ -30,6 +33,7 @@ const DAILY_BRIEF_ID = '51000000-0000-4000-8000-000000000123';
 const DAILY_PACKAGE_ID = '61000000-0000-4000-8000-000000000123';
 const DAILY_VARIANT_ID = '71000000-0000-4000-8000-000000000123';
 const WRITER_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
+const QUALITY_PROMPT_ID = '25000000-0000-4000-8000-000000000007';
 const SECRET = 'platform-secret-123';
 const ROTATED_SECRET = 'platform-secret-rotated-456';
 
@@ -557,6 +561,201 @@ describe('platform accounts', () => {
     ).toEqual([{ count: 1 }]);
   });
 
+  it('reattaches a manual browser-platform item before a user-requested quality check', async () => {
+    const database = requireClient(client);
+    const accounts = new PlatformAccountService(
+      database,
+      new CredentialEnvelopeService(requireKms(kms)),
+      new PlatformDeliveryAccountConnector(),
+    );
+    const policies = new BrowserPlatformAutomationPolicyService(database);
+    const account = await accounts.create(
+      SCOPE,
+      {
+        credential: {
+          api_key: 'lieju-manual-recheck-api-key',
+          delivery_method: 'official_api',
+          posting_profile: {
+            contact_name: '测试搬家服务公司',
+            mobile_phone: '02000000000',
+            qq: '',
+            wechat: '',
+            zone_id: '76',
+          },
+        },
+        display_name: '列举网人工重检测试',
+        platform_code: 'lieju',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: WORKSPACE_ID,
+      },
+      { requestId: 'req-lieju-manual-recheck-account' },
+    );
+    const policy = await policies.update(
+      SCOPE,
+      account.id,
+      {
+        daily_candidate_limit: 3,
+        daily_enabled: true,
+        daily_generation_time: '00:30:00',
+        daily_schedule_times: ['10:00:00'],
+        daily_target_count: 1,
+        enabled: true,
+        project_id: PROJECT_ID,
+      },
+      { requestId: 'req-lieju-manual-recheck-policy' },
+    );
+    const briefId = '52000000-0000-4000-8000-000000000123';
+    const packageId = '62000000-0000-4000-8000-000000000123';
+    const variantId = '72000000-0000-4000-8000-000000000123';
+    const versionId = '82000000-0000-4000-8000-000000000123';
+    const automationRunId = 'a2000000-0000-4000-8000-000000000123';
+    const contentHash = 'c'.repeat(64);
+    await database`
+      INSERT INTO briefs (
+        id,tenant_id,workspace_id,project_id,title,objective,audience,
+        platform_codes,constraints_json,created_by
+      ) VALUES (
+        ${briefId}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+        '列举网人工重检候选','awareness',
+        '准备在列举网了解广州搬家服务流程和注意事项的潜在客户',ARRAY['lieju']::varchar[],
+        '{"schema_version":"brief-constraints@1"}'::jsonb,${USER_ID}::uuid
+      )
+    `;
+    await database`
+      INSERT INTO content_packages (
+        id,tenant_id,workspace_id,project_id,brief_id,status,created_by
+      ) VALUES (
+        ${packageId}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+        ${briefId}::uuid,'generated',${USER_ID}::uuid
+      )
+    `;
+    await database`
+      INSERT INTO content_variants (
+        id,tenant_id,package_id,platform_code,platform_account_id,status
+      ) VALUES (
+        ${variantId}::uuid,${TENANT_ID}::uuid,${packageId}::uuid,'lieju',${account.id}::uuid,
+        'generated'
+      )
+    `;
+    await database`
+      INSERT INTO content_versions (
+        id,tenant_id,package_id,variant_id,version_no,schema_version,
+        content_json,content_hash,created_by
+      ) VALUES (
+        ${versionId}::uuid,${TENANT_ID}::uuid,${packageId}::uuid,${variantId}::uuid,1,
+        'content-document@1',
+        ${database.json({
+          blocks: [{ block_key: 'intro', text: '搬家前应确认服务范围。' }],
+          platform_code: 'lieju',
+          platform_meta: { content_type: 'logistics_freight' },
+          schema_version: 'content-document@1',
+          summary: '搬家服务准备说明',
+          title: '厂房搬迁怎么选服务',
+        })},${contentHash},${USER_ID}::uuid
+      )
+    `;
+    await database`
+      UPDATE content_variants SET current_content_version_id=${versionId}::uuid
+      WHERE id=${variantId}::uuid AND tenant_id=${TENANT_ID}::uuid
+    `;
+    const batches = await database<{ id: string }[]>`
+      INSERT INTO browser_platform_daily_batches (
+        tenant_id,policy_id,business_date,status,last_error_json
+      ) VALUES (
+        ${TENANT_ID}::uuid,${policy.id}::uuid,
+        (now() AT TIME ZONE 'Asia/Shanghai')::date,'attention_required',
+        '{"code":"DAILY_CANDIDATE_LIMIT_REACHED","message":"候选需要人工处理。"}'::jsonb
+      ) RETURNING id
+    `;
+    const batchId = batches[0]?.id;
+    if (!batchId) throw new Error('Browser platform batch was not inserted');
+    await database`
+      INSERT INTO browser_platform_automation_runs (
+        id,tenant_id,policy_id,platform_code,variant_id,content_version_id,status,
+        rewrite_count,last_error_json,finished_at
+      ) VALUES (
+        ${automationRunId}::uuid,${TENANT_ID}::uuid,${policy.id}::uuid,'lieju',
+        ${variantId}::uuid,${versionId}::uuid,'manual_required',3,
+        '{"code":"QUALITY_CHECK_EXECUTION_FAILED"}'::jsonb,now()
+      )
+    `;
+    await database`
+      INSERT INTO browser_platform_daily_batch_items (
+        tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,variant_id,
+        content_version_id,status,last_error_json
+      ) VALUES (
+        ${TENANT_ID}::uuid,${batchId}::uuid,1,${automationRunId}::uuid,${briefId}::uuid,
+        ${packageId}::uuid,${variantId}::uuid,${versionId}::uuid,'manual_required',
+        '{"code":"QUALITY_CHECK_EXECUTION_FAILED"}'::jsonb
+      )
+    `;
+    const service = new ContentApiService(
+      { client: database } as IdentityAuthDatabase,
+      new OutboxWriter(database as never),
+    );
+    const previousEnvironment = {
+      model: process.env['QUALITY_CHECKER_MODEL_KEY'],
+      prompt: process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'],
+      version: process.env['QUALITY_CHECKER_SKILL_VERSION'],
+    };
+    process.env['QUALITY_CHECKER_MODEL_KEY'] = 'deepseek-v4-flash';
+    process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'] = QUALITY_PROMPT_ID;
+    process.env['QUALITY_CHECKER_SKILL_VERSION'] = '1.0.0';
+    try {
+      await database.begin((transaction) =>
+        service.requestQualityCheck(transaction, TENANT_ID, USER_ID, variantId, contentHash, {
+          requestId: 'req-lieju-manual-recheck',
+        }),
+      );
+    } finally {
+      restoreEnvironment('QUALITY_CHECKER_MODEL_KEY', previousEnvironment.model);
+      restoreEnvironment('QUALITY_CHECKER_PROMPT_VERSION_ID', previousEnvironment.prompt);
+      restoreEnvironment('QUALITY_CHECKER_SKILL_VERSION', previousEnvironment.version);
+    }
+
+    expect(
+      await database<
+        {
+          batchStatus: string;
+          errorCode: string | null;
+          finished: boolean;
+          itemStatus: string;
+          rewriteCount: number;
+          runStatus: string;
+        }[]
+      >`
+        SELECT batch.status AS "batchStatus",item.status AS "itemStatus",
+          automation.status AS "runStatus",automation.rewrite_count AS "rewriteCount",
+          automation.finished_at IS NOT NULL AS finished,
+          automation.last_error_json->>'code' AS "errorCode"
+        FROM browser_platform_automation_runs AS automation
+        JOIN browser_platform_daily_batch_items AS item
+          ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+        JOIN browser_platform_daily_batches AS batch
+          ON batch.id=item.batch_id AND batch.tenant_id=item.tenant_id
+        WHERE automation.id=${automationRunId}::uuid
+      `,
+    ).toEqual([
+      {
+        batchStatus: 'running',
+        errorCode: null,
+        finished: false,
+        itemStatus: 'quality_check',
+        rewriteCount: 0,
+        runStatus: 'quality_pending',
+      },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM outbox_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND event_type='content.variant.quality_check_requested.v1'
+          AND aggregate_id=${variantId}::uuid
+      `,
+    ).toEqual([{ count: 1 }]);
+  });
+
   it('configures one fixed official-site automation policy per project and disables it with the account', async () => {
     const database = requireClient(client);
     const accounts = createService(database, requireKms(kms));
@@ -907,4 +1106,9 @@ function requireClient(client: Sql | undefined): Sql {
 function requireKms(kms: LocalCredentialKms | undefined): LocalCredentialKms {
   if (!kms) throw new Error('Local KMS is not initialized');
   return kms;
+}
+
+function restoreEnvironment(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
 }

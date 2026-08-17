@@ -410,6 +410,29 @@ export async function restartBrowserPlatformDailyBatch(
   return parsed.data.data;
 }
 
+export async function recheckBrowserPlatformManualVariants(
+  variantIds: readonly string[],
+  csrf: string,
+): Promise<{ readonly failed: number; readonly started: number }> {
+  const uniqueIds = [...new Set(variantIds)];
+  const results = await Promise.allSettled(
+    uniqueIds.map(async (variantId) => {
+      const response = await fetch(
+        `${API_ORIGIN}/api/v1/content-variants/${variantId}/quality-check`,
+        {
+          body: JSON.stringify({ mode: 'full' }),
+          credentials: 'include',
+          headers: jsonWriteHeaders(csrf, undefined, 'browser-platform-manual-quality-check'),
+          method: 'POST',
+        },
+      );
+      if (!response.ok) throw new PlatformAccountRequestError(response.status);
+    }),
+  );
+  const failed = results.filter((result) => result.status === 'rejected').length;
+  return Object.freeze({ failed, started: results.length - failed });
+}
+
 export async function saveBaijiahaoAutomationPolicy(
   accountId: string,
   input: {

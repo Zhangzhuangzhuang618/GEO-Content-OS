@@ -707,6 +707,19 @@ export class ContentApiService {
         'Baijiahao manual state must be resolved from its publication record',
       );
     }
+    const browserPlatformTerminalRuns = await transaction<{ publishJobId: string | null }[]>`
+      SELECT automation.publish_job_id AS "publishJobId"
+      FROM browser_platform_automation_runs AS automation
+      JOIN browser_platform_automation_policies AS policy
+        ON policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
+      WHERE automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
+        AND automation.status='manual_required' AND policy.enabled
+    `;
+    if (browserPlatformTerminalRuns.some(({ publishJobId }) => publishJobId !== null)) {
+      throw contentStateInvalid(
+        'Browser platform publication state must be resolved from its publication record',
+      );
+    }
     await transaction`
       UPDATE official_site_automation_runs AS automation SET
         status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
@@ -749,6 +762,51 @@ export class ContentApiService {
           AND automation.tenant_id=${tenantId}::uuid
           AND automation.variant_id=${variantId}::uuid
           AND automation.status='quality_pending'
+      `;
+    }
+    const recoveredBrowserPlatformRuns = await transaction<{ id: string }[]>`
+      UPDATE browser_platform_automation_runs AS automation SET
+        status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
+        rewrite_count=0,last_quality_report_id=NULL,publish_job_id=NULL,
+        last_error_json=NULL,finished_at=NULL,version=automation.version+1
+      FROM browser_platform_automation_policies AS policy
+      WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
+        AND automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
+        AND automation.status='manual_required' AND policy.enabled
+        AND automation.publish_job_id IS NULL
+      RETURNING automation.id
+    `;
+    if (recoveredBrowserPlatformRuns.length > 0) {
+      await transaction`
+        UPDATE browser_platform_daily_batch_items AS item SET
+          status='quality_check',content_version_id=${variant.currentContentVersionId}::uuid,
+          publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,last_error_json=NULL
+        FROM browser_platform_automation_runs AS automation
+        WHERE item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+          AND automation.tenant_id=${tenantId}::uuid
+          AND automation.variant_id=${variantId}::uuid
+          AND automation.status='quality_pending'
+      `;
+      await transaction`
+        UPDATE browser_platform_daily_batches AS batch SET
+          status='running',last_error_json=NULL,version=batch.version+1
+        FROM browser_platform_daily_batch_items AS item,
+          browser_platform_automation_runs AS automation,
+          browser_platform_automation_policies AS policy
+        WHERE item.batch_id=batch.id AND item.tenant_id=batch.tenant_id
+          AND automation.id=item.automation_run_id AND automation.tenant_id=item.tenant_id
+          AND policy.id=automation.policy_id AND policy.tenant_id=automation.tenant_id
+          AND batch.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
+          AND automation.status='quality_pending' AND batch.status='attention_required'
+          AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
+          AND NOT EXISTS (
+            SELECT 1 FROM browser_platform_daily_batches AS active_batch
+            WHERE active_batch.tenant_id=batch.tenant_id
+              AND active_batch.policy_id=batch.policy_id
+              AND active_batch.business_date=batch.business_date
+              AND active_batch.id<>batch.id
+              AND active_batch.status IN ('running','scheduled')
+          )
       `;
     }
     const runtime = readQualityRuntime();

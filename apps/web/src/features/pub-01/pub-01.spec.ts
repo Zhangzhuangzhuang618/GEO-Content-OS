@@ -648,6 +648,7 @@ test('restarts an exhausted Baijiahao batch without hiding the previous attempt'
 
 test('shows actionable Sohu daily-batch items', async ({ page }) => {
   let keywordSyncRequest: Record<string, unknown> | null = null;
+  let qualityCheckCount = 0;
   await page.route('**/api/v1/platform-accounts**', (route) =>
     json(route, { data: [sohuAccount()], meta: { request_id: 'account-list' } }),
   );
@@ -674,6 +675,10 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
       },
       meta: { request_id: 'keyword-sync' },
     });
+  });
+  await page.route(`**/api/v1/content-variants/${MANUAL_VARIANT_ID}/quality-check`, (route) => {
+    qualityCheckCount += 1;
+    return json(route, { data: { id: MANUAL_RUN_ID }, meta: { request_id: 'quality-check' } }, 202);
   });
   await page.route(
     `**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session/login`,
@@ -707,6 +712,10 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
     'href',
     `/qual-01?id=${MANUAL_VARIANT_ID}`,
   );
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '批量重新质检（1）' }).click();
+  await expect(page.getByText('已批量发起 1 篇搜狐号内容重新质检。')).toBeVisible();
+  expect(qualityCheckCount).toBe(1);
 });
 
 test('retries a prerequisite-blocked Sohu daily batch after explicit confirmation', async ({

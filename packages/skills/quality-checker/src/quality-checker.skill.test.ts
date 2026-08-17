@@ -285,6 +285,32 @@ describe('QualityCheckerSkill', () => {
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
+  it('rejects a company-name block for the allowed owner company', async () => {
+    const input = qualityInputWithBlocks([
+      {
+        block_key: 'intro',
+        text: '广州志远搬家服务有限公司可根据现场情况说明服务边界。',
+      },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“广州志远搬家服务有限公司”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '删除公司名称。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
   it('rejects a company-name block that points to the wrong content location', async () => {
     const input = qualityInputWithBlocks([
       { block_key: 'intro', text: '工厂搬迁前应先确认设备清单。' },

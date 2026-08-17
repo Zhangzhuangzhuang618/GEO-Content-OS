@@ -8,6 +8,7 @@ import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
   listBrowserPlatformAutomationPolicies,
   PlatformAccountRequestError,
+  recheckBrowserPlatformManualVariants,
   restartBrowserPlatformDailyBatch,
   retryBrowserPlatformDailyBatch,
   saveBrowserPlatformAutomationPolicy,
@@ -24,6 +25,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   const [busy, setBusy] = useState(false);
   const [syncingKeywords, setSyncingKeywords] = useState(false);
   const [retryingBatch, setRetryingBatch] = useState(false);
+  const [recheckingManual, setRecheckingManual] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [dailyTargetCount, setDailyTargetCount] = useState(defaultTarget);
   const selected = useMemo(
@@ -199,6 +201,37 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     }
   }
 
+  async function recheckManualItems() {
+    const variantIds =
+      selected?.today_batch?.manual_items
+        .filter((item) => item.content_version_id !== null && item.publish_job_id === null)
+        .map((item) => item.variant_id) ?? [];
+    const csrf = readCookie('geo_csrf');
+    if (!csrf || variantIds.length === 0 || recheckingManual) return;
+    if (
+      !window.confirm(
+        `确认重新质检 ${variantIds.length} 篇${platformName}内容？\n\n旧内容版本和旧质量报告会保留；每篇将从当前正文重新质检，通过后继续重写、配图和排期。发布失败项不会在这里重复提交。`,
+      )
+    )
+      return;
+    setRecheckingManual(true);
+    setMessage(null);
+    try {
+      const result = await recheckBrowserPlatformManualVariants(variantIds, csrf);
+      const refreshed = await listBrowserPlatformAutomationPolicies(account.id);
+      setPolicies(refreshed);
+      setMessage(
+        result.failed === 0
+          ? `已批量发起 ${result.started} 篇${platformName}内容重新质检。`
+          : `已发起 ${result.started} 篇，另有 ${result.failed} 篇未能开始；失败项仍保留在列表中。`,
+      );
+    } catch {
+      setMessage(`批量重新质检${platformName}内容失败。`);
+    } finally {
+      setRecheckingManual(false);
+    }
+  }
+
   return (
     <div className="mt-6 border-t border-ink-100 pt-6">
       <h3 className="text-base font-semibold text-ink-950">全链路自动化</h3>
@@ -360,6 +393,20 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           <p className="mt-1 text-xs leading-5 text-ink-500">
             内容问题请编辑后重新质检；发布问题请进入发布任务核验、重试或人工对账。
           </p>
+          {selected.today_batch.manual_items.some(
+            (item) => item.content_version_id !== null && item.publish_job_id === null,
+          ) ? (
+            <button
+              className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              disabled={recheckingManual || retryingBatch || syncingKeywords || busy}
+              onClick={() => void recheckManualItems()}
+              type="button"
+            >
+              {recheckingManual
+                ? '正在批量发起…'
+                : `批量重新质检（${selected.today_batch.manual_items.filter((item) => item.content_version_id !== null && item.publish_job_id === null).length}）`}
+            </button>
+          ) : null}
           <div className="mt-3 space-y-3">
             {selected.today_batch.manual_items.map((item) => (
               <article
