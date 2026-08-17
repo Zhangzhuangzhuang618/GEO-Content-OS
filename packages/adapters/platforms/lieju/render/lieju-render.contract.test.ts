@@ -42,6 +42,26 @@ describe('Lieju render contract', () => {
     if (result.ok) return;
     expect(result.issues.map((issue) => issue.code)).toContain('PAYLOAD_SCHEMA_INVALID');
   });
+
+  it('allows first-party evidence wording without treating it as a ranking claim', async () => {
+    const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
+    input.content.blocks[0]!.text += '该车辆信息属于企业第一方确认信息。';
+
+    const result = validateLiejuContent(input);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('continues to block explicit first-place promotional claims', async () => {
+    const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
+    input.content.blocks[0]!.text += '本公司是广州行业第一。';
+
+    const result = validateLiejuContent(input);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
+  });
 });
 
 async function fixture(): Promise<unknown> {

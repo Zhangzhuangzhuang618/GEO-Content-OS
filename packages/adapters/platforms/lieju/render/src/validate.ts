@@ -42,7 +42,7 @@ export function validateLiejuContent(input: unknown): LiejuValidationResult {
   ) {
     issues.push(blocker('CONTACT_INFO_FORBIDDEN', '标题和描述不得包含联系方式或网址。', 'content'));
   }
-  if (/(?:最好|最佳|第一|首选|权威|国家级|百分百|100%保证)/u.test(publishText)) {
+  if (/(?:最好|最佳|第一(?!方)|首选|权威|国家级|百分百|100%保证)/u.test(publishText)) {
     issues.push(blocker('PROHIBITED_TERM', '内容包含列举网禁止或高风险宣传词。', 'content'));
   }
   const bodySegments = value.content.blocks.filter(
