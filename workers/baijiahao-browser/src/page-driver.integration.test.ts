@@ -159,6 +159,50 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
+  it('keeps a strict publish acknowledgement when immediate list reconciliation is unavailable', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      validManageSignature = false;
+
+      await expect(
+        driver.submit(
+          {
+            accountId,
+            contentFingerprint: 'c'.repeat(64),
+            images: [],
+            payload: {
+              abstract: '用于验证发布成功回执不会被列表核验覆盖。',
+              body_html: '<p>正文</p>',
+              body_asset_ids: [],
+              body_text: '用于验证发布成功回执不会被列表核验覆盖的正文内容。',
+              citation_links: [],
+              content_type: 'news',
+              cover_asset_id: null,
+              platform_code: 'baijiahao',
+              rule_version: 'baijiahao-render-rules@1.1.0',
+              schema_version: 'baijiahao-payload@2',
+              tags: ['百家号', '成功回执', '对账'],
+              title: '百家号成功回执保留测试',
+            },
+            profilePath,
+            storageStateJson: await driver.exportStorageState(accountId),
+          },
+          async () => undefined,
+        ),
+      ).resolves.toMatchObject({ externalId: 'simulator-145', status: 'processing' });
+      expect(submitted).toMatchObject({
+        fingerprint: 'c'.repeat(64),
+        title: '百家号成功回执保留测试',
+      });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops when the content list contains multiple matching publications', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';

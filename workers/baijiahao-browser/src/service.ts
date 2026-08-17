@@ -275,6 +275,14 @@ export class BaijiahaoBrowserService {
         }
         return publishResponse(updated, remote.status === 'published' ? 'published' : 'processing');
       }
+      const externalId = 'externalId' in publication ? publication.externalId : null;
+      if (externalId) {
+        throw new BrowserGatewayError(
+          503,
+          'PUBLISH_STATE_UNKNOWN',
+          'Acknowledged publication is not yet visible in the content list; retry reconciliation only',
+        );
+      }
       const submittedAt = 'submittedAt' in publication ? publication.submittedAt : null;
       if (!submittedAt || Date.now() - submittedAt.getTime() < RESUBMIT_GRACE_MS) {
         throw new BrowserGatewayError(
@@ -373,6 +381,7 @@ export class BaijiahaoBrowserService {
     session: BrowserSession,
     publication: PublicationClaim & {
       readonly contentFingerprint?: string;
+      readonly externalId?: string | null;
       readonly submittedAt?: Date | null;
       readonly title?: string;
     },
@@ -398,6 +407,7 @@ export class BaijiahaoBrowserService {
       return result;
     } catch (error) {
       if (error instanceof PageDriverError) {
+        if (error.code === 'PAGE_SIGNATURE_CHANGED' && publication.externalId) return null;
         throw await this.handlePageDriverFailure(session, publication, error);
       }
       throw error;

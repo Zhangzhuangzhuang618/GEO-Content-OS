@@ -274,17 +274,24 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
         submit,
         this.config.navigationTimeoutMs,
       );
-      const result = await this.reconcile(
-        input.accountId,
-        input.profilePath,
-        {
-          contentFingerprint: input.contentFingerprint,
-          submittedAfter: new Date(Date.now() - 5 * 60_000),
-          title: input.payload.title,
-        },
-        input.storageStateJson,
-      );
-      return result ?? acknowledged;
+      try {
+        const result = await this.reconcile(
+          input.accountId,
+          input.profilePath,
+          {
+            contentFingerprint: input.contentFingerprint,
+            submittedAfter: new Date(Date.now() - 5 * 60_000),
+            title: input.payload.title,
+          },
+          input.storageStateJson,
+        );
+        return result ?? acknowledged;
+      } catch (error) {
+        if (error instanceof PageDriverError && error.code === 'PAGE_SIGNATURE_CHANGED') {
+          return acknowledged;
+        }
+        throw error;
+      }
     } catch (error) {
       if (error instanceof PageDriverError || error instanceof PageDriverOperationError)
         throw error;

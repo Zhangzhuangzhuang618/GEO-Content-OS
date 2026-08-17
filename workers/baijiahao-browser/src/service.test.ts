@@ -340,6 +340,126 @@ describe('Baijiahao browser service', () => {
     expect(driver.verifyAuthenticated).not.toHaveBeenCalled();
   });
 
+  it('keeps an acknowledged publication pending when list reconciliation changes signature', async () => {
+    const session = browserSession('authenticated');
+    const publication = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentFingerprint: 'd'.repeat(64),
+      contentVersionId: CONTENT_VERSION_ID,
+      externalId: 'acknowledged-145',
+      externalUrl: null,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'baijiahao-acknowledged-reconciliation',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      reviewReason: null,
+      sessionId: SESSION_ID,
+      status: 'processing' as const,
+      submittedAt: new Date('2026-08-14T02:01:00.000Z'),
+      tenantId: TENANT_ID,
+      title: '百家号已确认发布待对账测试',
+      version: 2,
+    });
+    const markSession = vi.fn();
+    const updatePublication = vi.fn();
+    const store = {
+      findPublication: vi.fn(async () => publication),
+      getSession: vi.fn(async () => session),
+      markSession,
+      updatePublication,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      reconcile: vi.fn(async () => {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Baijiahao content management entry did not open a verifiable content list',
+        );
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.status(ACCOUNT_ID, publication.externalId)).resolves.toEqual({
+      external_id: publication.externalId,
+      status: 'unknown',
+      url: null,
+    });
+    expect(markSession).not.toHaveBeenCalled();
+    expect(updatePublication).not.toHaveBeenCalled();
+  });
+
+  it('never resubmits an acknowledged publication when reconciliation remains unavailable', async () => {
+    const session = browserSession('authenticated');
+    const publication = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentFingerprint: 'e'.repeat(64),
+      contentVersionId: CONTENT_VERSION_ID,
+      externalId: 'acknowledged-146',
+      externalUrl: null,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'baijiahao-acknowledged-no-resubmit',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      reviewReason: null,
+      sessionId: SESSION_ID,
+      status: 'processing' as const,
+      submittedAt: new Date('2026-08-01T00:00:00.000Z'),
+      tenantId: TENANT_ID,
+      title: '百家号已确认发布禁止重投测试',
+      version: 2,
+    });
+    const submit = vi.fn();
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      preparePublication: vi.fn(async () => publication),
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      reconcile: vi.fn(async () => null),
+      submit,
+      verifyAuthenticated: vi.fn(async () => true),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+    const payload = {
+      abstract: '用于验证已取得文章 ID 后不会重复提交。',
+      body_asset_ids: [],
+      body_html: '<p>用于验证已取得文章 ID 后不会重复提交。</p>',
+      body_text: '用于验证已取得文章 ID 后不会重复提交。',
+      citation_links: [],
+      content_type: 'news',
+      cover_asset_id: null,
+      platform_code: 'baijiahao' as const,
+      rule_version: 'baijiahao-render-rules@1.1.0' as const,
+      schema_version: 'baijiahao-payload@2' as const,
+      tags: ['百家号', '幂等', '对账'],
+      title: publication.title,
+    };
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: publication.idempotencyKey,
+        payload,
+        payload_hash: hashBaijiahaoPayload(payload),
+      }),
+    ).rejects.toMatchObject({ code: 'PUBLISH_STATE_UNKNOWN', statusCode: 503 });
+    expect(submit).not.toHaveBeenCalled();
+  });
+
   it('records pre-submit browser operation failures as manual attention, not unknown', async () => {
     const session = browserSession('authenticated');
     const prepared: PublicationClaim = Object.freeze({
