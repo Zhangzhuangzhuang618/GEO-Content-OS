@@ -138,6 +138,7 @@ export interface PublisherStorePort {
     claim: PublishClaim,
     failure: {
       readonly code: string;
+      readonly diagnostics?: Readonly<Record<string, unknown>>;
       readonly message: string;
       readonly requestHash: string;
       readonly status: 'failed' | 'unknown';

@@ -16,9 +16,10 @@ export class FetchLiejuTransport implements LiejuHttpTransport {
       signal,
     });
     const bytes = new Uint8Array(await response.arrayBuffer());
-    const text = new TextDecoder(
-      input.response_encoding ?? responseCharset(response.headers.get('content-type')),
-    ).decode(bytes);
+    const contentType = response.headers.get('content-type');
+    const text = new TextDecoder(input.response_encoding ?? responseCharset(contentType)).decode(
+      bytes,
+    );
     let body: unknown = null;
     if (text.length > 0) {
       try {
@@ -27,7 +28,12 @@ export class FetchLiejuTransport implements LiejuHttpTransport {
         body = text;
       }
     }
-    return { body, status_code: response.status };
+    return {
+      body,
+      body_bytes: bytes.byteLength,
+      content_type: contentType,
+      status_code: response.status,
+    };
   }
 }
 

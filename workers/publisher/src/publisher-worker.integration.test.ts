@@ -148,7 +148,17 @@ describe('publisher worker', () => {
   it('reserves an official Lieju submission and never retries an ambiguous response', async () => {
     const database = requireClient(client);
     await enableLiejuOfficialPublishing(database);
-    const platform = new FakePlatform(undefined, 'PUBLISH_STATE_UNKNOWN');
+    const diagnostics = {
+      body_bytes: 187,
+      content_type: 'text/html',
+      http_status: 200,
+      raw_response: 'api_key=must-not-be-persisted',
+      response_kind: 'html',
+      response_sha256: 'a'.repeat(64),
+      schema_version: 'lieju-official-response-diagnostics@1',
+      signals: ['login_required'],
+    };
+    const platform = new FakePlatform(undefined, 'PUBLISH_STATE_UNKNOWN', [], diagnostics);
     const worker = createWorker(database, requireCredentials(credentials), platform);
 
     await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'unknown' });
@@ -161,6 +171,30 @@ describe('publisher worker', () => {
         WHERE publish_job_id=${JOB_ID}::uuid
       `,
     ).toEqual([{ attemptNo: 1, status: 'manual_required' }]);
+    const diagnosticRows = await database<
+      {
+        attemptResponse: Readonly<Record<string, unknown>>;
+        jobError: Readonly<Record<string, unknown>>;
+        publicationError: Readonly<Record<string, unknown>>;
+        responseHash: string | null;
+      }[]
+    >`
+      SELECT attempt.response_json AS "attemptResponse",job.last_error_json AS "jobError",
+        publication.last_error_json AS "publicationError",publication.response_hash AS "responseHash"
+      FROM publish_jobs AS job
+      JOIN publish_attempts AS attempt
+        ON attempt.publish_job_id=job.id AND attempt.tenant_id=job.tenant_id
+      JOIN lieju_api_publications AS publication
+        ON publication.publish_job_id=job.id AND publication.tenant_id=job.tenant_id
+      WHERE job.id=${JOB_ID}::uuid
+    `;
+    expect(diagnosticRows[0]).toMatchObject({
+      attemptResponse: { diagnostics: { response_kind: 'html' } },
+      jobError: { diagnostics: { response_sha256: 'a'.repeat(64) } },
+      publicationError: { diagnostics: { http_status: 200 } },
+      responseHash: 'a'.repeat(64),
+    });
+    expect(JSON.stringify(diagnosticRows)).not.toContain('must-not-be-persisted');
     await expect(state(database)).resolves.toMatchObject({
       attemptCount: 1,
       attemptStatus: ['unknown'],
@@ -733,6 +767,7 @@ class FakePlatform implements PublisherPlatformPort {
     private readonly result?: PlatformDelivery,
     private readonly errorCode?: string,
     private readonly statuses: BaijiahaoRemoteStatus[] = [],
+    private readonly diagnostics?: Readonly<Record<string, unknown>>,
   ) {}
 
   public async deliver(
@@ -744,6 +779,7 @@ class FakePlatform implements PublisherPlatformPort {
     if (this.errorCode) {
       throw Object.assign(new Error('access_token=must-not-be-persisted'), {
         code: this.errorCode,
+        ...(this.diagnostics ? { diagnostics: this.diagnostics } : {}),
       });
     }
     if (!this.result) throw new Error('Fake delivery result is missing');

@@ -8,9 +8,18 @@ export {
   type LiejuOfficialPostingProfile,
   type LiejuPostingProfile,
 } from './config.js';
-export { buildLiejuOfficialApiRequest, parseLiejuOfficialApiResponse } from './official-api.js';
+export {
+  buildLiejuOfficialApiRequest,
+  diagnoseLiejuOfficialApiResponse,
+  parseLiejuOfficialApiResponse,
+  type LiejuOfficialApiResponseContext,
+} from './official-api.js';
 export { LiejuDeliveryAdapter } from './lieju-delivery.adapter.js';
-export { LiejuDeliveryError, type LiejuDeliveryErrorCode } from './errors.js';
+export {
+  LiejuDeliveryError,
+  type LiejuDeliveryErrorCode,
+  type LiejuOfficialResponseDiagnostics,
+} from './errors.js';
 export { exportLieju, hashLiejuPayload, stableStringify } from './export.js';
 export {
   LiejuCapabilityResponseSchema,

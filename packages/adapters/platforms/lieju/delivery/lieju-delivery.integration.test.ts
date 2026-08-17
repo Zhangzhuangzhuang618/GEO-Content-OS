@@ -155,13 +155,34 @@ describe('lieju delivery integration', () => {
     expect(JSON.stringify(result)).not.toContain('official-api-key-123456');
   });
 
-  it('does not infer official API success from an unrecognized response', async () => {
-    const transport = new FakeTransport([response(200, '请求已受理')]);
-    await expect(
-      officialApiAdapter(transport).publish(await deliveryInput()),
-    ).rejects.toMatchObject({
+  it('attaches only safe diagnostics to an unrecognized official API response', async () => {
+    const remoteBody = '<html><title>会员登录</title><body>api_key=remote-secret</body></html>';
+    const transport = new FakeTransport([
+      {
+        body: remoteBody,
+        body_bytes: Buffer.byteLength(remoteBody),
+        content_type: 'text/html; charset=gbk',
+        status_code: 200,
+      },
+    ]);
+
+    const error = await officialApiAdapter(transport)
+      .publish(await deliveryInput())
+      .catch((reason: unknown) => reason);
+
+    expect(error).toMatchObject({
       code: 'PUBLISH_STATE_UNKNOWN',
+      diagnostics: {
+        body_bytes: Buffer.byteLength(remoteBody),
+        content_type: 'text/html',
+        http_status: 200,
+        response_kind: 'html',
+        response_sha256: sha256(remoteBody),
+        schema_version: 'lieju-official-response-diagnostics@1',
+        signals: ['login_required'],
+      },
     });
+    expect(JSON.stringify(error)).not.toContain('remote-secret');
     expect(transport.requests).toHaveLength(1);
   });
 

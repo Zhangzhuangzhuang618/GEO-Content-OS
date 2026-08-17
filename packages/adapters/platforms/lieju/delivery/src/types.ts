@@ -71,6 +71,8 @@ export interface LiejuHttpRequest {
 
 export interface LiejuHttpResponse {
   readonly body: unknown;
+  readonly body_bytes?: number;
+  readonly content_type?: string | null;
   readonly status_code: number;
 }
 

@@ -525,6 +525,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
     claim: PublishClaim,
     failure: {
       readonly code: string;
+      readonly diagnostics?: Readonly<Record<string, unknown>>;
       readonly message: string;
       readonly requestHash: string;
       readonly status: 'failed' | 'unknown';
@@ -535,10 +536,13 @@ export class PostgresPublisherStore implements PublisherStorePort {
       await insertAttempt(transaction, claim, {
         errorCode: failure.code,
         requestHash: failure.requestHash,
-        response: { message: failure.message },
+        response: {
+          ...(failure.diagnostics ? { diagnostics: failure.diagnostics } : {}),
+          message: failure.message,
+        },
         status: failure.status,
       });
-      const error = adapterError(failure.code, failure.message);
+      const error = adapterError(failure.code, failure.message, failure.diagnostics);
       const updated = await transaction<{ id: string }[]>`
         UPDATE publish_jobs SET status='failed', last_error_json=${JSON.stringify(error)}::text::jsonb,
           version=version+1
@@ -1093,13 +1097,19 @@ function updateLiejuOfficialPublication(
 function updateLiejuOfficialPublicationFailure(
   transaction: postgres.TransactionSql,
   claim: PublishClaim,
-  failure: { readonly code: string; readonly status: 'failed' | 'unknown' },
+  failure: {
+    readonly code: string;
+    readonly diagnostics?: Readonly<Record<string, unknown>>;
+    readonly status: 'failed' | 'unknown';
+  },
   error: Readonly<Record<string, unknown>>,
 ): Promise<void> {
   const status = failure.status === 'unknown' ? 'manual_required' : 'rejected';
+  const responseHash = responseHashFromDiagnostics(failure.diagnostics);
   return transaction`
     UPDATE lieju_api_publications SET
       status=${status},last_error_json=${JSON.stringify(error)}::text::jsonb,
+      response_hash=COALESCE(${responseHash},response_hash),
       submitted_at=CASE WHEN ${failure.status}='unknown' THEN COALESCE(submitted_at,now()) ELSE submitted_at END,
       version=version+1
     WHERE tenant_id=${claim.tenantId}::uuid AND publish_job_id=${claim.jobId}::uuid
@@ -1879,12 +1889,24 @@ async function writeAudit(
   `;
 }
 
-function adapterError(code: string, message: string): Readonly<Record<string, unknown>> {
+function adapterError(
+  code: string,
+  message: string,
+  diagnostics?: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
   return Object.freeze({
     code,
+    ...(diagnostics ? { diagnostics: redactSensitiveData(diagnostics) } : {}),
     message: message.slice(0, 2_000),
     schema_version: 'adapter-error@1',
   });
+}
+
+function responseHashFromDiagnostics(
+  diagnostics: Readonly<Record<string, unknown>> | undefined,
+): string | null {
+  const value = diagnostics?.['response_sha256'];
+  return typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value) ? value : null;
 }
 
 function isStale(updatedAt: Date, staleAfterMs: number): boolean {

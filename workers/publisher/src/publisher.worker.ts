@@ -1,7 +1,8 @@
+import { redactSensitiveText } from '@geo-content-os/security';
 import type { CredentialEnvelopeService } from '@geo-content-os/security/credentials';
 import { createHash } from 'node:crypto';
 
-import { asDeliveryFailure, PublisherError } from './publisher.errors.js';
+import { asDeliveryFailure, PublisherError, safeDeliveryDiagnostics } from './publisher.errors.js';
 import { validateBaijiahaoReconcileEvent } from './baijiahao-reconcile.event.js';
 import { validatePublishEvent } from './publisher.event.js';
 import type {
@@ -79,6 +80,7 @@ export class PublisherWorker {
       }
     } catch (error) {
       const failure = asDeliveryFailure(error);
+      const diagnostics = safeDeliveryDiagnostics(failure.diagnostics);
       const unknown = failure.code === 'PUBLISH_STATE_UNKNOWN' || failure.code === undefined;
       if (
         ['official_site', 'baijiahao', 'sohu', 'lieju'].includes(claim.platformCode) &&
@@ -99,6 +101,7 @@ export class PublisherWorker {
       }
       await this.dependencies.store.fail(event, claim, {
         code: failure.code ?? 'PUBLISH_STATE_UNKNOWN',
+        ...(diagnostics ? { diagnostics } : {}),
         message: safeMessage(failure.message),
         requestHash: claim.payloadHash,
         status: unknown ? 'unknown' : 'failed',
@@ -286,7 +289,7 @@ function terminal(
 }
 
 function safeMessage(value: string): string {
-  const normalized = value.trim();
+  const normalized = redactSensitiveText(value.trim());
   return (normalized || 'Platform delivery failed').slice(0, 2_000);
 }
 

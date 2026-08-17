@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { encode } from 'iconv-lite';
 
 import type { LiejuDeliveryConfig } from './config.js';
-import { LiejuDeliveryError } from './errors.js';
+import { LiejuDeliveryError, type LiejuOfficialResponseDiagnostics } from './errors.js';
 import type { LiejuDeliveryInput, LiejuPublishResult } from './types.js';
 
 type OfficialConfig = Extract<LiejuDeliveryConfig, { readonly delivery_method: 'official_api' }>;
@@ -11,6 +11,12 @@ type OfficialConfig = Extract<LiejuDeliveryConfig, { readonly delivery_method: '
 export interface LiejuOfficialApiRequest {
   readonly body: Uint8Array;
   readonly contentType: string;
+}
+
+export interface LiejuOfficialApiResponseContext {
+  readonly bodyBytes?: number;
+  readonly contentType?: string | null;
+  readonly statusCode?: number;
 }
 
 export function buildLiejuOfficialApiRequest(
@@ -56,9 +62,10 @@ export function buildLiejuOfficialApiRequest(
 export function parseLiejuOfficialApiResponse(
   value: unknown,
   idempotencyKey: string,
+  context: LiejuOfficialApiResponseContext = {},
 ): LiejuPublishResult {
   const normalized = responseText(value);
-  const responseHash = sha256(normalized);
+  const diagnostics = diagnoseLiejuOfficialApiResponse(value, context);
   if (REJECTION.test(normalized)) {
     throw new LiejuDeliveryError('PUBLISH_REJECTED', 'Lieju official API rejected publication');
   }
@@ -66,20 +73,61 @@ export function parseLiejuOfficialApiResponse(
     throw new LiejuDeliveryError(
       'PUBLISH_STATE_UNKNOWN',
       'Lieju official API returned an unrecognized publication response',
+      diagnostics,
     );
   }
   const url = findPublicUrl(value, normalized);
   return Object.freeze({
     external_id: findRemoteReference(value, url) ?? `api-${sha256(idempotencyKey).slice(0, 32)}`,
-    response_hash: responseHash,
+    response_hash: diagnostics.response_sha256,
     status: 'processing',
     url,
+  });
+}
+
+export function diagnoseLiejuOfficialApiResponse(
+  value: unknown,
+  context: LiejuOfficialApiResponseContext = {},
+): LiejuOfficialResponseDiagnostics {
+  const normalized = responseText(value);
+  const signals: Array<'captcha_required' | 'login_required' | 'redirect'> = [];
+  if (/(?:验证码|captcha)/iu.test(normalized)) signals.push('captcha_required');
+  if (/(?:请登录|会员登录|\blog[ -]?in\b|\bsign[ -]?in\b)/iu.test(normalized)) {
+    signals.push('login_required');
+  }
+  if (/(?:location(?:\.href)?\s*=|http-equiv\s*=\s*["']?refresh)/iu.test(normalized)) {
+    signals.push('redirect');
+  }
+  const recognizedFields = record(value)
+    ? OFFICIAL_RESPONSE_FIELDS.filter((field) => Object.hasOwn(value, field))
+    : [];
+  return Object.freeze({
+    body_bytes: safeBodyBytes(context.bodyBytes, normalized),
+    content_type: safeContentType(context.contentType),
+    http_status: safeHttpStatus(context.statusCode),
+    ...(recognizedFields.length > 0 ? { recognized_fields: Object.freeze(recognizedFields) } : {}),
+    response_kind: responseKind(value, normalized),
+    response_sha256: sha256(normalized),
+    schema_version: 'lieju-official-response-diagnostics@1',
+    signals: Object.freeze(signals),
   });
 }
 
 const REJECTION =
   /(?:发布失败|提交失败|错误|无效|过期|未授权|禁止|余额不足|次数不足|验证码|api[_ ]?key[^\n]{0,20}(?:错误|无效))/iu;
 const SUCCESS = /(?:发布成功|提交成功|信息发布成功)/u;
+const OFFICIAL_RESPONSE_FIELDS = Object.freeze([
+  'code',
+  'data',
+  'external_id',
+  'id',
+  'info_id',
+  'message',
+  'post_id',
+  'status',
+  'success',
+  'url',
+] as const);
 
 function explicitSuccess(value: unknown, normalized: string): boolean {
   if (SUCCESS.test(normalized)) return true;
@@ -146,6 +194,35 @@ function strings(value: unknown): string[] {
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function responseKind(
+  value: unknown,
+  normalized: string,
+): LiejuOfficialResponseDiagnostics['response_kind'] {
+  if (normalized.length === 0) return 'empty';
+  if (Array.isArray(value) || record(value)) return 'json';
+  return /^\s*(?:<!doctype\s+html|<html\b|<head\b|<body\b|<script\b)/iu.test(normalized)
+    ? 'html'
+    : 'text';
+}
+
+function safeBodyBytes(value: number | undefined, normalized: string): number {
+  return Number.isSafeInteger(value) && value !== undefined && value >= 0
+    ? value
+    : Buffer.byteLength(normalized, 'utf8');
+}
+
+function safeContentType(value: string | null | undefined): string | null {
+  if (typeof value !== 'string') return null;
+  const mime = value.split(';', 1)[0]?.trim().toLowerCase() ?? '';
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u.test(mime) ? mime.slice(0, 120) : null;
+}
+
+function safeHttpStatus(value: number | undefined): number {
+  return Number.isSafeInteger(value) && value !== undefined && value >= 100 && value <= 599
+    ? value
+    : 0;
 }
 
 function sha256(value: string): string {

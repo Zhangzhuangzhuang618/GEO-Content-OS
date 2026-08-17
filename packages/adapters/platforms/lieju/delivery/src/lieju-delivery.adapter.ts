@@ -3,7 +3,11 @@ import type { z } from 'zod';
 import { parseLiejuDeliveryConfig, type LiejuDeliveryConfig } from './config.js';
 import { LiejuDeliveryError } from './errors.js';
 import { exportLieju, hashLiejuPayload } from './export.js';
-import { buildLiejuOfficialApiRequest, parseLiejuOfficialApiResponse } from './official-api.js';
+import {
+  buildLiejuOfficialApiRequest,
+  diagnoseLiejuOfficialApiResponse,
+  parseLiejuOfficialApiResponse,
+} from './official-api.js';
 import {
   LiejuCapabilityResponseSchema,
   LiejuDeliveryInputSchema,
@@ -255,12 +259,17 @@ export class LiejuDeliveryAdapter {
       throw new LiejuDeliveryError(
         'PUBLISH_STATE_UNKNOWN',
         'Lieju official API may have accepted the publication request',
+        diagnoseLiejuOfficialApiResponse(response.body, responseContext(response)),
       );
     }
     if (!isSuccess(response.status_code)) {
       throw new LiejuDeliveryError('PUBLISH_REJECTED', 'Lieju official API rejected publication');
     }
-    const result = parseLiejuOfficialApiResponse(response.body, input.idempotency_key);
+    const result = parseLiejuOfficialApiResponse(
+      response.body,
+      input.idempotency_key,
+      responseContext(response),
+    );
     if (!result.url) return result;
     return (await this.verifyPublicPublication(result.url, input.payload.title, signal))
       ? Object.freeze({ ...result, status: 'published' as const })
@@ -284,6 +293,14 @@ export class LiejuDeliveryAdapter {
       return false;
     }
   }
+}
+
+function responseContext(response: LiejuHttpResponse) {
+  return {
+    ...(response.body_bytes === undefined ? {} : { bodyBytes: response.body_bytes }),
+    ...(response.content_type === undefined ? {} : { contentType: response.content_type }),
+    statusCode: response.status_code,
+  };
 }
 
 function exportOnlyCapabilities(
