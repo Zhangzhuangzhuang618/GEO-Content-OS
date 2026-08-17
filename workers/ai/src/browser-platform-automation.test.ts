@@ -1,11 +1,13 @@
 import type { QualityCheckerData } from '@geo-content-os/contracts/skills';
-import { describe, expect, it } from 'vitest';
+import type postgres from 'postgres';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   BrowserPlatformAutomation,
   type BrowserPlatformAutomationPolicy,
   nextSchedule,
 } from './browser-platform-automation.js';
+import type { ValidatedGenerationEvent } from './generation.types.js';
 
 describe('browser-platform automation', () => {
   it('enforces every frozen quality threshold and BLOCK issue', () => {
@@ -80,7 +82,79 @@ describe('browser-platform automation', () => {
       '2026-08-16T07:30:00.000Z',
     );
   });
+
+  it('queues browser-platform work with the canonical Outbox retry column', async () => {
+    const statements: string[] = [];
+    const automationRunId = '10000000-0000-4000-8000-000000000153';
+    const qualityRunId = '20000000-0000-4000-8000-000000000153';
+    const transaction = vi.fn(async (strings: TemplateStringsArray) => {
+      const sql = strings.join('?');
+      statements.push(sql);
+      if (sql.includes('SELECT policy.created_by')) {
+        return [
+          {
+            actorUserId: '30000000-0000-4000-8000-000000000153',
+            automationRunId,
+            generationRunId: '40000000-0000-4000-8000-000000000153',
+            version: 1,
+          },
+        ];
+      }
+      if (sql.includes('UPDATE browser_platform_automation_runs')) return [{ id: automationRunId }];
+      if (sql.includes('INSERT INTO generation_runs')) return [{ id: qualityRunId }];
+      return [];
+    }) as unknown as postgres.TransactionSql;
+    const automation = new BrowserPlatformAutomation(null as never, null as never, {
+      qualityModelKey: 'deepseek-v4-flash',
+      qualityPromptVersionId: '50000000-0000-4000-8000-000000000153',
+      qualitySkillVersion: '1.0.0',
+      rewriteModelKey: 'deepseek-v4',
+      writerPromptVersionId: '60000000-0000-4000-8000-000000000153',
+      writerSkillVersion: '1.0.0',
+    });
+
+    await automation.queueQualityAfterGeneration(
+      transaction,
+      generationEvent(),
+      '70000000-0000-4000-8000-000000000153',
+      '80000000-0000-4000-8000-000000000153',
+      'a'.repeat(64),
+    );
+
+    const outboxInsert = statements.find((sql) => sql.includes('INSERT INTO outbox_events'));
+    expect(outboxInsert).toContain('next_attempt_at');
+    expect(outboxInsert).not.toContain('available_at');
+  });
 });
+
+function generationEvent(): ValidatedGenerationEvent {
+  return {
+    data: {
+      actorUserId: '30000000-0000-4000-8000-000000000153',
+      inputHash: 'b'.repeat(64),
+      masterRunId: '90000000-0000-4000-8000-000000000153',
+      modelKey: 'deepseek-v4',
+      modelPolicy: 'quality',
+      packageId: 'a0000000-0000-4000-8000-000000000153',
+      projectId: 'b0000000-0000-4000-8000-000000000153',
+      promptVersionId: '60000000-0000-4000-8000-000000000153',
+      requestId: 'lieju-daily-outbox-test',
+      skillVersion: '1.0.0',
+      variantRuns: [
+        {
+          platformCode: 'lieju',
+          runId: '40000000-0000-4000-8000-000000000153',
+          variantId: '70000000-0000-4000-8000-000000000153',
+        },
+      ],
+      workspaceId: 'c0000000-0000-4000-8000-000000000153',
+      writerInput: {},
+    },
+    eventId: 'd0000000-0000-4000-8000-000000000153',
+    occurredAt: '2026-08-17T07:10:00.000Z',
+    tenantId: 'e0000000-0000-4000-8000-000000000153',
+  };
+}
 
 function policy(): BrowserPlatformAutomationPolicy {
   return {

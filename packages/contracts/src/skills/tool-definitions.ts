@@ -1,3 +1,4 @@
+import { PLATFORM_CODES } from '../platforms.js';
 import type { JsonSchema } from './schema.types.js';
 
 export interface SkillToolDefinitionContract {
@@ -25,15 +26,7 @@ export const GET_PLATFORM_RULES_TOOL: SkillToolDefinitionContract = Object.freez
     additionalProperties: false,
     properties: {
       platform_code: {
-        enum: [
-          'official_site',
-          'baijiahao',
-          'toutiao',
-          'zhihu',
-          'xiaohongshu',
-          'wechat_mp',
-          'douyin',
-        ],
+        enum: PLATFORM_CODES,
       },
       version_id: { format: 'uuid', type: 'string' },
     },

@@ -5,6 +5,7 @@ import {
   CONTENT_WRITER_CONTRACT_V1,
   CONTENT_WRITER_LOCKED_TEXT_FIXTURE,
 } from '../../../../skills/content-writer/contracts/v1.0.0/index.js';
+import { PLATFORM_CODES } from '../../platforms.js';
 import { GET_PLATFORM_RULES_TOOL, GET_STRATEGY_VERSION_TOOL } from '../tool-definitions.js';
 import {
   CONTENT_PLATFORM_CODES,
@@ -36,7 +37,7 @@ describe('content-writer contract v1.0.0', () => {
     }
   });
 
-  it('binds all eight platform patches and only the two authorized tools', () => {
+  it('binds every platform patch and only the two authorized tools', () => {
     expect(Object.keys(CONTENT_WRITER_CONTRACT_V1.platformPrompts).sort()).toEqual(
       [...CONTENT_PLATFORM_CODES].sort(),
     );
@@ -45,6 +46,18 @@ describe('content-writer contract v1.0.0', () => {
       'get_platform_rules',
     ]);
     expect(CONTENT_WRITER_CONTRACT_V1.toolNames).not.toContain('search_knowledge');
+  });
+
+  it('allows platform-rule reads for every supported content platform', () => {
+    for (const platformCode of PLATFORM_CODES) {
+      expect(
+        guard.check(GET_PLATFORM_RULES_TOOL.inputSchema, {
+          platform_code: platformCode,
+          version_id: '30000000-0000-4000-8000-000000000061',
+        }),
+        platformCode,
+      ).toMatchObject({ valid: true });
+    }
   });
 
   it('enforces documented platform title limits', () => {

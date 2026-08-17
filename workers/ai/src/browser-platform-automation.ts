@@ -884,15 +884,15 @@ function createEvent(
 async function insertOutbox(
   transaction: postgres.TransactionSql,
   event: ReturnType<typeof createEvent>,
-  availableAt?: Date,
+  nextAttemptAt?: Date,
 ) {
   await transaction`
     INSERT INTO outbox_events (
-      id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,available_at
+      id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,next_attempt_at
     ) VALUES (
       ${event.event_id}::uuid,${event.tenant.id}::uuid,${event.event_type},
       ${event.aggregate.type},${event.aggregate.id}::uuid,${JSON.stringify(event)}::text::jsonb,
-      ${availableAt ?? new Date()}
+      ${nextAttemptAt ?? new Date()}
     )
   `;
 }
