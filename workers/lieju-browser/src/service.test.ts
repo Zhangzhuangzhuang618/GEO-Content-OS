@@ -508,6 +508,70 @@ describe('Lieju browser service', () => {
       expect.objectContaining({ status: 'failed' }),
     );
   });
+
+  it('keeps the local reconciliation id stable after Lieju assigns a remote content id', async () => {
+    const session = browserSession('authenticated');
+    const publication = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentFingerprint: 'c'.repeat(64),
+      contentVersionId: CONTENT_VERSION_ID,
+      externalId: PUBLICATION_ID,
+      externalUrl: null,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'lieju-review-pending',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      sessionId: SESSION_ID,
+      status: 'processing' as const,
+      submittedAt: new Date('2026-08-18T00:00:00.000Z'),
+      tenantId: TENANT_ID,
+      title: '列举网审核确认页测试',
+      version: 2,
+    });
+    const updatePublication = vi.fn(
+      async (_claim: PublicationClaim, update: Readonly<Record<string, unknown>>) => ({
+        ...publication,
+        status: update['status'] as PublicationClaim['status'],
+        version: 3,
+      }),
+    );
+    const store = {
+      findPublication: vi.fn(async () => publication),
+      getSession: vi.fn(async () => session),
+      insertArtifact: vi.fn(async () => undefined),
+      updatePublication,
+    } as unknown as PostgresLiejuBrowserStore;
+    const driver = {
+      capture: vi.fn(async () => Buffer.from('reconcile')),
+      reconcile: vi.fn(async () => ({
+        externalId: '105541616',
+        reviewReason: null,
+        status: 'processing' as const,
+        url: null,
+      })),
+    } as unknown as LiejuPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const storage = {
+      putObject: vi.fn(async () => ({ uri: 'memory://test/reconcile.png' })),
+    } as unknown as ObjectStorageAdapter;
+    const service = new LiejuBrowserService(config(), store, driver, credentials, storage);
+
+    await expect(service.status(ACCOUNT_ID, PUBLICATION_ID)).resolves.toEqual({
+      external_id: PUBLICATION_ID,
+      status: 'processing',
+      url: null,
+    });
+    expect(updatePublication).toHaveBeenCalledWith(publication, {
+      remote: {
+        externalId: PUBLICATION_ID,
+        reviewReason: null,
+        status: 'processing',
+        url: null,
+      },
+      status: 'processing',
+    });
+  });
 });
 
 function liejuPayload(title: string) {

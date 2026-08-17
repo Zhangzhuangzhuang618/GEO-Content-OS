@@ -47,7 +47,7 @@ export interface BrowserPublishInput {
 }
 
 export interface RemotePublication {
-  readonly externalId: string;
+  readonly externalId: string | null;
   readonly reviewReason: string | null;
   readonly status: 'failed' | 'processing' | 'published' | 'unknown';
   readonly url: string | null;

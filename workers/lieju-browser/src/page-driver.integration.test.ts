@@ -38,6 +38,7 @@ describe('Lieju local browser simulator', () => {
   let duplicateRows = false;
   let publicPageAvailable = false;
   let profileRoot = '';
+  let reviewPendingPage = false;
   let server: ReturnType<typeof createServer>;
   let submitted: SubmittedPublication | null = null;
 
@@ -45,6 +46,7 @@ describe('Lieju local browser simulator', () => {
     captchaRequired = false;
     duplicateRows = false;
     publicPageAvailable = false;
+    reviewPendingPage = false;
     submitted = null;
     profileRoot = await mkdtemp(join(tmpdir(), 'geo-lieju-e2e-'));
     server = createServer((request, response) =>
@@ -55,6 +57,7 @@ describe('Lieju local browser simulator', () => {
         () => duplicateRows,
         () => captchaRequired,
         () => publicPageAvailable,
+        () => reviewPendingPage,
         (value) => {
           submitted = value;
         },
@@ -135,6 +138,38 @@ describe('Lieju local browser simulator', () => {
       const storageState = await driver.exportStorageState(accountId);
       expect(storageState).not.toMatch(/lieju-user|ephemeral-password/u);
       expect(await driver.verifyAuthenticated(accountId, profilePath, storageState)).toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('accepts the explicit review-pending confirmation without waiting for the title list', async () => {
+    reviewPendingPage = true;
+    const driver = new PlaywrightLiejuPageDriver(config(baseUrl, profileRoot));
+    const profilePath = join(profileRoot, ACCOUNT_ID);
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, profilePath);
+      expect(await driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).toBe(true);
+      const result = await driver.submit(
+        {
+          accountId: ACCOUNT_ID,
+          contentFingerprint: 'b'.repeat(64),
+          images: [],
+          payload: payload('列举网审核确认页测试'),
+          postingProfile: POSTING_PROFILE,
+          profilePath,
+          storageStateJson: await driver.exportStorageState(ACCOUNT_ID),
+        },
+        async () => undefined,
+      );
+
+      expect(submitted?.title).toBe('列举网审核确认页测试');
+      expect(result).toEqual({
+        externalId: null,
+        reviewReason: null,
+        status: 'processing',
+        url: null,
+      });
     } finally {
       await driver.close();
     }
@@ -321,6 +356,7 @@ function route(
   readDuplicateRows: () => boolean,
   readCaptchaRequired: () => boolean,
   readPublicPageAvailable: () => boolean,
+  readReviewPendingPage: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
   if (request.url === '/qr.svg') {
@@ -349,7 +385,7 @@ function route(
   }
   if (request.url === '/5/73') {
     if (!authenticated(request)) return redirect(response, '/signin');
-    return html(response, editor(readCaptchaRequired()));
+    return html(response, editor(readCaptchaRequired(), readReviewPendingPage()));
   }
   if (request.method === 'POST' && request.url === '/publish') {
     const chunks: Buffer[] = [];
@@ -360,9 +396,15 @@ function route(
     });
     return;
   }
+  if (request.url === '/publish-review') {
+    return html(
+      response,
+      '<h1>温馨提示</h1><p>信息审核中！</p><button>点击关闭</button><a href="/">返回首页</a>',
+    );
+  }
   if (request.url === '/member/list.php') {
     if (!authenticated(request)) return redirect(response, '/signin');
-    const item = readSubmitted();
+    const item = readReviewPendingPage() ? null : readSubmitted();
     const row = item
       ? `<tr><td><input type="checkbox" value="150"></td><td>${
           readPublicPageAvailable()
@@ -383,7 +425,7 @@ function route(
   response.writeHead(404).end();
 }
 
-function editor(captchaRequired: boolean): string {
+function editor(captchaRequired: boolean, reviewPendingPage: boolean): string {
   return `<a href="/member/index.php">会员中心</a><a href="?action=quit">退出</a>
     <select id="atc_zone_id"><option value="73">天河区</option></select>
     <input id="atc_title"><select id="atc_leibie"><option value="1">空调拆装</option></select>
@@ -413,7 +455,11 @@ function editor(captchaRequired: boolean): string {
           title:document.querySelector('#atc_title').value,
           zone:document.querySelector('#atc_zone_id').value
         })});
-        if(result.ok) document.querySelector('#result').textContent='提交成功，待审核';
+        if(result.ok) ${
+          reviewPendingPage
+            ? "location.href='/publish-review'"
+            : "document.querySelector('#result').textContent='提交成功，待审核'"
+        };
       };
     </script>`;
 }

@@ -184,6 +184,14 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
       stage = 'submit';
       await page.locator(SELECTORS.submit).click();
       await waitForSubmitResult(page, this.config.editorUrl, this.config.navigationTimeoutMs);
+      if (await isReviewPendingConfirmation(page)) {
+        return Object.freeze({
+          externalId: null,
+          reviewReason: null,
+          status: 'processing' as const,
+          url: null,
+        });
+      }
       const match = {
         contentFingerprint: input.contentFingerprint,
         submittedAfter: new Date(Date.now() - 5 * 60_000),
@@ -501,6 +509,14 @@ async function verifyPublicPage(page: Page, url: string, title: string): Promise
   } finally {
     await publicPage.close();
   }
+}
+
+async function isReviewPendingConfirmation(page: Page): Promise<boolean> {
+  return page
+    .getByText(/^信息审核中[！!]?$/u)
+    .first()
+    .isVisible()
+    .catch(() => false);
 }
 
 function extractExternalId(href: string | null): string | null {

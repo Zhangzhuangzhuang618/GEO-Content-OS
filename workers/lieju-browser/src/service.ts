@@ -387,6 +387,7 @@ export class LiejuBrowserService {
     session: BrowserSession,
     publication: PublicationClaim & {
       readonly contentFingerprint?: string;
+      readonly externalId?: string | null;
       readonly submittedAt?: Date | null;
       readonly title?: string;
     },
@@ -409,7 +410,8 @@ export class LiejuBrowserService {
           'reconcile',
           await this.driver.capture(session.accountId),
         );
-      return result;
+      if (!result || !publication.externalId) return result;
+      return Object.freeze({ ...result, externalId: publication.externalId });
     } catch (error) {
       if (error instanceof PageDriverError) {
         throw await this.handlePageDriverFailure(session, publication, error);
