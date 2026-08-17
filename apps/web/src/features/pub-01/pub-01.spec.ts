@@ -644,6 +644,79 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
   );
 });
 
+test('retries a prerequisite-blocked Sohu daily batch after explicit confirmation', async ({
+  page,
+}) => {
+  const blocked = browserPlatformPolicy();
+  blocked.today_batch = {
+    ...blocked.today_batch!,
+    attempted_count: 0,
+    last_error_message: '项目没有适用于 sohu 的关键词。',
+    manual_items: [],
+    manual_required_count: 0,
+    retry_allowed: true,
+    version: 4,
+  };
+  let retryRequest: Record<string, unknown> | null = null;
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [sohuAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '搜狐自动化项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation**`,
+    async (route) => {
+      if (route.request().method() === 'POST') {
+        retryRequest = route.request().postDataJSON() as Record<string, unknown>;
+        await json(route, {
+          data: {
+            ...blocked,
+            today_batch: {
+              ...blocked.today_batch!,
+              last_error_message: null,
+              retry_allowed: false,
+              status: 'running',
+              version: 5,
+            },
+          },
+          meta: { request_id: 'daily-retry' },
+        });
+        return;
+      }
+      await json(route, { data: [blocked], meta: { request_id: 'automation' } });
+    },
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session/login`,
+    (route) =>
+      json(route, {
+        data: {
+          account_id: ACCOUNT_ID,
+          authenticated_at: '2026-08-16T00:00:00.000Z',
+          last_verified_at: '2026-08-16T00:00:00.000Z',
+          qr_expires_at: null,
+          status: 'authenticated',
+          version: 1,
+        },
+        meta: { request_id: 'sohu-login' },
+      }),
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '搜狐号登录' }).click();
+  await expect(page.getByText('今日批次因前置资料缺失而停止')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '重试今日批次' }).click();
+  await expect(page.getByText('今日搜狐号批次已恢复运行，调度器将继续生成候选。')).toBeVisible();
+  expect(retryRequest).toEqual({ expected_batch_version: 4, project_id: PROJECT_ID });
+});
+
 test('distinguishes Baijiahao browser attention from login expiry and allows re-verification', async ({
   page,
 }) => {
@@ -807,6 +880,7 @@ function browserPlatformPolicy() {
       ],
       manual_required_count: 1,
       published_count: 0,
+      retry_allowed: false,
       retired_count: 0,
       scheduled_count: 0,
       status: 'attention_required',

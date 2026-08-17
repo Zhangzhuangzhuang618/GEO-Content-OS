@@ -68,6 +68,11 @@ const bindings: readonly Binding[] = [
     PlatformAccountController.prototype.updateBrowserPlatformAutomation,
   ),
   bind(
+    'account.browser_platform_automation.daily_batch.retry',
+    PlatformAccountController,
+    PlatformAccountController.prototype.retryBrowserPlatformDailyBatch,
+  ),
+  bind(
     'account.baijiahao_browser_session.get',
     PlatformAccountController,
     PlatformAccountController.prototype.getBaijiahaoBrowserSession,

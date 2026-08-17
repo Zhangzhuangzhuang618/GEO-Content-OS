@@ -358,6 +358,32 @@ export async function saveBrowserPlatformAutomationPolicy(
   return parsed.data.data;
 }
 
+export async function retryBrowserPlatformDailyBatch(
+  accountId: string,
+  input: {
+    readonly expectedBatchVersion: number;
+    readonly projectId: string;
+  },
+  csrf: string,
+): Promise<BrowserPlatformAutomationPolicy> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation/daily-batch/retry`,
+    {
+      body: JSON.stringify({
+        expected_batch_version: input.expectedBatchVersion,
+        project_id: input.projectId,
+      }),
+      credentials: 'include',
+      headers: jsonWriteHeaders(csrf, undefined, 'browser-platform-daily-batch-retry'),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BrowserPlatformAutomationPolicyResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
 export async function saveBaijiahaoAutomationPolicy(
   accountId: string,
   input: {

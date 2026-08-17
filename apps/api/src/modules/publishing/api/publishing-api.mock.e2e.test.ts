@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import {
   findPublishingApiContract,
+  type BrowserPlatformAutomationPolicyView,
   type OfficialSiteAutomationPolicyView,
   type PublishAttemptView,
   type PublishJobDetail,
@@ -160,6 +161,47 @@ const automationPolicy: OfficialSiteAutomationPolicyView = {
   workspace_id: '10000000-0000-4000-8000-000000000012',
 };
 
+const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
+  account_id: ACCOUNT_ID,
+  brand_consistency_min: 90,
+  daily_candidate_limit: 3,
+  daily_enabled: true,
+  daily_generation_time: '00:30:00',
+  daily_schedule_times: ['10:00:00'],
+  daily_target_count: 1,
+  daily_timezone: 'Asia/Shanghai',
+  enabled: true,
+  factual_accuracy_min: 90,
+  geo_total_min: 85,
+  id: POLICY_ID,
+  max_rewrites: 3,
+  platform_code: 'lieju',
+  platform_fit_min: 80,
+  project_id: PROJECT_ID,
+  publish_attempt_limit: 3,
+  question_coverage_min: 80,
+  readability_safety_min: 85,
+  tenant_id: TENANT_ID,
+  today_batch: {
+    attempted_count: 0,
+    business_date: '2026-08-17',
+    in_progress_count: 0,
+    last_error_message: null,
+    manual_items: [],
+    manual_required_count: 0,
+    published_count: 0,
+    retired_count: 0,
+    retry_allowed: false,
+    scheduled_count: 0,
+    status: 'running',
+    target_count: 1,
+    version: 2,
+  },
+  updated_at: NOW,
+  version: 1,
+  workspace_id: '10000000-0000-4000-8000-000000000012',
+};
+
 describe('publishing API mock E2E', () => {
   let application: NestFastifyApplication;
   const listJobs = vi.fn(async () => ({ items: [job], nextCursor: 'next-page' }));
@@ -202,6 +244,7 @@ describe('publishing API mock E2E', () => {
   };
   const browserPlatformAutomation = {
     list: vi.fn(async () => []),
+    retryDailyBatchInTransaction: vi.fn(async () => browserAutomationPolicy),
     update: vi.fn(),
   };
   const sohuBrowser = {
@@ -283,6 +326,36 @@ describe('publishing API mock E2E', () => {
     expect(browserPlatformAutomation.list).toHaveBeenCalledWith(
       { tenantId: TENANT_ID, userId: USER_ID },
       ACCOUNT_ID,
+    );
+  });
+
+  it('retries an empty prerequisite-blocked browser-platform batch idempotently', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'browser-platform-daily-retry-0001' },
+      method: 'POST',
+      payload: { expected_batch_version: 1, project_id: PROJECT_ID },
+      url: `/platform-accounts/${ACCOUNT_ID}/content-automation/daily-batch/retry`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract(
+      'account.browser_platform_automation.daily_batch.retry',
+    ).responseSchema.parse(response.json());
+    expect(browserPlatformAutomation.retryDailyBatchInTransaction).toHaveBeenCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      ACCOUNT_ID,
+      { expected_batch_version: 1, project_id: PROJECT_ID },
+      expect.objectContaining({ requestId: REQUEST_ID }),
+    );
+    expect(idempotency.execute).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        fingerprint: expect.objectContaining({
+          path: `/platform-accounts/${ACCOUNT_ID}/content-automation/daily-batch/retry`,
+        }),
+        idempotencyKey: 'browser-platform-daily-retry-0001',
+      }),
+      expect.any(Function),
     );
   });
 

@@ -323,6 +323,7 @@ export const BrowserPlatformAutomationPolicySchema = z
           .default([]),
         manual_required_count: z.number().int().min(0).max(30),
         published_count: z.number().int().min(0).max(10),
+        retry_allowed: z.boolean(),
         retired_count: z.number().int().min(0).max(30),
         scheduled_count: z.number().int().min(0).max(10),
         status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),

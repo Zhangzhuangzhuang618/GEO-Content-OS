@@ -12,6 +12,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { migrateDatabase } from '../../src/database/migrate.js';
 import {
+  BrowserPlatformAutomationPolicyService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountService,
   type PlatformAccountConnector,
@@ -361,6 +362,102 @@ describe('platform accounts', () => {
       delivery_method: 'official_api',
       fid: '73',
     });
+  });
+
+  it('retries only an empty browser-platform batch blocked by missing prerequisites', async () => {
+    const database = requireClient(client);
+    const accounts = new PlatformAccountService(
+      database,
+      new CredentialEnvelopeService(requireKms(kms)),
+      new PlatformDeliveryAccountConnector(),
+    );
+    const policies = new BrowserPlatformAutomationPolicyService(database);
+    const account = await accounts.create(
+      SCOPE,
+      {
+        credential: {
+          api_key: 'lieju-retry-test-api-key',
+          delivery_method: 'official_api',
+          posting_profile: {
+            contact_name: '测试搬家服务公司',
+            mobile_phone: '02000000000',
+            qq: '',
+            wechat: '',
+            zone_id: '76',
+          },
+        },
+        display_name: '列举网每日批次重试测试',
+        platform_code: 'lieju',
+        publish_mode: 'api',
+        timezone: 'Asia/Shanghai',
+        workspace_id: WORKSPACE_ID,
+      },
+      { requestId: 'req-lieju-retry-account' },
+    );
+    const policy = await policies.update(
+      SCOPE,
+      account.id,
+      {
+        daily_candidate_limit: 3,
+        daily_enabled: true,
+        daily_generation_time: '00:30:00',
+        daily_schedule_times: ['10:00:00'],
+        daily_target_count: 1,
+        enabled: true,
+        project_id: PROJECT_ID,
+      },
+      { requestId: 'req-lieju-retry-policy' },
+    );
+    await database`
+      INSERT INTO browser_platform_daily_batches(
+        tenant_id,policy_id,business_date,status,last_error_json
+      ) VALUES(
+        ${TENANT_ID}::uuid,${policy.id}::uuid,
+        (now() AT TIME ZONE 'Asia/Shanghai')::date,'attention_required',
+        '{"code":"AUTOMATION_PREREQUISITE_MISSING","message":"项目没有适用于 lieju 的关键词。"}'::jsonb
+      )
+    `;
+
+    expect((await policies.list(SCOPE, account.id))[0]?.today_batch).toMatchObject({
+      attempted_count: 0,
+      retry_allowed: true,
+      status: 'attention_required',
+      version: 1,
+    });
+    const retried = await database.begin((transaction) =>
+      policies.retryDailyBatchInTransaction(
+        transaction,
+        SCOPE,
+        account.id,
+        { expected_batch_version: 1, project_id: PROJECT_ID },
+        { requestId: 'req-lieju-daily-retry' },
+      ),
+    );
+    expect(retried.today_batch).toMatchObject({
+      attempted_count: 0,
+      last_error_message: null,
+      retry_allowed: false,
+      status: 'running',
+      version: 2,
+    });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND action='browser_platform.daily_batch.retried'
+      `,
+    ).toEqual([{ count: 1 }]);
+    await expect(
+      database.begin((transaction) =>
+        policies.retryDailyBatchInTransaction(
+          transaction,
+          SCOPE,
+          account.id,
+          { expected_batch_version: 1, project_id: PROJECT_ID },
+          { requestId: 'req-lieju-daily-retry-again' },
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
   });
 
   it('configures one fixed official-site automation policy per project and disables it with the account', async () => {

@@ -1,6 +1,7 @@
 import type {
   BrowserPlatformAutomationPolicyRequest,
   BrowserPlatformAutomationPolicyView,
+  BrowserPlatformDailyBatchRetryRequest,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
@@ -48,6 +49,7 @@ interface PolicyRow {
   readonly platformCode: Platform;
   readonly projectId: string;
   readonly publishedCount: number | null;
+  readonly retryAllowed: boolean | null;
   readonly retiredCount: number | null;
   readonly scheduledCount: number | null;
   readonly tenantId: string;
@@ -147,6 +149,99 @@ export class BrowserPlatformAutomationPolicyService {
     });
   }
 
+  public async retryDailyBatchInTransaction(
+    transaction: TransactionSql,
+    scope: PlatformAccountScope,
+    accountId: string,
+    input: BrowserPlatformDailyBatchRetryRequest,
+    audit: PlatformAccountAudit,
+  ): Promise<BrowserPlatformAutomationPolicyView> {
+    const account = await this.requireAccount(scope, accountId, transaction);
+    if (account.status !== 'active' || account.publishMode !== 'api') {
+      throw stateInvalid('只有正常状态的自动发布账号可以重试今日批次。');
+    }
+    const rows = await transaction<
+      {
+        attemptedCount: number;
+        batchId: string;
+        batchStatus: 'attention_required' | 'cancelled' | 'completed' | 'running' | 'scheduled';
+        batchVersion: number;
+        dailyEnabled: boolean;
+        enabled: boolean;
+        errorCode: string | null;
+        platformCode: Platform;
+        policyId: string;
+      }[]
+    >`
+      SELECT policy.id AS "policyId",policy.platform_code AS "platformCode",
+        policy.enabled,policy.daily_enabled AS "dailyEnabled",
+        batch.id AS "batchId",batch.status AS "batchStatus",batch.version AS "batchVersion",
+        batch.last_error_json->>'code' AS "errorCode",
+        (
+          SELECT count(*)::integer FROM browser_platform_daily_batch_items AS item
+          WHERE item.tenant_id=batch.tenant_id AND item.batch_id=batch.id
+        ) AS "attemptedCount"
+      FROM browser_platform_automation_policies AS policy
+      JOIN browser_platform_daily_batches AS batch
+        ON batch.policy_id=policy.id AND batch.tenant_id=policy.tenant_id
+        AND batch.business_date=(now() AT TIME ZONE policy.daily_timezone)::date
+      WHERE policy.tenant_id=${scope.tenantId}::uuid
+        AND policy.account_id=${accountId}::uuid
+        AND policy.project_id=${input.project_id}::uuid
+        AND has_project_scope_access(
+          policy.tenant_id,policy.workspace_id,policy.project_id,${scope.userId}::uuid
+        )
+      FOR UPDATE OF policy,batch
+    `;
+    const before = rows[0];
+    if (!before) throw stateInvalid('今天没有可重试的自动化批次。');
+    if (!before.enabled || !before.dailyEnabled) {
+      throw stateInvalid('请先启用自动化和每日批次。');
+    }
+    if (before.batchVersion !== input.expected_batch_version) throw versionConflict();
+    if (
+      before.batchStatus !== 'attention_required' ||
+      before.errorCode !== 'AUTOMATION_PREREQUISITE_MISSING' ||
+      before.attemptedCount !== 0
+    ) {
+      throw stateInvalid('仅可重试因前置资料缺失且尚未生成候选的今日批次。');
+    }
+    const updated = await transaction<{ version: number }[]>`
+      UPDATE browser_platform_daily_batches SET
+        status='running',last_error_json=NULL,version=version+1
+      WHERE id=${before.batchId}::uuid AND tenant_id=${scope.tenantId}::uuid
+        AND status='attention_required' AND version=${before.batchVersion}
+      RETURNING version
+    `;
+    const next = updated[0];
+    if (!next) throw versionConflict();
+    await transaction`
+      INSERT INTO audit_events (
+        tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,ip,request_id
+      ) VALUES (
+        ${scope.tenantId}::uuid,${scope.userId}::uuid,
+        'browser_platform.daily_batch.retried','browser_platform_daily_batch',
+        ${before.batchId}::uuid,
+        ${JSON.stringify({
+          error_code: before.errorCode,
+          platform_code: before.platformCode,
+          status: before.batchStatus,
+          version: before.batchVersion,
+        })}::text::jsonb,
+        ${JSON.stringify({
+          platform_code: before.platformCode,
+          status: 'running',
+          version: next.version,
+        })}::text::jsonb,
+        ${audit.ip ?? null},${audit.requestId}
+      )
+    `;
+    const selected = await this.select(scope, accountId, before.policyId, transaction);
+    const policy = selected[0];
+    if (!policy) throw notFound();
+    return mapPolicy(policy);
+  }
+
   private select(
     scope: PlatformAccountScope,
     accountId: string,
@@ -166,6 +261,12 @@ export class BrowserPlatformAutomationPolicyService {
         policy.version,policy.updated_at AS "updatedAt",
         batch.business_date AS "batchBusinessDate",batch.status AS "batchStatus",
         batch.version AS "batchVersion",batch.last_error_json->>'message' AS "batchLastErrorMessage",
+        (
+          policy.enabled AND policy.daily_enabled
+          AND batch.status='attention_required'
+          AND batch.last_error_json->>'code'='AUTOMATION_PREREQUISITE_MISSING'
+          AND coalesce(counts.attempted,0)=0
+        ) AS "retryAllowed",
         counts.attempted AS "attemptedCount",counts.in_progress AS "inProgressCount",
         counts.manual_required AS "manualRequiredCount",counts.retired AS "retiredCount",
         counts.scheduled AS "scheduledCount",counts.published AS "publishedCount",
@@ -287,6 +388,7 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
             })),
             manual_required_count: row.manualRequiredCount ?? 0,
             published_count: row.publishedCount ?? 0,
+            retry_allowed: row.retryAllowed ?? false,
             retired_count: row.retiredCount ?? 0,
             scheduled_count: row.scheduledCount ?? 0,
             status: row.batchStatus,

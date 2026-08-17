@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BrowserPlatformAutomationPolicyRequestSchema,
+  BrowserPlatformDailyBatchRetryRequestSchema,
   BrowserPlatformDailyBatchSummarySchema,
   CreatePlatformAccountRequestSchema,
   OfficialSiteDailyBatchCancelRequestSchema,
@@ -38,6 +39,7 @@ describe('Publishing API frozen contract', () => {
       ],
       manual_required_count: 1,
       published_count: 0,
+      retry_allowed: false,
       retired_count: 0,
       scheduled_count: 0,
       status: 'attention_required',
@@ -47,14 +49,28 @@ describe('Publishing API frozen contract', () => {
     expect(parsed.manual_items[0]?.quality_report_id).toBe('40000000-0000-4000-8000-000000000001');
   });
 
-  it('contains all thirty-five publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(35);
+  it('contains all thirty-six publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(36);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(35);
+    ).toBe(36);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
+  });
+
+  it('requires an optimistic batch version when retrying browser-platform prerequisites', () => {
+    expect(
+      BrowserPlatformDailyBatchRetryRequestSchema.safeParse({
+        expected_batch_version: 2,
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(true);
+    expect(
+      BrowserPlatformDailyBatchRetryRequestSchema.safeParse({
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
   });
 
   it('projects the aggregate into OpenAPI 3.1 with frozen guards', () => {
@@ -62,7 +78,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(35);
+    expect(operations).toHaveLength(36);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()

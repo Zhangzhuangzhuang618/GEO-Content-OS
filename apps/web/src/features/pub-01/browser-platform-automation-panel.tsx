@@ -8,6 +8,7 @@ import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
   listBrowserPlatformAutomationPolicies,
   PlatformAccountRequestError,
+  retryBrowserPlatformDailyBatch,
   saveBrowserPlatformAutomationPolicy,
   syncProjectKeywordPlatformScope,
 } from './platform-account-api';
@@ -21,6 +22,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   const [projectId, setProjectId] = useState('');
   const [busy, setBusy] = useState(false);
   const [syncingKeywords, setSyncingKeywords] = useState(false);
+  const [retryingBatch, setRetryingBatch] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [dailyTargetCount, setDailyTargetCount] = useState(defaultTarget);
   const selected = useMemo(
@@ -110,7 +112,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       setMessage(
         result.matched_count === 0
           ? `当前项目没有可同步的关键词，请先在关键词管理中添加关键词。`
-          : `已检查 ${result.matched_count} 个项目关键词，新增 ${result.changed_count} 个${platformName}适用范围；当前有 ${result.active_keyword_count} 个启用关键词可供新批次使用。已有失败批次不会自动重新生成。`,
+          : `已检查 ${result.matched_count} 个项目关键词，新增 ${result.changed_count} 个${platformName}适用范围；当前有 ${result.active_keyword_count} 个启用关键词可供新批次使用。若今日批次此前因资料缺失停止，可点击“重试今日批次”。`,
       );
     } catch (error) {
       setMessage(
@@ -120,6 +122,43 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       );
     } finally {
       setSyncingKeywords(false);
+    }
+  }
+
+  async function retryTodayBatch() {
+    const batch = selected?.today_batch;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf || !selected || !batch?.retry_allowed || retryingBatch) return;
+    if (
+      !window.confirm(
+        `确认重试今日${platformName}批次？系统会在现有质量门槛和候选上限内开始生成，不会复用或重新评估旧内容。`,
+      )
+    )
+      return;
+    setRetryingBatch(true);
+    setMessage(null);
+    try {
+      const retried = await retryBrowserPlatformDailyBatch(
+        account.id,
+        {
+          expectedBatchVersion: batch.version,
+          projectId: selected.project_id,
+        },
+        csrf,
+      );
+      setPolicies((current) => [
+        ...current.filter((policy) => policy.project_id !== retried.project_id),
+        retried,
+      ]);
+      setMessage(`今日${platformName}批次已恢复运行，调度器将继续生成候选。`);
+    } catch (error) {
+      setMessage(
+        error instanceof PlatformAccountRequestError && error.status === 409
+          ? '批次状态已变化，请关闭面板后重新打开再试。'
+          : `重试今日${platformName}批次失败。`,
+      );
+    } finally {
+      setRetryingBatch(false);
     }
   }
 
@@ -243,6 +282,23 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           ) : null}
         </div>
       </form>
+      {selected?.today_batch?.retry_allowed ? (
+        <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <p className="font-semibold text-amber-950">今日批次因前置资料缺失而停止</p>
+          <p className="mt-1 text-sm leading-6 text-amber-900">
+            {selected.today_batch.last_error_message ??
+              '请先补齐品牌资料、平台规则、项目关键词或知识资料。'}
+          </p>
+          <button
+            className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            disabled={retryingBatch || syncingKeywords || busy}
+            onClick={() => void retryTodayBatch()}
+            type="button"
+          >
+            {retryingBatch ? '正在重试…' : '重试今日批次'}
+          </button>
+        </section>
+      ) : null}
       {selected?.today_batch?.manual_items.length ? (
         <section className="mt-5 border-t border-line pt-4">
           <h4 className="font-semibold text-ink-950">需要处理的内容</h4>

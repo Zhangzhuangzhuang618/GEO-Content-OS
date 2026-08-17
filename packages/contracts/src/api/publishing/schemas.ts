@@ -259,6 +259,12 @@ export const BrowserPlatformAutomationPolicyRequestSchema = z
       });
     }
   });
+export const BrowserPlatformDailyBatchRetryRequestSchema = z
+  .object({
+    expected_batch_version: VersionSchema,
+    project_id: UuidSchema,
+  })
+  .strict();
 export const BaijiahaoDailyBatchSummarySchema = z
   .object({
     active_items: z
@@ -478,6 +484,7 @@ export const BrowserPlatformDailyBatchSummarySchema = z
       .default([]),
     manual_required_count: z.number().int().min(0).max(30),
     published_count: z.number().int().min(0).max(10),
+    retry_allowed: z.boolean(),
     retired_count: z.number().int().min(0).max(30),
     scheduled_count: z.number().int().min(0).max(10),
     status: z.enum(['running', 'scheduled', 'completed', 'attention_required', 'cancelled']),
@@ -569,6 +576,9 @@ export type BaijiahaoAutomationPolicyRequest = z.infer<
 export type BaijiahaoAutomationPolicyView = z.infer<typeof BaijiahaoAutomationPolicyViewSchema>;
 export type BrowserPlatformAutomationPolicyRequest = z.infer<
   typeof BrowserPlatformAutomationPolicyRequestSchema
+>;
+export type BrowserPlatformDailyBatchRetryRequest = z.infer<
+  typeof BrowserPlatformDailyBatchRetryRequestSchema
 >;
 export type BrowserPlatformAutomationPolicyView = z.infer<
   typeof BrowserPlatformAutomationPolicyViewSchema

@@ -595,6 +595,13 @@ export const operations = {
     permission: 'publishing.manage',
     security: 'session_csrf',
   },
+  account_browser_platform_automation_daily_batch_retry: {
+    idempotency: 'key+body_hash',
+    method: 'POST',
+    path: '/platform-accounts/{id}/content-automation/daily-batch/retry',
+    permission: 'publishing.manage',
+    security: 'session_csrf',
+  },
   account_disable: {
     idempotency: 'resource+version',
     method: 'POST',
