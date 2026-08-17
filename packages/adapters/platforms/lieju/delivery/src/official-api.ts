@@ -32,9 +32,11 @@ export function buildLiejuOfficialApiRequest(
     ['api', '1'],
     ['api_key', configuration.api_key],
     ['postdb[fid]', configuration.fid],
+    ['postdb[leibie]', configuration.posting_profile.category_id],
     ['postdb[city_id]', configuration.city_id],
     ['postdb[zone_id]', configuration.posting_profile.zone_id],
     ['postdb[title]', input.payload.title],
+    ['postdb[dizhi]', configuration.posting_profile.address],
     ['postdb[content]', content],
     ['postdb[mobphone]', configuration.posting_profile.mobile_phone],
     ['postdb[oicq]', configuration.posting_profile.qq],
@@ -145,7 +147,7 @@ function explicitSuccess(value: unknown, normalized: string): boolean {
 
 function findPublicUrl(value: unknown, normalized: string): string | null {
   const values = strings(value);
-  values.push(...(normalized.match(/https:\/\/[^\s"'<>]+/giu) ?? []));
+  values.push(...(normalized.match(/https:\/\/[^\s"'<>,，]+/giu) ?? []));
   for (const candidate of values) {
     try {
       const url = new URL(candidate.replace(/[),，。]+$/u, ''));

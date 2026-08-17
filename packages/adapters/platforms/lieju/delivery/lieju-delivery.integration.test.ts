@@ -149,10 +149,40 @@ describe('lieju delivery integration', () => {
     const multipart = decode(Buffer.from(request?.body as Uint8Array), 'gbk');
     expect(multipart).toContain('name="api_key"\r\n\r\nofficial-api-key-123456');
     expect(multipart).toContain('name="postdb[fid]"\r\n\r\n73');
+    expect(multipart).toContain('name="postdb[leibie]"\r\n\r\n4');
     expect(multipart).toContain('name="postdb[city_id]"\r\n\r\n5');
     expect(multipart).toContain('name="postdb[zone_id]"\r\n\r\n76');
+    expect(multipart).toContain('name="postdb[dizhi]"\r\n\r\n广州市天河区示例路');
     expect(multipart).toContain('[img]https://cdn.example.com/cover.jpg[/img]');
     expect(JSON.stringify(result)).not.toContain('official-api-key-123456');
+  });
+
+  it('strips comma-delimited metadata from an official API public URL', async () => {
+    const transport = new FakeTransport([
+      response(
+        200,
+        '信息发布成功,https://gz.lieju.com/banjia/105541615.html,id:105541615,username:test,count:当天剩余可发布条数29',
+      ),
+      response(200, '<html><title>广州搬家服务测试标题</title></html>'),
+    ]);
+    const input = {
+      ...(await deliveryInput()),
+      payload: {
+        ...(await deliveryInput()).payload,
+        title: '广州搬家服务测试标题',
+      },
+    };
+    const result = await officialApiAdapter(transport).publish({
+      ...input,
+      payload_hash: hashLiejuPayload(input.payload),
+    });
+
+    expect(result).toMatchObject({
+      external_id: '105541615',
+      status: 'published',
+      url: 'https://gz.lieju.com/banjia/105541615.html',
+    });
+    expect(transport.requests[1]?.url).toBe('https://gz.lieju.com/banjia/105541615.html');
   });
 
   it('attaches only safe diagnostics to an unrecognized official API response', async () => {
@@ -334,6 +364,7 @@ function officialApiAdapter(transport: LiejuHttpTransport) {
       delivery_method: 'official_api',
       mode: 'api',
       posting_profile: {
+        address: '广州市天河区示例路',
         contact_name: '广州志远搬家服务有限公司',
         mobile_phone: '02085627757',
         qq: '',

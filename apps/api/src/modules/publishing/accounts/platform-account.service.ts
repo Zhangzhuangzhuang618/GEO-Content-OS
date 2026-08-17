@@ -420,7 +420,15 @@ function pickLiejuOfficialProfileFields(
   value: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
   const profile: Record<string, unknown> = {};
-  for (const key of ['contact_name', 'mobile_phone', 'qq', 'wechat', 'zone_id']) {
+  for (const key of [
+    'address',
+    'category_id',
+    'contact_name',
+    'mobile_phone',
+    'qq',
+    'wechat',
+    'zone_id',
+  ]) {
     if (key in value) profile[key] = value[key];
   }
   return profile;

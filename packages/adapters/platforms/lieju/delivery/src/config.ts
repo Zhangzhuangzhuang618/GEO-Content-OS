@@ -56,6 +56,8 @@ export type LiejuPostingProfile = z.infer<typeof LiejuPostingProfileSchema>;
 
 export const LiejuOfficialPostingProfileSchema = z
   .object({
+    address: z.string().trim().min(1).max(120),
+    category_id: z.enum(['1', '2', '3', '4', '5', '6']).default('4'),
     contact_name: z.string().trim().min(1).max(25),
     mobile_phone: z.string().trim().min(6).max(20),
     qq: z.string().trim().max(15).default(''),

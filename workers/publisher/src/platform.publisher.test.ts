@@ -199,6 +199,7 @@ describe('PlatformPublisher', () => {
       delivery_method: 'official_api',
       fid: '73',
       posting_profile: {
+        address: '广州市天河区示例路',
         contact_name: '广州志远搬家服务有限公司',
         mobile_phone: '02085627757',
         qq: '',

@@ -81,6 +81,8 @@ export async function createPlatformAccount(
               api_key: form.api_key.trim(),
               delivery_method: 'official_api',
               posting_profile: {
+                address: form.address.trim(),
+                category_id: form.category_id,
                 contact_name: form.contact_name.trim(),
                 mobile_phone: form.mobile_phone.trim(),
                 qq: form.qq.trim(),
@@ -129,10 +131,17 @@ export async function updatePlatformAccount(
   const baseUrl = form.base_url.trim();
   const token = form.bearer_token.trim();
   const liejuApiKey = form.api_key.trim();
+  const liejuAddress = form.address.trim();
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}`, {
     body: JSON.stringify({
-      ...(account.platform_code === 'lieju' && liejuApiKey
-        ? { credential: { api_key: liejuApiKey, delivery_method: 'official_api' } }
+      ...(account.platform_code === 'lieju' && (liejuApiKey || liejuAddress)
+        ? {
+            credential: {
+              ...(liejuApiKey ? { api_key: liejuApiKey } : {}),
+              delivery_method: 'official_api',
+              ...(liejuAddress ? { posting_profile: { address: liejuAddress } } : {}),
+            },
+          }
         : baseUrl && token
           ? { credential: { base_url: baseUrl, bearer_token: form.bearer_token } }
           : {}),

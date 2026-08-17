@@ -393,6 +393,7 @@ export const PlatformAccountFormSchema = z
     if (value.platform_code === 'lieju') {
       const required = [
         ['api_key', value.api_key],
+        ['address', value.address],
         ['contact_name', value.contact_name],
         ['mobile_phone', value.mobile_phone],
         ['zone_id', value.zone_id],
@@ -406,7 +407,11 @@ export const PlatformAccountFormSchema = z
           });
         }
       }
-      if (value.contact_name.trim().length > 25 || value.mobile_phone.trim().length > 20) {
+      if (
+        value.address.trim().length > 120 ||
+        value.contact_name.trim().length > 25 ||
+        value.mobile_phone.trim().length > 20
+      ) {
         context.addIssue({
           code: 'custom',
           message: '列举网联系方式超出长度限制。',
@@ -440,6 +445,7 @@ export const PlatformAccountFormSchema = z
 
 export const PlatformAccountEditSchema = z
   .object({
+    address: z.string().max(120),
     api_key: z.string(),
     base_url: z.string(),
     bearer_token: z.string(),

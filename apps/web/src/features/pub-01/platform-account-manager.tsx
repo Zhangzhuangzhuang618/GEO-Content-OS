@@ -140,6 +140,7 @@ export function PlatformAccountManager() {
     if (!editingAccount) return;
     const data = new FormData(event.currentTarget);
     const parsed = PlatformAccountEditSchema.safeParse({
+      address: String(data.get('address') ?? ''),
       api_key: String(data.get('api_key') ?? ''),
       base_url: String(data.get('base_url') ?? ''),
       bearer_token: String(data.get('bearer_token') ?? ''),
@@ -478,22 +479,39 @@ function EditForm({
           />
         </label>
         {publishMode === 'api' && account.platform_code === 'lieju' ? (
-          <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
-            新的列举网官方 API Key
-            <input
-              autoComplete="new-password"
-              className={controlClass}
-              maxLength={256}
-              name="api_key"
-              placeholder="不更换可留空"
-              type="password"
-            />
-            <span className="mt-2 block text-xs leading-5 text-ink-500">
-              填写后账号将使用列举网官方 API；原 Key 不会回显。
-            </span>
-          </label>
+          <>
+            <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+              新的列举网官方 API Key
+              <input
+                autoComplete="new-password"
+                className={controlClass}
+                maxLength={256}
+                name="api_key"
+                placeholder="不更换可留空"
+                type="password"
+              />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                填写后账号将使用列举网官方 API；原 Key 不会回显。
+              </span>
+            </label>
+            <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+              发布地址
+              <input
+                className={controlClass}
+                maxLength={120}
+                name="address"
+                placeholder="如未配置请填写；不修改可留空"
+              />
+              <span className="mt-2 block text-xs leading-5 text-ink-500">
+                列举网当前发布页要求地址必填；保存后不会在账号列表中回显。
+              </span>
+            </label>
+          </>
         ) : (
-          <input name="api_key" type="hidden" value="" />
+          <>
+            <input name="address" type="hidden" value="" />
+            <input name="api_key" type="hidden" value="" />
+          </>
         )}
         {publishMode === 'api' &&
         !['baijiahao', 'sohu', 'lieju'].includes(account.platform_code) ? (
@@ -668,6 +686,10 @@ function ConnectForm({
                 ))}
               </select>
             </label>
+            <label className="text-sm text-ink-700 sm:col-span-2">
+              发布地址
+              <input className={controlClass} maxLength={120} name="address" required />
+            </label>
             <label className="text-sm text-ink-700">
               联系人
               <input className={controlClass} maxLength={25} name="contact_name" required />
@@ -692,8 +714,7 @@ function ConnectForm({
               <input className={controlClass} maxLength={25} name="wechat" />
             </label>
             <input name="street_id" type="hidden" value="" />
-            <input name="address" type="hidden" value="" />
-            <input name="category_id" type="hidden" value="73" />
+            <input name="category_id" type="hidden" value="4" />
             <input name="base_url" type="hidden" value="" />
             <input name="bearer_token" type="hidden" value="" />
             <p className="text-sm leading-6 text-amber-800 sm:col-span-2 lg:col-span-3">

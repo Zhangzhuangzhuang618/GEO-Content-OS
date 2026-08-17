@@ -326,6 +326,7 @@ describe('platform accounts', () => {
           api_key: apiKey,
           delivery_method: 'official_api',
           posting_profile: {
+            address: '广州市天河区示例路',
             contact_name: '广州志远搬家服务有限公司',
             mobile_phone: '02085627757',
             qq: '',
@@ -365,6 +366,43 @@ describe('platform accounts', () => {
       city_id: '5',
       delivery_method: 'official_api',
       fid: '73',
+      posting_profile: { address: '广州市天河区示例路', category_id: '4' },
+    });
+
+    const updated = await service.update(
+      SCOPE,
+      connected.id,
+      {
+        credential: {
+          delivery_method: 'official_api',
+          posting_profile: { address: '广州市天河区更新路2号' },
+        },
+        display_name: connected.display_name,
+        publish_mode: 'api',
+        timezone: connected.timezone,
+      },
+      connected.version,
+      { requestId: 'req-lieju-official-api-address' },
+    );
+    expect(updated).toMatchObject({ status: 'active', version: connected.version + 1 });
+    const updatedRows = await database<
+      { credentialCiphertext: string; credentialKeyVersion: string }[]
+    >`
+      SELECT credential_ciphertext AS "credentialCiphertext",
+        credential_key_version AS "credentialKeyVersion"
+      FROM platform_accounts WHERE id=${connected.id}::uuid
+    `;
+    const updatedStored = updatedRows[0];
+    if (!updatedStored) throw new Error('Updated Lieju credential was not stored');
+    expect(JSON.parse(await envelope.decrypt(updatedStored))).toMatchObject({
+      api_key: apiKey,
+      posting_profile: {
+        address: '广州市天河区更新路2号',
+        category_id: '4',
+        contact_name: '广州志远搬家服务有限公司',
+        mobile_phone: '02085627757',
+        zone_id: '76',
+      },
     });
   });
 
@@ -383,6 +421,7 @@ describe('platform accounts', () => {
           api_key: 'lieju-retry-test-api-key',
           delivery_method: 'official_api',
           posting_profile: {
+            address: '广州市天河区示例路',
             contact_name: '测试搬家服务公司',
             mobile_phone: '02000000000',
             qq: '',
@@ -479,6 +518,7 @@ describe('platform accounts', () => {
           api_key: 'lieju-restart-test-api-key',
           delivery_method: 'official_api',
           posting_profile: {
+            address: '广州市天河区示例路',
             contact_name: '测试搬家服务公司',
             mobile_phone: '02000000000',
             qq: '',
@@ -576,6 +616,7 @@ describe('platform accounts', () => {
           api_key: 'lieju-manual-recheck-api-key',
           delivery_method: 'official_api',
           posting_profile: {
+            address: '广州市天河区示例路',
             contact_name: '测试搬家服务公司',
             mobile_phone: '02000000000',
             qq: '',
