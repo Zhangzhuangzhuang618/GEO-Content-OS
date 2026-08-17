@@ -1,5 +1,5 @@
 import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
-import { ALLOWED_COMPANY_NAME } from '@geo-content-os/contracts';
+import { findPublishedOwnerCompanyNames } from '@geo-content-os/contracts';
 import {
   QUALITY_CHECKER_DATA_SCHEMA,
   QUALITY_CHECKER_INPUT_SCHEMA,
@@ -37,6 +37,7 @@ export interface QualityCheckerPublishedPrompt {
 }
 
 interface CheckerInput {
+  readonly brand_policy: { readonly policy: Readonly<Record<string, unknown>> };
   readonly content_version: { readonly content: Readonly<Record<string, unknown>> };
   readonly fact_results: readonly {
     readonly citation_ids: readonly string[];
@@ -260,63 +261,63 @@ function isTitleMaxRule(ruleId: string): boolean {
 }
 
 function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData['issues']): void {
+  const rejections: SemanticIssueRejection[] = [];
+  const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brand_policy.policy);
   for (const issue of issues) {
     if (issue.rule_id === 'brand.other_company_name') {
-      const reason = invalidBrandIssueReason(input, issue);
-      if (reason)
-        invalid(
-          `Quality Checker brand issue is unverifiable: ${JSON.stringify({
-            category: issue.category,
-            location: issue.location,
-            reason,
-            rule_id: issue.rule_id,
-            severity: issue.severity,
-          })}`,
-        );
+      const reason = invalidBrandIssueReason(input, issue, allowedCompanyNames);
+      if (reason) rejections.push(rejection(issue, reason));
     }
     if (
       input.platform_rules.platform_code === 'lieju' &&
       input.platform_rules.rules.contact_in_content_forbidden === true &&
       issue.rule_id.endsWith('contact_in_content_forbidden')
     ) {
-      const locationText = textAtLocation(input.content_version.content, issue.location);
-      if (
-        issue.category !== 'compliance' ||
-        issue.severity !== 'BLOCK' ||
-        !locationText ||
-        !containsLiejuContactDetail(locationText)
-      ) {
-        invalid(
-          'Quality Checker Lieju contact issue does not identify a prohibited contact detail at its location',
-        );
-      }
+      const reason = invalidLiejuContactIssueReason(input, issue);
+      if (reason) rejections.push(rejection(issue, reason));
     }
     if (
       issue.rule_id === 'fact.high_risk.unsupported' ||
       issue.rule_id === 'fact.high_risk.unsupported_or_conflicted'
     ) {
-      const claimKey = issue.location?.startsWith('claim:')
-        ? issue.location.slice('claim:'.length)
-        : '';
-      const fact = input.fact_results.find((candidate) => candidate.claim_key === claimKey);
-      if (
-        issue.category !== 'fact' ||
-        issue.severity !== 'BLOCK' ||
-        !fact ||
-        (fact.risk_level !== 'high' && fact.risk_level !== 'critical') ||
-        (fact.verdict !== 'unsupported' && fact.verdict !== 'conflicted')
-      ) {
-        invalid(
-          'Quality Checker high-risk fact issue does not match an unsupported or conflicted fact result',
-        );
-      }
+      const reason = invalidHighRiskFactIssueReason(input, issue);
+      if (reason) rejections.push(rejection(issue, reason));
     }
   }
+  if (rejections.length > 0) {
+    invalid(
+      `Quality Checker issues are unverifiable: ${JSON.stringify({
+        rejections,
+      })}`,
+    );
+  }
+}
+
+interface SemanticIssueRejection {
+  readonly category: QualityCheckerData['issues'][number]['category'];
+  readonly location: string | null;
+  readonly reason: string;
+  readonly rule_id: string;
+  readonly severity: QualityCheckerData['issues'][number]['severity'];
+}
+
+function rejection(
+  issue: QualityCheckerData['issues'][number],
+  reason: string,
+): SemanticIssueRejection {
+  return Object.freeze({
+    category: issue.category,
+    location: issue.location,
+    reason,
+    rule_id: issue.rule_id,
+    severity: issue.severity,
+  });
 }
 
 function invalidBrandIssueReason(
   input: CheckerInput,
   issue: QualityCheckerData['issues'][number],
+  allowedCompanyNames: readonly string[],
 ): string | null {
   if (issue.category !== 'brand') return 'category_must_be_brand';
   if (issue.severity !== 'BLOCK') return 'severity_must_be_block';
@@ -325,12 +326,46 @@ function invalidBrandIssueReason(
   if (!locationText) return 'location_does_not_resolve_to_content';
   const quotedNames = quotedCompanyNames(issue.message);
   if (quotedNames.length === 0) return 'exact_name_is_not_quoted';
-  if (quotedNames.every(isAllowedCompanyReference)) {
+  if (quotedNames.every((name) => isAllowedCompanyReference(name, allowedCompanyNames))) {
     return 'only_allowed_owner_or_generic_name_is_quoted';
   }
-  return quotedNames.some((name) => !isAllowedCompanyReference(name) && locationText.includes(name))
+  return quotedNames.some(
+    (name) => !isAllowedCompanyReference(name, allowedCompanyNames) && locationText.includes(name),
+  )
     ? null
     : 'quoted_prohibited_name_is_not_present_at_location';
+}
+
+function invalidLiejuContactIssueReason(
+  input: CheckerInput,
+  issue: QualityCheckerData['issues'][number],
+): string | null {
+  if (issue.category !== 'compliance') return 'category_must_be_compliance';
+  if (issue.severity !== 'BLOCK') return 'severity_must_be_block';
+  if (!issue.location) return 'location_is_required';
+  const locationText = textAtLocation(input.content_version.content, issue.location);
+  if (!locationText) return 'location_does_not_resolve_to_content';
+  return containsLiejuContactDetail(locationText)
+    ? null
+    : 'prohibited_contact_detail_is_not_present_at_location';
+}
+
+function invalidHighRiskFactIssueReason(
+  input: CheckerInput,
+  issue: QualityCheckerData['issues'][number],
+): string | null {
+  if (issue.category !== 'fact') return 'category_must_be_fact';
+  if (issue.severity !== 'BLOCK') return 'severity_must_be_block';
+  if (!issue.location?.startsWith('claim:')) return 'location_must_be_eligible_claim';
+  const claimKey = issue.location.slice('claim:'.length);
+  const fact = input.fact_results.find((candidate) => candidate.claim_key === claimKey);
+  if (!fact) return 'claim_does_not_exist';
+  if (fact.risk_level !== 'high' && fact.risk_level !== 'critical') {
+    return 'claim_is_not_high_risk';
+  }
+  return fact.verdict === 'unsupported' || fact.verdict === 'conflicted'
+    ? null
+    : 'claim_is_not_unsupported_or_conflicted';
 }
 
 function quotedCompanyNames(message: string): readonly string[] {
@@ -339,9 +374,9 @@ function quotedCompanyNames(message: string): readonly string[] {
   );
 }
 
-function isAllowedCompanyReference(value: string): boolean {
+function isAllowedCompanyReference(value: string, allowedCompanyNames: readonly string[]): boolean {
   return (
-    value === ALLOWED_COMPANY_NAME ||
+    allowedCompanyNames.includes(value) ||
     value === '某公司' ||
     value === '某搬家公司' ||
     value === '其他服务商' ||

@@ -1,8 +1,8 @@
 import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
-  ALLOWED_COMPANY_NAME,
-  COMPANY_NAME_POLICY_INSTRUCTION,
+  companyNamePolicyInstruction,
   findDisallowedCompanyNames,
+  findPublishedOwnerCompanyNames,
 } from '@geo-content-os/contracts';
 import {
   CONTENT_WRITER_INPUT_SCHEMA,
@@ -160,7 +160,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
   }): Promise<GeneratedContent> {
     const faq = await this.executeOfficialSiteFaq(input, input.masterContent);
     const variant = officialSiteVariant(input.masterContent, faq, input.writerInput);
-    assertCompanyNamePolicy(variant, 'official_site');
+    assertCompanyNamePolicy(variant, 'official_site', input.writerInput);
     return variant;
   }
 
@@ -181,7 +181,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       const content = officialSiteArticleContent(article, 'master', input.writerInput);
       const faq = await this.executeOfficialSiteFaq(input, content);
       const variant = officialSiteVariant(content, faq, input.writerInput);
-      assertCompanyNamePolicy(variant, 'official_site');
+      assertCompanyNamePolicy(variant, 'official_site', input.writerInput);
       return variant;
     }
     const revision: ContentWriterRevision = Object.freeze({
@@ -249,7 +249,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
     const content = generated(variant);
-    assertCompanyNamePolicy(content, 'baijiahao');
+    assertCompanyNamePolicy(content, 'baijiahao', input.writerInput);
     return content;
   }
 
@@ -289,7 +289,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
     const content = generated(variant);
-    assertCompanyNamePolicy(content, input.platformCode);
+    assertCompanyNamePolicy(content, input.platformCode, input.writerInput);
     return content;
   }
 
@@ -310,6 +310,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       this.promptLoader
         ? await this.promptLoader(input.context)
         : await this.getPrompt(input.context),
+      input.writerInput,
     );
     const invocation = directInvocation({
       context: input.context,
@@ -499,6 +500,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       this.promptLoader
         ? await this.promptLoader(input.context)
         : await this.getPrompt(input.context),
+      input.writerInput,
     );
     return (
       await runDirectWithStructuredOutputRetry<OfficialSiteFaqDraft>(
@@ -590,6 +592,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       this.promptLoader
         ? await this.promptLoader(input.context)
         : await this.getPrompt(input.context),
+      input.writerInput,
     );
     const schemas = new SchemaGuard();
     const tools = new ToolRegistry(
@@ -636,7 +639,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     const validationPolicy = revision ? 'quality' : input.context.modelPolicy;
     let output = result.output;
     let assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-    let deterministicIssues = rewriteDeterministicIssues(output.data, revision);
+    let deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     if (
       deterministicIssues.length === 0 &&
       (assessment.passed || (!revision && input.context.modelPolicy === 'fast'))
@@ -650,7 +653,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     ) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = rewriteDeterministicIssues(output.data, revision);
+      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
       if (assessment.passed && deterministicIssues.length === 0) return output;
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
@@ -669,7 +672,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     });
     output = result.output;
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-    deterministicIssues = rewriteDeterministicIssues(output.data, revision);
+    deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     shortfalls = contentLengthShortfalls(assessment.issues);
     if (
       shortfalls &&
@@ -677,7 +680,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     ) {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = rewriteDeterministicIssues(output.data, revision);
+      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     }
     if (!assessment.passed || deterministicIssues.length > 0) {
       throw new GenerationWorkerError(
@@ -1037,7 +1040,13 @@ function assessOfficialSiteArticle(
   if (unknown.length > 0) {
     issues.push(`official_site:使用了 ${unknown.length} 个未提供的引用 ID，必须删除或改用输入证据`);
   }
-  issues.push(...companyNamePolicyIssues(article, 'official_site'));
+  issues.push(
+    ...companyNamePolicyIssues(
+      article,
+      'official_site',
+      ownerCompanyNamesFromWriterInput(writerInput),
+    ),
+  );
   return Object.freeze(issues);
 }
 
@@ -1066,8 +1075,17 @@ function contentLengthShortfalls(
   return Object.freeze(shortfalls);
 }
 
-function deterministicContentIssues(data: ContentWriterData): readonly string[] {
-  const issues = [...companyNamePolicyIssues(data, 'content-writer')];
+function deterministicContentIssues(
+  data: ContentWriterData,
+  writerInput: JsonObject,
+): readonly string[] {
+  const issues = [
+    ...companyNamePolicyIssues(
+      data,
+      'content-writer',
+      ownerCompanyNamesFromWriterInput(writerInput),
+    ),
+  ];
   for (const content of data.variants) {
     if (
       content.platform_code === 'baijiahao' &&
@@ -1081,9 +1099,10 @@ function deterministicContentIssues(data: ContentWriterData): readonly string[] 
 
 function rewriteDeterministicIssues(
   data: ContentWriterData,
+  writerInput: JsonObject,
   revision?: ContentWriterRevision,
 ): readonly string[] {
-  const issues = [...deterministicContentIssues(data)];
+  const issues = [...deterministicContentIssues(data, writerInput)];
   if (!revision) return Object.freeze(issues);
   for (const current of revision.candidate.variants) {
     const rewritten = data.variants.find(
@@ -1373,28 +1392,51 @@ function readableCharacterCount(value: string): number {
   return value.replace(/[\s\p{P}\p{S}]/gu, '').length;
 }
 
-function withCompanyNamePolicy(prompt: ContentWriterPublishedPrompt): ContentWriterPublishedPrompt {
+function withCompanyNamePolicy(
+  prompt: ContentWriterPublishedPrompt,
+  writerInput: JsonObject,
+): ContentWriterPublishedPrompt {
+  const policy = companyNamePolicyInstruction(ownerCompanyNamesFromWriterInput(writerInput));
   return Object.freeze({
-    systemPrompt: `${prompt.systemPrompt}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
-    taskTemplate: `${prompt.taskTemplate}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
+    systemPrompt: `${prompt.systemPrompt}\n\n${policy}`,
+    taskTemplate: `${prompt.taskTemplate}\n\n${policy}`,
   });
 }
 
-function assertCompanyNamePolicy(value: unknown, scope: string): void {
-  const issues = companyNamePolicyIssues(value, scope);
+function assertCompanyNamePolicy(value: unknown, scope: string, writerInput: JsonObject): void {
+  const issues = companyNamePolicyIssues(
+    value,
+    scope,
+    ownerCompanyNamesFromWriterInput(writerInput),
+  );
   if (issues.length > 0) {
     throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', issues.join('; '));
   }
 }
 
-function companyNamePolicyIssues(value: unknown, scope: string): readonly string[] {
-  const names = new Set(stringValues(value).flatMap(findDisallowedCompanyNames));
+function companyNamePolicyIssues(
+  value: unknown,
+  scope: string,
+  allowedCompanyNames: readonly string[],
+): readonly string[] {
+  const names = new Set(
+    stringValues(value).flatMap((text) => findDisallowedCompanyNames(text, allowedCompanyNames)),
+  );
+  const ownerGuidance =
+    allowedCompanyNames.length > 0
+      ? `只允许出现已发布品牌资料声明的本企业名称：${allowedCompanyNames.join('、')}`
+      : '当前品牌资料未声明本企业法定名称，正文不得出现具名公司';
   return Object.freeze(
     [...names].map(
       (name) =>
-        `${scope}:禁止出现其他企业或品牌名称“${name}”，请改为“某公司”“某搬家公司”或“其他服务商”；只允许出现“${ALLOWED_COMPANY_NAME}”`,
+        `${scope}:禁止出现其他企业或品牌名称“${name}”，请改为“某公司”“某搬家公司”或“其他服务商”；${ownerGuidance}`,
     ),
   );
+}
+
+function ownerCompanyNamesFromWriterInput(writerInput: JsonObject): readonly string[] {
+  const strategy = jsonObject(writerInput['strategy']);
+  return findPublishedOwnerCompanyNames(strategy?.['profile']);
 }
 
 function stringValues(value: unknown): readonly string[] {

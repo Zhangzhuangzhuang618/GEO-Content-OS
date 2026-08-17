@@ -446,6 +446,57 @@ describe('AI Worker runtime wiring', () => {
     );
   });
 
+  it('uses the current tenant owner policy without inheriting the legacy tenant', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const owner = '广州众人搬家起重吊装有限公司';
+    const legacyOwner = '广州志远搬家服务有限公司';
+    const cleanArticle = officialSiteArticleDraft();
+    const withCompany = (companyName: string) => ({
+      ...cleanArticle,
+      blocks: cleanArticle.blocks.map((block, index) =>
+        index === 0
+          ? {
+              ...block,
+              text: `${companyName}可根据现场条件说明服务边界。${block.text.slice(80)}`,
+            }
+          : block,
+      ),
+    });
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(withCompany(legacyOwner)) },
+        { text: JSON.stringify(withCompany(owner)) },
+      ],
+      'deepseek-v4-pro',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-pro', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = officialSiteWriterInput(fixture.input as JsonObject, owner);
+
+    const generated = await writer.generateOfficialSiteMaster({
+      context: {
+        ...context(MASTER_RUN, null),
+        modelKey: 'deepseek-v4-pro',
+        modelPolicy: 'quality',
+      },
+      requestId: 'runtime-official-tenant-company-policy-0061',
+      writerInput,
+    });
+
+    expect(JSON.stringify(generated)).toContain(owner);
+    expect(JSON.stringify(generated)).not.toContain(legacyOwner);
+    const firstPrompt = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
+    expect(firstPrompt).toContain(owner);
+    expect(firstPrompt).not.toContain(legacyOwner);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      legacyOwner,
+    );
+  });
+
   it('keeps a short official-site article and appends substantive expansion blocks', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const shortArticle = officialSiteArticleDraft(4);
@@ -781,9 +832,14 @@ class LooseMockAdapter extends MockModelAdapter {
   }
 }
 
-function officialSiteWriterInput(input: JsonObject): JsonObject {
+function officialSiteWriterInput(
+  input: JsonObject,
+  ownerCompanyName = '广州志远搬家服务有限公司',
+): JsonObject {
   const brief = input['brief'] as JsonObject;
   const rule = (input['platform_rules_by_code'] as JsonObject)['xiaohongshu'] as JsonObject;
+  const strategy = input['strategy'] as JsonObject;
+  const profile = strategy['profile'] as JsonObject;
   return {
     ...input,
     brief: {
@@ -793,6 +849,13 @@ function officialSiteWriterInput(input: JsonObject): JsonObject {
       title: '广州家庭搬家前如何核对服务范围与执行人员安排',
     },
     platform_rules_by_code: { official_site: rule },
+    strategy: {
+      ...strategy,
+      profile: {
+        ...profile,
+        positioning: `${ownerCompanyName}面向广州提供搬迁服务。`,
+      },
+    },
   };
 }
 

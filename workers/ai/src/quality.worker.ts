@@ -130,6 +130,7 @@ export class QualityCheckWorker {
           platformCode: context.platformCode,
         }),
         context.content,
+        context.brandProfile,
       );
       const policy = await this.automation?.loadGatePolicy(
         this.client,

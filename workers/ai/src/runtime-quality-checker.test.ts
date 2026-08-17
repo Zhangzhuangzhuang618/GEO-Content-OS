@@ -67,9 +67,9 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
       'High-risk fact issues are allowed only at these exact locations: ["claim:workflow-value"]',
     );
-    expect(adapter.requests[0]!.messages.map((message) => message.content).join('\n')).toContain(
-      '广州志远搬家服务有限公司',
-    );
+    const firstPrompt = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
+    expect(firstPrompt).toContain('No identifiable owner company name is declared');
+    expect(firstPrompt).not.toContain('广州志远搬家服务有限公司');
     expect(adapter.requests.every((request) => request.tools === undefined)).toBe(true);
   });
 
@@ -170,13 +170,89 @@ describe('RuntimeQualityChecker', () => {
 
     const firstPrompt = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
     expect(firstPrompt).toContain('within the hard maximum 30');
-    expect(firstPrompt).toContain(
-      '“通过页面联系方式咨询” contains no contact detail and is allowed',
-    );
+    expect(firstPrompt).toContain('no exact content location contains a literal phone number');
+    expect(firstPrompt).toContain('“通过页面联系方式咨询” is allowed');
+    expect(firstPrompt).toContain('Valid immutable content locations are limited to');
+    expect(firstPrompt).toContain('Never use brand_policy.*');
     expect(firstPrompt).toContain('“电话公司” are not identifiable company names');
     expect(firstPrompt).toContain('No supplied fact is eligible for a high-risk');
     expect(firstPrompt).not.toContain('"rule_id":"fact.high_risk.unsupported"');
     expect(firstPrompt).not.toContain('"risk_level":"high"');
+  });
+
+  it('gives the one semantic repair a structured Lieju contact rejection reason', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const qualityInput = {
+      ...clean.input,
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [
+            {
+              block_key: 'contact',
+              text: '如需进一步确认，可通过页面联系方式说明搬运需求。',
+            },
+          ],
+          platform_code: 'lieju',
+          title: '广州搬家服务指南',
+        },
+      },
+      platform_rules: {
+        ...(clean.input['platform_rules'] as Readonly<Record<string, unknown>>),
+        platform_code: 'lieju',
+        rules: { contact_in_content_forbidden: true, title_max_characters: 30 },
+      },
+    };
+    const falseContactBlock = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'compliance' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '正文包含联系方式。',
+          rule_id: 'lieju.contact_in_content_forbidden',
+          severity: 'BLOCK' as const,
+          suggestion: '删除联系方式。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(falseContactBlock),
+      JSON.stringify(clean.output.data),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000087',
+          projectId: '20000000-0000-4000-8000-000000000087',
+          promptVersionId: '70000000-0000-4000-8000-000000000075',
+          requestId: 'runtime-quality-checker-0087',
+          runId: '60000000-0000-4000-8000-000000000075',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000075',
+          variantId: '20000000-0000-4000-8000-000000000075',
+          workspaceId: '30000000-0000-4000-8000-000000000087',
+        },
+        qualityInput,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
+    expect(repairPrompt).toContain('prohibited_contact_detail_is_not_present_at_location');
+    expect(repairPrompt).toContain('omit the finding unless that location contains a literal');
   });
 
   it('retries ghost brand and fact blockers without persisting them as quality findings', async () => {
@@ -256,17 +332,28 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests).toHaveLength(2);
     const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
     expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
-    expect(repairPrompt).toContain('Quality Checker brand issue is unverifiable');
+    expect(repairPrompt).toContain('Quality Checker issues are unverifiable');
     expect(repairPrompt).toContain('exact_name_is_not_quoted');
     expect(repairPrompt).toContain('brand.other_company_name issue must quote the exact');
     expect(repairPrompt).toContain('fact.high_risk.unsupported');
     expect(repairPrompt).toContain('There are no eligible high-risk fact locations');
+    expect(repairPrompt).toContain('rejections');
+    expect(repairPrompt).toContain('location_must_be_eligible_claim');
+    expect(repairPrompt).toContain('Correct every rejection object');
+    expect(repairPrompt).toContain('blocks[0]');
+    expect(repairPrompt).toContain('blocks[0].text');
   });
 
   it('tells semantic repair that the owner company is allowed without changing the gate', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const qualityInput = {
       ...clean.input,
+      brand_policy: {
+        ...(clean.input['brand_policy'] as Readonly<Record<string, unknown>>),
+        policy: {
+          positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。',
+        },
+      },
       content_version: {
         ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
         content: {
@@ -333,6 +420,84 @@ describe('RuntimeQualityChecker', () => {
     expect(repairPrompt).toContain('only_allowed_owner_or_generic_name_is_quoted');
     expect(repairPrompt).toContain('广州志远搬家服务有限公司');
     expect(repairPrompt).toContain('do not report them as violations');
+  });
+
+  it('uses the current tenant owner in both initial policy and semantic repair', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const owner = '广州众人搬家起重吊装有限公司';
+    const qualityInput = {
+      ...clean.input,
+      brand_policy: {
+        ...(clean.input['brand_policy'] as Readonly<Record<string, unknown>>),
+        policy: {
+          cta: `联系${owner}确认需求。`,
+          positioning: `${owner}面向广州提供搬迁服务。`,
+        },
+      },
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [{ block_key: 'intro', text: `${owner}可根据现场情况说明服务边界。` }],
+          platform_code: 'lieju',
+          title: '厂房搬迁怎么选服务',
+        },
+      },
+    };
+    const falseOwnerBlock = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: `内容包含禁止的公司名称“${owner}”。`,
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '删除公司名称。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(falseOwnerBlock),
+      JSON.stringify(clean.output.data),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000086',
+          projectId: '20000000-0000-4000-8000-000000000086',
+          promptVersionId: '70000000-0000-4000-8000-000000000074',
+          requestId: 'runtime-quality-checker-0086',
+          runId: '60000000-0000-4000-8000-000000000074',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000074',
+          variantId: '20000000-0000-4000-8000-000000000074',
+          workspaceId: '30000000-0000-4000-8000-000000000086',
+        },
+        qualityInput,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    const initialPrompt = adapter.requests[0]!.messages.map((message) => message.content).join(
+      '\n',
+    );
+    const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
+    expect(initialPrompt).toContain(owner);
+    expect(initialPrompt).not.toContain('广州志远搬家服务有限公司');
+    expect(repairPrompt).toContain(owner);
+    expect(repairPrompt).toContain('Correct every rejection object');
   });
 });
 

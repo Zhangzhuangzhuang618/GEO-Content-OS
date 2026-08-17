@@ -338,6 +338,7 @@ describe('deterministic pre-publish risk scanner', () => {
       },
       [],
       candidate,
+      brand(),
     );
 
     expect(merged.issues).toEqual([]);
@@ -377,6 +378,7 @@ describe('deterministic pre-publish risk scanner', () => {
       },
       [],
       candidate,
+      brand(),
     );
 
     expect(merged.decision).toBe('pass');
@@ -408,6 +410,26 @@ describe('deterministic pre-publish risk scanner', () => {
 
     expect(merged.issues).toHaveLength(1);
     expect(merged.decision).toBe('block');
+  });
+
+  it('allows only the owner declared by the current tenant brand profile', () => {
+    const owner = '广州众人搬家起重吊装有限公司';
+    const otherTenant = '广州志远搬家服务有限公司';
+    const issues = scanDeterministicRisks({
+      brandProfile: brand({ positioning: `${owner}面向广州提供搬迁服务。` }),
+      citations: [],
+      content: content({
+        blocks: [block('company', `${owner}可说明服务边界；${otherTenant}不得出现在本文。`)],
+      }),
+      platformCode: 'official_site',
+    });
+
+    const companyIssues = issues.filter(
+      (item) => item.rule_id === 'deterministic.brand.other_company_name',
+    );
+    expect(companyIssues).toHaveLength(1);
+    expect(companyIssues[0]?.message).toContain(otherTenant);
+    expect(companyIssues[0]?.message).not.toContain(owner);
   });
 
   it('drops an unquoted model company-name block because it has no verifiable target', () => {
@@ -556,7 +578,7 @@ function brand(
     compliance: [],
     cta: null,
     differentiators: [],
-    positioning: '广州本地搬家服务企业',
+    positioning: '广州志远搬家服务有限公司是广州本地搬家服务企业',
     tone: '专业、克制',
     ...overrides,
   };

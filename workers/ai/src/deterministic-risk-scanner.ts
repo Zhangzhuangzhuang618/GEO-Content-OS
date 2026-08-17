@@ -1,6 +1,6 @@
 import {
-  ALLOWED_COMPANY_NAME,
   findDisallowedCompanyNames,
+  findPublishedOwnerCompanyNames,
   type PlatformCode,
 } from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
@@ -118,12 +118,13 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
 
 export function scanDeterministicRisks(input: DeterministicRiskScanInput): readonly QualityIssue[] {
   const issues: QualityIssue[] = [];
+  const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brandProfile);
   const brandEvidence = flattenStrings(input.brandProfile).join('\n');
   const citationEvidence = input.citations.map((item) => item.quoteText).join('\n');
 
   addFormatIssues(issues, input);
   addBrandIssues(issues, input);
-  addCompanyNameIssues(issues, input);
+  addCompanyNameIssues(issues, input, allowedCompanyNames);
   addOfficialSiteTechnicalIssues(issues, input);
   addBaijiahaoPlatformIssues(issues, input);
   addLiejuPlatformIssues(issues, input);
@@ -319,9 +320,11 @@ export function mergeDeterministicRiskIssues(
   assessment: QualityCheckerData,
   deterministicIssues: readonly QualityIssue[],
   content?: Readonly<Record<string, unknown>>,
+  brandProfile?: Readonly<Record<string, unknown>>,
 ): QualityCheckerData {
+  const allowedCompanyNames = findPublishedOwnerCompanyNames(brandProfile);
   const modelIssues = content
-    ? assessment.issues.filter((item) => keepModelIssue(item, content))
+    ? assessment.issues.filter((item) => keepModelIssue(item, content, allowedCompanyNames))
     : assessment.issues;
   const issues = deduplicate([...modelIssues, ...deterministicIssues]);
   const removedBlockingIssue =
@@ -348,35 +351,50 @@ export function mergeDeterministicRiskIssues(
   });
 }
 
-function keepModelIssue(issue: QualityIssue, content: Readonly<Record<string, unknown>>): boolean {
+function keepModelIssue(
+  issue: QualityIssue,
+  content: Readonly<Record<string, unknown>>,
+  allowedCompanyNames: readonly string[],
+): boolean {
   if (issue.rule_id !== 'brand.other_company_name') return true;
   const quotedNames = [...issue.message.matchAll(/[“"]([^”"]{2,80})[”"]/gu)].map((match) =>
     match[1]!.trim(),
   );
   if (quotedNames.length === 0) return false;
   const contentText = flattenStrings(content).join('\n');
-  return quotedNames.some((name) => !isAllowedCompanyReference(name) && contentText.includes(name));
-}
-
-function isAllowedCompanyReference(value: string): boolean {
-  return (
-    value === ALLOWED_COMPANY_NAME ||
-    value === '某公司' ||
-    value === '某搬家公司' ||
-    value === '其他服务商'
+  return quotedNames.some(
+    (name) => !isAllowedCompanyReference(name, allowedCompanyNames) && contentText.includes(name),
   );
 }
 
-function addCompanyNameIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
+function isAllowedCompanyReference(value: string, allowedCompanyNames: readonly string[]): boolean {
+  return (
+    allowedCompanyNames.includes(value) ||
+    value === '某公司' ||
+    value === '某搬家公司' ||
+    value === '其他服务商' ||
+    /^(?:电话|搬家|物流|运输|家政|装修|物业|服务)公司$/u.test(value)
+  );
+}
+
+function addCompanyNameIssues(
+  issues: QualityIssue[],
+  input: DeterministicRiskScanInput,
+  allowedCompanyNames: readonly string[],
+): void {
+  const ownerGuidance =
+    allowedCompanyNames.length > 0
+      ? `只允许出现已发布品牌资料声明的本企业名称：${allowedCompanyNames.join('、')}。`
+      : '当前品牌资料未声明本企业法定名称，正文不得出现具名公司。';
   for (const section of contentSections(input.content)) {
-    for (const companyName of findDisallowedCompanyNames(section.text)) {
+    for (const companyName of findDisallowedCompanyNames(section.text, allowedCompanyNames)) {
       issues.push(
         issue(
           'deterministic.brand.other_company_name',
           'brand',
           section.location,
           `内容包含不允许公开的其他企业或品牌名称：“${companyName}”。`,
-          `删除该名称，或改为“某公司”“某搬家公司”“其他服务商”等匿名表述；只允许出现“${ALLOWED_COMPANY_NAME}”。`,
+          `删除该名称，或改为“某公司”“某搬家公司”“其他服务商”等匿名表述；${ownerGuidance}`,
         ),
       );
     }

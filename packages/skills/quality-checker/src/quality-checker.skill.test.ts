@@ -316,12 +316,15 @@ describe('QualityCheckerSkill', () => {
   });
 
   it('rejects a company-name block for the allowed owner company', async () => {
-    const input = qualityInputWithBlocks([
-      {
-        block_key: 'intro',
-        text: '广州志远搬家服务有限公司可根据现场情况说明服务边界。',
-      },
-    ]);
+    const input = qualityInputWithBlocks(
+      [
+        {
+          block_key: 'intro',
+          text: '广州志远搬家服务有限公司可根据现场情况说明服务边界。',
+        },
+      ],
+      { positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。' },
+    );
     const output = blockedOutput({
       category: 'brand',
       citation_ids: [],
@@ -341,6 +344,100 @@ describe('QualityCheckerSkill', () => {
     ).rejects.toMatchObject({
       code: 'SKILL_OUTPUT_INVALID',
       message: expect.stringContaining('"reason":"only_allowed_owner_or_generic_name_is_quoted"'),
+    });
+  });
+
+  it('uses the current tenant published owner instead of the legacy global owner', async () => {
+    const input = qualityInputWithBlocks(
+      [
+        {
+          block_key: 'intro',
+          text: '广州众人搬家起重吊装有限公司可根据现场情况说明服务边界，广州志远搬家服务有限公司不应出现在本文。',
+        },
+      ],
+      { positioning: '广州众人搬家起重吊装有限公司面向广州提供搬迁服务。' },
+    );
+    const ownerOutput = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“广州众人搬家起重吊装有限公司”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '删除公司名称。',
+    });
+    const competitorOutput = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“广州志远搬家服务有限公司”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '删除公司名称。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(ownerOutput) }],
+        }),
+      ).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('only_allowed_owner_or_generic_name_is_quoted'),
+    });
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(competitorOutput) }],
+        }),
+      ).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
+  it('reports every unverifiable semantic issue in one rejection', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      { block_key: 'intro', text: '通过页面联系方式咨询具体需求。' },
+    ]);
+    const output = {
+      ...fixture.output.data,
+      decision: 'block',
+      issues: [
+        {
+          category: 'brand',
+          citation_ids: [],
+          location: 'brand_policy.policy.cta',
+          message: '内容包含禁止的公司名称“广州虚构搬家有限公司”。',
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK',
+          suggestion: '删除公司名称。',
+        },
+        {
+          category: 'compliance',
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '正文包含联系方式。',
+          rule_id: 'lieju.contact_in_content_forbidden',
+          severity: 'BLOCK',
+          suggestion: '删除联系方式。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringMatching(
+        /location_does_not_resolve_to_content.*prohibited_contact_detail_is_not_present_at_location/u,
+      ),
     });
   });
 
@@ -461,9 +558,21 @@ function rulesCall() {
   };
 }
 
-function qualityInputWithBlocks(blocks: readonly Readonly<Record<string, unknown>>[]) {
+function qualityInputWithBlocks(
+  blocks: readonly Readonly<Record<string, unknown>>[],
+  brandPolicy: Readonly<Record<string, unknown>> = {},
+) {
   return {
     ...fixture.input,
+    brand_policy: {
+      ...(fixture.input['brand_policy'] as Readonly<Record<string, unknown>>),
+      policy: {
+        ...((fixture.input['brand_policy'] as Readonly<Record<string, unknown>>)[
+          'policy'
+        ] as Readonly<Record<string, unknown>>),
+        ...brandPolicy,
+      },
+    },
     content_version: {
       ...(fixture.input['content_version'] as Readonly<Record<string, unknown>>),
       content: {
