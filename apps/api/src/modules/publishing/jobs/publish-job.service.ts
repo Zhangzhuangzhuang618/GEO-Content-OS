@@ -438,6 +438,96 @@ export class PublishJobService {
         );
     const publication = publications[0];
 
+    if (input.resolution === 'not_published_closed') {
+      if (before.status !== 'failed' || before.variantStatus !== 'publish_failed') {
+        throw stateInvalid('Only a failed publish job can be closed as not published');
+      }
+      const attemptLimit = isAutomatedOrigin(before.origin) ? 3 : 20;
+      if (before.attemptCount < attemptLimit) {
+        throw stateInvalid('Publish job can still be retried');
+      }
+      if (before.externalPostId || publication?.externalPostId) {
+        throw stateInvalid('A remote publication is already linked to this publish job');
+      }
+      if (publication) {
+        const closed = isLiejuOfficialJob(before)
+          ? await resetLiejuOfficialPublication(transaction, scope.tenantId, publication.id)
+          : await closeBrowserPublicationNotPublished(
+              transaction,
+              scope.tenantId,
+              publication.id,
+              before.platformCode,
+            );
+        if (closed.length !== 1) throw stateInvalid('Browser publication state changed');
+      }
+      const rows = await transaction<JobRow[]>`
+        UPDATE publish_jobs SET status='cancelled',version=version+1
+        WHERE id=${before.id}::uuid AND tenant_id=${scope.tenantId}::uuid
+          AND version=${expectedVersion} AND status='failed'
+        RETURNING
+          id,tenant_id AS "tenantId",variant_id AS "variantId",
+          content_version_id AS "contentVersionId",account_id AS "accountId",
+          scheduled_at AS "scheduledAt",idempotency_key AS "idempotencyKey",
+          payload_hash AS "payloadHash",status,attempt_count AS "attemptCount",
+          external_post_id AS "externalPostId",external_url AS "externalUrl",
+          last_error_json AS "lastError",origin,published_at AS "publishedAt",
+          created_by AS "createdBy",version,created_at AS "createdAt",updated_at AS "updatedAt"
+      `;
+      const after = requireChangedJob(rows, before);
+      const restoredStatus = isAutomatedOrigin(before.origin) ? 'quality_passed' : 'approved';
+      assertContentVariantTransition({
+        cause: isAutomatedOrigin(before.origin)
+          ? automationTransitionCause(before.origin)
+          : 'normal',
+        from: 'publish_failed',
+        to: restoredStatus,
+      });
+      await updateVariant(
+        transaction,
+        scope.tenantId,
+        before.variantId,
+        before.variantVersion,
+        'publish_failed',
+        restoredStatus,
+      );
+      if (isAutomatedOrigin(before.origin)) {
+        await disableAutomationRun(
+          transaction,
+          scope.tenantId,
+          before.id,
+          before.origin,
+          `人工核实${browserPlatformLabel(before.platformCode)}后台未创建内容，发布任务结束。`,
+        );
+      }
+      await projectPackage(
+        transaction,
+        this.projector,
+        scope.tenantId,
+        before.packageId,
+        before.packageStatus,
+        before.packageVersion,
+      );
+      await supersedePendingExecution(transaction, scope.tenantId, before.id);
+      await this.audit.record(transaction, {
+        action: 'publish_job.unknown_resolved_not_published_closed',
+        actorId: scope.userId,
+        after: {
+          ...safeJob(after),
+          unknown_resolution: {
+            latest_attempt_no: latestAttempt.attemptNo,
+            resolution: 'not_published_closed',
+          },
+        },
+        before: safeJob(before),
+        ip: scope.ip ?? null,
+        requestId: scope.requestId,
+        resourceId: after.id,
+        resourceType: 'publish_job',
+        tenantId: scope.tenantId,
+      });
+      return mapJob(after);
+    }
+
     if (input.resolution === 'not_published') {
       if (publication?.externalPostId) {
         throw stateInvalid('A remote publication is already linked to this publish job');
@@ -1133,6 +1223,43 @@ function resetBrowserPublication(
   `;
 }
 
+function closeBrowserPublicationNotPublished(
+  transaction: TransactionSql,
+  tenantId: string,
+  publicationId: string,
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+): Promise<{ id: string }[]> {
+  const reason = `人工核实${browserPlatformLabel(platformCode)}后台未创建内容，发布任务结束。`;
+  if (platformCode === 'sohu') {
+    return transaction<{ id: string }[]>`
+      UPDATE sohu_browser_publications SET
+        status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+        last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('submitting','unknown','processing','manual_required','failed')
+      RETURNING id
+    `;
+  }
+  if (platformCode === 'lieju') {
+    return transaction<{ id: string }[]>`
+      UPDATE lieju_browser_publications SET
+        status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+        last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('submitting','unknown','processing','manual_required','failed')
+      RETURNING id
+    `;
+  }
+  return transaction<{ id: string }[]>`
+    UPDATE baijiahao_browser_publications SET
+      status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+      last_reconciled_at=now(),version=version+1
+    WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+      AND status IN ('submitting','unknown','processing','manual_required','failed')
+    RETURNING id
+  `;
+}
+
 function confirmBrowserPublication(
   transaction: TransactionSql,
   tenantId: string,
@@ -1294,18 +1421,18 @@ async function disableAutomationRun(
         })}::text::jsonb,
         finished_at=now(),version=version+1
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-        AND status IN ('scheduled','publishing','processing')
+        AND status IN ('scheduled','publishing','processing','manual_required','publish_failed')
       RETURNING id
     `;
     if (rows.length !== 1) throw stateInvalid('Baijiahao automation run is inconsistent');
     await transaction`
       UPDATE baijiahao_daily_batch_items SET status='retired',
         last_error_json=jsonb_build_object(
-          'code','PUBLISH_CANCELLED_BY_USER','message',${reason},
+          'code','PUBLISH_CANCELLED_BY_USER','message',${reason}::text,
           'schema_version','baijiahao-daily-error@1'
         )
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-        AND status IN ('scheduled','processing')
+        AND status IN ('scheduled','processing','manual_required','publish_failed')
     `;
     return;
   }
@@ -1320,18 +1447,18 @@ async function disableAutomationRun(
         })}::text::jsonb,
         finished_at=now(),version=version+1
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-        AND status IN ('scheduled','publishing','processing')
+        AND status IN ('scheduled','publishing','processing','manual_required','publish_failed')
       RETURNING id
     `;
     if (rows.length !== 1) throw stateInvalid('Browser-platform automation run is inconsistent');
     await transaction`
       UPDATE browser_platform_daily_batch_items SET status='retired',
         last_error_json=jsonb_build_object(
-          'code','PUBLISH_CANCELLED_BY_USER','message',${reason},
+          'code','PUBLISH_CANCELLED_BY_USER','message',${reason}::text,
           'schema_version','browser-platform-daily-error@1'
         )
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-        AND status IN ('scheduled','processing')
+        AND status IN ('scheduled','processing','manual_required','publish_failed')
     `;
     return;
   }

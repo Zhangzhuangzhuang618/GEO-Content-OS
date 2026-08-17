@@ -37822,6 +37822,14 @@
                     "properties": { "resolution": { "type": "string", "const": "not_published" } },
                     "required": ["resolution"],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "resolution": { "type": "string", "const": "not_published_closed" }
+                    },
+                    "required": ["resolution"],
+                    "additionalProperties": false
                   }
                 ]
               }

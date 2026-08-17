@@ -297,6 +297,83 @@ describe('PublishJobService rescheduling', () => {
     expect(outbox.enqueue).not.toHaveBeenCalled();
   });
 
+  it('closes an exhausted Baijiahao automation after it is verified as not published', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 3,
+      origin: 'baijiahao_automation',
+      packageStatus: 'publish_failed',
+      platformCode: 'baijiahao',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(
+      before,
+      sqlStatements,
+      'not_published_closed',
+      { attemptNo: 3, errorCode: 'MANUAL_REQUIRED', status: 'failed' },
+    );
+    const { audit, outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      resolution: 'not_published_closed',
+    });
+
+    expect(result).toMatchObject({ status: 'cancelled', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_browser_publications') &&
+          sql.includes("status='failed'") &&
+          sql.includes('last_reconciled_at=now()'),
+      ),
+    ).toBe(true);
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_automation_runs') && sql.includes("status='disabled'"),
+      ),
+    ).toBe(true);
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE baijiahao_daily_batch_items') && sql.includes("status='retired'"),
+      ),
+    ).toBe(true);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      transaction,
+      expect.objectContaining({ action: 'publish_job.unknown_resolved_not_published_closed' }),
+    );
+  });
+
+  it('does not close a Baijiahao automation while a safe retry remains', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 2,
+      origin: 'baijiahao_automation',
+      packageStatus: 'publish_failed',
+      platformCode: 'baijiahao',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(
+      before,
+      sqlStatements,
+      'not_published_closed',
+      { attemptNo: 2, errorCode: 'MANUAL_REQUIRED', status: 'failed' },
+    );
+    const { outbox, service } = createService();
+
+    await expect(
+      service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+        resolution: 'not_published_closed',
+      }),
+    ).rejects.toMatchObject({ code: 'PUBLISH_JOB_STATE_INVALID' });
+    expect(sqlStatements.some((sql) => sql.includes('UPDATE publish_jobs SET'))).toBe(false);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+  });
+
   it('closes a manually verified Sohu automation run and daily item as published', async () => {
     const sqlStatements: string[] = [];
     const before = jobRow({
@@ -389,7 +466,7 @@ function createTransaction(
 function createUnknownResolutionTransaction(
   before: ReturnType<typeof jobRow>,
   sqlStatements: string[],
-  resolution: 'not_published' | 'published',
+  resolution: 'not_published' | 'not_published_closed' | 'published',
   latestAttempt: {
     readonly attemptNo: number;
     readonly errorCode: string | null;
@@ -425,7 +502,12 @@ function createUnknownResolutionTransaction(
               : null,
           publishedAt: resolution === 'published' ? new Date() : null,
           scheduledAt: resolution === 'not_published' ? new Date() : before.scheduledAt,
-          status: resolution === 'published' ? 'published' : 'scheduled',
+          status:
+            resolution === 'published'
+              ? 'published'
+              : resolution === 'not_published_closed'
+                ? 'cancelled'
+                : 'scheduled',
           version: before.version + 1,
         },
       ];
@@ -435,7 +517,12 @@ function createUnknownResolutionTransaction(
       return [
         {
           isRequired: true,
-          status: resolution === 'published' ? 'published' : 'scheduled',
+          status:
+            resolution === 'published'
+              ? 'published'
+              : resolution === 'not_published_closed'
+                ? 'quality_passed'
+                : 'scheduled',
         },
       ];
     }

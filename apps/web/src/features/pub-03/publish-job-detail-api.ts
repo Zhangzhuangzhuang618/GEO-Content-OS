@@ -46,6 +46,7 @@ export async function resolveUnknownPublishJob(
   csrf: string,
   input:
     | { readonly resolution: 'not_published' }
+    | { readonly resolution: 'not_published_closed' }
     | {
         readonly external_post_id?: string;
         readonly external_url: string;

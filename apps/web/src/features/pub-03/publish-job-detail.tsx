@@ -173,7 +173,9 @@ export function PublishJobDetailView() {
     }
   }
 
-  async function resolveUnknown(resolution: 'not_published' | 'published') {
+  async function resolveUnknown(
+    resolution: 'not_published' | 'not_published_closed' | 'published',
+  ) {
     if (!detail?.unknown_resolution) return;
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
@@ -182,15 +184,18 @@ export function PublishJobDetailView() {
     }
     let input:
       | { readonly resolution: 'not_published' }
+      | { readonly resolution: 'not_published_closed' }
       | {
           readonly external_post_id?: string;
           readonly external_url: string;
           readonly resolution: 'published';
         };
-    if (resolution === 'not_published') {
+    if (resolution === 'not_published' || resolution === 'not_published_closed') {
       if (
         !window.confirm(
-          '请确认已在百家号内容管理中按标题核对，确实没有创建该文章。确认后系统会立即重新发布。',
+          resolution === 'not_published'
+            ? '请确认已在平台内容管理中按标题核对，确实没有创建该文章。确认后系统会立即重新发布。'
+            : '请确认已在平台内容管理中按标题核对，确实没有创建该文章。确认后任务将结束，不会再次自动发布。',
         )
       ) {
         return;
@@ -217,7 +222,9 @@ export function PublishJobDetailView() {
       setMessage(
         resolution === 'published'
           ? '已按人工核实结果记录为已发布。'
-          : '已确认百家号未创建该文章，发布重试已排队。',
+          : resolution === 'not_published'
+            ? '已确认平台未创建该文章，发布重试已排队。'
+            : '已确认平台未创建该文章，任务已结束且不会再次自动发布。',
       );
       await load(detail.job.id);
     } catch {
@@ -315,7 +322,9 @@ function DetailContent({
   readonly onDownload: () => Promise<void>;
   readonly onGenerateMedia: () => Promise<void>;
   readonly onReconcileBaijiahao: () => Promise<void>;
-  readonly onResolveUnknown: (resolution: 'not_published' | 'published') => Promise<void>;
+  readonly onResolveUnknown: (
+    resolution: 'not_published' | 'not_published_closed' | 'published',
+  ) => Promise<void>;
 }) {
   const { job } = detail;
   const externalUrl = safeHttpUrl(job.external_url);
@@ -416,6 +425,15 @@ function DetailContent({
                 >
                   {busy === 'resolve' ? '正在处理…' : '确认未发布并重试'}
                 </button>
+              ) : job.status === 'failed' ? (
+                <button
+                  className={dangerButton}
+                  disabled={busy !== null}
+                  onClick={() => void onResolveUnknown('not_published_closed')}
+                  type="button"
+                >
+                  {busy === 'resolve' ? '正在处理…' : '确认未发布并结束任务'}
+                </button>
               ) : null}
               <button
                 className={secondaryButton}
@@ -428,7 +446,7 @@ function DetailContent({
             </div>
             {!detail.unknown_resolution.can_retry ? (
               <p className="mt-3 text-xs leading-5 text-amber-800">
-                当前任务已达到发布重试上限，不能继续请求目标平台；仍可在核实后确认已经发布。
+                当前任务已达到发布重试上限，不能继续请求目标平台；请在平台后台核实后确认已发布，或确认未发布并结束任务。
               </p>
             ) : null}
           </div>

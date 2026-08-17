@@ -119,6 +119,9 @@ describe('Publishing API frozen contract', () => {
       ResolveUnknownPublishRequestSchema.safeParse({ resolution: 'not_published' }).success,
     ).toBe(true);
     expect(
+      ResolveUnknownPublishRequestSchema.safeParse({ resolution: 'not_published_closed' }).success,
+    ).toBe(true);
+    expect(
       ResolveUnknownPublishRequestSchema.safeParse({
         external_url: 'https://baijiahao.baidu.com/s?id=123',
         resolution: 'published',

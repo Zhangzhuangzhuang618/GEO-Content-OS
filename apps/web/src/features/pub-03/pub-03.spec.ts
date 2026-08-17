@@ -121,7 +121,7 @@ test('requires manual verification before retrying an unknown Baijiahao publicat
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: '确认未发布并重试' }).click();
 
-  await expect(page.getByText('已确认百家号未创建该文章，发布重试已排队。')).toBeVisible();
+  await expect(page.getByText('已确认平台未创建该文章，发布重试已排队。')).toBeVisible();
   expect(writes).toHaveLength(1);
   expect(writes[0]?.path).toBe(`/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`);
   expect(writes[0]?.body).toEqual({ resolution: 'not_published' });
@@ -220,6 +220,64 @@ test('records a manually verified Baijiahao publication with its public link', a
         external_url: 'https://baijiahao.baidu.com/s?id=123456',
         resolution: 'published',
       },
+      path: `/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`,
+    },
+  ]);
+});
+
+test('closes an exhausted Baijiahao task after it is verified as not published', async ({
+  page,
+}) => {
+  let currentJob: Record<string, unknown> = {
+    ...job({ attemptCount: 3, status: 'failed', version: 9 }),
+    last_error: { code: 'MANUAL_REQUIRED' },
+    origin: 'baijiahao_automation',
+  };
+  let unknownResolution: Record<string, unknown> | null = {
+    can_retry: false,
+    latest_attempt_no: 3,
+    platform_code: 'baijiahao',
+  };
+  const writes: { body: unknown; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(
+        route,
+        detail(
+          currentJob,
+          [
+            {
+              ...attempt(3, 'failed'),
+              adapter_code: 'baijiahao-delivery@1.1.0',
+              error_code: 'MANUAL_REQUIRED',
+            },
+          ],
+          null,
+          unknownResolution,
+        ),
+      );
+      return;
+    }
+    writes.push({ body: request.postDataJSON() as unknown, path });
+    currentJob = { ...currentJob, status: 'cancelled', version: 10 };
+    unknownResolution = null;
+    await json(route, { data: currentJob, meta: { request_id: 'not-published-closed' } });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await expect(page.getByRole('button', { name: '确认未发布并重试' })).toHaveCount(0);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '确认未发布并结束任务' }).click();
+
+  await expect(
+    page.getByText('已确认平台未创建该文章，任务已结束且不会再次自动发布。'),
+  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: '已取消' })).toBeVisible();
+  expect(writes).toEqual([
+    {
+      body: { resolution: 'not_published_closed' },
       path: `/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`,
     },
   ]);

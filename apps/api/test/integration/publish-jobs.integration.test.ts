@@ -527,6 +527,74 @@ describe('publish jobs', () => {
     ]);
   });
 
+  it('closes an exhausted Baijiahao automation verified as not published', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    const job = await seedBaijiahaoManualRequired(database, 3);
+
+    const detail = await new PublishingApiService(database, {} as ObjectStorageAdapter).detail(
+      SCOPE,
+      job.id,
+    );
+    expect(detail.unknown_resolution).toEqual({
+      can_retry: false,
+      latest_attempt_no: 3,
+      platform_code: 'baijiahao',
+    });
+
+    const resolved = await service.resolveUnknown(
+      { ...SCOPE, requestId: 'req-baijiahao-not-published-closed-124' },
+      job.id,
+      3,
+      { resolution: 'not_published_closed' },
+    );
+
+    expect(resolved).toMatchObject({ attempt_count: 3, status: 'cancelled', version: 4 });
+    const states = await database<
+      {
+        automationStatus: string;
+        itemStatus: string;
+        jobStatus: string;
+        publicationStatus: string;
+        variantStatus: string;
+      }[]
+    >`
+      SELECT automation.status AS "automationStatus",item.status AS "itemStatus",
+        job.status AS "jobStatus",publication.status AS "publicationStatus",
+        variant.status AS "variantStatus"
+      FROM baijiahao_automation_runs AS automation
+      JOIN baijiahao_daily_batch_items AS item
+        ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+      JOIN publish_jobs AS job
+        ON job.id=automation.publish_job_id AND job.tenant_id=automation.tenant_id
+      JOIN content_variants AS variant
+        ON variant.id=automation.variant_id AND variant.tenant_id=automation.tenant_id
+      JOIN baijiahao_browser_publications AS publication
+        ON publication.publish_job_id=job.id AND publication.tenant_id=job.tenant_id
+      WHERE automation.id=${AUTOMATION_RUN_ID}::uuid
+    `;
+    expect(states).toEqual([
+      {
+        automationStatus: 'disabled',
+        itemStatus: 'retired',
+        jobStatus: 'cancelled',
+        publicationStatus: 'failed',
+        variantStatus: 'quality_passed',
+      },
+    ]);
+    const attempts = await database<{ attemptNo: number; status: string }[]>`
+      SELECT attempt_no AS "attemptNo",status FROM publish_attempts
+      WHERE publish_job_id=${job.id}::uuid ORDER BY attempt_no
+    `;
+    expect(attempts).toEqual([
+      { attemptNo: 1, status: 'unknown' },
+      { attemptNo: 3, status: 'failed' },
+    ]);
+    await expect(auditActions(database, job.id)).resolves.toContain(
+      'publish_job.unknown_resolved_not_published_closed',
+    );
+  });
+
   it('cancels and restores a queued website automation without replacing its job', async () => {
     const database = requireClient(client);
     await seedAutomationJob(database, 'scheduled', 0);
@@ -772,7 +840,7 @@ async function seedBaijiahaoPublishingTerminal(
   return job;
 }
 
-async function seedBaijiahaoManualRequired(database: Sql) {
+async function seedBaijiahaoManualRequired(database: Sql, latestAttemptNo = 2) {
   const error = {
     code: 'MANUAL_REQUIRED',
     message: 'Baijiahao browser publication requires manual handling',
@@ -811,7 +879,8 @@ async function seedBaijiahaoManualRequired(database: Sql) {
       ) VALUES(
         ${AUTO_JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
         ${ACCOUNT_ID}::uuid,${SCHEDULED_AT},'baijiahao:manual-required-124',${CONTENT_HASH},
-        'failed',2,${transaction.json(error)},'baijiahao_automation',${USER_ID}::uuid,3
+        'failed',${latestAttemptNo},${transaction.json(error)},'baijiahao_automation',
+        ${USER_ID}::uuid,3
       )
     `;
     await transaction`
@@ -825,7 +894,8 @@ async function seedBaijiahaoManualRequired(database: Sql) {
           'PUBLISH_STATE_UNKNOWN',now() - interval '2 minutes',now() - interval '2 minutes'
         ),
         (
-          ${TENANT_ID}::uuid,${AUTO_JOB_ID}::uuid,2,'baijiahao-delivery@1.1.0','failed',
+          ${TENANT_ID}::uuid,${AUTO_JOB_ID}::uuid,${latestAttemptNo},
+          'baijiahao-delivery@1.1.0','failed',
           ${'b'.repeat(64)},${transaction.json({ message: error.message })},
           'MANUAL_REQUIRED',now(),now()
         )

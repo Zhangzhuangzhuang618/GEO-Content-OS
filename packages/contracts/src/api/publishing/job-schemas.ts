@@ -39,6 +39,7 @@ export const ResolveUnknownPublishRequestSchema = z.discriminatedUnion('resoluti
     })
     .strict(),
   z.object({ resolution: z.literal('not_published') }).strict(),
+  z.object({ resolution: z.literal('not_published_closed') }).strict(),
 ]);
 export const PublishJobQuerySchema = z
   .object({
