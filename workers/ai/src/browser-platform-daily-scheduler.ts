@@ -308,7 +308,7 @@ async function createCandidate(
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
   const platformInstruction =
     batch.platformCode === 'lieju'
-      ? '允许明确介绍本企业服务范围、流程、可核验能力和适用场景，并自然提示通过页面联系方式咨询；正文不得出现电话、微信、QQ、网址、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
+      ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，并自然提示通过页面联系方式咨询；正文不得出现具体电话或手机号、微信/QQ账号、网址、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
       : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
   const constraints = {
     additional_instructions: [
@@ -511,9 +511,9 @@ export function candidateLimitAttentionMessage(
 const ANGLES = Object.freeze([
   { label: '服务选择', title: (keyword: string) => `${keyword}怎么选服务` },
   { label: '准备清单', title: (keyword: string) => `${keyword}前需要准备什么` },
-  { label: '流程说明', title: (keyword: string) => `${keyword}服务流程与注意事项` },
+  { label: '流程说明', title: (keyword: string) => `${keyword}服务流程怎么安排` },
   { label: '费用因素', title: (keyword: string) => `${keyword}费用受哪些因素影响` },
-  { label: '风险边界', title: (keyword: string) => `${keyword}常见问题与避坑要点` },
+  { label: '风险边界', title: (keyword: string) => `${keyword}常见问题怎么避坑` },
   { label: '验收检查', title: (keyword: string) => `${keyword}完成后如何验收` },
 ]);
 

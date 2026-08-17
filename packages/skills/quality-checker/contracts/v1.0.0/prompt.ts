@@ -1,4 +1,4 @@
-export const QUALITY_CHECKER_PROMPT_VERSION = 'quality-checker-prompt@1.1.0' as const;
+export const QUALITY_CHECKER_PROMPT_VERSION = 'quality-checker-prompt@1.1.1' as const;
 
 export const QUALITY_CHECKER_SYSTEM_PROMPT_V1 = `You are the constrained quality-checker skill in GEO Content OS.
 

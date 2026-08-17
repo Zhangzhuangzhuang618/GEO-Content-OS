@@ -46,7 +46,9 @@ interface CheckerInput {
   }[];
   readonly geo_result: { readonly scores: Readonly<Record<string, number>> };
   readonly platform_rules: {
+    readonly platform_code?: string;
     readonly rules: {
+      readonly contact_in_content_forbidden?: boolean;
       readonly title_max_characters?: number;
       readonly title_max_length?: number;
     };
@@ -83,13 +85,25 @@ function messages(
   input: Readonly<Record<string, unknown>>,
   prompt?: QualityCheckerPublishedPrompt,
 ): readonly ModelMessage[] {
-  const examples = QUALITY_CHECKER_FEW_SHOTS_V1.flatMap<ModelMessage>((example) => [
-    {
-      content: JSON.stringify({ example_input: example.input, purpose: example.purpose }),
-      role: 'user',
-    },
-    { content: JSON.stringify(example.output.data), role: 'assistant' },
-  ]);
+  const allowHighRiskExample = hasEligibleHighRiskFact(input);
+  const examples = QUALITY_CHECKER_FEW_SHOTS_V1.flatMap<ModelMessage>((example) => {
+    const data = allowHighRiskExample
+      ? example.output.data
+      : {
+          ...example.output.data,
+          issues: example.output.data.issues.filter((issue) => !isHighRiskFactRule(issue.rule_id)),
+        };
+    const exampleInput = allowHighRiskExample
+      ? example.input
+      : withoutEligibleHighRiskFacts(example.input);
+    return [
+      {
+        content: JSON.stringify({ example_input: exampleInput, purpose: example.purpose }),
+        role: 'user',
+      },
+      { content: JSON.stringify(data), role: 'assistant' },
+    ];
+  });
   return Object.freeze([
     {
       content: prompt
@@ -239,6 +253,7 @@ function isTitleMaxRule(ruleId: string): boolean {
   return (
     ruleId === 'platform.title.max_length' ||
     ruleId.endsWith('.title.max_length') ||
+    ruleId.endsWith('.title.max_characters') ||
     ruleId.endsWith('.title_max_length') ||
     ruleId.endsWith('.title_max_characters')
   );
@@ -256,6 +271,23 @@ function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData[
         !quotedNames.some((name) => !isAllowedCompanyReference(name) && locationText.includes(name))
       ) {
         invalid('Quality Checker brand issue does not identify a prohibited name at its location');
+      }
+    }
+    if (
+      input.platform_rules.platform_code === 'lieju' &&
+      input.platform_rules.rules.contact_in_content_forbidden === true &&
+      issue.rule_id.endsWith('contact_in_content_forbidden')
+    ) {
+      const locationText = textAtLocation(input.content_version.content, issue.location);
+      if (
+        issue.category !== 'compliance' ||
+        issue.severity !== 'BLOCK' ||
+        !locationText ||
+        !containsLiejuContactDetail(locationText)
+      ) {
+        invalid(
+          'Quality Checker Lieju contact issue does not identify a prohibited contact detail at its location',
+        );
       }
     }
     if (
@@ -292,7 +324,47 @@ function isAllowedCompanyReference(value: string): boolean {
     value === ALLOWED_COMPANY_NAME ||
     value === '某公司' ||
     value === '某搬家公司' ||
-    value === '其他服务商'
+    value === '其他服务商' ||
+    /^(?:电话|搬家|物流|运输|家政|装修|物业|服务)公司$/u.test(value)
+  );
+}
+
+function containsLiejuContactDetail(value: string): boolean {
+  return (
+    /(?:https?:\/\/|www\.)\S+/iu.test(value) ||
+    /(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)/u.test(value) ||
+    /(?:电话|手机|微信|QQ|联系)[：:\s]*[A-Za-z0-9+_-]{4,}/iu.test(value)
+  );
+}
+
+function hasEligibleHighRiskFact(input: Readonly<Record<string, unknown>>): boolean {
+  const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
+  return factResults.some(
+    (fact) =>
+      record(fact) &&
+      (fact['risk_level'] === 'high' || fact['risk_level'] === 'critical') &&
+      (fact['verdict'] === 'unsupported' || fact['verdict'] === 'conflicted'),
+  );
+}
+
+function withoutEligibleHighRiskFacts(
+  input: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
+  return {
+    ...input,
+    fact_results: factResults.filter(
+      (fact) =>
+        !record(fact) ||
+        (fact['risk_level'] !== 'high' && fact['risk_level'] !== 'critical') ||
+        (fact['verdict'] !== 'unsupported' && fact['verdict'] !== 'conflicted'),
+    ),
+  };
+}
+
+function isHighRiskFactRule(ruleId: string): boolean {
+  return (
+    ruleId === 'fact.high_risk.unsupported' || ruleId === 'fact.high_risk.unsupported_or_conflicted'
   );
 }
 
@@ -306,6 +378,11 @@ function textAtLocation(
     return typeof value === 'string' ? value : null;
   }
   const blocks = Array.isArray(content['blocks']) ? content['blocks'] : [];
+  if (location === 'content' || location === 'blocks') {
+    return [content['title'], content['summary'], content['cta'], ...blocks.map(blockText)]
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n');
+  }
   const indexed = /^blocks\[(\d+)\](?:\.text)?$/u.exec(location);
   if (indexed) return blockText(blocks[Number(indexed[1])]);
   const keyed = /^blocks\.([^.]+)(?:\.text)?$/u.exec(location);

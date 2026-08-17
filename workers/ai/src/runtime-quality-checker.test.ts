@@ -117,6 +117,68 @@ describe('RuntimeQualityChecker', () => {
     expect(repairPrompt).toContain('Do not copy them from examples');
   });
 
+  it('binds Lieju title, contact, brand, and high-risk semantics before the first check', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const qualityInput = {
+      ...clean.input,
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [
+            {
+              block_key: 'contact',
+              text: '如需进一步确认，可通过页面联系方式说明搬运需求。',
+            },
+          ],
+          platform_code: 'lieju',
+          title: '广州搬家服务指南',
+        },
+      },
+      platform_rules: {
+        ...(clean.input['platform_rules'] as Readonly<Record<string, unknown>>),
+        platform_code: 'lieju',
+        rules: { contact_in_content_forbidden: true, title_max_characters: 30 },
+      },
+    };
+    const adapter = new QualityMockAdapter([JSON.stringify(clean.output.data)]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000084',
+          projectId: '20000000-0000-4000-8000-000000000084',
+          promptVersionId: '70000000-0000-4000-8000-000000000072',
+          requestId: 'runtime-quality-checker-0084',
+          runId: '60000000-0000-4000-8000-000000000072',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000072',
+          variantId: '20000000-0000-4000-8000-000000000072',
+          workspaceId: '30000000-0000-4000-8000-000000000084',
+        },
+        qualityInput,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    const firstPrompt = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
+    expect(firstPrompt).toContain('within the hard maximum 30');
+    expect(firstPrompt).toContain(
+      '“通过页面联系方式咨询” contains no contact detail and is allowed',
+    );
+    expect(firstPrompt).toContain('“电话公司” are not identifiable company names');
+    expect(firstPrompt).toContain('No supplied fact is eligible for a high-risk');
+    expect(firstPrompt).not.toContain('"rule_id":"fact.high_risk.unsupported"');
+    expect(firstPrompt).not.toContain('"risk_level":"high"');
+  });
+
   it('retries ghost brand and fact blockers without persisting them as quality findings', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const qualityInput = {

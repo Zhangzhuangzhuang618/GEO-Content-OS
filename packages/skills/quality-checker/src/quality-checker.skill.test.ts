@@ -142,26 +142,29 @@ describe('QualityCheckerSkill', () => {
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
-  it('rejects a false title limit block when the title is within the configured limit', async () => {
-    const input = qualityInputWithTitleRule('广州搬家服务指南', 30);
-    const output = blockedOutput({
-      category: 'format',
-      citation_ids: [],
-      location: 'title',
-      message: '标题超过列举网长度限制。',
-      rule_id: 'lieju.title_max_characters',
-      severity: 'BLOCK',
-      suggestion: '缩短标题。',
-    });
-    const adapter = new MockModelAdapter({
-      modelKey: 'flash',
-      responses: [{ text: JSON.stringify(output) }],
-    });
+  it.each(['lieju.title.max_characters', 'platform.title_max_characters'])(
+    'rejects a false %s block when the title is within the configured limit',
+    async (ruleId) => {
+      const input = qualityInputWithTitleRule('广州搬家服务指南', 30);
+      const output = blockedOutput({
+        category: 'format',
+        citation_ids: [],
+        location: 'title',
+        message: '标题超过列举网长度限制。',
+        rule_id: ruleId,
+        severity: 'BLOCK',
+        suggestion: '缩短标题。',
+      });
+      const adapter = new MockModelAdapter({
+        modelKey: 'flash',
+        responses: [{ text: JSON.stringify(output) }],
+      });
 
-    await expect(
-      skill(adapter).run({ context, input, recordUsage: () => undefined }),
-    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
-  });
+      await expect(
+        skill(adapter).run({ context, input, recordUsage: () => undefined }),
+      ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+    },
+  );
 
   it('accepts a matching title limit block for an over-limit title', async () => {
     const input = qualityInputWithTitleRule(
@@ -173,7 +176,7 @@ describe('QualityCheckerSkill', () => {
       citation_ids: [],
       location: 'title',
       message: '标题超过列举网长度限制。',
-      rule_id: 'lieju.title_max_characters',
+      rule_id: 'lieju.title.max_characters',
       severity: 'BLOCK',
       suggestion: '缩短标题。',
     });
@@ -185,6 +188,101 @@ describe('QualityCheckerSkill', () => {
     await expect(
       skill(adapter).run({ context, input, recordUsage: () => undefined }),
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
+  it('rejects a Lieju contact block for a neutral page-contact phrase', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      {
+        block_key: 'contact',
+        text: '如需进一步确认，可通过页面联系方式说明搬运需求。',
+      },
+    ]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文包含联系方式引导。',
+      rule_id: 'lieju.contact_in_content_forbidden',
+      severity: 'BLOCK',
+      suggestion: '删除该句。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('accepts a Lieju contact block that points to a literal phone number', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      { block_key: 'contact', text: '可拨打02085627757咨询。' },
+    ]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文包含电话号码“02085627757”。',
+      rule_id: 'lieju.contact_in_content_forbidden',
+      severity: 'BLOCK',
+      suggestion: '删除电话号码。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
+  it('accepts a Lieju contact block for an account value without a separator', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      { block_key: 'contact', text: '可添加QQ123456进一步咨询。' },
+    ]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文包含QQ账号“QQ123456”。',
+      rule_id: 'lieju.contact_in_content_forbidden',
+      severity: 'BLOCK',
+      suggestion: '删除QQ账号。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
+  it('rejects a company-name block for the generic phrase 电话公司', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '电话公司搬迁前应先确认线路和设备清单。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“电话公司”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
   it('rejects a company-name block that points to the wrong content location', async () => {
@@ -313,30 +411,30 @@ function qualityInputWithBlocks(blocks: readonly Readonly<Record<string, unknown
   };
 }
 
-function qualityInputWithTitleRule(title: string, titleMaxCharacters: number) {
+function qualityInputWithTitleRule(
+  title: string,
+  titleMaxCharacters: number,
+  blocks: readonly Readonly<Record<string, unknown>>[] = [
+    {
+      block_key: 'intro',
+      text: '搬家前应先确认物品清单、服务范围和验收方式。',
+    },
+  ],
+) {
   return {
-    ...qualityInputWithBlocks([
-      {
-        block_key: 'intro',
-        text: '搬家前应先确认物品清单、服务范围和验收方式。',
-      },
-    ]),
+    ...qualityInputWithBlocks(blocks),
     content_version: {
       ...(fixture.input['content_version'] as Readonly<Record<string, unknown>>),
       content: {
-        blocks: [
-          {
-            block_key: 'intro',
-            text: '搬家前应先确认物品清单、服务范围和验收方式。',
-          },
-        ],
+        blocks,
         platform_code: 'lieju',
         title,
       },
     },
     platform_rules: {
       ...(fixture.input['platform_rules'] as Readonly<Record<string, unknown>>),
-      rules: { title_max_characters: titleMaxCharacters },
+      platform_code: 'lieju',
+      rules: { contact_in_content_forbidden: true, title_max_characters: titleMaxCharacters },
     },
   };
 }

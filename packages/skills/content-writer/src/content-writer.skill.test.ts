@@ -38,6 +38,17 @@ afterEach(async () => {
 });
 
 describe('ContentWriterSkill', () => {
+  it('publishes the Lieju question-title and literal-contact boundary', () => {
+    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.6');
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.lieju).toContain(
+      '自然使用“如何、怎么、指南、方法、哪些”等问法之一',
+    );
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.lieju).toContain(
+      '“通过页面联系方式咨询”属于允许的中性引导',
+    );
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.lieju).toContain('具体电话或手机号');
+  });
+
   it('runs the frozen Prompt, platform patch, tools, and schema with the Mock Adapter', async () => {
     const recordUsage = vi.fn();
     const adapter = new MockModelAdapter({

@@ -60,10 +60,13 @@ export class RuntimeQualityChecker {
       schemas,
     );
     const skill = new QualityCheckerSkill(new SkillRunner(adapter, schemas, tools));
-    const prompt = withCompanyNamePolicy(
-      this.promptLoader
-        ? await this.promptLoader(input.context)
-        : await this.getPrompt(input.context.promptVersionId),
+    const prompt = withInputSemanticPolicy(
+      withCompanyNamePolicy(
+        this.promptLoader
+          ? await this.promptLoader(input.context)
+          : await this.getPrompt(input.context.promptVersionId),
+      ),
+      input.qualityInput,
     );
     const context = createSkillContext({
       inputHash: input.context.inputHash,
@@ -139,9 +142,55 @@ function withCompanyNamePolicy(
     systemPrompt: `${prompt.systemPrompt}\n\n${COMPANY_NAME_POLICY_INSTRUCTION}`,
     taskTemplate: `${prompt.taskTemplate}
 
-For this rule, report every prohibited identifiable name as a brand-category BLOCK issue with rule_id "brand.other_company_name". Generic anonymous phrases such as “某公司” are not violations. Every such issue must quote the exact prohibited name in its message and point to the exact title, summary, or blocks[N].text location containing that name. Never emit a generic company-name issue without a verifiable name and location.
+For this rule, report every prohibited identifiable name as a brand-category BLOCK issue with rule_id "brand.other_company_name". Generic anonymous or industry phrases such as “某公司”, “搬家公司”, “物流公司”, and “电话公司” are not identifiable company names and are not violations. Every such issue must quote the exact prohibited name in its message and point to the exact title, summary, or blocks[N].text location containing that name. Never emit a generic company-name issue without a verifiable name and location.
 
 An issue with rule_id "fact.high_risk.unsupported" or "fact.high_risk.unsupported_or_conflicted" is valid only for a supplied fact_results entry whose risk_level is high/critical and verdict is unsupported/conflicted. Its location must be exactly "claim:<claim_key>". Never invent a block location for this rule.`,
+  });
+}
+
+function withInputSemanticPolicy(
+  prompt: QualityCheckerPublishedPrompt,
+  input: Readonly<Record<string, unknown>>,
+): QualityCheckerPublishedPrompt {
+  const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
+  const highRiskLocations = factResults.flatMap((fact) => {
+    if (!record(fact) || typeof fact['claim_key'] !== 'string') return [];
+    return (fact['risk_level'] === 'high' || fact['risk_level'] === 'critical') &&
+      (fact['verdict'] === 'unsupported' || fact['verdict'] === 'conflicted')
+      ? [`claim:${fact['claim_key']}`]
+      : [];
+  });
+  const platformRulesValue = input['platform_rules'];
+  const platformRules = record(platformRulesValue) ? platformRulesValue : null;
+  const rulesValue = platformRules?.['rules'];
+  const rules = record(rulesValue) ? rulesValue : null;
+  const contentVersionValue = input['content_version'];
+  const contentVersion = record(contentVersionValue) ? contentVersionValue : null;
+  const contentValue = contentVersion?.['content'];
+  const content = record(contentValue) ? contentValue : null;
+  const title = content?.['title'];
+  const maxTitleLength = rules?.['title_max_length'] ?? rules?.['title_max_characters'];
+  const titlePolicy =
+    typeof title === 'string' && typeof maxTitleLength === 'number'
+      ? [...title].length > maxTitleLength
+        ? `The current title has ${[...title].length} Unicode characters and exceeds the hard maximum ${maxTitleLength}; include a format BLOCK at location "title".`
+        : `The current title has ${[...title].length} Unicode characters and is within the hard maximum ${maxTitleLength}; do not emit any title-maximum BLOCK issue.`
+      : 'No deterministic title maximum is available; do not invent one.';
+  const highRiskPolicy =
+    highRiskLocations.length === 0
+      ? 'No supplied fact is eligible for a high-risk unsupported/conflicted issue. Do not emit fact.high_risk.unsupported or fact.high_risk.unsupported_or_conflicted.'
+      : `High-risk unsupported/conflicted issues are allowed only at these exact locations: ${JSON.stringify(highRiskLocations)}.`;
+  const contactPolicy =
+    platformRules?.['platform_code'] === 'lieju' && rules?.['contact_in_content_forbidden'] === true
+      ? 'For Lieju, contact_in_content_forbidden means literal phone numbers, URLs, WeChat IDs, or QQ IDs in the title or body. A neutral phrase such as “通过页面联系方式咨询” contains no contact detail and is allowed. Emit a contact_in_content_forbidden BLOCK only when the exact reported location contains a literal prohibited detail.'
+      : '';
+  return Object.freeze({
+    systemPrompt: prompt.systemPrompt,
+    taskTemplate: `${prompt.taskTemplate}
+
+Mandatory server-derived semantics for this exact input:
+- ${highRiskPolicy}
+- ${titlePolicy}${contactPolicy ? `\n- ${contactPolicy}` : ''}`,
   });
 }
 

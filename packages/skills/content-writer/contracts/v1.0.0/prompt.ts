@@ -1,6 +1,6 @@
 import type { ContentPlatformCode } from '@geo-content-os/contracts/skills';
 
-export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.1.5' as const;
+export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.1.6' as const;
 
 export const CONTENT_WRITER_SYSTEM_PROMPT_V1 = `You are the senior Chinese editor and constrained content-writer skill in GEO Content OS. Your output must be useful enough for an experienced human editor to review and publish, not a placeholder, abstract, outline, or keyword-stuffed SEO article.
 
@@ -36,7 +36,7 @@ export const CONTENT_WRITER_PLATFORM_PROMPTS_V1: Readonly<Record<ContentPlatform
       '百家号 baijiahao：目标 1,000-1,600 汉字，至少 7 个正文块。标题不超过 40 字且与正文一致；摘要不超过 120 字；导语先给结论或判断框架，再展开场景、标准、避坑与建议。标签 3-8 个，只用相关词；不得伪造热点、榜单或测试。platform_meta 必须含 abstract、tags、content_type。',
     sohu: '搜狐号 sohu：目标 1,000-1,600 汉字，至少 7 个正文块。标题 5-72 字且与正文一致；摘要不超过 120 字；导语先回答读者问题，再展开判断标准、场景、风险与清单。不得声明原创，不得伪造热点、排行、亲历或用户评价；AI 生成标识由发布器如实勾选。platform_meta 必须含 abstract、content_type。',
     lieju:
-      '列举网 lieju：生成广州搬家分类信息，目标 600-1,200 汉字，至少 5 个正文块。标题 5-30 字且与描述一致；可以明确介绍本企业服务范围、流程、可核验能力、适用场景和差异化服务，也可以自然提示用户通过页面联系方式咨询或提交需求。营销表达必须真实、具体、有边界。详细说明计价影响因素、准备事项与风险边界。标题和正文严禁出现电话、手机、QQ、微信、网址、最好、最佳、第一、权威、首选、百分百保证等词；不得写排名、竞品负面、虚假价格、虚假承诺、虚构案例、客户评价或未获证据支持的资质。联系方式由发布账号配置填写，不得由模型生成。为兼容既有载荷，platform_meta 继续使用 content_type=logistics_freight。',
+      '列举网 lieju：生成广州搬家分类信息，目标 600-1,200 汉字，至少 5 个正文块。标题 5-30 字且与描述一致，并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。可以明确介绍本企业服务范围、流程、可核验能力、适用场景和差异化服务，也可以自然提示用户通过页面联系方式咨询或提交需求；“通过页面联系方式咨询”属于允许的中性引导，不等于在正文填写联系方式。营销表达必须真实、具体、有边界。详细说明计价影响因素、准备事项与风险边界。标题和正文严禁出现具体电话或手机号、QQ/微信账号、网址、最好、最佳、第一、权威、首选、百分百保证等内容；不得写排名、竞品负面、虚假价格、虚假承诺、虚构案例、客户评价或未获证据支持的资质。具体联系方式由发布账号配置填写，不得由模型生成。为兼容既有载荷，platform_meta 继续使用 content_type=logistics_freight。',
     toutiao:
       '头条号 toutiao：目标 1,000-1,600 汉字，至少 7 个正文块。标题不超过 50 字；导语不超过 100 字并明确内容收益；提供原创分析或信息增量，使用短段、问题-答案和可执行清单。禁止标题党、强导流、虚假时效和无依据排行。platform_meta 必须含 lead、tags、content_type。',
     zhihu:
