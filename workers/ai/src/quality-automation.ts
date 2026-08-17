@@ -105,7 +105,7 @@ export class QualityAutomationCoordinator implements QualityAutomationPort {
     gate: QualityAutomationGate,
     result: QualityCheckerData,
   ): Promise<void> {
-    if (this.media?.shouldEnqueue(gate)) {
+    if (this.media?.shouldEnqueue(gate, policy)) {
       return this.media.enqueue(transaction, event, policy, reportId);
     }
     if (policy.kind === 'official_site') {

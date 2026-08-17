@@ -18,8 +18,13 @@ export class ContentMediaAutomation {
     private readonly provider: ContentMediaProviderInfo,
   ) {}
 
-  public shouldEnqueue(gate: QualityAutomationGate): boolean {
-    return this.config.enabled && gate.passed;
+  public shouldEnqueue(gate: QualityAutomationGate, policy: QualityAutomationPolicy): boolean {
+    if (!this.config.enabled || !gate.passed) return false;
+    return !(
+      policy.kind === 'browser_platform' &&
+      policy.value.platformCode === 'lieju' &&
+      this.config.publicBaseUrl === null
+    );
   }
 
   public async enqueue(

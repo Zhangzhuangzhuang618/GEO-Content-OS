@@ -15,6 +15,11 @@ const PASSED_GATE = Object.freeze({
   readability_safety: 90,
   schema_version: 'official-site-quality-gate@1' as const,
 });
+const LIEJU_PASSED_GATE = Object.freeze({
+  ...PASSED_GATE,
+  platform_code: 'lieju' as const,
+  schema_version: 'browser-platform-quality-gate@1' as const,
+});
 
 describe('quality automation media handoff', () => {
   it('enqueues media only after the frozen quality gate passes', async () => {
@@ -104,6 +109,77 @@ describe('quality automation media handoff', () => {
     );
 
     expect(JSON.parse(payloads[0]!).data.platform_code).toBe('sohu');
+  });
+
+  it('skips Lieju media generation when no public media base URL is configured', async () => {
+    const enqueue = vi.fn(async () => undefined);
+    const media = new ContentMediaAutomation(
+      {
+        enabled: true,
+        generationSteps: 4,
+        plannerModelKey: 'deepseek-v4-flash',
+        publicBaseUrl: null,
+      },
+      { generationModel: null, inspectionModel: null, provider: null },
+    );
+    media.enqueue = enqueue;
+    const browserAdvance = vi.fn(async () => undefined);
+    const coordinator = new QualityAutomationCoordinator({} as never, {} as never, media, {
+      advanceAfterQuality: browserAdvance,
+    } as never);
+
+    await coordinator.advanceAfterQuality(
+      {} as never,
+      {} as never,
+      { kind: 'browser_platform', value: { platformCode: 'lieju' } as never },
+      'report-id',
+      LIEJU_PASSED_GATE,
+      {} as never,
+    );
+
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(browserAdvance).toHaveBeenCalledOnce();
+  });
+
+  it('keeps Lieju media generation when a public media base URL is configured', () => {
+    const media = new ContentMediaAutomation(
+      {
+        enabled: true,
+        generationSteps: 4,
+        plannerModelKey: 'deepseek-v4-flash',
+        publicBaseUrl: 'https://media.example.com',
+      },
+      { generationModel: null, inspectionModel: null, provider: null },
+    );
+
+    expect(
+      media.shouldEnqueue(LIEJU_PASSED_GATE, {
+        kind: 'browser_platform',
+        value: { platformCode: 'lieju' } as never,
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps Sohu media generation without a public media base URL', () => {
+    const media = new ContentMediaAutomation(
+      {
+        enabled: true,
+        generationSteps: 4,
+        plannerModelKey: 'deepseek-v4-flash',
+        publicBaseUrl: null,
+      },
+      { generationModel: null, inspectionModel: null, provider: null },
+    );
+
+    expect(
+      media.shouldEnqueue(
+        { ...LIEJU_PASSED_GATE, platform_code: 'sohu' },
+        {
+          kind: 'browser_platform',
+          value: { platformCode: 'sohu' } as never,
+        },
+      ),
+    ).toBe(true);
   });
 
   it('keeps failed quality gates on the existing rewrite or block path', async () => {

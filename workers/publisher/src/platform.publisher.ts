@@ -114,7 +114,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
     credential: Readonly<Record<string, unknown>>,
     signal?: AbortSignal,
   ): Promise<BaijiahaoRemoteStatus> {
-    const config = Object.freeze({ ...credential, account_id: claim.accountId, mode: 'api' });
+    const config = accountScopedCredential(claim.platformCode, claim.accountId, credential);
     const adapter =
       claim.platformCode === 'sohu'
         ? new SohuDeliveryAdapter(config)
@@ -211,7 +211,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           signal,
           renderLieju({
             citations: claim.citations,
-            content: browserArticleContentWithMedia(content, claim.mediaAssets ?? []),
+            content: liejuArticleContentWithMedia(content, claim.mediaAssets ?? []),
             rule_version: LIEJU_RENDER_RULE_VERSION,
           }),
           hashLiejuPayload,
@@ -318,6 +318,25 @@ function browserArticleContentWithMedia(
     platform_meta: Object.freeze({
       ...platformMeta,
       body_asset_ids: body,
+      cover_asset_id: cover?.id ?? null,
+    }),
+  });
+}
+
+function liejuArticleContentWithMedia(
+  content: Readonly<Record<string, unknown>>,
+  assets: readonly NonNullable<PublishClaim['mediaAssets']>[number][],
+): Readonly<Record<string, unknown>> {
+  if (assets.length === 0) return content;
+  const platformMeta = content['platform_meta'];
+  if (typeof platformMeta !== 'object' || platformMeta === null || Array.isArray(platformMeta)) {
+    return content;
+  }
+  const cover = assets.find((asset) => asset.role === 'cover');
+  return Object.freeze({
+    ...content,
+    platform_meta: Object.freeze({
+      ...platformMeta,
       cover_asset_id: cover?.id ?? null,
     }),
   });
@@ -536,9 +555,31 @@ function deliveryConfig(
   if (!credential) throw new PublisherError('PUBLISHER_AUTH_INVALID', 'Credential is required');
   return Object.freeze({
     ...credential,
-    ...(['baijiahao', 'sohu', 'lieju'].includes(claim.platformCode)
+    ...(usesAccountScopedGateway(claim.platformCode, claim.liejuDeliveryMethod)
       ? { account_id: claim.accountId }
       : {}),
     mode: 'api',
   });
+}
+
+function accountScopedCredential(
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  accountId: string,
+  credential: Readonly<Record<string, unknown>>,
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    ...credential,
+    ...(usesAccountScopedGateway(platformCode, credential['delivery_method'])
+      ? { account_id: accountId }
+      : {}),
+    mode: 'api',
+  });
+}
+
+function usesAccountScopedGateway(platformCode: string, liejuDeliveryMethod: unknown): boolean {
+  return (
+    platformCode === 'baijiahao' ||
+    platformCode === 'sohu' ||
+    (platformCode === 'lieju' && liejuDeliveryMethod !== 'official_api')
+  );
 }

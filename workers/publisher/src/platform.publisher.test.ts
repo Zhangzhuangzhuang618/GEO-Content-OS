@@ -10,6 +10,10 @@ const fixtureUrl = new URL(
   '../../../packages/adapters/platforms/official_site/render/fixtures/official-site.valid.input.json',
   import.meta.url,
 );
+const liejuFixtureUrl = new URL(
+  '../../../packages/adapters/platforms/lieju/render/fixtures/lieju.valid.input.json',
+  import.meta.url,
+);
 
 describe('PlatformPublisher', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -154,12 +158,69 @@ describe('PlatformPublisher', () => {
     };
     expect(publishedBody.payload.body_html).toContain(mediaUrl);
   });
+
+  it('publishes Lieju content with private media without browser-only body asset metadata', async () => {
+    const fixture = (await readJson(liejuFixtureUrl)) as {
+      readonly citations: PublishClaim['citations'];
+      readonly content: Readonly<Record<string, unknown>>;
+    };
+    const privateAsset = (role: 'body' | 'cover', position: number) => ({
+      altText: `列举网${role}图`,
+      contentHash: (role === 'cover' ? 'c' : 'd').repeat(64),
+      id: randomUUID(),
+      mimeType: 'image/jpeg',
+      objectUri: `memory://publisher/${role}-${position}.jpg`,
+      position,
+      publicUrl: null,
+      role,
+      sizeBytes: 100,
+    });
+    const claim = createClaim(
+      { ...fixture.content, schema_version: 'content-writer-data@1' },
+      fixture.citations,
+      [privateAsset('cover', 0), privateAsset('body', 1)],
+      {
+        idempotencyKey: `lieju:${randomUUID()}`,
+        liejuDeliveryMethod: 'official_api',
+        platformCode: 'lieju',
+        publishMode: 'api',
+      },
+    );
+    let requestBody: Uint8Array | undefined;
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async (_input, init) => {
+      requestBody = init?.body as Uint8Array;
+      return jsonResponse(200, { info_id: 104_561_173, success: true });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new PlatformPublisher().deliver(claim, {
+      api_key: 'official-api-key-123456',
+      city_id: '5',
+      delivery_method: 'official_api',
+      fid: '73',
+      posting_profile: {
+        contact_name: '广州志远搬家服务有限公司',
+        mobile_phone: '02085627757',
+        qq: '',
+        wechat: '',
+        zone_id: '73',
+      },
+      timeout_ms: 20_000,
+    });
+
+    expect(result).toMatchObject({ externalId: '104561173', mode: 'api' });
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const multipart = Buffer.from(requestBody ?? []).toString('latin1');
+    expect(multipart).not.toContain('body_asset_ids');
+    expect(multipart).not.toContain('[img]');
+  });
 });
 
 function createClaim(
   content: Readonly<Record<string, unknown>>,
   citations: PublishClaim['citations'] = [],
   mediaAssets: NonNullable<PublishClaim['mediaAssets']> = [],
+  overrides: Partial<PublishClaim> = {},
 ): PublishClaim {
   return {
     accountId: randomUUID(),
@@ -178,6 +239,7 @@ function createClaim(
     platformCode: 'official_site',
     publishMode: 'export',
     tenantId: randomUUID(),
+    ...overrides,
   };
 }
 

@@ -4,10 +4,11 @@
 
 1. Cloudflare 账号已开通 Workers AI，并由账号所有者接受
    `@cf/meta/llama-3.2-11b-vision-instruct` 的使用许可。
-2. AI Worker、Publisher Worker 和百家号浏览器进程均可访问私有 MinIO。
+2. AI Worker、Publisher Worker、百家号、搜狐号和列举网浏览器进程均可访问私有 MinIO。
 3. 推荐让官网发布 API 返回 `media_upload=true`：Publisher 会在发文前把 MinIO 中的 JPEG 二进制上传到
    官网，使用官网返回的 HTTPS 地址，不要求 Windows 或 MinIO 具备公网入口。
-4. `GENERATED_MEDIA_PUBLIC_BASE_URL` 仅用于旧版公开 CDN 回退。采用官网随文上传时必须留空。
+4. `GENERATED_MEDIA_PUBLIC_BASE_URL` 仅用于持久公开 CDN 回退。采用官网随文上传且没有公开 CDN 时留空；
+   此时列举网官方 API 自动化会跳过配图并直接无图排期。
 5. 不配置 Gemini；本链路没有 Gemini 环境变量或调用。
 
 ## 推荐配置
@@ -27,7 +28,8 @@ GENERATED_MEDIA_PUBLIC_BASE_URL=
 
 ## 状态与诊断
 
-- 配图不是等每日 10 篇全部生成后统一执行。官网或百家号的每一篇内容通过最终质量门禁后，都会立即独立创建配图任务。
+- 配图不是等每日目标全部生成后统一执行。官网、百家号、搜狐号的每一篇内容通过最终质量门禁后，
+  都会立即独立创建配图任务。列举网仅在配置了持久公网媒体地址时创建配图任务；否则直接无图排期。
 - `content_media_runs.status=queued|running`：等待或正在处理。
 - `succeeded`：两个正文场景均由 Cloudflare 生成并通过视觉门禁。
 - `fallback`：至少一张使用模板，或有素材存储失败；文章仍按原流程排期。
@@ -71,7 +73,7 @@ JOIN content_variants AS variant
 LEFT JOIN content_media_runs AS media
   ON media.quality_report_id=report.id AND media.tenant_id=report.tenant_id
 WHERE report.created_at >= now() - interval '2 days'
-  AND variant.platform_code IN ('official_site','baijiahao')
+  AND variant.platform_code IN ('official_site','baijiahao','sohu','lieju')
 ORDER BY report.created_at DESC
 LIMIT 100;
 ```
