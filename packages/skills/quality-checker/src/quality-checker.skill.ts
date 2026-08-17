@@ -45,7 +45,12 @@ interface CheckerInput {
     readonly verdict: string;
   }[];
   readonly geo_result: { readonly scores: Readonly<Record<string, number>> };
-  readonly platform_rules: { readonly rules: { readonly title_max_length?: number } };
+  readonly platform_rules: {
+    readonly rules: {
+      readonly title_max_characters?: number;
+      readonly title_max_length?: number;
+    };
+  };
   readonly safety_policy: { readonly max_warnings_for_pass: number };
 }
 
@@ -197,21 +202,46 @@ function assertOutput(
     )
       invalid('Quality Checker did not block a high-risk unsupported or conflicted fact');
   }
-  const maxTitle = input.platform_rules.rules.title_max_length;
+  const maxTitle = titleMaxCharacters(input.platform_rules.rules);
   const title = input.content_version.content.title;
+  const titleLength = typeof title === 'string' ? [...title].length : null;
   if (
     typeof maxTitle === 'number' &&
-    typeof title === 'string' &&
-    title.length > maxTitle &&
+    titleLength !== null &&
+    titleLength > maxTitle &&
     !blocks.some((issue) => issue.category === 'format' && issue.location === 'title')
   )
     invalid('Quality Checker did not block a hard title limit violation');
+  if (
+    typeof maxTitle === 'number' &&
+    titleLength !== null &&
+    titleLength <= maxTitle &&
+    blocks.some(
+      (issue) =>
+        issue.category === 'format' && issue.location === 'title' && isTitleMaxRule(issue.rule_id),
+    )
+  ) {
+    invalid('Quality Checker falsely blocked a title that is within the hard limit');
+  }
 
   const citationIds = new Set(input.fact_results.flatMap((fact) => fact.citation_ids));
   if (output.data.issues.some((issue) => issue.citation_ids.some((id) => !citationIds.has(id)))) {
     invalid('Quality Checker issue references an unknown citation ID');
   }
   assertVerifiableIssues(input, output.data.issues);
+}
+
+function titleMaxCharacters(rules: CheckerInput['platform_rules']['rules']): number | undefined {
+  return rules.title_max_length ?? rules.title_max_characters;
+}
+
+function isTitleMaxRule(ruleId: string): boolean {
+  return (
+    ruleId === 'platform.title.max_length' ||
+    ruleId.endsWith('.title.max_length') ||
+    ruleId.endsWith('.title_max_length') ||
+    ruleId.endsWith('.title_max_characters')
+  );
 }
 
 function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData['issues']): void {

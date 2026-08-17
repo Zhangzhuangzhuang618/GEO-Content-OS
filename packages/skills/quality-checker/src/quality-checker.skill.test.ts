@@ -127,6 +127,66 @@ describe('QualityCheckerSkill', () => {
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
+  it('enforces the Lieju title_max_characters hard limit', async () => {
+    const input = qualityInputWithTitleRule(
+      '广州搬家服务流程与收费说明以及预约注意事项完整指南',
+      20,
+    );
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(fixture.output.data) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('rejects a false title limit block when the title is within the configured limit', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30);
+    const output = blockedOutput({
+      category: 'format',
+      citation_ids: [],
+      location: 'title',
+      message: '标题超过列举网长度限制。',
+      rule_id: 'lieju.title_max_characters',
+      severity: 'BLOCK',
+      suggestion: '缩短标题。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+  });
+
+  it('accepts a matching title limit block for an over-limit title', async () => {
+    const input = qualityInputWithTitleRule(
+      '广州搬家服务流程与收费说明以及预约注意事项完整指南',
+      20,
+    );
+    const output = blockedOutput({
+      category: 'format',
+      citation_ids: [],
+      location: 'title',
+      message: '标题超过列举网长度限制。',
+      rule_id: 'lieju.title_max_characters',
+      severity: 'BLOCK',
+      suggestion: '缩短标题。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
   it('rejects a company-name block that points to the wrong content location', async () => {
     const input = qualityInputWithBlocks([
       { block_key: 'intro', text: '工厂搬迁前应先确认设备清单。' },
@@ -249,6 +309,34 @@ function qualityInputWithBlocks(blocks: readonly Readonly<Record<string, unknown
         platform_code: 'baijiahao',
         title: '广州工厂搬迁准备指南',
       },
+    },
+  };
+}
+
+function qualityInputWithTitleRule(title: string, titleMaxCharacters: number) {
+  return {
+    ...qualityInputWithBlocks([
+      {
+        block_key: 'intro',
+        text: '搬家前应先确认物品清单、服务范围和验收方式。',
+      },
+    ]),
+    content_version: {
+      ...(fixture.input['content_version'] as Readonly<Record<string, unknown>>),
+      content: {
+        blocks: [
+          {
+            block_key: 'intro',
+            text: '搬家前应先确认物品清单、服务范围和验收方式。',
+          },
+        ],
+        platform_code: 'lieju',
+        title,
+      },
+    },
+    platform_rules: {
+      ...(fixture.input['platform_rules'] as Readonly<Record<string, unknown>>),
+      rules: { title_max_characters: titleMaxCharacters },
     },
   };
 }

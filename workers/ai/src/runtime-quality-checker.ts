@@ -181,7 +181,7 @@ function qualitySemanticRepairPrompt(
   const rulesValue = platformRules?.['rules'];
   const rules = record(rulesValue) ? rulesValue : null;
   const title = content?.['title'];
-  const maxTitleLength = rules?.['title_max_length'];
+  const maxTitleLength = rules?.['title_max_length'] ?? rules?.['title_max_characters'];
   if (
     typeof title === 'string' &&
     typeof maxTitleLength === 'number' &&
@@ -204,6 +204,13 @@ function qualitySemanticRepairPrompt(
     mandatoryIssues.length > 0
       ? 'Because the required issues contain BLOCK, decision must be "block".'
       : 'No server-required BLOCK issue was identified. Derive decision from the complete issues array and max_warnings_for_pass exactly.';
+  const allowedHighRiskLocations = mandatoryIssues
+    .filter((issue) => issue.category === 'fact')
+    .map((issue) => issue.location);
+  const highRiskInstruction =
+    allowedHighRiskLocations.length === 0
+      ? 'There are no eligible high-risk fact locations. The rule IDs fact.high_risk.unsupported and fact.high_risk.unsupported_or_conflicted are forbidden in this result. Do not copy them from examples.'
+      : `High-risk fact issues are allowed only at these exact locations: ${JSON.stringify(allowedHighRiskLocations)}. Their rule IDs and locations must match the required issue objects exactly.`;
   return Object.freeze({
     systemPrompt: prompt.systemPrompt,
     taskTemplate: `${prompt.taskTemplate}
@@ -216,7 +223,7 @@ Previous server validation error: ${JSON.stringify(rejectionReason)}. Correct th
 4. ${decisionInstruction}
 5. Use only citation IDs present in fact_results.
 6. A brand.other_company_name issue must quote the exact prohibited name and point to the exact content location containing it; never report the allowed company name or an anonymous phrase.
-7. A fact.high_risk.unsupported or fact.high_risk.unsupported_or_conflicted issue must match a high/critical unsupported/conflicted fact_results entry and use its exact claim:<claim_key> location.
+7. ${highRiskInstruction}
 Mandatory server-required issues: ${JSON.stringify(mandatoryIssues)}.
 Return one complete quality data JSON object only.`,
   });

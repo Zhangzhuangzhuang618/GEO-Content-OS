@@ -140,7 +140,13 @@ export class QualityCheckWorker {
       const persisted = await this.persist(event, context, result, policy ?? null, gate);
       return { disposition: persisted === 'stale' ? 'completed' : 'processed' };
     } catch (error) {
-      await this.fail(event, context, error, execution.attempt >= execution.maxAttempts);
+      const failure = asGenerationFailure(error);
+      await this.fail(
+        event,
+        context,
+        error,
+        failure.code === 'SKILL_OUTPUT_INVALID' || execution.attempt >= execution.maxAttempts,
+      );
       throw error;
     }
   }

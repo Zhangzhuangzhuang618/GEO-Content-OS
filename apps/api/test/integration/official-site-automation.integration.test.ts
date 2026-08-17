@@ -3,6 +3,7 @@ import {
   ContentMediaAutomation,
   ContentMediaWorker,
   contentHash,
+  GenerationWorkerError,
   OfficialSiteAutomation,
   QualityCheckWorker,
   type GeneratedContent,
@@ -463,6 +464,89 @@ describe('official-site quality, rewrite, and publication automation', () => {
         WHERE generation_run_id=${QUALITY_RUN_ID}::uuid
       `,
     ).toEqual([{ count: 0 }]);
+  });
+
+  it('routes a non-retryable invalid quality result to manual handling immediately', async () => {
+    const database = requireClient(client);
+    await seedQualityCycle(database, 'quality_failed', 0, 'queued');
+    await seedDailyItem(database);
+    const checker = {
+      evaluate: async () => {
+        throw new GenerationWorkerError(
+          'SKILL_OUTPUT_INVALID',
+          'Quality Checker high-risk fact issue does not match an unsupported fact result',
+        );
+      },
+    };
+    const worker = new QualityCheckWorker(
+      database,
+      checker as never,
+      createAutomation(database, writer) as never,
+    );
+
+    await expect(worker.run(qualityEvent(), { attempt: 1, maxAttempts: 3 })).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+    });
+
+    expect(
+      await database<
+        { automationStatus: string; itemStatus: string; runRetryable: string; runStatus: string }[]
+      >`
+        SELECT run.status AS "runStatus",run.error_json->>'retryable' AS "runRetryable",
+          automation.status AS "automationStatus",item.status AS "itemStatus"
+        FROM generation_runs AS run
+        JOIN official_site_automation_runs AS automation
+          ON automation.variant_id=run.variant_id AND automation.tenant_id=run.tenant_id
+        JOIN official_site_daily_batch_items AS item
+          ON item.variant_id=run.variant_id AND item.tenant_id=run.tenant_id
+        WHERE run.id=${QUALITY_RUN_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'manual_required',
+        itemStatus: 'retired',
+        runRetryable: 'false',
+        runStatus: 'failed',
+      },
+    ]);
+  });
+
+  it('keeps the existing queue retry for a temporary quality provider failure', async () => {
+    const database = requireClient(client);
+    await seedQualityCycle(database, 'quality_failed', 0, 'queued');
+    const checker = {
+      evaluate: async () => {
+        throw new GenerationWorkerError('PROVIDER_UNAVAILABLE', 'Temporary provider failure', {
+          retryable: true,
+        });
+      },
+    };
+    const worker = new QualityCheckWorker(
+      database,
+      checker as never,
+      createAutomation(database, writer) as never,
+    );
+
+    await expect(worker.run(qualityEvent(), { attempt: 1, maxAttempts: 3 })).rejects.toMatchObject({
+      code: 'PROVIDER_UNAVAILABLE',
+    });
+
+    expect(
+      await database<{ automationStatus: string; runRetryable: string; runStatus: string }[]>`
+        SELECT run.status AS "runStatus",run.error_json->>'retryable' AS "runRetryable",
+          automation.status AS "automationStatus"
+        FROM generation_runs AS run
+        JOIN official_site_automation_runs AS automation
+          ON automation.variant_id=run.variant_id AND automation.tenant_id=run.tenant_id
+        WHERE run.id=${QUALITY_RUN_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'quality_pending',
+        runRetryable: 'true',
+        runStatus: 'queued',
+      },
+    ]);
   });
 
   it('persists a fresh quality result for retained content after generation failure', async () => {

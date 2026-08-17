@@ -64,6 +64,9 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
       '"severity":"BLOCK"',
     );
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      'High-risk fact issues are allowed only at these exact locations: ["claim:workflow-value"]',
+    );
     expect(adapter.requests[0]!.messages.map((message) => message.content).join('\n')).toContain(
       '广州志远搬家服务有限公司',
     );
@@ -110,6 +113,8 @@ describe('RuntimeQualityChecker', () => {
     const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
     expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
     expect(repairPrompt).toContain('Mandatory server-required issues: []');
+    expect(repairPrompt).toContain('There are no eligible high-risk fact locations');
+    expect(repairPrompt).toContain('Do not copy them from examples');
   });
 
   it('retries ghost brand and fact blockers without persisting them as quality findings', async () => {
@@ -194,6 +199,7 @@ describe('RuntimeQualityChecker', () => {
     );
     expect(repairPrompt).toContain('brand.other_company_name issue must quote the exact');
     expect(repairPrompt).toContain('fact.high_risk.unsupported');
+    expect(repairPrompt).toContain('There are no eligible high-risk fact locations');
   });
 });
 
