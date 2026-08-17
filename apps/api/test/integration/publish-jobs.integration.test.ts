@@ -465,6 +465,7 @@ describe('publish jobs', () => {
       job.id,
     );
     expect(detail.unknown_resolution).toEqual({
+      blocked_reason: null,
       can_retry: true,
       latest_attempt_no: 2,
       platform_code: 'baijiahao',
@@ -527,6 +528,97 @@ describe('publish jobs', () => {
     ]);
   });
 
+  it('restores a Lieju official automation after its unknown result is verified as not published', async () => {
+    const database = requireClient(client);
+    const service = new PublishJobService(database);
+    const job = await seedLiejuOfficialUnknownAutomation(database);
+
+    const detail = await new PublishingApiService(database, {} as ObjectStorageAdapter).detail(
+      SCOPE,
+      job.id,
+    );
+    expect(detail.unknown_resolution).toEqual({
+      blocked_reason: null,
+      can_retry: true,
+      latest_attempt_no: 2,
+      platform_code: 'lieju',
+    });
+
+    await expect(
+      service.retry(SCOPE, job.id, 3, { scheduled_at: SCHEDULED_AT }),
+    ).rejects.toMatchObject({ code: 'PUBLISH_JOB_STATE_INVALID' });
+
+    const resolved = await service.resolveUnknown(
+      { ...SCOPE, requestId: 'req-lieju-official-unknown-not-published-124' },
+      job.id,
+      3,
+      { resolution: 'not_published' },
+    );
+
+    expect(resolved).toMatchObject({ attempt_count: 2, status: 'scheduled', version: 4 });
+    const states = await database<
+      {
+        automationError: Record<string, unknown> | null;
+        automationFinishedAt: Date | null;
+        automationStatus: string;
+        itemError: Record<string, unknown> | null;
+        itemStatus: string;
+        publicationAttemptNo: number;
+        publicationError: Record<string, unknown> | null;
+        publicationResponseHash: string | null;
+        publicationStatus: string;
+        submittedAt: Date | null;
+      }[]
+    >`
+      SELECT automation.status AS "automationStatus",
+        automation.last_error_json AS "automationError",
+        automation.finished_at AS "automationFinishedAt",
+        item.status AS "itemStatus",item.last_error_json AS "itemError",
+        publication.status AS "publicationStatus",
+        publication.attempt_no AS "publicationAttemptNo",
+        publication.last_error_json AS "publicationError",
+        publication.response_hash AS "publicationResponseHash",
+        publication.submitted_at AS "submittedAt"
+      FROM browser_platform_automation_runs AS automation
+      JOIN browser_platform_daily_batch_items AS item
+        ON item.automation_run_id=automation.id AND item.tenant_id=automation.tenant_id
+      JOIN lieju_api_publications AS publication
+        ON publication.publish_job_id=automation.publish_job_id
+        AND publication.tenant_id=automation.tenant_id
+      WHERE automation.id=${AUTOMATION_RUN_ID}::uuid
+    `;
+    expect(states).toEqual([
+      {
+        automationError: null,
+        automationFinishedAt: null,
+        automationStatus: 'scheduled',
+        itemError: null,
+        itemStatus: 'scheduled',
+        publicationAttemptNo: 2,
+        publicationError: null,
+        publicationResponseHash: null,
+        publicationStatus: 'not_published',
+        submittedAt: null,
+      },
+    ]);
+    const attempts = await database<{ attemptNo: number; errorCode: string; status: string }[]>`
+      SELECT attempt_no AS "attemptNo",status,error_code AS "errorCode"
+      FROM publish_attempts WHERE publish_job_id=${job.id}::uuid ORDER BY attempt_no
+    `;
+    expect(attempts).toEqual([
+      { attemptNo: 1, errorCode: 'PUBLISHER_RENDER_BLOCKED', status: 'failed' },
+      { attemptNo: 2, errorCode: 'PUBLISH_STATE_UNKNOWN', status: 'unknown' },
+    ]);
+    const events = await database<{ eventType: string }[]>`
+      SELECT event_type AS "eventType" FROM outbox_events
+      WHERE aggregate_id=${job.id}::uuid ORDER BY created_at,id
+    `;
+    expect(events).toEqual([{ eventType: 'publishing.job.execution_requested.v1' }]);
+    await expect(auditActions(database, job.id)).resolves.toContain(
+      'publish_job.unknown_resolved_not_published',
+    );
+  });
+
   it('closes an exhausted Baijiahao automation verified as not published', async () => {
     const database = requireClient(client);
     const service = new PublishJobService(database);
@@ -537,6 +629,7 @@ describe('publish jobs', () => {
       job.id,
     );
     expect(detail.unknown_resolution).toEqual({
+      blocked_reason: null,
       can_retry: false,
       latest_attempt_no: 3,
       platform_code: 'baijiahao',
@@ -946,6 +1039,112 @@ async function seedBaijiahaoManualRequired(database: Sql, latestAttemptNo = 2) {
         ${AUTOMATION_RUN_ID}::uuid,${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
         ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${AUTO_JOB_ID}::uuid,'manual_required',
         ${transaction.json(error)}
+      )
+    `;
+  });
+  return { id: AUTO_JOB_ID };
+}
+
+async function seedLiejuOfficialUnknownAutomation(database: Sql) {
+  const error = {
+    code: 'PUBLISH_STATE_UNKNOWN',
+    message: 'Lieju official API returned an unrecognized publication response',
+    schema_version: 'adapter-error@1',
+  };
+  await database.begin(async (transaction) => {
+    await transaction`
+      UPDATE briefs SET platform_codes=ARRAY['lieju']::varchar[] WHERE id=${BRIEF_ID}::uuid
+    `;
+    await transaction`
+      UPDATE platform_accounts SET
+        platform_code='lieju',provider_account_id=NULL,display_name='Lieju Official API',
+        capabilities_json=${transaction.json({ delivery_method: 'official_api', publish: true })}
+      WHERE id=${ACCOUNT_ID}::uuid
+    `;
+    await transaction`
+      UPDATE content_variants SET platform_code='lieju',platform_account_id=${ACCOUNT_ID}::uuid,
+        status='publish_failed',version=3
+      WHERE id=${VARIANT_ID}::uuid
+    `;
+    await transaction`
+      UPDATE content_packages SET status='publish_failed',version=2
+      WHERE id=${PACKAGE_ID}::uuid
+    `;
+    await transaction`
+      INSERT INTO browser_platform_automation_policies(
+        id,tenant_id,workspace_id,project_id,account_id,platform_code,
+        enabled,daily_enabled,created_by
+      ) VALUES(
+        ${POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+        ${ACCOUNT_ID}::uuid,'lieju',true,true,${USER_ID}::uuid
+      )
+    `;
+    await transaction`
+      INSERT INTO publish_jobs(
+        id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+        idempotency_key,payload_hash,status,attempt_count,last_error_json,origin,
+        created_by,version
+      ) VALUES(
+        ${AUTO_JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+        ${ACCOUNT_ID}::uuid,${SCHEDULED_AT},'lieju:unknown-124',${CONTENT_HASH},
+        'failed',2,${transaction.json(error)},'lieju_automation',${USER_ID}::uuid,3
+      )
+    `;
+    await transaction`
+      INSERT INTO publish_attempts(
+        tenant_id,publish_job_id,attempt_no,adapter_code,status,request_hash,
+        response_json,error_code,started_at,finished_at
+      ) VALUES
+        (
+          ${TENANT_ID}::uuid,${AUTO_JOB_ID}::uuid,1,'lieju-delivery@1.0.0','failed',
+          ${'b'.repeat(64)},${transaction.json({ message: 'Render validation failed' })},
+          'PUBLISHER_RENDER_BLOCKED',now() - interval '2 minutes',now() - interval '2 minutes'
+        ),
+        (
+          ${TENANT_ID}::uuid,${AUTO_JOB_ID}::uuid,2,'lieju-delivery@1.0.0','unknown',
+          ${'c'.repeat(64)},${transaction.json({ message: error.message })},
+          'PUBLISH_STATE_UNKNOWN',now(),now()
+        )
+    `;
+    await transaction`
+      INSERT INTO lieju_api_publications(
+        id,tenant_id,account_id,publish_job_id,content_version_id,idempotency_key,
+        payload_hash,attempt_no,status,response_hash,submitted_at,last_error_json
+      ) VALUES(
+        ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,
+        ${AUTO_JOB_ID}::uuid,${VERSION_ID}::uuid,'lieju:unknown-124',${CONTENT_HASH},2,
+        'manual_required',${'d'.repeat(64)},now(),${transaction.json(error)}
+      )
+    `;
+    await transaction`
+      INSERT INTO browser_platform_automation_runs(
+        id,tenant_id,policy_id,platform_code,variant_id,content_version_id,
+        status,publish_job_id,last_error_json,finished_at
+      ) VALUES(
+        ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,'lieju',
+        ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,'manual_required',${AUTO_JOB_ID}::uuid,
+        ${transaction.json(error)},now()
+      )
+    `;
+    await transaction`
+      INSERT INTO browser_platform_daily_batches(
+        id,tenant_id,policy_id,business_date,status,scheduled_at,last_error_json
+      ) VALUES(
+        ${BAIJIAHAO_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+        (now() AT TIME ZONE 'Asia/Shanghai')::date,'attention_required',now(),
+        ${transaction.json(error)}
+      )
+    `;
+    await transaction`
+      INSERT INTO browser_platform_daily_batch_items(
+        id,tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,
+        variant_id,content_version_id,publish_job_id,status,qualified_at,scheduled_at,
+        last_error_json
+      ) VALUES(
+        ${BAIJIAHAO_BATCH_ITEM_ID}::uuid,${TENANT_ID}::uuid,${BAIJIAHAO_BATCH_ID}::uuid,3,
+        ${AUTOMATION_RUN_ID}::uuid,${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
+        ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${AUTO_JOB_ID}::uuid,
+        'manual_required',now(),now(),${transaction.json(error)}
       )
     `;
   });

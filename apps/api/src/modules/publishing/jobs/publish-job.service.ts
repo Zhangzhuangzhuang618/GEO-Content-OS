@@ -553,7 +553,9 @@ export class PublishJobService {
       return this.retryInTransaction(transaction, scope, jobId, retryVersion, {}, new Date(), {
         attemptNo: latestAttempt.attemptNo,
         automationStatus:
-          latestAttempt.errorCode === 'MANUAL_REQUIRED' ? 'manual_required' : 'publish_failed',
+          latestAttempt.status === 'unknown' || latestAttempt.errorCode === 'MANUAL_REQUIRED'
+            ? 'manual_required'
+            : 'publish_failed',
       });
     }
 
