@@ -262,16 +262,17 @@ function isTitleMaxRule(ruleId: string): boolean {
 function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData['issues']): void {
   for (const issue of issues) {
     if (issue.rule_id === 'brand.other_company_name') {
-      const locationText = textAtLocation(input.content_version.content, issue.location);
-      const quotedNames = quotedCompanyNames(issue.message);
-      if (
-        issue.category !== 'brand' ||
-        issue.severity !== 'BLOCK' ||
-        !locationText ||
-        !quotedNames.some((name) => !isAllowedCompanyReference(name) && locationText.includes(name))
-      ) {
-        invalid('Quality Checker brand issue does not identify a prohibited name at its location');
-      }
+      const reason = invalidBrandIssueReason(input, issue);
+      if (reason)
+        invalid(
+          `Quality Checker brand issue is unverifiable: ${JSON.stringify({
+            category: issue.category,
+            location: issue.location,
+            reason,
+            rule_id: issue.rule_id,
+            severity: issue.severity,
+          })}`,
+        );
     }
     if (
       input.platform_rules.platform_code === 'lieju' &&
@@ -311,6 +312,25 @@ function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData[
       }
     }
   }
+}
+
+function invalidBrandIssueReason(
+  input: CheckerInput,
+  issue: QualityCheckerData['issues'][number],
+): string | null {
+  if (issue.category !== 'brand') return 'category_must_be_brand';
+  if (issue.severity !== 'BLOCK') return 'severity_must_be_block';
+  if (!issue.location) return 'location_is_required';
+  const locationText = textAtLocation(input.content_version.content, issue.location);
+  if (!locationText) return 'location_does_not_resolve_to_content';
+  const quotedNames = quotedCompanyNames(issue.message);
+  if (quotedNames.length === 0) return 'exact_name_is_not_quoted';
+  if (quotedNames.every(isAllowedCompanyReference)) {
+    return 'only_allowed_owner_or_generic_name_is_quoted';
+  }
+  return quotedNames.some((name) => !isAllowedCompanyReference(name) && locationText.includes(name))
+    ? null
+    : 'quoted_prohibited_name_is_not_present_at_location';
 }
 
 function quotedCompanyNames(message: string): readonly string[] {

@@ -1,5 +1,5 @@
 import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
-import { COMPANY_NAME_POLICY_INSTRUCTION } from '@geo-content-os/contracts';
+import { ALLOWED_COMPANY_NAME, COMPANY_NAME_POLICY_INSTRUCTION } from '@geo-content-os/contracts';
 import {
   CREATE_QUALITY_ISSUE_TOOL,
   GET_PLATFORM_RULES_TOOL,
@@ -273,6 +273,13 @@ Previous server validation error: ${JSON.stringify(rejectionReason)}. Correct th
 5. Use only citation IDs present in fact_results.
 6. A brand.other_company_name issue must quote the exact prohibited name and point to the exact content location containing it; never report the allowed company name or an anonymous phrase.
 7. ${highRiskInstruction}
+8. If the validation error contains a brand rejection reason, correct it exactly:
+   - category_must_be_brand: use category "brand" only for this rule.
+   - severity_must_be_block: this hard rule may only be a BLOCK.
+   - location_is_required or location_does_not_resolve_to_content: omit the finding unless an exact valid content location exists.
+   - exact_name_is_not_quoted: omit the finding unless its message quotes one exact prohibited name.
+   - only_allowed_owner_or_generic_name_is_quoted: “${ALLOWED_COMPANY_NAME}” and generic industry phrases are allowed; do not report them as violations.
+   - quoted_prohibited_name_is_not_present_at_location: omit the finding unless the quoted prohibited name appears verbatim at the reported location.
 Mandatory server-required issues: ${JSON.stringify(mandatoryIssues)}.
 Return one complete quality data JSON object only.`,
   });

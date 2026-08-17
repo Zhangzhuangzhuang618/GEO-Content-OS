@@ -256,12 +256,83 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests).toHaveLength(2);
     const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
     expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
-    expect(repairPrompt).toContain(
-      'Quality Checker brand issue does not identify a prohibited name at its location',
-    );
+    expect(repairPrompt).toContain('Quality Checker brand issue is unverifiable');
+    expect(repairPrompt).toContain('exact_name_is_not_quoted');
     expect(repairPrompt).toContain('brand.other_company_name issue must quote the exact');
     expect(repairPrompt).toContain('fact.high_risk.unsupported');
     expect(repairPrompt).toContain('There are no eligible high-risk fact locations');
+  });
+
+  it('tells semantic repair that the owner company is allowed without changing the gate', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const qualityInput = {
+      ...clean.input,
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [
+            {
+              block_key: 'intro',
+              text: '广州志远搬家服务有限公司可根据现场情况说明服务边界。',
+            },
+          ],
+          platform_code: 'lieju',
+          title: '厂房搬迁怎么选服务',
+        },
+      },
+    };
+    const falseOwnerBlock = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '内容包含禁止的公司名称“广州志远搬家服务有限公司”。',
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '删除公司名称。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(falseOwnerBlock),
+      JSON.stringify(clean.output.data),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000085',
+          projectId: '20000000-0000-4000-8000-000000000085',
+          promptVersionId: '70000000-0000-4000-8000-000000000073',
+          requestId: 'runtime-quality-checker-0085',
+          runId: '60000000-0000-4000-8000-000000000073',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000073',
+          variantId: '20000000-0000-4000-8000-000000000073',
+          workspaceId: '30000000-0000-4000-8000-000000000085',
+        },
+        qualityInput,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    expect(adapter.requests).toHaveLength(2);
+    const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
+    expect(repairPrompt).toContain('only_allowed_owner_or_generic_name_is_quoted');
+    expect(repairPrompt).toContain('广州志远搬家服务有限公司');
+    expect(repairPrompt).toContain('do not report them as violations');
   });
 });
 

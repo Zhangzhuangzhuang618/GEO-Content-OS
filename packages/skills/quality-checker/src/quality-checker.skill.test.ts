@@ -98,7 +98,34 @@ describe('QualityCheckerSkill', () => {
 
     await expect(
       skill(adapter).run({ context, input, recordUsage: () => undefined }),
-    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('"reason":"exact_name_is_not_quoted"'),
+    });
+  });
+
+  it('identifies the wrong category on a company-name block', async () => {
+    const input = qualityInputWithBlocks([{ block_key: 'intro', text: '可通过货拉拉安排运输。' }]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方品牌“货拉拉”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('"reason":"category_must_be_brand"'),
+    });
   });
 
   it('rejects a high-risk fact block that does not match fact_results', async () => {
@@ -282,7 +309,10 @@ describe('QualityCheckerSkill', () => {
 
     await expect(
       skill(adapter).run({ context, input, recordUsage: () => undefined }),
-    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('"reason":"only_allowed_owner_or_generic_name_is_quoted"'),
+    });
   });
 
   it('rejects a company-name block for the allowed owner company', async () => {
@@ -308,7 +338,10 @@ describe('QualityCheckerSkill', () => {
 
     await expect(
       skill(adapter).run({ context, input, recordUsage: () => undefined }),
-    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('"reason":"only_allowed_owner_or_generic_name_is_quoted"'),
+    });
   });
 
   it('rejects a company-name block that points to the wrong content location', async () => {
@@ -332,7 +365,12 @@ describe('QualityCheckerSkill', () => {
 
     await expect(
       skill(adapter).run({ context, input, recordUsage: () => undefined }),
-    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining(
+        '"reason":"quoted_prohibited_name_is_not_present_at_location"',
+      ),
+    });
   });
 
   it('keeps an exact company-name block at the location containing the prohibited name', async () => {
