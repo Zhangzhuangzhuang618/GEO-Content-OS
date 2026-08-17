@@ -308,7 +308,7 @@ services:
     shm_size: 1gb
     tmpfs:
       - /tmp
-      - /var/lib/geo-content-os/baijiahao:uid=1000,gid=1000,mode=0700,size=536870912
+      - /var/lib/geo-content-os/baijiahao:uid=1001,gid=1001,mode=0700,size=536870912
     environment:
       BAIJIAHAO_BROWSER_GATEWAY_TOKEN: ${BAIJIAHAO_BROWSER_GATEWAY_TOKEN:?BAIJIAHAO_BROWSER_GATEWAY_TOKEN must be set via --env-file .env}
       BAIJIAHAO_BROWSER_HEADLESS: ${BAIJIAHAO_BROWSER_HEADLESS:-true}
@@ -356,7 +356,7 @@ services:
     shm_size: 1gb
     tmpfs:
       - /tmp
-      - /var/lib/geo-content-os/sohu:uid=1000,gid=1000,mode=0700,size=536870912
+      - /var/lib/geo-content-os/sohu:uid=1001,gid=1001,mode=0700,size=536870912
     environment:
       SOHU_BROWSER_GATEWAY_TOKEN: ${SOHU_BROWSER_GATEWAY_TOKEN:?SOHU_BROWSER_GATEWAY_TOKEN must be set via --env-file .env}
       SOHU_BROWSER_HEADLESS: ${SOHU_BROWSER_HEADLESS:-true}
@@ -404,7 +404,7 @@ services:
     shm_size: 1gb
     tmpfs:
       - /tmp
-      - /var/lib/geo-content-os/lieju:uid=1000,gid=1000,mode=0700,size=536870912
+      - /var/lib/geo-content-os/lieju:uid=1001,gid=1001,mode=0700,size=536870912
     environment:
       LIEJU_BROWSER_GATEWAY_TOKEN: ${LIEJU_BROWSER_GATEWAY_TOKEN:?LIEJU_BROWSER_GATEWAY_TOKEN must be set via --env-file .env}
       LIEJU_BROWSER_HEADLESS: ${LIEJU_BROWSER_HEADLESS:-true}

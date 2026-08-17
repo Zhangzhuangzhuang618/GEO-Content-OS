@@ -37,6 +37,21 @@ export const PlatformAccountSchema = z
 
 const ResponseMetaSchema = z.object({ request_id: z.string().min(1) }).passthrough();
 
+export const ProjectKeywordPlatformScopeSyncResponseSchema = z
+  .object({
+    data: z
+      .object({
+        active_keyword_count: z.number().int().nonnegative(),
+        changed_count: z.number().int().nonnegative(),
+        matched_count: z.number().int().nonnegative(),
+        platform_codes: z.array(PlatformCodeSchema).min(1),
+        project_id: z.string().uuid(),
+      })
+      .strict(),
+    meta: ResponseMetaSchema,
+  })
+  .strict();
+
 export const PlatformAccountPageSchema = z
   .object({ data: z.array(PlatformAccountSchema), meta: ResponseMetaSchema })
   .strict();

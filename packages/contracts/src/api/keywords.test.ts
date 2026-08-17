@@ -9,6 +9,8 @@ import {
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
   KeywordSetQuerySchema,
+  ProjectKeywordPlatformScopeSyncResponseSchema,
+  SyncProjectKeywordPlatformScopeRequestSchema,
   UpsertKeywordsRequestSchema,
 } from './keywords.js';
 
@@ -129,6 +131,36 @@ describe('keyword API contracts', () => {
         platform_scope: ['official_site'],
         selected_page_types: ['服务页', '服务页'],
         selected_source_intents: ['本地搜索'],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('validates project platform-scope synchronization without changing keyword state', () => {
+    expect(
+      SyncProjectKeywordPlatformScopeRequestSchema.parse({
+        platform_codes: ['sohu', 'lieju'],
+        project_id: '21000000-0000-4000-8000-000000000001',
+      }),
+    ).toEqual({
+      platform_codes: ['sohu', 'lieju'],
+      project_id: '21000000-0000-4000-8000-000000000001',
+    });
+    expect(
+      ProjectKeywordPlatformScopeSyncResponseSchema.safeParse({
+        data: {
+          active_keyword_count: 12,
+          changed_count: 10,
+          matched_count: 15,
+          platform_codes: ['sohu', 'lieju'],
+          project_id: '21000000-0000-4000-8000-000000000001',
+        },
+        meta: { request_id: 'request-platform-scope-sync' },
+      }).success,
+    ).toBe(true);
+    expect(
+      SyncProjectKeywordPlatformScopeRequestSchema.safeParse({
+        platform_codes: ['lieju', 'lieju'],
+        project_id: '21000000-0000-4000-8000-000000000001',
       }).success,
     ).toBe(false);
   });

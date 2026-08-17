@@ -2,6 +2,7 @@ import {
   KeywordImportJobResponseSchema,
   KeywordListResponseSchema,
   KeywordPageSchema,
+  ProjectKeywordPlatformScopeSyncResponseSchema,
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
   KeywordSetResponseSchema,
@@ -243,6 +244,92 @@ describe('keyword API', () => {
         SELECT count(*)::integer AS count FROM audit_events WHERE action = 'keywords.upserted'
       `,
     ).toEqual([{ count: 2 }]);
+  });
+
+  it('adds platform scope to every project keyword without activating disabled or archived data', async () => {
+    const database = requireClient(client);
+    const activeSet = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Automation terms');
+    const archivedSet = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Archived terms');
+    await database`UPDATE keyword_sets SET status='archived' WHERE id=${archivedSet}::uuid`;
+    await database`
+      INSERT INTO keywords (
+        tenant_id,keyword_set_id,term,intent,intents,priority,platform_scope,status
+      ) VALUES
+        (${TENANT_ID},${activeSet},'Active automation term','commercial',ARRAY['commercial'],80,
+          ARRAY['official_site'],'active'),
+        (${TENANT_ID},${activeSet},'Disabled automation term','informational',ARRAY['informational'],50,
+          ARRAY['official_site','sohu'],'disabled'),
+        (${TENANT_ID},${archivedSet},'Archived automation term','informational',ARRAY['informational'],50,
+          ARRAY['official_site'],'active')
+    `;
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const request = {
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-platform-sync-001' },
+      method: 'POST' as const,
+      payload: { platform_codes: ['sohu', 'lieju'], project_id: PROJECT_A },
+      url: `${API_PATH}/sync-platform-scope`,
+    };
+    const synced = await requireServer(application).inject(request);
+    const replay = await requireServer(application).inject(request);
+    expect(synced.statusCode).toBe(200);
+    expect(ProjectKeywordPlatformScopeSyncResponseSchema.safeParse(synced.json()).success).toBe(
+      true,
+    );
+    expect(synced.json().data).toEqual({
+      active_keyword_count: 1,
+      changed_count: 2,
+      matched_count: 2,
+      platform_codes: ['sohu', 'lieju'],
+      project_id: PROJECT_A,
+    });
+    expect(replay.json()).toEqual(synced.json());
+    expect(
+      await database<{ platformScope: string[]; status: string; term: string }[]>`
+        SELECT term::text AS term,platform_scope AS "platformScope",status
+        FROM keywords ORDER BY term
+      `,
+    ).toEqual([
+      {
+        platformScope: ['official_site', 'sohu', 'lieju'],
+        status: 'active',
+        term: 'Active automation term',
+      },
+      {
+        platformScope: ['official_site'],
+        status: 'active',
+        term: 'Archived automation term',
+      },
+      {
+        platformScope: ['official_site', 'sohu', 'lieju'],
+        status: 'disabled',
+        term: 'Disabled automation term',
+      },
+    ]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM audit_events
+        WHERE action='keywords.platform_scope.synced' AND resource_id=${PROJECT_A}::uuid
+      `,
+    ).toEqual([{ count: 1 }]);
+
+    const noChange = await requireServer(application).inject({
+      ...request,
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-platform-sync-002' },
+    });
+    expect(noChange.json().data.changed_count).toBe(0);
+
+    const content = await createSession(database, CONTENT_ID, TENANT_ID);
+    const forbidden = await requireServer(application).inject({
+      ...request,
+      headers: { ...writeHeaders(content), 'idempotency-key': 'keyword-platform-sync-003' },
+    });
+    expect(forbidden.statusCode).toBe(403);
+    const hidden = await requireServer(application).inject({
+      ...request,
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-platform-sync-004' },
+      payload: { platform_codes: ['lieju'], project_id: OTHER_PROJECT },
+    });
+    expect(hidden.statusCode).toBe(404);
   });
 
   it('lists and reads only keyword sets in the active project scope', async () => {

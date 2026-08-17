@@ -140,6 +140,52 @@ describe('Lieju local browser simulator', () => {
     }
   });
 
+  it('accepts a member-page login before opening the editor on another Lieju subdomain', async () => {
+    const port = new URL(baseUrl).port;
+    const crossHostConfig = Object.freeze({
+      ...config(baseUrl, profileRoot),
+      editorUrl: `http://post.lieju.localhost:${port}/5/73`,
+      loginUrl: `http://www.lieju.localhost:${port}/signin`,
+      manageUrl: `http://www.lieju.localhost:${port}/member/list.php`,
+    });
+    const driver = new PlaywrightLiejuPageDriver(crossHostConfig);
+    const accountId = '00000000-0000-4000-8000-000000000157';
+    try {
+      const login = await driver.startLogin(accountId, join(profileRoot, accountId), {
+        method: 'password',
+        password: 'ephemeral-password',
+        username: 'lieju-user',
+      });
+      expect(login.qrPng.byteLength).toBe(0);
+      expect(
+        await driver.verifyAuthenticated(
+          accountId,
+          join(profileRoot, accountId),
+          await driver.exportStorageState(accountId),
+        ),
+      ).toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('reports interactive CAPTCHA separately during password login', async () => {
+    captchaRequired = true;
+    const driver = new PlaywrightLiejuPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000156';
+    try {
+      await expect(
+        driver.startLogin(accountId, join(profileRoot, accountId), {
+          method: 'password',
+          password: 'ephemeral-password',
+          username: 'lieju-user',
+        }),
+      ).rejects.toMatchObject({ code: 'CAPTCHA_REQUIRED' });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops before submission when Lieju requires Tencent CAPTCHA', async () => {
     captchaRequired = true;
     const driver = new PlaywrightLiejuPageDriver(config(baseUrl, profileRoot));
@@ -291,10 +337,14 @@ function route(
     );
   }
   if (request.url === '/login/') {
+    const captcha = readCaptchaRequired() ? '<div id="TencentCaptcha">验证码</div>' : '';
+    const cookieDomain = request.headers.host?.includes('.lieju.localhost')
+      ? ' domain=lieju.localhost;'
+      : '';
     return html(
       response,
       `<form><input name="username"><input name="password" type="password"><input name="cookietime" type="checkbox" checked><input id="login-submit" type="submit" value="登录"></form>
-       <script>document.querySelector('form').onsubmit=(event)=>{event.preventDefault();document.cookie='lieju-auth=yes; path=/';location.href='/member/list.php'}</script>`,
+       ${captcha}<script>document.querySelector('form').onsubmit=(event)=>{event.preventDefault();${readCaptchaRequired() ? '' : `document.cookie='lieju-auth=yes;${cookieDomain} path=/';location.href='/member/list.php'`}}</script>`,
     );
   }
   if (request.url === '/5/73') {

@@ -10,12 +10,14 @@ import {
   CapabilityResponseSchema,
   PlatformAccountPageSchema,
   PlatformAccountResponseSchema,
+  ProjectKeywordPlatformScopeSyncResponseSchema,
   OfficialSiteAutomationPolicyPageSchema,
   OfficialSiteAutomationPolicyResponseSchema,
   type PlatformAccount,
   type PlatformAccountFilters,
   type PlatformAccountEdit,
   type PlatformAccountForm,
+  type PlatformCode,
   type LiejuBrowserLoginInput,
   type SohuBrowserLoginInput,
 } from './platform-account.schema';
@@ -28,6 +30,27 @@ import type {
 } from './platform-account.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
+
+export async function syncProjectKeywordPlatformScope(
+  projectId: string,
+  platformCode: PlatformCode,
+  csrf: string,
+) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/keyword-sets/sync-platform-scope`, {
+    body: JSON.stringify({ platform_codes: [platformCode], project_id: projectId }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `keyword-platform-sync-${createRequestUuid()}`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw await parseRequestError(response);
+  const parsed = ProjectKeywordPlatformScopeSyncResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
 
 export async function listPlatformAccounts(filters: PlatformAccountFilters, signal?: AbortSignal) {
   const query = new URLSearchParams();

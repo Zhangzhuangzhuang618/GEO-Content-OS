@@ -6,6 +6,8 @@ import type {
   KeywordSetDetail,
   KeywordSetQuery,
   KeywordSetView,
+  ProjectKeywordPlatformScopeSync,
+  SyncProjectKeywordPlatformScopeRequest,
 } from '@geo-content-os/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransactionSql } from 'postgres';
@@ -383,6 +385,64 @@ export class KeywordService {
     });
     return after;
   }
+
+  public async syncProjectPlatformScope(
+    transaction: TransactionSql,
+    tenantId: string,
+    actorUserId: string,
+    input: SyncProjectKeywordPlatformScopeRequest,
+    audit: KeywordAuditContext,
+  ): Promise<ProjectKeywordPlatformScopeSync> {
+    await assertKeywordManager(transaction, tenantId, actorUserId);
+    await lockActiveProject(transaction, tenantId, actorUserId, input.project_id);
+    const requestedPlatforms = transaction.array([...input.platform_codes], 1043);
+    const counts = await transaction<{ activeCount: number; matchedCount: number }[]>`
+      SELECT
+        count(*)::integer AS "matchedCount",
+        count(*) FILTER (WHERE keyword.status='active')::integer AS "activeCount"
+      FROM keywords AS keyword
+      JOIN keyword_sets AS keyword_set
+        ON keyword_set.id=keyword.keyword_set_id AND keyword_set.tenant_id=keyword.tenant_id
+      WHERE keyword.tenant_id=${tenantId}::uuid
+        AND keyword_set.project_id=${input.project_id}::uuid
+        AND keyword_set.status='active' AND keyword_set.deleted_at IS NULL
+    `;
+    const changed = await transaction<{ id: string }[]>`
+      UPDATE keywords AS keyword SET
+        platform_scope=keyword.platform_scope || ARRAY(
+          SELECT requested.code
+          FROM unnest(${requestedPlatforms}::varchar[]) WITH ORDINALITY AS requested(code,ordinal)
+          WHERE NOT requested.code=ANY(keyword.platform_scope)
+          ORDER BY requested.ordinal
+        )
+      FROM keyword_sets AS keyword_set
+      WHERE keyword_set.id=keyword.keyword_set_id
+        AND keyword_set.tenant_id=keyword.tenant_id
+        AND keyword.tenant_id=${tenantId}::uuid
+        AND keyword_set.project_id=${input.project_id}::uuid
+        AND keyword_set.status='active' AND keyword_set.deleted_at IS NULL
+        AND NOT (${requestedPlatforms}::varchar[] <@ keyword.platform_scope)
+      RETURNING keyword.id
+    `;
+    const count = counts[0] ?? { activeCount: 0, matchedCount: 0 };
+    const result: ProjectKeywordPlatformScopeSync = {
+      active_keyword_count: count.activeCount,
+      changed_count: changed.length,
+      matched_count: count.matchedCount,
+      platform_codes: input.platform_codes,
+      project_id: input.project_id,
+    };
+    await insertKeywordAudit(transaction, {
+      action: 'keywords.platform_scope.synced',
+      actorUserId,
+      after: result,
+      audit,
+      resourceId: input.project_id,
+      resourceType: 'project',
+      tenantId,
+    });
+    return result;
+  }
 }
 
 export async function assertKeywordManager(
@@ -531,7 +591,7 @@ interface AuditInput {
   readonly audit: KeywordAuditContext;
   readonly before?: unknown;
   readonly resourceId: string;
-  readonly resourceType: 'keyword_set';
+  readonly resourceType: 'keyword_set' | 'project';
   readonly tenantId: string;
 }
 

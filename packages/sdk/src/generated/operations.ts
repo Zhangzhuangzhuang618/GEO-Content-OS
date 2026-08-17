@@ -455,6 +455,13 @@ export const operations = {
     permission: 'strategy.manage',
     security: 'session_csrf',
   },
+  keyword_set_sync_project_platform_scope: {
+    idempotency: 'key+body_hash',
+    method: 'POST',
+    path: '/keyword-sets/sync-platform-scope',
+    permission: 'strategy.manage',
+    security: 'session_csrf',
+  },
   memberships_list: {
     idempotency: '-',
     method: 'GET',

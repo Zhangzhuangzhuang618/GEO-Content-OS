@@ -6,6 +6,7 @@ import {
   KeywordListQuerySchema,
   KeywordSetIdSchema,
   KeywordSetQuerySchema,
+  SyncProjectKeywordPlatformScopeRequestSchema,
   UpsertKeywordsRequestSchema,
 } from '@geo-content-os/contracts';
 import {
@@ -203,6 +204,56 @@ export class KeywordController {
           );
           return {
             body: toJson({ data: keywords, meta: { request_id: request.id } }),
+            statusCode: HttpStatus.OK,
+          };
+        },
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
+  @Post('sync-platform-scope')
+  @RequirePermissions('strategy.manage')
+  public async syncProjectPlatformScope(
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = SyncProjectKeywordPlatformScopeRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      await sendSchemaError(reply, request.id, parsed.error.issues);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    const route = '/keyword-sets/sync-platform-scope';
+    try {
+      const result = await this.idempotencyService.execute(
+        {
+          fingerprint: {
+            body: parsed.data as JsonValue,
+            method: request.method,
+            path: route,
+          },
+          idempotencyKey: parseIdempotencyKey(request.headers['idempotency-key']),
+          scopeKey: buildIdempotencyScope({
+            actorId: policy.userId,
+            method: request.method,
+            route,
+          }),
+          tenantId: policy.tenantId,
+        },
+        async (transaction) => {
+          const data = await this.keywordService.syncProjectPlatformScope(
+            transaction,
+            policy.tenantId,
+            policy.userId,
+            parsed.data,
+            auditContext(request),
+          );
+          return {
+            body: toJson({ data, meta: { request_id: request.id } }),
             statusCode: HttpStatus.OK,
           };
         },

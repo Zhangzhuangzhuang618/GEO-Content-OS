@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { API_CONTRACTS } from './catalog.js';
 
 describe('API contract catalog', () => {
-  it('contains the 155-operation executable ADR baseline without duplicates', () => {
+  it('contains the 156-operation executable ADR baseline without duplicates', () => {
     const routes = API_CONTRACTS.map((contract) => `${contract.method} ${contract.path}`);
-    expect(routes).toHaveLength(155);
-    expect(new Set(routes).size).toBe(155);
-    expect(new Set(API_CONTRACTS.map((contract) => contract.key)).size).toBe(155);
+    expect(routes).toHaveLength(156);
+    expect(new Set(routes).size).toBe(156);
+    expect(new Set(API_CONTRACTS.map((contract) => contract.key)).size).toBe(156);
   });
 
   it('contains the tenant profile endpoints missing from the original task graph', () => {

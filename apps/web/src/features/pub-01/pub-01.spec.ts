@@ -582,6 +582,7 @@ test('shows actionable Baijiahao manual-required items', async ({ page }) => {
 });
 
 test('shows actionable Sohu daily-batch items', async ({ page }) => {
+  let keywordSyncRequest: Record<string, unknown> | null = null;
   await page.route('**/api/v1/platform-accounts**', (route) =>
     json(route, { data: [sohuAccount()], meta: { request_id: 'account-list' } }),
   );
@@ -596,6 +597,19 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
   await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
     json(route, { data: [browserPlatformPolicy()], meta: { request_id: 'automation' } }),
   );
+  await page.route('**/api/v1/keyword-sets/sync-platform-scope', (route) => {
+    keywordSyncRequest = route.request().postDataJSON() as Record<string, unknown>;
+    return json(route, {
+      data: {
+        active_keyword_count: 8,
+        changed_count: 6,
+        matched_count: 10,
+        platform_codes: ['sohu'],
+        project_id: PROJECT_ID,
+      },
+      meta: { request_id: 'keyword-sync' },
+    });
+  });
   await page.route(
     `**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session/login`,
     (route) =>
@@ -615,6 +629,9 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '搜狐号登录' }).click();
   await expect(page.getByRole('heading', { name: '搜狐号托管浏览器' })).toBeVisible();
+  await page.getByRole('button', { name: '一键同步项目关键词到搜狐号' }).click();
+  await expect(page.getByText(/已检查 10 个项目关键词，新增 6 个搜狐号适用范围/u)).toBeVisible();
+  expect(keywordSyncRequest).toEqual({ platform_codes: ['sohu'], project_id: PROJECT_ID });
   await expect(page.getByText('需要处理的内容')).toBeVisible();
   await expect(page.getByText('候选 1 · 广州搬家准备清单')).toBeVisible();
   await expect(page.getByRole('link', { name: '查看全文和处理' })).toHaveAttribute(

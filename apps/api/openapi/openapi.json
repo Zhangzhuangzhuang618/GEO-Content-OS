@@ -21603,6 +21603,213 @@
         "security": [{ "csrfCookie": [], "sessionCookie": [] }]
       }
     },
+    "/keyword-sets/sync-platform-scope": {
+      "post": {
+        "operationId": "keyword_set_sync_project_platform_scope",
+        "tags": ["Keyword Sets"],
+        "x-contract-key": "keyword-set.sync-project-platform-scope",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "strategy.manage",
+        "x-policy": "strategy_editor_or_admin",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "platform_codes": {
+                    "minItems": 1,
+                    "maxItems": 9,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "official_site",
+                        "baijiahao",
+                        "sohu",
+                        "lieju",
+                        "toutiao",
+                        "zhihu",
+                        "xiaohongshu",
+                        "wechat_mp",
+                        "douyin"
+                      ]
+                    }
+                  },
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": ["platform_codes", "project_id"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "active_keyword_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "changed_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "matched_count": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "platform_codes": {
+                          "minItems": 1,
+                          "maxItems": 9,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "official_site",
+                              "baijiahao",
+                              "sohu",
+                              "lieju",
+                              "toutiao",
+                              "zhihu",
+                              "xiaohongshu",
+                              "wechat_mp",
+                              "douyin"
+                            ]
+                          }
+                        },
+                        "project_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        }
+                      },
+                      "required": [
+                        "active_keyword_count",
+                        "changed_count",
+                        "matched_count",
+                        "platform_codes",
+                        "project_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "ProjectKeywordPlatformScopeSync"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
     "/memberships": {
       "get": {
         "operationId": "memberships_list",

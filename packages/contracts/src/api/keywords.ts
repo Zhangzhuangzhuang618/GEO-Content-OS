@@ -80,6 +80,23 @@ export const UpsertKeywordsRequestSchema = z
     });
   });
 
+export const SyncProjectKeywordPlatformScopeRequestSchema = z
+  .object({
+    platform_codes: KeywordPlatformScopeSchema,
+    project_id: UuidSchema,
+  })
+  .strict();
+
+export const ProjectKeywordPlatformScopeSyncSchema = z
+  .object({
+    active_keyword_count: z.number().int().nonnegative(),
+    changed_count: z.number().int().nonnegative(),
+    matched_count: z.number().int().nonnegative(),
+    platform_codes: KeywordPlatformScopeSchema,
+    project_id: UuidSchema,
+  })
+  .strict();
+
 export const KeywordSetIdSchema = UuidSchema;
 export const KeywordImportIdSchema = UuidSchema;
 
@@ -217,6 +234,10 @@ export const KeywordListResponseSchema = z
   .object({ data: z.array(KeywordSchema), meta: RequestMetaSchema })
   .strict();
 
+export const ProjectKeywordPlatformScopeSyncResponseSchema = z
+  .object({ data: ProjectKeywordPlatformScopeSyncSchema, meta: RequestMetaSchema })
+  .strict();
+
 export const KeywordPageSchema = z
   .object({ data: z.array(KeywordSchema), meta: CursorPageMetaSchema })
   .strict();
@@ -285,6 +306,10 @@ export type KeywordSuggestedPageType = z.infer<typeof KeywordSuggestedPageTypeSc
 export type KeywordImportJobView = z.infer<typeof KeywordImportJobViewSchema>;
 export type KeywordSetQuery = z.infer<typeof KeywordSetQuerySchema>;
 export type UpsertKeywordsRequest = z.infer<typeof UpsertKeywordsRequestSchema>;
+export type SyncProjectKeywordPlatformScopeRequest = z.infer<
+  typeof SyncProjectKeywordPlatformScopeRequestSchema
+>;
+export type ProjectKeywordPlatformScopeSync = z.infer<typeof ProjectKeywordPlatformScopeSyncSchema>;
 
 export interface KeywordSetView {
   readonly created_at: string;

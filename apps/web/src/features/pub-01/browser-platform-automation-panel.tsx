@@ -7,7 +7,9 @@ import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import {
   listBrowserPlatformAutomationPolicies,
+  PlatformAccountRequestError,
   saveBrowserPlatformAutomationPolicy,
+  syncProjectKeywordPlatformScope,
 } from './platform-account-api';
 import type { BrowserPlatformAutomationPolicy, PlatformAccount } from './platform-account.schema';
 import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
@@ -18,6 +20,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   const [policies, setPolicies] = useState<readonly BrowserPlatformAutomationPolicy[]>([]);
   const [projectId, setProjectId] = useState('');
   const [busy, setBusy] = useState(false);
+  const [syncingKeywords, setSyncingKeywords] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [dailyTargetCount, setDailyTargetCount] = useState(defaultTarget);
   const selected = useMemo(
@@ -97,6 +100,29 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     }
   }
 
+  async function syncKeywords() {
+    const csrf = readCookie('geo_csrf');
+    if (!csrf || !projectId) return setMessage('缺少项目或安全令牌，请刷新后重试。');
+    setSyncingKeywords(true);
+    setMessage(null);
+    try {
+      const result = await syncProjectKeywordPlatformScope(projectId, account.platform_code, csrf);
+      setMessage(
+        result.matched_count === 0
+          ? `当前项目没有可同步的关键词，请先在关键词管理中添加关键词。`
+          : `已检查 ${result.matched_count} 个项目关键词，新增 ${result.changed_count} 个${platformName}适用范围；当前有 ${result.active_keyword_count} 个启用关键词可供新批次使用。已有失败批次不会自动重新生成。`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof PlatformAccountRequestError && error.status === 403
+          ? '同步关键词需要企业所有者、管理员或策略编辑权限。'
+          : `同步项目关键词到${platformName}失败。`,
+      );
+    } finally {
+      setSyncingKeywords(false);
+    }
+  }
+
   return (
     <div className="mt-6 border-t border-ink-100 pt-6">
       <h3 className="text-base font-semibold text-ink-950">全链路自动化</h3>
@@ -123,6 +149,16 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
             ))}
           </select>
         </label>
+        <div className="flex items-end">
+          <button
+            className="w-full rounded-lg border border-brand-300 bg-brand-50 px-3 py-2 text-sm font-medium text-brand-700 disabled:opacity-50"
+            disabled={busy || syncingKeywords || !projectId}
+            onClick={() => void syncKeywords()}
+            type="button"
+          >
+            {syncingKeywords ? '同步中…' : `一键同步项目关键词到${platformName}`}
+          </button>
+        </div>
         <label className="text-sm text-ink-700">
           每日生成时间
           <input

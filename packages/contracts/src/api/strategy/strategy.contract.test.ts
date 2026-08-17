@@ -5,6 +5,7 @@ import { roleHasPermission } from '../../permissions/index.js';
 import { BrandProfilePageSchema, BrandProfileResponseSchema } from '../brand-profiles.js';
 import {
   KeywordListResponseSchema,
+  ProjectKeywordPlatformScopeSyncResponseSchema,
   KeywordSetDetailResponseSchema,
   KeywordSetPageSchema,
   KeywordSetResponseSchema,
@@ -21,7 +22,7 @@ const timestamp = '2026-07-14T03:00:00.000Z';
 const requestId = '01J00000000000000000000000';
 
 describe('frozen strategy API contract', () => {
-  it('contains the sixteen approved brand, keyword, import, and topic endpoints', () => {
+  it('contains the seventeen approved brand, keyword, import, and topic endpoints', () => {
     expect(
       STRATEGY_API_CONTRACTS.map((contract) => ({
         idempotency: contract.idempotency,
@@ -109,6 +110,15 @@ describe('frozen strategy API contract', () => {
       ),
       endpoint(
         'POST',
+        '/keyword-sets/sync-platform-scope',
+        'strategy.manage',
+        'SyncProjectKeywordPlatformScopeRequest',
+        'ProjectKeywordPlatformScopeSync',
+        'key+body_hash',
+        200,
+      ),
+      endpoint(
+        'POST',
         '/keyword-sets/{id}/imports/preflight',
         'strategy.manage',
         'KeywordImportPreflight',
@@ -162,7 +172,7 @@ describe('frozen strategy API contract', () => {
         200,
       ),
     ]);
-    expect(new Set(STRATEGY_API_CONTRACTS.map((contract) => contract.key)).size).toBe(16);
+    expect(new Set(STRATEGY_API_CONTRACTS.map((contract) => contract.key)).size).toBe(17);
     expect(STRATEGY_API_CONTRACTS.every((contract) => Object.isFrozen(contract))).toBe(true);
   });
 
@@ -201,6 +211,17 @@ describe('frozen strategy API contract', () => {
         .success,
     ).toBe(true);
     expect(KeywordListResponseSchema.safeParse(response([keyword()])).success).toBe(true);
+    expect(
+      ProjectKeywordPlatformScopeSyncResponseSchema.safeParse(
+        response({
+          active_keyword_count: 1,
+          changed_count: 1,
+          matched_count: 2,
+          platform_codes: ['lieju'],
+          project_id: id('12'),
+        }),
+      ).success,
+    ).toBe(true);
     expect(GenerationRunResponseSchema.safeParse(response(generationRun())).success).toBe(true);
     expect(TopicCandidatePageSchema.safeParse(page([topicCandidate()], null)).success).toBe(true);
     expect(BriefResponseSchema.safeParse(response(brief())).success).toBe(true);

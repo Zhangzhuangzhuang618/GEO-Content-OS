@@ -101,7 +101,10 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
           .locator(SELECTORS.loginPassword)
           .fill('')
           .catch(() => undefined);
-        throw new PageDriverError('AUTH_REQUIRED', 'Lieju rejected the username or password');
+        throw new PageDriverError(
+          'AUTH_REQUIRED',
+          'Lieju login did not reach an authenticated member page before timeout',
+        );
       }
       return Object.freeze({ expiresAt, qrPng: Buffer.alloc(0) });
     }
@@ -122,19 +125,23 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
   public async waitForAuthentication(accountId: string, expiresAt: Date): Promise<boolean> {
     const page = this.pages.get(accountId);
     if (!page) return false;
-    const timeout = Math.max(1, expiresAt.getTime() - Date.now());
-    const expectedHost = new URL(this.config.editorUrl).hostname;
-    const observed = await page
-      .waitForFunction(
-        `(() => location.hostname === ${JSON.stringify(expectedHost)} && !location.pathname.includes('qq_login') && !location.pathname.includes('signin'))()`,
-        undefined,
-        { timeout },
-      )
-      .then(() => true)
-      .catch(() => false);
-    if (!observed) return false;
-    await this.openEditor(page);
-    return this.isAuthenticatedEditor(page);
+    while (Date.now() < expiresAt.getTime()) {
+      if (await this.loginCaptchaVisible(page)) {
+        throw new PageDriverError(
+          'CAPTCHA_REQUIRED',
+          'Lieju requires interactive CAPTCHA to complete login',
+        );
+      }
+      if (await this.loginRejected(page)) {
+        throw new PageDriverError('AUTH_REQUIRED', 'Lieju did not accept the account credentials');
+      }
+      if (await this.isAuthenticated(page)) {
+        await this.openEditor(page);
+        return this.isAuthenticatedEditor(page);
+      }
+      await page.waitForTimeout(Math.min(250, Math.max(1, expiresAt.getTime() - Date.now())));
+    }
+    return false;
   }
 
   public async verifyAuthenticated(
@@ -318,6 +325,23 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
         'Lieju requires Tencent interactive CAPTCHA; use a captcha-free posting package or handle manually',
       );
     }
+  }
+
+  private async loginCaptchaVisible(page: Page): Promise<boolean> {
+    return page
+      .locator(SELECTORS.captcha)
+      .first()
+      .isVisible()
+      .catch(() => false);
+  }
+
+  private async loginRejected(page: Page): Promise<boolean> {
+    if (!page.url().includes('/login/')) return false;
+    const text = await page
+      .locator('body')
+      .innerText()
+      .catch(() => '');
+    return /(?:用户名|账号|密码).{0,16}(?:错误|不正确|不存在|无效)|登录失败/u.test(text);
   }
 
   private async requireEditor(page: Page): Promise<void> {
