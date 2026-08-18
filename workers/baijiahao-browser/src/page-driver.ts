@@ -280,6 +280,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
           input.profilePath,
           {
             contentFingerprint: input.contentFingerprint,
+            externalId: acknowledged.externalId,
             submittedAfter: new Date(Date.now() - 5 * 60_000),
             title: input.payload.title,
           },
@@ -304,6 +305,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     profilePath: string,
     match: {
       readonly contentFingerprint: string;
+      readonly externalId?: string | null;
       readonly submittedAfter: Date;
       readonly title: string;
     },
@@ -321,28 +323,34 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
         'Baijiahao content management entry did not open a verifiable content list',
       );
     }
-    const rows = page.locator(SELECTORS.contentRow);
+    const contentList = page.locator(SELECTORS.contentList).first();
+    const rows =
+      (await contentList.count()) > 0
+        ? contentList.locator(SELECTORS.contentRow)
+        : page.locator(`${SELECTORS.contentTable} tr`);
     const count = Math.min(await rows.count(), 100);
     const matches: RemotePublication[] = [];
+    const expectedExternalId = match.externalId?.trim() || null;
     for (let index = 0; index < count; index += 1) {
       const row = rows.nth(index);
+      const externalId =
+        (await row.getAttribute('data-external-id')) ??
+        extractExternalId(await row.locator('a').first().getAttribute('href'));
+      if (!externalId) continue;
+      if (expectedExternalId && externalId !== expectedExternalId) continue;
       const explicitTitle = await row.getAttribute('data-title');
       const rowText = await row.innerText();
       const titleMatches = explicitTitle
         ? normalizeText(explicitTitle) === normalizeText(match.title)
         : normalizeText(rowText).includes(normalizeText(match.title));
       const fingerprint = (await row.getAttribute('data-content-fingerprint')) ?? '';
-      if (!titleMatches) continue;
-      if (fingerprint && fingerprint !== match.contentFingerprint) continue;
+      if (!expectedExternalId && !titleMatches) continue;
+      if (!expectedExternalId && fingerprint && fingerprint !== match.contentFingerprint) continue;
       const submittedRaw = await row.getAttribute('data-submitted-at');
-      if (submittedRaw) {
+      if (!expectedExternalId && submittedRaw) {
         const submittedAt = new Date(submittedRaw);
         if (Number.isNaN(submittedAt.getTime()) || submittedAt < match.submittedAfter) continue;
       }
-      const externalId =
-        (await row.getAttribute('data-external-id')) ??
-        extractExternalId(await row.locator('a').first().getAttribute('href'));
-      if (!externalId) continue;
       const statusText = `${await row.getAttribute('data-status')} ${rowText}`;
       const url = await row.locator('a').first().getAttribute('href');
       matches.push(
@@ -354,13 +362,20 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
         }),
       );
     }
-    if (matches.length > 1) {
+    const uniqueByExternalId = new Map<string, RemotePublication>();
+    for (const publication of matches) {
+      if (!uniqueByExternalId.has(publication.externalId)) {
+        uniqueByExternalId.set(publication.externalId, publication);
+      }
+    }
+    const uniqueMatches = [...uniqueByExternalId.values()];
+    if (uniqueMatches.length > 1) {
       throw new PageDriverError(
         'MULTIPLE_MATCHES',
-        'Baijiahao content list contains multiple matching publications',
+        `Baijiahao content list contains multiple matching publications (raw_matches=${matches.length}; unique_external_ids=${uniqueMatches.length})`,
       );
     }
-    return matches[0] ?? null;
+    return uniqueMatches[0] ?? null;
   }
 
   public async capture(accountId: string): Promise<Uint8Array> {

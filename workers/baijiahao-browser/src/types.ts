@@ -89,6 +89,7 @@ export interface BaijiahaoPageDriver {
     profilePath: string,
     match: {
       readonly contentFingerprint: string;
+      readonly externalId?: string | null;
       readonly submittedAfter: Date;
       readonly title: string;
     },

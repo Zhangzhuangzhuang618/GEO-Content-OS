@@ -393,6 +393,12 @@ describe('Baijiahao browser service', () => {
     });
     expect(markSession).not.toHaveBeenCalled();
     expect(updatePublication).not.toHaveBeenCalled();
+    expect(driver.reconcile).toHaveBeenCalledWith(
+      ACCOUNT_ID,
+      expect.any(String),
+      expect.objectContaining({ externalId: publication.externalId }),
+      '{}',
+    );
   });
 
   it('never resubmits an acknowledged publication when reconciliation remains unavailable', async () => {

@@ -393,6 +393,7 @@ export class BaijiahaoBrowserService {
         this.profilePath(session),
         {
           contentFingerprint: publication.contentFingerprint ?? '',
+          externalId: publication.externalId ?? null,
           submittedAfter: new Date((publication.submittedAt?.getTime() ?? Date.now()) - 60_000),
           title: publication.title ?? '',
         },

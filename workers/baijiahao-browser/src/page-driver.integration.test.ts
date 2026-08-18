@@ -203,6 +203,46 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
+  it('uses the acknowledged article id when same-title publications exist', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      duplicateRows = true;
+
+      await expect(
+        driver.submit(
+          {
+            accountId,
+            contentFingerprint: 'd'.repeat(64),
+            images: [],
+            payload: {
+              abstract: '用于验证严格发布回执优先于同标题列表匹配。',
+              body_html: '<p>正文</p>',
+              body_asset_ids: [],
+              body_text: '用于验证严格发布回执优先于同标题列表匹配的正文内容。',
+              citation_links: [],
+              content_type: 'news',
+              cover_asset_id: null,
+              platform_code: 'baijiahao',
+              rule_version: 'baijiahao-render-rules@1.1.0',
+              schema_version: 'baijiahao-payload@2',
+              tags: ['百家号', '发布回执', '精确核对'],
+              title: '百家号严格回执精确核对测试',
+            },
+            profilePath,
+            storageStateJson: await driver.exportStorageState(accountId),
+          },
+          async () => undefined,
+        ),
+      ).resolves.toMatchObject({ externalId: 'simulator-145', status: 'processing' });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops when the content list contains multiple matching publications', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';
@@ -232,7 +272,10 @@ describe('Baijiahao local browser simulator', () => {
           },
           await driver.exportStorageState(accountId),
         ),
-      ).rejects.toMatchObject({ code: 'MULTIPLE_MATCHES' });
+      ).rejects.toMatchObject({
+        code: 'MULTIPLE_MATCHES',
+        message: expect.stringContaining('raw_matches='),
+      });
     } finally {
       await driver.close();
     }
@@ -626,7 +669,7 @@ function contentList(
   hasManageSignature: boolean,
 ): void {
   const row = item
-    ? `<div data-publication-row data-title="${escapeHtml(item.title)}" data-content-fingerprint="${item.fingerprint}" data-submitted-at="${new Date().toISOString()}" data-external-id="simulator-145" data-status="processing"><a href="/article/id=simulator-145">${escapeHtml(item.title)}</a>审核中</div>`
+    ? `<div data-publication-row data-title="${escapeHtml(item.title)}" data-content-fingerprint="${item.fingerprint}" data-submitted-at="${new Date().toISOString()}" data-external-id="simulator-145" data-status="processing"><div class="client_pages_content_v2_components_articleItem__title"><a href="/article/id=simulator-145">${escapeHtml(item.title)}</a></div>审核中</div>`
     : '';
   html(
     response,
