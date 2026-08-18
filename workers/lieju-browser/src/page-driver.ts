@@ -188,7 +188,7 @@ export class PlaywrightLiejuPageDriver implements LiejuPageDriver {
         return Object.freeze({
           externalId: null,
           reviewReason: null,
-          status: 'processing' as const,
+          status: 'published' as const,
           url: null,
         });
       }

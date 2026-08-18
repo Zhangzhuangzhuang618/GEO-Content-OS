@@ -82,7 +82,7 @@ export function parseLiejuOfficialApiResponse(
   return Object.freeze({
     external_id: findRemoteReference(value, url) ?? `api-${sha256(idempotencyKey).slice(0, 32)}`,
     response_hash: diagnostics.response_sha256,
-    status: 'processing',
+    status: 'published',
     url,
   });
 }

@@ -320,15 +320,19 @@ export class LiejuBrowserService {
         },
         (png) => this.saveArtifact(publication, 'pre_submit', png),
       );
+      const stableRemote = stableRemoteReference(publication, remote);
       const updated = await this.store.updatePublication(publication, {
-        remote,
-        status: publicationStatus(remote.status),
+        remote: stableRemote,
+        status: publicationStatus(stableRemote.status),
       });
       await this.saveArtifact(updated, 'post_submit', await this.driver.capture(accountId));
-      if (remote.status === 'failed') {
+      if (stableRemote.status === 'failed') {
         throw new BrowserGatewayError(409, 'PUBLISH_REJECTED', 'Lieju rejected publication');
       }
-      return publishResponse(updated, remote.status === 'published' ? 'published' : 'processing');
+      return publishResponse(
+        updated,
+        stableRemote.status === 'published' ? 'published' : 'processing',
+      );
     } catch (error) {
       if (error instanceof PageDriverError) {
         throw await this.handlePageDriverFailure(session, publication, error);
@@ -410,8 +414,7 @@ export class LiejuBrowserService {
           'reconcile',
           await this.driver.capture(session.accountId),
         );
-      if (!result || !publication.externalId) return result;
-      return Object.freeze({ ...result, externalId: publication.externalId });
+      return result ? stableRemoteReference(publication, result) : null;
     } catch (error) {
       if (error instanceof PageDriverError) {
         throw await this.handlePageDriverFailure(session, publication, error);
@@ -610,6 +613,14 @@ function canVerifySession(session: BrowserSession): boolean {
 function publicationStatus(status: RemotePublication['status']): PublicationClaim['status'] {
   if (status === 'unknown') return 'unknown';
   return status;
+}
+
+function stableRemoteReference(
+  publication: PublicationClaim & { readonly externalId?: string | null },
+  remote: RemotePublication,
+): RemotePublication {
+  const externalId = publication.externalId ?? remote.externalId ?? publication.id;
+  return externalId === remote.externalId ? remote : Object.freeze({ ...remote, externalId });
 }
 
 function publishResponse(

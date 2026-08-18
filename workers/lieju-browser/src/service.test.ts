@@ -509,6 +509,71 @@ describe('Lieju browser service', () => {
     );
   });
 
+  it('persists an explicit review-page acceptance as terminal publication success', async () => {
+    const session = browserSession('authenticated');
+    const prepared: PublicationClaim = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentVersionId: CONTENT_VERSION_ID,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'lieju-review-accepted',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      sessionId: SESSION_ID,
+      status: 'prepared',
+      tenantId: TENANT_ID,
+      version: 1,
+    });
+    const updatePublication = vi.fn(
+      async (publication: PublicationClaim, update: Readonly<Record<string, unknown>>) =>
+        Object.freeze({
+          ...publication,
+          status: update['status'] as PublicationClaim['status'],
+          version: publication.version + 1,
+        }),
+    );
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      insertArtifact: vi.fn(async () => undefined),
+      loadImageAssets: vi.fn(async () => []),
+      preparePublication: vi.fn(async () => prepared),
+      updatePublication,
+    } as unknown as PostgresLiejuBrowserStore;
+    const driver = {
+      capture: vi.fn(async () => Buffer.from('review-accepted')),
+      submit: vi.fn(async () => ({
+        externalId: null,
+        reviewReason: null,
+        status: 'published' as const,
+        url: null,
+      })),
+      verifyAuthenticated: vi.fn(async () => true),
+    } as unknown as LiejuPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const storage = {
+      putObject: vi.fn(async () => ({ uri: 'memory://test/review-accepted.png' })),
+    } as unknown as ObjectStorageAdapter;
+    const service = new LiejuBrowserService(config(), store, driver, credentials, storage);
+    const payload = liejuPayload('列举网审核确认页终态验证');
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: prepared.idempotencyKey,
+        payload,
+        payload_hash: hashLiejuPayload(payload),
+        posting_profile: POSTING_PROFILE,
+      }),
+    ).resolves.toEqual({ external_id: PUBLICATION_ID, status: 'published', url: null });
+    expect(updatePublication).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: 'submitting' }),
+      expect.objectContaining({
+        remote: expect.objectContaining({ externalId: PUBLICATION_ID, status: 'published' }),
+        status: 'published',
+      }),
+    );
+  });
+
   it('keeps the local reconciliation id stable after Lieju assigns a remote content id', async () => {
     const session = browserSession('authenticated');
     const publication = Object.freeze({

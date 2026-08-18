@@ -143,7 +143,7 @@ describe('Lieju local browser simulator', () => {
     }
   });
 
-  it('accepts the explicit review-pending confirmation without waiting for the title list', async () => {
+  it('completes publication from the explicit review-pending confirmation', async () => {
     reviewPendingPage = true;
     const driver = new PlaywrightLiejuPageDriver(config(baseUrl, profileRoot));
     const profilePath = join(profileRoot, ACCOUNT_ID);
@@ -167,7 +167,7 @@ describe('Lieju local browser simulator', () => {
       expect(result).toEqual({
         externalId: null,
         reviewReason: null,
-        status: 'processing',
+        status: 'published',
         url: null,
       });
     } finally {

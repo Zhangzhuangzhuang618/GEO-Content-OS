@@ -270,28 +270,7 @@ export class LiejuDeliveryAdapter {
       input.idempotency_key,
       responseContext(response),
     );
-    if (!result.url) return result;
-    return (await this.verifyPublicPublication(result.url, input.payload.title, signal))
-      ? Object.freeze({ ...result, status: 'published' as const })
-      : result;
-  }
-
-  private async verifyPublicPublication(
-    url: string,
-    title: string,
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    try {
-      const response = await this.transport.request({
-        headers: { accept: 'text/html' },
-        method: 'GET',
-        ...(signal ? { signal } : {}),
-        url,
-      });
-      return isSuccess(response.status_code) && responseText(response.body).includes(title);
-    } catch {
-      return false;
-    }
+    return result;
   }
 }
 
@@ -314,10 +293,6 @@ function exportOnlyCapabilities(
     version: LIEJU_DELIVERY_VERSION,
     warnings: Object.freeze([warning]),
   });
-}
-
-function responseText(value: unknown): string {
-  return typeof value === 'string' ? value : JSON.stringify(value);
 }
 
 function requireDeliveryInput(input: unknown): LiejuDeliveryInput {

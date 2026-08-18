@@ -111,7 +111,6 @@ describe('lieju delivery integration', () => {
         message: '信息发布成功',
         url: 'https://gz.lieju.com/banjia/104561172.html',
       }),
-      response(200, '<html><title>广州搬家服务测试标题</title></html>'),
     ]);
     const input = {
       ...(await deliveryInput()),
@@ -137,7 +136,7 @@ describe('lieju delivery integration', () => {
       url: 'https://gz.lieju.com/banjia/104561172.html',
     });
     expect(result.response_hash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(transport.requests).toHaveLength(2);
+    expect(transport.requests).toHaveLength(1);
     const request = transport.requests[0];
     expect(request).toMatchObject({
       method: 'POST',
@@ -163,7 +162,6 @@ describe('lieju delivery integration', () => {
         200,
         '信息发布成功,https://gz.lieju.com/banjia/105541615.html,id:105541615,username:test,count:当天剩余可发布条数29',
       ),
-      response(200, '<html><title>广州搬家服务测试标题</title></html>'),
     ]);
     const input = {
       ...(await deliveryInput()),
@@ -182,7 +180,22 @@ describe('lieju delivery integration', () => {
       status: 'published',
       url: 'https://gz.lieju.com/banjia/105541615.html',
     });
-    expect(transport.requests[1]?.url).toBe('https://gz.lieju.com/banjia/105541615.html');
+    expect(transport.requests).toHaveLength(1);
+  });
+
+  it('treats an explicit official API acceptance without a public URL as terminal success', async () => {
+    const transport = new FakeTransport([
+      response(200, { info_id: 105541616, message: '信息发布成功' }),
+    ]);
+
+    const result = await officialApiAdapter(transport).publish(await deliveryInput());
+
+    expect(result).toMatchObject({
+      external_id: '105541616',
+      status: 'published',
+      url: null,
+    });
+    expect(transport.requests).toHaveLength(1);
   });
 
   it('attaches only safe diagnostics to an unrecognized official API response', async () => {

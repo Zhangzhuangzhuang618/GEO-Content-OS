@@ -203,6 +203,51 @@ describe('publisher worker', () => {
     });
   });
 
+  it('completes the Lieju automation batch after the platform explicitly accepts submission', async () => {
+    const database = requireClient(client);
+    await enableLiejuOfficialAutomationPublishing(database);
+    const platform = new FakePlatform({
+      externalId: '105862105',
+      mode: 'api',
+      payloadHash: PLATFORM_PAYLOAD_HASH,
+      response: { status: 'published' },
+      url: 'https://gz.lieju.com/banjia/105862105.html',
+    });
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+
+    expect(
+      await database<
+        {
+          automationStatus: string;
+          batchStatus: string;
+          itemStatus: string;
+          jobStatus: string;
+          publicationStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",automation.status AS "automationStatus",
+          item.status AS "itemStatus",batch.status AS "batchStatus",
+          publication.status AS "publicationStatus"
+        FROM publish_jobs AS job
+        JOIN lieju_api_publications AS publication ON publication.publish_job_id=job.id
+        JOIN browser_platform_automation_runs AS automation ON automation.publish_job_id=job.id
+        JOIN browser_platform_daily_batch_items AS item ON item.publish_job_id=job.id
+        JOIN browser_platform_daily_batches AS batch ON batch.id=item.batch_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        automationStatus: 'published',
+        batchStatus: 'completed',
+        itemStatus: 'published',
+        jobStatus: 'published',
+        publicationStatus: 'published',
+      },
+    ]);
+  });
+
   it('stops a Baijiahao unknown state after attempt three without claiming rejection', async () => {
     const database = requireClient(client);
     await enableBaijiahaoAutomation(database);
@@ -1114,7 +1159,10 @@ async function enableSohuManualPublishing(
   `;
 }
 
-async function enableLiejuOfficialPublishing(database: Sql): Promise<void> {
+async function enableLiejuOfficialPublishing(
+  database: Sql,
+  origin: 'lieju_automation' | 'manual' = 'manual',
+): Promise<void> {
   await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
   await database`
     UPDATE briefs SET platform_codes=ARRAY['lieju']::varchar[]
@@ -1144,7 +1192,48 @@ async function enableLiejuOfficialPublishing(database: Sql): Promise<void> {
     ) VALUES(
       ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
       ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
-      ${CONTENT_HASH},'scheduled','manual',${USER_ID}::uuid
+      ${CONTENT_HASH},'scheduled',${origin},${USER_ID}::uuid
+    )
+  `;
+}
+
+async function enableLiejuOfficialAutomationPublishing(database: Sql): Promise<void> {
+  await enableLiejuOfficialPublishing(database, 'lieju_automation');
+  await database`
+    INSERT INTO browser_platform_automation_policies(
+      id,tenant_id,workspace_id,project_id,account_id,platform_code,
+      enabled,daily_enabled,created_by
+    ) VALUES(
+      ${POLICY_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'lieju',true,true,${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO browser_platform_automation_runs(
+      id,tenant_id,policy_id,platform_code,variant_id,content_version_id,
+      status,publish_job_id
+    ) VALUES(
+      ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,'lieju',
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,'scheduled',${JOB_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO browser_platform_daily_batches(
+      id,tenant_id,policy_id,business_date,status,scheduled_at
+    ) VALUES(
+      ${DAILY_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2026-08-19','scheduled',now()
+    )
+  `;
+  await database`
+    INSERT INTO browser_platform_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,
+      variant_id,content_version_id,publish_job_id,status,qualified_at,scheduled_at
+    ) VALUES(
+      ${DAILY_ITEM_ID}::uuid,${TENANT_ID}::uuid,${DAILY_BATCH_ID}::uuid,1,
+      ${AUTOMATION_RUN_ID}::uuid,${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${JOB_ID}::uuid,
+      'scheduled',now(),now()
     )
   `;
 }
