@@ -45,7 +45,7 @@ GEO Content OS 是 SaaS 多租户内容生产系统，闭环为策略/知识 -> 
 ```text
 apps/web
 apps/api/src/modules/{identity,workspace,knowledge,content,quality,review,publishing,analytics,billing,audit}
-packages/{contracts,skills,adapters,security,observability,testkit,sdk}
+packages/{contracts,skills,adapters,retrieval,security,observability,testkit,sdk}
 workers/{knowledge,ai,outbox-relay,publisher,baijiahao-browser,sohu-browser,lieju-browser,analytics,lifecycle}
 infra/{docker,observability,backup}
 docs/
@@ -319,6 +319,13 @@ HOTFIX-20260819-08 支持建行龙集采 `#/content?pId=...&id=...` 详情链接
 通过公开栏目索引和详情 JSON 生成 HTML 快照，同时保留完整原始语义 URL 供重建索引与引用定位。
 该能力不启用通用浏览器渲染，不放宽 SSRF、MIME、大小、重定向或超时边界；已丢失 fragment 的旧
 失败资料不会自动恢复，需使用完整链接重新导入。无数据库迁移，不影响冻结质量门槛和旧质量报告。
+
+HOTFIX-20260820-01 根据 ADR-0054 将官网、百家号独立生文及独立回退、搜狐号和列举网每日批次从
+“整批固定取最近 12 个资料片段”改为逐候选主题检索。每个候选使用关键词、标题、角度、目标和受众
+生成查询，经过与 API 共用的租户隔离 FTS/pgvector 混合检索与重排后，最多冻结 5 个片段且每份资料
+最多 2 个；命中资料写入 `brief_sources`，片段写入不可变 Writer 输入，后续重写继续复用原证据。
+百家号官网派生模式继续继承官网文章及其引用。无数据库迁移，不改变冻结质量门槛、候选上限、排期
+和未知态规则；旧批次、旧候选、旧质量报告和旧发布任务不会自动重新检索、改写或重投。
 
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 

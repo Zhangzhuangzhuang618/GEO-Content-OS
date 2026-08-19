@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
+import type { DailyCitationPort } from './daily-citation-retriever.js';
 import type { JsonObject } from './generation.types.js';
 
 type Platform = 'lieju' | 'sohu';
@@ -31,11 +32,6 @@ interface Seed {
     readonly timezone: string;
   };
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
-  readonly citations: readonly {
-    readonly chunkId: string;
-    readonly quoteText: string;
-    readonly sourceId: string;
-  }[];
   readonly keywords: readonly { readonly id: string; readonly term: string }[];
   readonly rule: { readonly hash: string; readonly id: string; readonly rules: JsonObject };
 }
@@ -51,6 +47,7 @@ export class BrowserPlatformDailyScheduler {
       readonly onError?: (error: Error) => void;
       readonly tickMs: number;
     },
+    private readonly dailyCitations: DailyCitationPort,
   ) {}
 
   public start() {
@@ -203,7 +200,20 @@ export class BrowserPlatformDailyScheduler {
         return;
       }
       for (let offset = 1; offset <= requiredCount; offset += 1) {
-        await createCandidate(transaction, batch, seed, count.attempted + offset, this.config);
+        try {
+          await createCandidate(
+            transaction,
+            batch,
+            seed,
+            count.attempted + offset,
+            this.config,
+            this.dailyCitations,
+          );
+        } catch (error) {
+          if (!(error instanceof DailyEvidenceMissingError)) throw error;
+          await attention(transaction, batch, 'AUTOMATION_PREREQUISITE_MISSING', error.message);
+          return;
+        }
       }
     });
   }
@@ -233,7 +243,7 @@ async function retireFailed(transaction: postgres.TransactionSql, batch: BatchRo
 }
 
 async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): Promise<Seed> {
-  const [brands, rules, keywords, citations, accounts] = await Promise.all([
+  const [brands, rules, keywords, knowledge, accounts] = await Promise.all([
     transaction<Seed['brand'][]>`
       SELECT id,profile_json AS profile,version FROM brand_profiles
       WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
@@ -253,8 +263,8 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         AND ${batch.platformCode}=ANY(keyword.platform_scope)
       ORDER BY keyword.priority DESC,keyword.id
     `,
-    transaction<Seed['citations'][number][]>`
-      SELECT chunk.id AS "chunkId",left(chunk.text,1200) AS "quoteText",source.id AS "sourceId"
+    transaction<{ id: string }[]>`
+      SELECT chunk.id
       FROM source_chunks AS chunk
       JOIN source_documents AS source
         ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
@@ -263,11 +273,10 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         AND (source.project_id=${batch.projectId}::uuid OR source.project_id IS NULL)
         AND source.status='active' AND source.deleted_at IS NULL
         AND source.trust_level IN ('verified','normal')
-        AND (source.effective_from IS NULL OR source.effective_from<=CURRENT_DATE)
-        AND (source.effective_to IS NULL OR source.effective_to>=CURRENT_DATE)
+        AND (source.effective_from IS NULL OR source.effective_from<=${batch.businessDate}::date)
+        AND (source.effective_to IS NULL OR source.effective_to>=${batch.businessDate}::date)
         AND chunk.status='active'
-      ORDER BY CASE source.trust_level WHEN 'verified' THEN 0 ELSE 1 END,
-        source.updated_at DESC,chunk.chunk_no,chunk.id LIMIT 12
+      LIMIT 1
     `,
     transaction<Seed['account'][]>`
       SELECT id,display_name AS "displayName",provider_account_id AS "providerAccountId",
@@ -284,11 +293,10 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
   if (!rule) throw new Error(`${batch.platformCode} 平台规则尚未发布。`);
   if (!account) throw new Error(`${batch.platformCode} 托管浏览器账号不可用。`);
   if (!keywords.length) throw new Error(`项目没有适用于 ${batch.platformCode} 的关键词。`);
-  if (!citations.length) throw new Error('项目没有可用的已解析知识资料。');
+  if (!knowledge.length) throw new Error('项目没有可用的已解析知识资料。');
   return {
     account,
     brand,
-    citations: Object.freeze(citations),
     keywords: Object.freeze(keywords),
     rule,
   };
@@ -300,12 +308,31 @@ async function createCandidate(
   seed: Seed,
   candidateNo: number,
   config: OfficialSiteAutomationConfig,
+  dailyCitations: DailyCitationPort,
 ) {
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
   const angle = ANGLES[(candidateNo - 1) % ANGLES.length]!;
   const maxTitle = batch.platformCode === 'lieju' ? 30 : 72;
   const title = truncate(angle.title(keyword.term), maxTitle);
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
+  const audience = `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
+  const evidence = await dailyCitations.retrieve({
+    angle: angle.label,
+    audience,
+    businessDate: batch.businessDate,
+    candidateNo,
+    keyword: keyword.term,
+    objective,
+    platformCode: batch.platformCode,
+    projectId: batch.projectId,
+    tenantId: batch.tenantId,
+    title,
+    userId: batch.createdBy,
+    workspaceId: batch.workspaceId,
+  });
+  if (evidence.citations.length === 0) {
+    throw new DailyEvidenceMissingError(`企业资料索引中没有找到与候选“${title}”相关的可用证据。`);
+  }
   const platformInstruction =
     batch.platformCode === 'lieju'
       ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，并自然提示通过页面联系方式咨询；正文不得出现具体电话或手机号、微信/QQ账号、网址、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
@@ -335,7 +362,7 @@ async function createCandidate(
       constraints_json,generation_mode,due_at,created_by
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.workspaceId}::uuid,${batch.projectId}::uuid,${title},
-      ${objective},${`正在搜索“${keyword.term}”并需要服务决策信息的用户`},
+      ${objective},${audience},
       ARRAY[${batch.platformCode}]::varchar[],${JSON.stringify(constraints)}::text::jsonb,'draft',
       (${batch.businessDate}::date+interval '1 day'-interval '1 second'),${batch.createdBy}::uuid
     ) RETURNING id
@@ -345,7 +372,7 @@ async function createCandidate(
     INSERT INTO brief_keywords (tenant_id,brief_id,keyword_id,is_primary)
     VALUES (${batch.tenantId}::uuid,${briefId}::uuid,${keyword.id}::uuid,true)
   `;
-  const sourceIds = [...new Set(seed.citations.map((citation) => citation.sourceId))];
+  const sourceIds = [...new Set(evidence.citations.map((citation) => citation.sourceId))];
   await transaction`
     INSERT INTO brief_sources (tenant_id,brief_id,source_document_id,required)
     SELECT ${batch.tenantId}::uuid,${briefId}::uuid,source_id,true
@@ -368,14 +395,14 @@ async function createCandidate(
   const variantId = required(variants[0]?.id, 'Variant insert failed');
   const writerInput: JsonObject = {
     brief: {
-      audience: `正在搜索“${keyword.term}”并需要服务决策信息的用户`,
+      audience,
       brief_id: briefId,
       constraints,
       objective,
       platform_codes: [batch.platformCode],
       title,
     },
-    citations: seed.citations.map((citation) => ({
+    citations: evidence.citations.map((citation) => ({
       chunk_id: citation.chunkId,
       citation_id: citation.chunkId,
       quote_text: citation.quoteText,
@@ -476,6 +503,10 @@ async function createCandidate(
         automation_run_id: automationRunId,
         batch_id: batch.id,
         candidate_no: candidateNo,
+        evidence_context_hash: evidence.contextHash,
+        evidence_query_hash: evidence.queryHash,
+        evidence_retrieval_degraded: evidence.degraded,
+        evidence_source_count: sourceIds.length,
         platform_code: batch.platformCode,
         title,
       })}::text::jsonb,${requestId}
@@ -506,6 +537,13 @@ export function candidateLimitAttentionMessage(
   scheduledCount: number,
 ): string {
   return `当天已尝试 ${batch.candidateLimit} 篇；已有 ${scheduledCount} 篇完成排期（含发布中或已发布），仍缺 ${Math.max(batch.targetCount - scheduledCount, 0)} 篇，批次已转为需要处理。`;
+}
+
+class DailyEvidenceMissingError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'DailyEvidenceMissingError';
+  }
 }
 
 const ANGLES = Object.freeze([

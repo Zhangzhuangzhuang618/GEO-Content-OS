@@ -1,10 +1,16 @@
 import { createServer } from 'node:http';
 import postgres from 'postgres';
 import {
+  createEmbeddingAdapter,
+  readEmbeddingConfiguration,
+} from '@geo-content-os/adapter-embedding';
+import {
   CloudflareWorkersAiImageAdapter,
   readImageProviderConfiguration,
 } from '@geo-content-os/adapter-image';
+import { createRerankAdapter, readRerankConfiguration } from '@geo-content-os/adapter-rerank';
 import { createStorageAdapter, readStorageConfiguration } from '@geo-content-os/adapter-storage';
+import { CitationSearchService, HybridSearchRepository } from '@geo-content-os/retrieval';
 
 import { readAiWorkerConfig } from './config.js';
 import { PostgresGenerationStore } from './generation.store.js';
@@ -28,10 +34,29 @@ import { ArticleImagePlanner } from './media-planner.js';
 import { PostgresMediaUsageRecorder } from './media-usage.js';
 import { ContentMediaAutomation } from './content-media-automation.js';
 import { ContentMediaWorker } from './content-media.worker.js';
+import { DailyCitationRetriever } from './daily-citation-retriever.js';
 
 async function main(): Promise<void> {
   const config = readAiWorkerConfig();
   const database = postgres(config.databaseUrl, { max: 5, prepare: false });
+  const embedding = createEmbeddingAdapter(
+    readEmbeddingConfiguration({
+      ...process.env,
+      EMBEDDING_DRIVER: process.env['EMBEDDING_DRIVER'] ?? 'local',
+      EMBEDDING_MODEL_KEY: process.env['EMBEDDING_MODEL_KEY'] ?? 'embedding-local-ngram-v1',
+    }),
+  );
+  const rerank = createRerankAdapter(
+    readRerankConfiguration({
+      ...process.env,
+      RERANK_DRIVER: process.env['RERANK_DRIVER'] ?? 'local',
+      RERANK_MODEL_KEY: process.env['RERANK_MODEL_KEY'] ?? 'rerank-local-ngram-v1',
+    }),
+  );
+  const dailyCitationRetriever = new DailyCitationRetriever(
+    embedding,
+    new CitationSearchService(new HybridSearchRepository(database), rerank),
+  );
   const adapters = createRuntimeModels(config.driver);
   const imageConfiguration = readImageProviderConfiguration();
   const imageProvider = imageConfiguration.provider
@@ -66,14 +91,24 @@ async function main(): Promise<void> {
     baijiahaoAutomation,
     browserPlatformAutomation,
   );
-  const dailyScheduler = new OfficialSiteDailyScheduler(database, config.automation, {
-    onError: (error) => console.error('Official-site daily scheduler error', error),
-    tickMs: config.dailySchedulerTickMs,
-  });
-  const baijiahaoDailyScheduler = new BaijiahaoDailyScheduler(database, config.automation, {
-    onError: (error) => console.error('Baijiahao daily scheduler error', error),
-    tickMs: config.dailySchedulerTickMs,
-  });
+  const dailyScheduler = new OfficialSiteDailyScheduler(
+    database,
+    config.automation,
+    {
+      onError: (error) => console.error('Official-site daily scheduler error', error),
+      tickMs: config.dailySchedulerTickMs,
+    },
+    dailyCitationRetriever,
+  );
+  const baijiahaoDailyScheduler = new BaijiahaoDailyScheduler(
+    database,
+    config.automation,
+    {
+      onError: (error) => console.error('Baijiahao daily scheduler error', error),
+      tickMs: config.dailySchedulerTickMs,
+    },
+    dailyCitationRetriever,
+  );
   const browserPlatformDailyScheduler = new BrowserPlatformDailyScheduler(
     database,
     config.automation,
@@ -81,6 +116,7 @@ async function main(): Promise<void> {
       onError: (error) => console.error('Browser platform daily scheduler error', error),
       tickMs: config.dailySchedulerTickMs,
     },
+    dailyCitationRetriever,
   );
   const generation = new ContentGenerationWorker(
     new PostgresGenerationStore(database, 60_000, generationAutomation),

@@ -92,6 +92,9 @@ importers:
       '@geo-content-os/parsers':
         specifier: workspace:*
         version: link:../../packages/parsers
+      '@geo-content-os/retrieval':
+        specifier: workspace:*
+        version: link:../../packages/retrieval
       '@geo-content-os/security':
         specifier: workspace:*
         version: link:../../packages/security
@@ -454,6 +457,18 @@ importers:
         specifier: 4.1.10
         version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.23.1)(yaml@2.9.0))
 
+  packages/retrieval:
+    dependencies:
+      '@geo-content-os/adapter-embedding':
+        specifier: workspace:*
+        version: link:../adapters/embedding
+      '@geo-content-os/adapter-rerank':
+        specifier: workspace:*
+        version: link:../adapters/rerank
+      postgres:
+        specifier: 3.4.9
+        version: 3.4.9
+
   packages/sdk: {}
 
   packages/security:
@@ -499,6 +514,9 @@ importers:
 
   workers/ai:
     dependencies:
+      '@geo-content-os/adapter-embedding':
+        specifier: workspace:*
+        version: link:../../packages/adapters/embedding
       '@geo-content-os/adapter-image':
         specifier: workspace:*
         version: link:../../packages/adapters/image
@@ -508,12 +526,18 @@ importers:
       '@geo-content-os/adapter-model-deepseek':
         specifier: workspace:*
         version: link:../../packages/adapters/model-deepseek
+      '@geo-content-os/adapter-rerank':
+        specifier: workspace:*
+        version: link:../../packages/adapters/rerank
       '@geo-content-os/adapter-storage':
         specifier: workspace:*
         version: link:../../packages/adapters/storage
       '@geo-content-os/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@geo-content-os/retrieval':
+        specifier: workspace:*
+        version: link:../../packages/retrieval
       '@geo-content-os/skills':
         specifier: workspace:*
         version: link:../../packages/skills

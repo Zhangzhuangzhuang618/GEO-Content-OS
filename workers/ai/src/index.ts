@@ -46,6 +46,14 @@ export {
 export { BaijiahaoDailyScheduler } from './baijiahao-daily-scheduler.js';
 export { BrowserPlatformAutomation } from './browser-platform-automation.js';
 export { BrowserPlatformDailyScheduler } from './browser-platform-daily-scheduler.js';
+export {
+  buildDailyCitationQuery,
+  DailyCitationRetriever,
+  type DailyCitation,
+  type DailyCitationPort,
+  type DailyCitationRequest,
+  type DailyCitationSelection,
+} from './daily-citation-retriever.js';
 export { validateBaijiahaoAdaptationEvent } from './baijiahao-adaptation.event.js';
 export { validatePublishingPublishedEvent } from './publishing-published.event.js';
 export {

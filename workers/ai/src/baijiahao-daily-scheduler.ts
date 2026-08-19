@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
+import type { DailyCitationPort } from './daily-citation-retriever.js';
 import type { JsonObject } from './generation.types.js';
 
 const ACTIVE_STATUSES = [
@@ -52,11 +53,6 @@ interface CandidateSeed {
     readonly timezone: string;
   };
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
-  readonly citations: readonly {
-    readonly chunkId: string;
-    readonly quoteText: string;
-    readonly sourceId: string;
-  }[];
   readonly keywords: readonly { readonly id: string; readonly term: string }[];
   readonly rule: { readonly hash: string; readonly id: string; readonly rules: JsonObject };
 }
@@ -74,6 +70,7 @@ export class BaijiahaoDailyScheduler {
     private readonly client: postgres.Sql,
     private readonly automationConfig: OfficialSiteAutomationConfig,
     private readonly options: BaijiahaoDailySchedulerOptions,
+    private readonly dailyCitations: DailyCitationPort,
   ) {}
 
   public start(): void {
@@ -235,6 +232,7 @@ export class BaijiahaoDailyScheduler {
           seed,
           counts.attempted + offset,
           this.automationConfig,
+          this.dailyCitations,
         );
       }
     });
@@ -370,7 +368,7 @@ async function loadCandidateSeed(
   transaction: postgres.TransactionSql,
   batch: BatchRow,
 ): Promise<CandidateSeed> {
-  const [brands, rules, keywords, citations, accounts] = await Promise.all([
+  const [brands, rules, keywords, knowledge, accounts] = await Promise.all([
     transaction<{ id: string; profile: JsonObject; version: number }[]>`
       SELECT id,profile_json AS profile,version FROM brand_profiles
       WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
@@ -393,10 +391,8 @@ async function loadCandidateSeed(
         AND 'baijiahao'=ANY(keyword.platform_scope)
       ORDER BY keyword.priority DESC,keyword.id
     `,
-    transaction<CandidateSeed['citations'][number][]>`
-      SELECT
-        chunk.id AS "chunkId",left(chunk.text,1200) AS "quoteText",
-        source.id AS "sourceId"
+    transaction<{ id: string }[]>`
+      SELECT chunk.id
       FROM source_chunks AS chunk
       JOIN source_documents AS source
         ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
@@ -405,12 +401,10 @@ async function loadCandidateSeed(
         AND (source.project_id=${batch.projectId}::uuid OR source.project_id IS NULL)
         AND source.status='active' AND source.deleted_at IS NULL
         AND source.trust_level IN ('verified','normal')
-        AND (source.effective_from IS NULL OR source.effective_from<=CURRENT_DATE)
-        AND (source.effective_to IS NULL OR source.effective_to>=CURRENT_DATE)
+        AND (source.effective_from IS NULL OR source.effective_from<=${batch.businessDate}::date)
+        AND (source.effective_to IS NULL OR source.effective_to>=${batch.businessDate}::date)
         AND chunk.status='active'
-      ORDER BY CASE source.trust_level WHEN 'verified' THEN 0 ELSE 1 END,
-        source.updated_at DESC,chunk.chunk_no,chunk.id
-      LIMIT 12
+      LIMIT 1
     `,
     transaction<CandidateSeed['account'][]>`
       SELECT
@@ -432,13 +426,12 @@ async function loadCandidateSeed(
   if (keywords.length === 0) {
     throw prerequisite('BAIJIAHAO_KEYWORD_REQUIRED', '项目没有适用于百家号的关键词。');
   }
-  if (citations.length === 0) {
+  if (knowledge.length === 0) {
     throw prerequisite('PARSED_KNOWLEDGE_REQUIRED', '项目没有可用的已解析知识资料。');
   }
   return {
     account,
     brand,
-    citations: Object.freeze(citations),
     keywords: Object.freeze(keywords),
     rule,
   };
@@ -450,11 +443,33 @@ async function createCandidate(
   seed: CandidateSeed,
   candidateNo: number,
   config: OfficialSiteAutomationConfig,
+  dailyCitations: DailyCitationPort,
 ): Promise<void> {
   const angle = CONTENT_ANGLES[(candidateNo - 1) % CONTENT_ANGLES.length]!;
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
   const title = truncateUnicode(angle.title(keyword.term), 40);
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
+  const audience = `正在搜索“${keyword.term}”并需要实用决策信息的用户`;
+  const evidence = await dailyCitations.retrieve({
+    angle: angle.label,
+    audience,
+    businessDate: batch.businessDate,
+    candidateNo,
+    keyword: keyword.term,
+    objective,
+    platformCode: 'baijiahao',
+    projectId: batch.projectId,
+    tenantId: batch.tenantId,
+    title,
+    userId: batch.createdBy,
+    workspaceId: batch.workspaceId,
+  });
+  if (evidence.citations.length === 0) {
+    throw prerequisite(
+      'PARSED_KNOWLEDGE_REQUIRED',
+      `企业资料索引中没有找到与候选“${title}”相关的可用证据。`,
+    );
+  }
   const constraints = {
     additional_instructions: [
       `这是 ${batch.businessDate} 百家号独立内容批次的第 ${candidateNo} 个候选。`,
@@ -480,7 +495,7 @@ async function createCandidate(
       platform_codes,constraints_json,generation_mode,due_at,created_by
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.workspaceId}::uuid,${batch.projectId}::uuid,
-      ${title},${objective},${`正在搜索“${keyword.term}”并需要实用决策信息的用户`},
+      ${title},${objective},${audience},
       ARRAY['baijiahao']::varchar[],${JSON.stringify(constraints)}::text::jsonb,
       'draft',(${batch.businessDate}::date+interval '1 day'-interval '1 second'),
       ${batch.createdBy}::uuid
@@ -491,7 +506,7 @@ async function createCandidate(
     INSERT INTO brief_keywords (tenant_id,brief_id,keyword_id,is_primary)
     VALUES (${batch.tenantId}::uuid,${briefId}::uuid,${keyword.id}::uuid,true)
   `;
-  const sourceIds = [...new Set(seed.citations.map((citation) => citation.sourceId))];
+  const sourceIds = [...new Set(evidence.citations.map((citation) => citation.sourceId))];
   await transaction`
     INSERT INTO brief_sources (tenant_id,brief_id,source_document_id,required)
     SELECT ${batch.tenantId}::uuid,${briefId}::uuid,source_id,true
@@ -517,14 +532,14 @@ async function createCandidate(
   const variantId = requiredId(variants[0]?.id, 'Baijiahao daily variant insert failed');
   const writerInput: JsonObject = {
     brief: {
-      audience: `正在搜索“${keyword.term}”并需要实用决策信息的用户`,
+      audience,
       brief_id: briefId,
       constraints,
       objective,
       platform_codes: ['baijiahao'],
       title,
     },
-    citations: seed.citations.map((citation) => ({
+    citations: evidence.citations.map((citation) => ({
       chunk_id: citation.chunkId,
       citation_id: citation.chunkId,
       quote_text: citation.quoteText,
@@ -630,6 +645,10 @@ async function createCandidate(
         automation_run_id: automationRunId,
         batch_id: batch.id,
         candidate_no: candidateNo,
+        evidence_context_hash: evidence.contextHash,
+        evidence_query_hash: evidence.queryHash,
+        evidence_retrieval_degraded: evidence.degraded,
+        evidence_source_count: sourceIds.length,
         title,
       })}::text::jsonb,${requestId}
     )

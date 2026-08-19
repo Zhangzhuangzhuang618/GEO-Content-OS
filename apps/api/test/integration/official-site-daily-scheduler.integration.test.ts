@@ -290,6 +290,15 @@ function createScheduler(database: Sql) {
       writerSkillVersion: '1.0.0',
     },
     { tickMs: 30_000 },
+    {
+      retrieve: () =>
+        Promise.resolve({
+          citations: [{ chunkId: CHUNK_ID, quoteText: '测试引用', sourceId: SOURCE_ID }],
+          contextHash: 'a'.repeat(64),
+          degraded: false,
+          queryHash: 'b'.repeat(64),
+        }),
+    },
   );
 }
 

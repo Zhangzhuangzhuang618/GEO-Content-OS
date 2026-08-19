@@ -13,16 +13,19 @@
     }
   },
   "scripts": {
-    "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm --filter @geo-content-os/skills build && tsc --project tsconfig.build.json --pretty false",
-    "test": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm --filter @geo-content-os/skills build && vitest run --config vitest.config.ts",
-    "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm --filter @geo-content-os/skills build && tsc --project tsconfig.json --noEmit --pretty false"
+    "build": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && pnpm --filter @geo-content-os/retrieval build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm --filter @geo-content-os/skills build && tsc --project tsconfig.build.json --pretty false",
+    "test": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && pnpm --filter @geo-content-os/retrieval build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm --filter @geo-content-os/skills build && vitest run --config vitest.config.ts",
+    "typecheck": "pnpm --filter @geo-content-os/contracts build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && pnpm --filter @geo-content-os/retrieval build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-model-deepseek build && pnpm --filter @geo-content-os/skills build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
+    "@geo-content-os/adapter-embedding": "workspace:*",
     "@geo-content-os/adapter-image": "workspace:*",
     "@geo-content-os/adapter-model": "workspace:*",
     "@geo-content-os/adapter-model-deepseek": "workspace:*",
     "@geo-content-os/adapter-storage": "workspace:*",
     "@geo-content-os/contracts": "workspace:*",
+    "@geo-content-os/adapter-rerank": "workspace:*",
+    "@geo-content-os/retrieval": "workspace:*",
     "@geo-content-os/skills": "workspace:*",
     "bullmq": "5.80.2",
     "ioredis": "5.10.1",

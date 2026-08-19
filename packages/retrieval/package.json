@@ -1,0 +1,28 @@
+{
+  "name": "@geo-content-os/retrieval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "description": "Shared tenant-scoped hybrid retrieval and citation context",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && tsc --project tsconfig.build.json --pretty false",
+    "typecheck": "pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && tsc --project tsconfig.json --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@geo-content-os/adapter-embedding": "workspace:*",
+    "@geo-content-os/adapter-rerank": "workspace:*",
+    "postgres": "3.4.9"
+  },
+  "files": [
+    "dist"
+  ]
+}

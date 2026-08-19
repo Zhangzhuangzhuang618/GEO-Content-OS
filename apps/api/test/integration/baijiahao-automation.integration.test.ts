@@ -6,6 +6,7 @@ import {
   BaijiahaoAutomation,
   BaijiahaoDailyScheduler,
   contentHash,
+  type DailyCitationRequest,
   type GeneratedContent,
   type ValidatedGenerationEvent,
 } from '@geo-content-os/worker-ai';
@@ -53,6 +54,8 @@ const RULE_ID = 'a4000000-0000-4000-8000-000000000145';
 const SOURCE_ID = 'a5000000-0000-4000-8000-000000000145';
 const CHUNK_ID = 'a6000000-0000-4000-8000-000000000145';
 const CITATION_ID = 'a7000000-0000-4000-8000-000000000145';
+const KEYWORD_SET_ID = 'a8000000-0000-4000-8000-000000000145';
+const KEYWORD_ID = 'a9000000-0000-4000-8000-000000000145';
 const WRITER_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
 const QUALITY_PROMPT_ID = '25000000-0000-4000-8000-000000000007';
 const OFFICIAL_URL = 'https://www.zhiyuanbj.cn/news/t145-source.html';
@@ -67,6 +70,20 @@ const SHORT_ARTICLE: GeneratedContent = Object.freeze({
   summary: '简短清单',
   title: '搬家前检查清单',
 });
+
+function dailyCitationSelection(requests: DailyCitationRequest[] = []) {
+  return {
+    retrieve: (input: DailyCitationRequest) => {
+      requests.push(input);
+      return Promise.resolve({
+        citations: [{ chunkId: CHUNK_ID, quoteText: '测试引用', sourceId: SOURCE_ID }],
+        contextHash: 'a'.repeat(64),
+        degraded: false,
+        queryHash: 'b'.repeat(64),
+      });
+    },
+  };
+}
 
 describe('Baijiahao official-site derived automation', () => {
   let client: Sql | undefined;
@@ -241,6 +258,7 @@ describe('Baijiahao official-site derived automation', () => {
         writerSkillVersion: '1.0.0',
       },
       { tickMs: 30_000 },
+      dailyCitationSelection(),
     );
 
     await expect(scheduler.tick()).resolves.toBeUndefined();
@@ -636,6 +654,7 @@ describe('Baijiahao official-site derived automation', () => {
         writerSkillVersion: '1.0.0',
       },
       { tickMs: 30_000 },
+      dailyCitationSelection(),
     );
 
     await expect(scheduler.tick()).resolves.toBeUndefined();
@@ -657,6 +676,77 @@ describe('Baijiahao official-site derived automation', () => {
         runStatus: 'disabled',
       },
     ]);
+  });
+
+  it('retrieves and freezes topic evidence for an independent daily candidate', async () => {
+    const database = requireClient(client);
+    const requests: DailyCitationRequest[] = [];
+    await database`
+      INSERT INTO keyword_sets(id,tenant_id,project_id,name)
+      VALUES(
+        ${KEYWORD_SET_ID}::uuid,${TENANT_ID}::uuid,${PROJECT_ID}::uuid,
+        '百家号独立日批关键词'
+      )
+    `;
+    await database`
+      INSERT INTO keywords(
+        id,tenant_id,keyword_set_id,term,intent,intents,priority,platform_scope
+      ) VALUES(
+        ${KEYWORD_ID}::uuid,${TENANT_ID}::uuid,${KEYWORD_SET_ID}::uuid,
+        '广州搬家准备','commercial',ARRAY['commercial'],100,
+        ARRAY['baijiahao']::varchar[]
+      )
+    `;
+    await database`
+      UPDATE baijiahao_automation_policies SET
+        daily_enabled=true,source_mode='independent',independent_fallback_enabled=false,
+        daily_target_count=1,daily_candidate_limit=1,daily_generation_time=TIME '00:00',
+        daily_schedule_times=ARRAY[TIME '10:00']
+      WHERE id=${POLICY_ID}::uuid
+    `;
+    const scheduler = new BaijiahaoDailyScheduler(
+      database,
+      {
+        qualityModelKey: 'deepseek-v4-flash',
+        qualityPromptVersionId: QUALITY_PROMPT_ID,
+        qualitySkillVersion: '1.0.0',
+        rewriteModelKey: 'deepseek-v4-flash',
+        writerPromptVersionId: WRITER_PROMPT_ID,
+        writerSkillVersion: '1.0.0',
+      },
+      { tickMs: 30_000 },
+      dailyCitationSelection(requests),
+    );
+
+    await scheduler.tick();
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        angle: '选择指南',
+        audience: expect.stringContaining('广州搬家准备'),
+        candidateNo: 1,
+        keyword: '广州搬家准备',
+        objective: 'education',
+        platformCode: 'baijiahao',
+        title: expect.stringContaining('广州搬家准备'),
+      }),
+    ]);
+    expect(
+      await database<{ sourceId: string }[]>`
+        SELECT source_document_id AS "sourceId" FROM brief_sources
+        WHERE tenant_id=${TENANT_ID}::uuid
+      `,
+    ).toEqual([{ sourceId: SOURCE_ID }]);
+    expect(
+      await database<{ chunkId: string; sourceId: string }[]>`
+        SELECT
+          payload_json->'data'->'writer_input'->'citations'->0->>'chunk_id' AS "chunkId",
+          payload_json->'data'->'writer_input'->'citations'->0->>'source_id' AS "sourceId"
+        FROM outbox_events
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND event_type='content.package.generation_requested.v1'
+      `,
+    ).toEqual([{ chunkId: CHUNK_ID, sourceId: SOURCE_ID }]);
   });
 
   it('lists manual-required items and resumes quality after user editing', async () => {

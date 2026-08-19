@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
+import type { DailyCitationPort } from './daily-citation-retriever.js';
 import type { JsonObject } from './generation.types.js';
 
 const DAILY_TARGET = 10;
@@ -80,11 +81,6 @@ interface CandidateSeed {
     readonly timezone: string;
   };
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
-  readonly citations: readonly {
-    readonly chunkId: string;
-    readonly quoteText: string;
-    readonly sourceId: string;
-  }[];
   readonly keywords: readonly {
     readonly id: string;
     readonly intent: 'commercial' | 'informational' | 'navigational' | 'transactional';
@@ -120,6 +116,7 @@ export class OfficialSiteDailyScheduler {
     private readonly client: postgres.Sql,
     private readonly automationConfig: OfficialSiteAutomationConfig,
     private readonly options: OfficialSiteDailySchedulerOptions,
+    private readonly dailyCitations: DailyCitationPort,
   ) {}
 
   public start(): void {
@@ -293,6 +290,7 @@ export class OfficialSiteDailyScheduler {
           candidateNo,
           selectAngle(angleUsage, candidateNo),
           this.automationConfig,
+          this.dailyCitations,
         );
       }
     });
@@ -482,7 +480,7 @@ async function loadCandidateSeed(
   transaction: postgres.TransactionSql,
   batch: BatchRow,
 ): Promise<CandidateSeed> {
-  const [brands, rules, keywords, citations, accounts] = await Promise.all([
+  const [brands, rules, keywords, knowledge, accounts] = await Promise.all([
     transaction<{ id: string; profile: JsonObject; version: number }[]>`
       SELECT id,profile_json AS profile,version
       FROM brand_profiles
@@ -514,10 +512,8 @@ async function loadCandidateSeed(
         AND keyword.status='active' AND 'official_site'=ANY(keyword.platform_scope)
       ORDER BY keyword.priority DESC,keyword.id
     `,
-    transaction<CandidateSeed['citations'][number][]>`
-      SELECT
-        chunk.id AS "chunkId",left(chunk.text,1200) AS "quoteText",
-        source.id AS "sourceId"
+    transaction<{ id: string }[]>`
+      SELECT chunk.id
       FROM source_chunks AS chunk
       JOIN source_documents AS source
         ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
@@ -526,13 +522,10 @@ async function loadCandidateSeed(
         AND (source.project_id=${batch.projectId}::uuid OR source.project_id IS NULL)
         AND source.status='active' AND source.deleted_at IS NULL
         AND source.trust_level IN ('verified','normal')
-        AND (source.effective_from IS NULL OR source.effective_from<=CURRENT_DATE)
-        AND (source.effective_to IS NULL OR source.effective_to>=CURRENT_DATE)
+        AND (source.effective_from IS NULL OR source.effective_from<=${batch.businessDate}::date)
+        AND (source.effective_to IS NULL OR source.effective_to>=${batch.businessDate}::date)
         AND chunk.status='active'
-      ORDER BY
-        CASE source.trust_level WHEN 'verified' THEN 0 ELSE 1 END,
-        source.updated_at DESC,chunk.chunk_no,chunk.id
-      LIMIT 12
+      LIMIT 1
     `,
     transaction<
       {
@@ -563,13 +556,12 @@ async function loadCandidateSeed(
   if (keywords.length === 0) {
     throw prerequisite('OFFICIAL_KEYWORD_REQUIRED', '请先为项目维护至少一个适用于官网的关键词。');
   }
-  if (citations.length === 0) {
+  if (knowledge.length === 0) {
     throw prerequisite('PARSED_KNOWLEDGE_REQUIRED', '请先完成至少一份企业资料的解析。');
   }
   return {
     account,
     brand,
-    citations: Object.freeze(citations),
     keywords: Object.freeze(keywords),
     rule,
   };
@@ -582,10 +574,32 @@ async function createCandidate(
   candidateNo: number,
   angle: ContentAngle,
   config: OfficialSiteAutomationConfig,
+  dailyCitations: DailyCitationPort,
 ): Promise<void> {
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
   const title = truncateTitle(angle.title(keyword.term), 80);
   const objective = objectiveFor(candidateNo);
+  const audience = `正在搜索“${keyword.term}”相关信息并准备做出决策的目标用户`;
+  const evidence = await dailyCitations.retrieve({
+    angle: angle.label,
+    audience,
+    businessDate: batch.businessDate,
+    candidateNo,
+    keyword: keyword.term,
+    objective,
+    platformCode: 'official_site',
+    projectId: batch.projectId,
+    tenantId: batch.tenantId,
+    title,
+    userId: batch.createdBy,
+    workspaceId: batch.workspaceId,
+  });
+  if (evidence.citations.length === 0) {
+    throw prerequisite(
+      'PARSED_KNOWLEDGE_REQUIRED',
+      `企业资料索引中没有找到与候选“${title}”相关的可用证据。`,
+    );
+  }
   const constraints = {
     additional_instructions: [
       `这是 ${batch.businessDate} 官网每日内容批次的第 ${candidateNo} 个候选。`,
@@ -613,7 +627,7 @@ async function createCandidate(
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.workspaceId}::uuid,${batch.projectId}::uuid,
       ${title},${objective},
-      ${`正在搜索“${keyword.term}”相关信息并准备做出决策的目标用户`},
+      ${audience},
       ARRAY['official_site']::varchar[],
       ${JSON.stringify(constraints)}::text::jsonb,'draft',
       (${batch.businessDate}::date + interval '1 day' - interval '1 second'),
@@ -626,7 +640,7 @@ async function createCandidate(
     INSERT INTO brief_keywords (tenant_id,brief_id,keyword_id,is_primary)
     VALUES (${batch.tenantId}::uuid,${briefId}::uuid,${keyword.id}::uuid,true)
   `;
-  const sourceIds = [...new Set(seed.citations.map((citation) => citation.sourceId))];
+  const sourceIds = [...new Set(evidence.citations.map((citation) => citation.sourceId))];
   await transaction`
     INSERT INTO brief_sources (tenant_id,brief_id,source_document_id,required)
     SELECT ${batch.tenantId}::uuid,${briefId}::uuid,source_id,true
@@ -654,14 +668,14 @@ async function createCandidate(
   const variantId = requiredId(variantRows[0]?.id, 'Daily content variant insert failed');
   const writerInput: JsonObject = {
     brief: {
-      audience: `正在搜索“${keyword.term}”相关信息并准备做出决策的目标用户`,
+      audience,
       brief_id: briefId,
       constraints,
       objective,
       platform_codes: ['official_site'],
       title,
     },
-    citations: seed.citations.map((citation) => ({
+    citations: evidence.citations.map((citation) => ({
       chunk_id: citation.chunkId,
       citation_id: citation.chunkId,
       quote_text: citation.quoteText,
@@ -759,6 +773,10 @@ async function createCandidate(
         batch_id: batch.id,
         candidate_no: candidateNo,
         angle: angle.label,
+        evidence_context_hash: evidence.contextHash,
+        evidence_query_hash: evidence.queryHash,
+        evidence_retrieval_degraded: evidence.degraded,
+        evidence_source_count: sourceIds.length,
         title,
       })}::text::jsonb,
       ${requestId}
