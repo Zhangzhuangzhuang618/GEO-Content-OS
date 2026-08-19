@@ -9,6 +9,23 @@ import {
 } from '../common.js';
 
 const IsoDateSchema = z.string().date();
+
+function containsSensitiveIdentifier(value: string): boolean {
+  return (
+    /(^|\D)1[3-9][0-9]{9}(\D|$)/u.test(value) ||
+    /(^|[^0-9A-Za-z])[0-9]{17}[0-9Xx]([^0-9A-Za-z]|$)/u.test(value) ||
+    /(^|\D)[0-9]{16,19}(\D|$)/u.test(value) ||
+    /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/u.test(value)
+  );
+}
+const InsuranceSummaryTextSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(240)
+  .refine((value) => !containsSensitiveIdentifier(value), {
+    message: 'Insurance proof summary fields must not contain personal identifiers',
+  });
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);
 const LanguageSchema = z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u);
 const HttpsUrlSchema = z
@@ -37,6 +54,17 @@ export const CertificateSourceProfileSchema = z
   })
   .strict();
 
+export const InsuranceProofSourceProfileSchema = z
+  .object({
+    insurance_type: InsuranceSummaryTextSchema,
+    insured_count: z.number().int().min(1).max(100_000),
+    insurer_name: InsuranceSummaryTextSchema,
+    policyholder_name: InsuranceSummaryTextSchema,
+    schema_version: z.literal('source-insurance-proof@1'),
+    summary_use_confirmed: z.literal(true),
+  })
+  .strict();
+
 export const SourceIdSchema = UuidSchema;
 export const IngestJobIdSchema = UuidSchema;
 export const FactIdSchema = UuidSchema;
@@ -50,11 +78,16 @@ export const SourceCreateSchema = z
     effective_to: IsoDateSchema.nullable().optional(),
     file: z.unknown().optional(),
     holder_name: z.string().trim().min(1).max(240).optional(),
+    insurance_type: InsuranceSummaryTextSchema.optional(),
+    insured_count: z.coerce.number().int().min(1).max(100_000).optional(),
+    insurer_name: InsuranceSummaryTextSchema.optional(),
     issuing_authority: z.string().trim().min(1).max(240).optional(),
     language: LanguageSchema.default('zh-CN'),
-    material_kind: z.enum(['document', 'certificate']).default('document'),
+    material_kind: z.enum(['document', 'certificate', 'insurance_proof']).default('document'),
+    policyholder_name: InsuranceSummaryTextSchema.optional(),
     project_id: UuidSchema.nullable().optional(),
     public_display_confirmed: z.boolean().optional(),
+    summary_use_confirmed: z.boolean().optional(),
     title: z.string().trim().min(1).max(240),
     trust_level: z.enum(['verified', 'normal', 'untrusted']).default('normal'),
     url: z.string().url().max(2_048).optional(),
@@ -83,6 +116,12 @@ export const SourceCreateSchema = z
       value.holder_name,
       value.issuing_authority,
     ];
+    const insuranceFields = [
+      value.insurance_type,
+      value.insured_count,
+      value.insurer_name,
+      value.policyholder_name,
+    ];
     if (value.material_kind === 'certificate' && certificateFields.some((field) => !field)) {
       context.addIssue({
         code: 'custom',
@@ -97,8 +136,45 @@ export const SourceCreateSchema = z
         path: ['file'],
       });
     }
+    if (value.material_kind === 'insurance_proof') {
+      if (insuranceFields.some((field) => field === undefined)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Insurance proof fields are required',
+          path: ['insurer_name'],
+        });
+      }
+      if (value.file === undefined) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Insurance proof requires a PDF file',
+          path: ['file'],
+        });
+      }
+      if (!value.effective_from || !value.effective_to) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Insurance proof requires a complete coverage period',
+          path: ['effective_from'],
+        });
+      }
+      if (value.trust_level !== 'verified') {
+        context.addIssue({
+          code: 'custom',
+          message: 'Insurance proof must be verified before its summary is indexed',
+          path: ['trust_level'],
+        });
+      }
+      if (value.summary_use_confirmed !== true) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Insurance proof summary use must be confirmed',
+          path: ['summary_use_confirmed'],
+        });
+      }
+    }
     if (
-      value.material_kind === 'document' &&
+      value.material_kind !== 'certificate' &&
       (certificateFields.some(Boolean) ||
         value.verification_url !== undefined ||
         value.article_use_allowed !== undefined ||
@@ -107,6 +183,17 @@ export const SourceCreateSchema = z
       context.addIssue({
         code: 'custom',
         message: 'Certificate fields are only allowed for certificate material',
+        path: ['material_kind'],
+      });
+    }
+    if (
+      value.material_kind !== 'insurance_proof' &&
+      (insuranceFields.some((field) => field !== undefined) ||
+        value.summary_use_confirmed !== undefined)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Insurance proof fields are only allowed for insurance proof material',
         path: ['material_kind'],
       });
     }
@@ -346,6 +433,7 @@ export const SourceDetailResponseSchema = z
     data: z
       .object({
         certificate: CertificateSourceProfileSchema.nullable(),
+        insurance_proof: InsuranceProofSourceProfileSchema.nullable(),
         chunks: z.array(SourceChunkViewSchema),
         citation_count: z.number().int().nonnegative(),
         facts: z.array(FactViewSchema),
@@ -367,6 +455,7 @@ export type ReindexRequest = z.infer<typeof ReindexRequestSchema>;
 export type VerifyFactRequest = z.infer<typeof VerifyFactRequestSchema>;
 export type SourceView = z.infer<typeof SourceViewSchema>;
 export type CertificateSourceProfile = z.infer<typeof CertificateSourceProfileSchema>;
+export type InsuranceProofSourceProfile = z.infer<typeof InsuranceProofSourceProfileSchema>;
 export type SourceListItem = z.infer<typeof SourceListItemSchema>;
 export type IngestJobView = z.infer<typeof IngestJobViewSchema>;
 export type SourceChunkView = z.infer<typeof SourceChunkViewSchema>;

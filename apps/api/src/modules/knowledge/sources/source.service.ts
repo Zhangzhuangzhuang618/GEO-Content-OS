@@ -359,10 +359,13 @@ function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
-function sourceMaterialKind(metadata: ParsedSourceUpload['metadata']): 'certificate' | 'document' {
-  return 'schema_version' in metadata && metadata.schema_version === 'source-certificate@1'
-    ? 'certificate'
-    : 'document';
+function sourceMaterialKind(
+  metadata: ParsedSourceUpload['metadata'],
+): 'certificate' | 'document' | 'insurance_proof' {
+  if (!('schema_version' in metadata)) return 'document';
+  if (metadata.schema_version === 'source-certificate@1') return 'certificate';
+  if (metadata.schema_version === 'source-insurance-proof@1') return 'insurance_proof';
+  return 'document';
 }
 
 function isDuplicateSourceConstraint(error: unknown): boolean {

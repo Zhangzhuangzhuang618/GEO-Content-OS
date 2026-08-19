@@ -90,6 +90,52 @@ test('shows certificate verification fields and publication authorization', asyn
   );
 });
 
+test('shows only the insurance proof summary and marks the original as private', async ({
+  page,
+}) => {
+  await page.route(`**/api/v1/sources/${sourceId}?*`, async (route) => {
+    const base = detailResponse();
+    await route.fulfill({
+      body: JSON.stringify({
+        ...base,
+        data: {
+          ...base.data,
+          chunks: [
+            {
+              ...base.data.chunks[0],
+              metadata: { char_end: 120, char_start: 0, schema_version: 'chunk-metadata@1' },
+              text: '资料类型：企业保险证明\n投保主体：广州示例搬家服务有限公司',
+            },
+          ],
+          insurance_proof: {
+            insurance_type: '团体员工福利保险',
+            insured_count: 11,
+            insurer_name: '示例人寿保险有限公司',
+            policyholder_name: '广州示例搬家服务有限公司',
+            schema_version: 'source-insurance-proof@1',
+            summary_use_confirmed: true,
+          },
+          source: {
+            ...base.data.source,
+            effective_from: '2026-01-10',
+            effective_to: '2027-01-09',
+            title: '企业保险证明',
+          },
+        },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+  await page.goto(pageUrl);
+  await expect(page.getByText('保险证明').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: '保险证明脱敏摘要' })).toBeVisible();
+  await expect(page.getByText('广州示例搬家服务有限公司', { exact: true })).toBeVisible();
+  await expect(page.getByText('2026-01-10 — 2027-01-09').last()).toBeVisible();
+  await expect(page.getByText('禁止')).toBeVisible();
+  await expect(page.getByRole('heading', { name: '可检索脱敏摘要' })).toBeVisible();
+});
+
 test('retries parsing with exact source hash and expires with current revision', async ({
   page,
 }) => {

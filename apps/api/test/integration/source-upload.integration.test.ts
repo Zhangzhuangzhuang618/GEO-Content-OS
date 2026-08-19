@@ -241,6 +241,90 @@ describe('source upload', () => {
     });
   });
 
+  it('stores a private insurance PDF while exposing only its confirmed summary profile', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from(
+      '%PDF-1.7\nprivate employee=张三 id=440101199001011234 phone=13800138000\n%%EOF',
+      'utf8',
+    );
+    const response = await sendInsuranceProofUpload(
+      application,
+      tokens,
+      'source-insurance-proof-001',
+      body,
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const sourceId = String(response.body.data.source.id);
+    expect(response.body.data.source).toMatchObject({
+      effective_from: '2026-01-10',
+      effective_to: '2027-01-09',
+      id: sourceId,
+      mime_type: 'application/pdf',
+      source_type: 'pdf',
+      title: '企业保险证明',
+      trust_level: 'verified',
+    });
+    const objectKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sha256(body)}.pdf`;
+    const storage = requireStorage(application);
+    const download = await fetch(await storage.createDownloadUrl(objectKey, 60));
+    expect(Buffer.from(await download.arrayBuffer())).toEqual(body);
+    const rows = await database<{ metadata: Record<string, unknown> }[]>`
+      SELECT metadata_json AS metadata
+      FROM source_documents
+      WHERE id=${sourceId}::uuid AND tenant_id=${TENANT_ID}::uuid
+    `;
+    expect(rows).toEqual([
+      {
+        metadata: {
+          insurance_type: '团体员工福利保险',
+          insured_count: 11,
+          insurer_name: '示例人寿保险有限公司',
+          policyholder_name: '广州示例搬家服务有限公司',
+          schema_version: 'source-insurance-proof@1',
+          summary_use_confirmed: true,
+        },
+      },
+    ]);
+    expect(JSON.stringify(rows)).not.toContain('张三');
+    expect(JSON.stringify(rows)).not.toContain('440101199001011234');
+    expect(JSON.stringify(rows)).not.toContain('13800138000');
+    const detail = await authenticatedRequest(application, tokens).get(
+      `${API_PATH}/${sourceId}?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_A}`,
+    );
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body.data).toMatchObject({
+      certificate: null,
+      insurance_proof: {
+        insurance_type: '团体员工福利保险',
+        insured_count: 11,
+        insurer_name: '示例人寿保险有限公司',
+        policyholder_name: '广州示例搬家服务有限公司',
+        summary_use_confirmed: true,
+      },
+    });
+  });
+
+  it('rejects personal identifiers from insurance summary fields before storage', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const response = await sendInsuranceProofUpload(
+      application,
+      tokens,
+      'source-insurance-proof-sensitive-summary',
+      Buffer.from('%PDF-1.7\n%%EOF', 'utf8'),
+      { policyholderName: '广州示例搬家服务有限公司 13800138000' },
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(422);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::int AS count
+        FROM source_documents
+        WHERE metadata_json->>'schema_version' = 'source-insurance-proof@1'
+      `,
+    ).toEqual([{ count: 0 }]);
+  });
+
   it('preserves generic image ingestion for OCR-capable deployments', async () => {
     const database = requireClient(client);
     const tokens = await createSession(database, MANAGER_ID);
@@ -1039,6 +1123,34 @@ async function sendCertificateUpload(
     .field('article_use_allowed', 'true')
     .field('public_display_confirmed', String(options.publicDisplayConfirmed ?? true))
     .attach('file', body, { contentType: 'image/jpeg', filename: 'certificate.jpg' });
+}
+
+async function sendInsuranceProofUpload(
+  value: NestFastifyApplication | undefined,
+  tokens: { readonly csrf: string; readonly session: string },
+  idempotencyKey: string,
+  body: Buffer,
+  options: { readonly policyholderName?: string } = {},
+) {
+  return request(requireApplication(value).getHttpServer())
+    .post(API_PATH)
+    .set('Cookie', `geo_session=${tokens.session}; geo_csrf=${tokens.csrf}`)
+    .set('idempotency-key', idempotencyKey)
+    .set('x-csrf-token', tokens.csrf)
+    .field('workspace_id', WORKSPACE_ID)
+    .field('project_id', PROJECT_A)
+    .field('title', '企业团体保险证明')
+    .field('language', 'zh-CN')
+    .field('trust_level', 'verified')
+    .field('effective_from', '2026-01-10')
+    .field('effective_to', '2027-01-09')
+    .field('material_kind', 'insurance_proof')
+    .field('insurer_name', '示例人寿保险有限公司')
+    .field('policyholder_name', options.policyholderName ?? '广州示例搬家服务有限公司')
+    .field('insurance_type', '团体员工福利保险')
+    .field('insured_count', '11')
+    .field('summary_use_confirmed', 'true')
+    .attach('file', body, { contentType: 'application/pdf', filename: 'insurance-proof.pdf' });
 }
 
 async function sendUrl(

@@ -30,6 +30,8 @@ export interface ValidatedKnowledgeIngestEvent {
 
 export interface IngestSource {
   readonly contentHash: string;
+  readonly effectiveFrom: string | null;
+  readonly effectiveTo: string | null;
   readonly id: string;
   readonly language: string;
   readonly mimeType: string;

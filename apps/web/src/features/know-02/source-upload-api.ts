@@ -48,6 +48,14 @@ export async function uploadSource(
     if (input.form.verification_url)
       body.set('verification_url', input.form.verification_url.trim());
   }
+  if (input.form.material_kind === 'insurance_proof') {
+    body.set('material_kind', 'insurance_proof');
+    body.set('insurance_type', input.form.insurance_type.trim());
+    body.set('insured_count', input.form.insured_count.trim());
+    body.set('insurer_name', input.form.insurer_name.trim());
+    body.set('policyholder_name', input.form.policyholder_name.trim());
+    body.set('summary_use_confirmed', String(input.form.summary_use_confirmed));
+  }
   if (input.mode === 'file' && input.file) body.set('file', input.file);
   if (input.mode === 'url') body.set('url', input.form.url.trim());
   const response = await fetch(`${API_ORIGIN}/api/v1/sources`, {

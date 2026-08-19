@@ -182,7 +182,13 @@ export function SourceDetail() {
         <dl className="mt-6 grid gap-4 border-t border-line pt-5 sm:grid-cols-2 lg:grid-cols-4">
           <Detail
             label="资料类型"
-            value={detail.certificate ? '企业证照' : sourceTypeLabel(detail.source.source_type)}
+            value={
+              detail.certificate
+                ? '企业证照'
+                : detail.insurance_proof
+                  ? '保险证明'
+                  : sourceTypeLabel(detail.source.source_type)
+            }
           />
           <Detail label="语言" value={detail.source.language} />
           <Detail label="有效期" value={effectiveRange(detail.source)} />
@@ -218,6 +224,23 @@ export function SourceDetail() {
             ) : null}
           </section>
         ) : null}
+        {detail.insurance_proof ? (
+          <section className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
+            <h3 className="font-semibold text-ink-950">保险证明脱敏摘要</h3>
+            <p className="mt-2 text-xs leading-5 text-ink-500">
+              原始 PDF
+              保存在私有对象存储，不进入检索、模型上下文或文章素材；下列人工确认字段生成的摘要可参与检索和生文。
+            </p>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Detail label="投保主体" value={detail.insurance_proof.policyholder_name} />
+              <Detail label="承保机构" value={detail.insurance_proof.insurer_name} />
+              <Detail label="保险类型" value={detail.insurance_proof.insurance_type} />
+              <Detail label="参保人数" value={`${detail.insurance_proof.insured_count} 人`} />
+              <Detail label="保障期间" value={effectiveRange(detail.source)} />
+              <Detail label="原件公开" value="禁止" />
+            </dl>
+          </section>
+        ) : null}
         <div className="mt-5">
           <TechnicalDetails summary="资料技术信息">
             <p>资料编号：{detail.source.id}</p>
@@ -241,7 +264,10 @@ export function SourceDetail() {
         )}
       </Section>
 
-      <Section title="原文片段" count={detail.chunks.length}>
+      <Section
+        title={detail.insurance_proof ? '可检索脱敏摘要' : '原文片段'}
+        count={detail.chunks.length}
+      >
         {detail.chunks.length === 0 ? (
           <EmptyText>尚未提取可用的原文片段。</EmptyText>
         ) : (

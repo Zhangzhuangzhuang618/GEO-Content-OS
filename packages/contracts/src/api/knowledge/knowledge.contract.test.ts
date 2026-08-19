@@ -130,6 +130,7 @@ describe('knowledge API contract', () => {
           citation_count: 1,
           facts: [fact],
           ingest_jobs: [job],
+          insurance_proof: null,
           source,
         }),
       ).success,
@@ -189,6 +190,21 @@ describe('knowledge API contract', () => {
     expect(
       create?.safeParse({
         ...base,
+        effective_from: '2026-01-10',
+        effective_to: '2027-01-09',
+        file: {},
+        insurance_type: '团体员工福利保险',
+        insured_count: 11,
+        insurer_name: '示例人寿保险有限公司',
+        material_kind: 'insurance_proof',
+        policyholder_name: '广州示例搬家服务有限公司 13800138000',
+        summary_use_confirmed: true,
+        trust_level: 'verified',
+      }).success,
+    ).toBe(false);
+    expect(
+      create?.safeParse({
+        ...base,
         article_use_allowed: true,
         certificate_name: '道路运输经营许可证',
         certificate_number: '粤交运管许可字 2026-001',
@@ -197,6 +213,36 @@ describe('knowledge API contract', () => {
         issuing_authority: '广州市交通运输局',
         material_kind: 'certificate',
         public_display_confirmed: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      create?.safeParse({
+        ...base,
+        effective_from: '2026-01-10',
+        effective_to: '2027-01-09',
+        file: {},
+        insurance_type: '团体员工福利保险',
+        insured_count: 11,
+        insurer_name: '示例人寿保险有限公司',
+        material_kind: 'insurance_proof',
+        policyholder_name: '广州示例搬家服务有限公司',
+        summary_use_confirmed: true,
+        trust_level: 'verified',
+      }).success,
+    ).toBe(true);
+    expect(
+      create?.safeParse({
+        ...base,
+        effective_from: '2026-01-10',
+        effective_to: '2027-01-09',
+        file: {},
+        insurance_type: '团体员工福利保险',
+        insured_count: 11,
+        insurer_name: '示例人寿保险有限公司',
+        material_kind: 'insurance_proof',
+        policyholder_name: '广州示例搬家服务有限公司',
+        summary_use_confirmed: false,
+        trust_level: 'verified',
       }).success,
     ).toBe(false);
     expect(

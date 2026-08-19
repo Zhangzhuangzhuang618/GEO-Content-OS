@@ -7,11 +7,16 @@ export const UploadFormSchema = z
     effective_from: z.string(),
     effective_to: z.string(),
     holder_name: z.string(),
+    insurance_type: z.string(),
+    insured_count: z.string(),
+    insurer_name: z.string(),
     issuing_authority: z.string(),
     language: z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u, '请输入有效语言标签。'),
-    material_kind: z.enum(['document', 'certificate']),
+    material_kind: z.enum(['document', 'certificate', 'insurance_proof']),
+    policyholder_name: z.string(),
     project_id: z.string(),
     public_display_confirmed: z.boolean(),
+    summary_use_confirmed: z.boolean(),
     title: z.string().trim().min(1, '请填写标题。').max(240),
     trust_level: z.enum(['verified', 'normal', 'untrusted']),
     url: z.string(),
@@ -61,7 +66,63 @@ export const UploadFormSchema = z
           path: ['trust_level'],
         });
     }
+    if (value.material_kind === 'insurance_proof') {
+      for (const [field, message, maximum] of [
+        ['insurer_name', '请填写承保机构。', 240],
+        ['policyholder_name', '请填写投保主体。', 240],
+        ['insurance_type', '请填写保险类型。', 240],
+      ] as const) {
+        const current = value[field].trim();
+        if (!current || current.length > maximum)
+          context.addIssue({ code: 'custom', message, path: [field] });
+        else if (containsSensitiveIdentifier(current))
+          context.addIssue({
+            code: 'custom',
+            message: '脱敏摘要字段不能包含手机号、证件号、银行卡号或邮箱。',
+            path: [field],
+          });
+      }
+      if (!/^[1-9][0-9]*$/u.test(value.insured_count.trim()))
+        context.addIssue({
+          code: 'custom',
+          message: '参保人数必须是 1 至 100000 的整数。',
+          path: ['insured_count'],
+        });
+      else if (Number(value.insured_count) > 100_000)
+        context.addIssue({
+          code: 'custom',
+          message: '参保人数必须是 1 至 100000 的整数。',
+          path: ['insured_count'],
+        });
+      if (!value.effective_from || !value.effective_to)
+        context.addIssue({
+          code: 'custom',
+          message: '保险证明必须填写完整保障期间。',
+          path: ['effective_from'],
+        });
+      if (value.trust_level !== 'verified')
+        context.addIssue({
+          code: 'custom',
+          message: '保险证明必须选择“已验证”。',
+          path: ['trust_level'],
+        });
+      if (!value.summary_use_confirmed)
+        context.addIssue({
+          code: 'custom',
+          message: '请确认仅允许脱敏摘要参与检索和生文。',
+          path: ['summary_use_confirmed'],
+        });
+    }
   });
+
+function containsSensitiveIdentifier(value: string): boolean {
+  return (
+    /(^|\D)1[3-9][0-9]{9}(\D|$)/u.test(value) ||
+    /(^|[^0-9A-Za-z])[0-9]{17}[0-9Xx]([^0-9A-Za-z]|$)/u.test(value) ||
+    /(^|\D)[0-9]{16,19}(\D|$)/u.test(value) ||
+    /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/u.test(value)
+  );
+}
 export const ProjectPageSchema = z
   .object({
     data: z.array(

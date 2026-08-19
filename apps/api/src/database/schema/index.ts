@@ -12,6 +12,7 @@ export {
   type FactRecord,
   type FactSourceRecord,
   type FactStatus,
+  type InsuranceProofSourceMetadata,
   type IngestJobError,
   type IngestJobRecord,
   type IngestJobStatus,

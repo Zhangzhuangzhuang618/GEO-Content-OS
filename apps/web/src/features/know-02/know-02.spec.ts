@@ -167,6 +167,61 @@ test('requires certificate verification fields and explicit article-display cons
   expect(bodyText).toContain('article_use_allowed');
   expect(bodyText).toContain('public_display_confirmed');
 });
+test('uploads insurance PDFs with a confirmed private-summary boundary', async ({ page }) => {
+  let uploads = 0;
+  let bodyText = '';
+  await page.route('**/api/v1/sources', async (route) => {
+    uploads += 1;
+    bodyText = route.request().postData() ?? '';
+    await route.fulfill({
+      body: JSON.stringify({
+        data: {
+          source: {
+            id: '40000000-0000-4000-8000-000000000084',
+            project_id: PROJECT_ID,
+            title: '企业保险证明',
+            status: 'processing',
+            workspace_id: WORKSPACE_ID,
+          },
+          ingest_job: { id: '50000000-0000-4000-8000-000000000084', status: 'queued' },
+        },
+        meta: { request_id: 'insurance-proof-upload' },
+      }),
+      contentType: 'application/json',
+      status: 201,
+    });
+  });
+  await page.goto('/know-02');
+  await page.getByLabel('标题').fill('企业团体保险证明');
+  await page.getByLabel('项目（可选）').selectOption(PROJECT_ID);
+  await page.getByLabel('文件').setInputFiles({
+    name: 'insurance-proof.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('%PDF-1.7 private employee list'),
+  });
+  await page.getByLabel('资料类型').selectOption('insurance_proof');
+  await expect(page.getByRole('heading', { name: '保险证明脱敏摘要' })).toBeVisible();
+  await expect(page.getByLabel('可信级别')).toHaveValue('verified');
+  await expect(page.getByLabel('标题')).toHaveValue('企业保险证明');
+  await expect(page.getByLabel('标题')).toHaveAttribute('readonly', '');
+  await page.getByLabel('有效期开始').fill('2026-01-10');
+  await page.getByLabel('有效期结束').fill('2027-01-09');
+  await page.getByLabel('投保主体').fill('广州示例搬家服务有限公司');
+  await page.getByLabel('承保机构').fill('示例人寿保险有限公司');
+  await page.getByLabel('保险类型').fill('团体员工福利保险');
+  await page.getByLabel('参保人数').fill('11');
+  await page.getByRole('button', { name: '上传并创建解析任务' }).click();
+  await expect(page.getByText('请确认仅允许脱敏摘要参与检索和生文。')).toBeVisible();
+  expect(uploads).toBe(0);
+  await page.getByLabel(/只允许系统生成的脱敏摘要/u).check();
+  await page.getByRole('button', { name: '上传并创建解析任务' }).click();
+  await expect(page.getByRole('status')).toContainText('安全扫描与解析任务已创建');
+  expect(uploads).toBe(1);
+  expect(bodyText).toContain('insurance_proof');
+  expect(bodyText).toContain('企业保险证明');
+  expect(bodyText).toContain('summary_use_confirmed');
+  expect(bodyText).toContain('insured_count');
+});
 test('surfaces server virus or SSRF rejection without creating a fake job', async ({ page }) => {
   await page.route('**/api/v1/sources', async (route) =>
     route.fulfill({

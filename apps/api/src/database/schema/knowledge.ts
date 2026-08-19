@@ -70,7 +70,17 @@ export interface CertificateSourceMetadata {
   readonly verification_url: string | null;
 }
 
-export type SourceDocumentMetadata = CertificateSourceMetadata | Readonly<Record<string, never>>;
+export interface InsuranceProofSourceMetadata {
+  readonly insurance_type: string;
+  readonly insured_count: number;
+  readonly insurer_name: string;
+  readonly policyholder_name: string;
+  readonly schema_version: 'source-insurance-proof@1';
+  readonly summary_use_confirmed: true;
+}
+
+export type SourceDocumentMetadata =
+  CertificateSourceMetadata | InsuranceProofSourceMetadata | Readonly<Record<string, never>>;
 
 export const sourceDocuments = pgTable(
   'source_documents',
@@ -181,30 +191,53 @@ export const sourceDocuments = pgTable(
     check(
       'source_documents_metadata_schema_check',
       sql`${table.metadataJson} = '{}'::jsonb OR COALESCE(
-        ${table.sourceType} = 'image'
-        AND ${table.metadataJson}->>'schema_version' = 'source-certificate@1'
-        AND (${table.metadataJson} - ARRAY[
-          'schema_version', 'certificate_name', 'certificate_number', 'holder_name',
-          'issuing_authority', 'verification_url', 'article_use_allowed',
-          'public_display_confirmed'
-        ]::text[]) = '{}'::jsonb
-        AND char_length(btrim(${table.metadataJson}->>'certificate_name')) BETWEEN 1 AND 240
-        AND char_length(btrim(${table.metadataJson}->>'certificate_number')) BETWEEN 1 AND 120
-        AND char_length(btrim(${table.metadataJson}->>'holder_name')) BETWEEN 1 AND 240
-        AND char_length(btrim(${table.metadataJson}->>'issuing_authority')) BETWEEN 1 AND 240
-        AND jsonb_typeof(${table.metadataJson}->'article_use_allowed') = 'boolean'
-        AND jsonb_typeof(${table.metadataJson}->'public_display_confirmed') = 'boolean'
-        AND (
-          ${table.metadataJson}->'verification_url' = 'null'::jsonb
-          OR (
-            jsonb_typeof(${table.metadataJson}->'verification_url') = 'string'
-            AND char_length(${table.metadataJson}->>'verification_url') BETWEEN 1 AND 2048
-            AND ${table.metadataJson}->>'verification_url' ~ '^https://'
+        (
+          ${table.sourceType} = 'image'
+          AND ${table.metadataJson}->>'schema_version' = 'source-certificate@1'
+          AND (${table.metadataJson} - ARRAY[
+            'schema_version', 'certificate_name', 'certificate_number', 'holder_name',
+            'issuing_authority', 'verification_url', 'article_use_allowed',
+            'public_display_confirmed'
+          ]::text[]) = '{}'::jsonb
+          AND char_length(btrim(${table.metadataJson}->>'certificate_name')) BETWEEN 1 AND 240
+          AND char_length(btrim(${table.metadataJson}->>'certificate_number')) BETWEEN 1 AND 120
+          AND char_length(btrim(${table.metadataJson}->>'holder_name')) BETWEEN 1 AND 240
+          AND char_length(btrim(${table.metadataJson}->>'issuing_authority')) BETWEEN 1 AND 240
+          AND jsonb_typeof(${table.metadataJson}->'article_use_allowed') = 'boolean'
+          AND jsonb_typeof(${table.metadataJson}->'public_display_confirmed') = 'boolean'
+          AND (
+            ${table.metadataJson}->'verification_url' = 'null'::jsonb
+            OR (
+              jsonb_typeof(${table.metadataJson}->'verification_url') = 'string'
+              AND char_length(${table.metadataJson}->>'verification_url') BETWEEN 1 AND 2048
+              AND ${table.metadataJson}->>'verification_url' ~ '^https://'
+            )
           )
-        )
-        AND (
-          (${table.metadataJson}->>'article_use_allowed')::boolean IS NOT TRUE
-          OR (${table.metadataJson}->>'public_display_confirmed')::boolean IS TRUE
+          AND (
+            (${table.metadataJson}->>'article_use_allowed')::boolean IS NOT TRUE
+            OR (${table.metadataJson}->>'public_display_confirmed')::boolean IS TRUE
+          )
+        ) OR (
+          ${table.sourceType} = 'pdf'
+          AND ${table.mimeType} = 'application/pdf'
+          AND ${table.trustLevel} = 'verified'
+          AND ${table.effectiveFrom} IS NOT NULL
+          AND ${table.effectiveTo} IS NOT NULL
+          AND ${table.metadataJson}->>'schema_version' = 'source-insurance-proof@1'
+          AND (${table.metadataJson} - ARRAY[
+            'schema_version', 'insurer_name', 'policyholder_name', 'insurance_type',
+            'insured_count', 'summary_use_confirmed'
+          ]::text[]) = '{}'::jsonb
+          AND char_length(btrim(${table.metadataJson}->>'insurer_name')) BETWEEN 1 AND 240
+          AND char_length(btrim(${table.metadataJson}->>'policyholder_name')) BETWEEN 1 AND 240
+          AND char_length(btrim(${table.metadataJson}->>'insurance_type')) BETWEEN 1 AND 240
+          AND CASE
+            WHEN jsonb_typeof(${table.metadataJson}->'insured_count') = 'number'
+              AND ${table.metadataJson}->>'insured_count' ~ '^[1-9][0-9]{0,5}$'
+            THEN (${table.metadataJson}->>'insured_count')::integer BETWEEN 1 AND 100000
+            ELSE false
+          END
+          AND ${table.metadataJson}->'summary_use_confirmed' = 'true'::jsonb
         ),
         false
       )`,

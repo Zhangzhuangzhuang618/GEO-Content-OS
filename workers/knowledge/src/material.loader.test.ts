@@ -9,6 +9,8 @@ const BODY = new TextEncoder().encode('trusted knowledge source');
 const HASH = createHash('sha256').update(BODY).digest('hex');
 const SOURCE: IngestSource = {
   contentHash: HASH,
+  effectiveFrom: null,
+  effectiveTo: null,
   id: '53000000-0000-4000-8000-000000000040',
   language: 'zh-CN',
   mimeType: 'text/plain',

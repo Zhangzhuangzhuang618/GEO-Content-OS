@@ -1,5 +1,6 @@
 import type {
   CertificateSourceMetadata,
+  InsuranceProofSourceMetadata,
   SourceDocumentMetadata,
   SourceTrustLevel,
   SourceType,
@@ -23,11 +24,16 @@ const ALLOWED_FIELDS = new Set([
   'effective_from',
   'effective_to',
   'holder_name',
+  'insurance_type',
+  'insured_count',
+  'insurer_name',
   'issuing_authority',
   'language',
   'material_kind',
+  'policyholder_name',
   'project_id',
   'public_display_confirmed',
+  'summary_use_confirmed',
   'title',
   'trust_level',
   'url',
@@ -167,11 +173,22 @@ export async function parseSourceUpload(
   }
   const detected = detectFile(file.body, file.mimetype, file.filename);
   const kind = materialKind(fields);
+  if (kind === 'certificate' && detected.sourceType !== 'image') {
+    throw new SourceUploadValidationError(
+      'Certificate material requires a PNG, JPEG, or WebP image file',
+    );
+  }
+  if (kind === 'insurance_proof' && detected.sourceType !== 'pdf') {
+    throw new SourceUploadValidationError('Insurance proof material requires a PDF file');
+  }
   if (detected.sourceType === 'image') await validateSourceImage(file.body, kind);
-  const sourceMetadata =
-    detected.sourceType === 'image' && kind === 'certificate'
-      ? parseCertificateMetadata(fields)
-      : (requireDocumentMaterial(fields), {} as const);
+  const sourceMetadata = sourceMetadataFor({
+    effectiveFrom,
+    effectiveTo,
+    fields,
+    kind,
+    trustLevel,
+  });
   if (
     trustLevel === 'untrusted' &&
     'article_use_allowed' in sourceMetadata &&
@@ -191,10 +208,14 @@ export async function parseSourceUpload(
     mimeType: detected.mimeType,
     metadata: sourceMetadata,
     sourceType: detected.sourceType,
+    title: kind === 'insurance_proof' ? '企业保险证明' : title,
   };
 }
 
-async function validateSourceImage(body: Buffer, kind: 'certificate' | 'document'): Promise<void> {
+async function validateSourceImage(
+  body: Buffer,
+  kind: 'certificate' | 'document' | 'insurance_proof',
+): Promise<void> {
   try {
     if (kind === 'certificate' && body.byteLength > MAX_CERTIFICATE_IMAGE_BYTES) throw new Error();
     await sourceImageMetadata(body);
@@ -203,6 +224,26 @@ async function validateSourceImage(body: Buffer, kind: 'certificate' | 'document
       `Source image must be decodable, at least 768x512, no more than 8192 pixels per side or 50 megapixels, and no larger than ${kind === 'certificate' ? '10 MB' : '25 MiB'}`,
     );
   }
+}
+
+function sourceMetadataFor(input: {
+  readonly effectiveFrom: string | null;
+  readonly effectiveTo: string | null;
+  readonly fields: ReadonlyMap<string, string>;
+  readonly kind: MaterialKind;
+  readonly trustLevel: SourceTrustLevel;
+}): SourceDocumentMetadata {
+  if (input.kind === 'certificate') return parseCertificateMetadata(input.fields);
+  if (input.kind === 'insurance_proof') {
+    return parseInsuranceProofMetadata(
+      input.fields,
+      input.effectiveFrom,
+      input.effectiveTo,
+      input.trustLevel,
+    );
+  }
+  requireDocumentMaterial(input.fields);
+  return {} as const;
 }
 
 function parseCertificateMetadata(fields: ReadonlyMap<string, string>): CertificateSourceMetadata {
@@ -231,10 +272,57 @@ function parseCertificateMetadata(fields: ReadonlyMap<string, string>): Certific
   });
 }
 
-function materialKind(fields: ReadonlyMap<string, string>): 'certificate' | 'document' {
+function parseInsuranceProofMetadata(
+  fields: ReadonlyMap<string, string>,
+  effectiveFrom: string | null,
+  effectiveTo: string | null,
+  trustLevel: SourceTrustLevel,
+): InsuranceProofSourceMetadata {
+  if (!effectiveFrom || !effectiveTo) {
+    throw new SourceUploadValidationError(
+      'Insurance proof requires effective_from and effective_to',
+    );
+  }
+  if (trustLevel !== 'verified') {
+    throw new SourceUploadValidationError(
+      'Insurance proof must be verified before its summary is indexed',
+    );
+  }
+  if (!optionalBoolean(fields.get('summary_use_confirmed'), 'summary_use_confirmed')) {
+    throw new SourceUploadValidationError('summary_use_confirmed must be true');
+  }
+  const insurerName = safeRequiredText(fields, 'insurer_name', 240);
+  const policyholderName = safeRequiredText(fields, 'policyholder_name', 240);
+  const insuranceType = safeRequiredText(fields, 'insurance_type', 240);
+  for (const [name, value] of [
+    ['insurer_name', insurerName],
+    ['policyholder_name', policyholderName],
+    ['insurance_type', insuranceType],
+  ] as const) {
+    if (containsSensitiveIdentifier(value)) {
+      throw new SourceUploadValidationError(
+        `${name} must not contain personal identifiers or contact details`,
+      );
+    }
+  }
+  return Object.freeze({
+    insurance_type: insuranceType,
+    insured_count: requiredInteger(fields, 'insured_count', 1, 100_000),
+    insurer_name: insurerName,
+    policyholder_name: policyholderName,
+    schema_version: 'source-insurance-proof@1',
+    summary_use_confirmed: true,
+  });
+}
+
+type MaterialKind = 'certificate' | 'document' | 'insurance_proof';
+
+function materialKind(fields: ReadonlyMap<string, string>): MaterialKind {
   const value = fields.get('material_kind') || 'document';
-  if (value !== 'certificate' && value !== 'document') {
-    throw new SourceUploadValidationError('material_kind must be document or certificate');
+  if (value !== 'certificate' && value !== 'document' && value !== 'insurance_proof') {
+    throw new SourceUploadValidationError(
+      'material_kind must be document, certificate, or insurance_proof',
+    );
   }
   return value;
 }
@@ -242,21 +330,26 @@ function materialKind(fields: ReadonlyMap<string, string>): 'certificate' | 'doc
 function requireDocumentMaterial(fields: ReadonlyMap<string, string>): void {
   if (materialKind(fields) !== 'document') {
     throw new SourceUploadValidationError(
-      'Certificate material requires a PNG, JPEG, or WebP image file',
+      'Specialized material fields require the matching file material type',
     );
   }
-  const certificateFields = [
+  const specializedFields = [
     'article_use_allowed',
     'certificate_name',
     'certificate_number',
     'holder_name',
+    'insurance_type',
+    'insured_count',
+    'insurer_name',
     'issuing_authority',
+    'policyholder_name',
     'public_display_confirmed',
+    'summary_use_confirmed',
     'verification_url',
   ];
-  if (certificateFields.some((name) => fields.has(name))) {
+  if (specializedFields.some((name) => fields.has(name))) {
     throw new SourceUploadValidationError(
-      'Certificate fields are only allowed for certificate image material',
+      'Specialized material fields are not allowed for document material',
     );
   }
 }
@@ -280,6 +373,36 @@ function optionalBoolean(value: string | undefined, name: string): boolean {
   if (value === 'true') return true;
   if (value === 'false') return false;
   throw new SourceUploadValidationError(`${name} must be true or false`);
+}
+
+function requiredInteger(
+  fields: ReadonlyMap<string, string>,
+  name: string,
+  minimum: number,
+  maximum: number,
+): number {
+  const value = required(fields, name);
+  if (!/^[1-9][0-9]*$/u.test(value)) {
+    throw new SourceUploadValidationError(
+      `${name} must be an integer between ${minimum} and ${maximum}`,
+    );
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) {
+    throw new SourceUploadValidationError(
+      `${name} must be an integer between ${minimum} and ${maximum}`,
+    );
+  }
+  return parsed;
+}
+
+function containsSensitiveIdentifier(value: string): boolean {
+  return (
+    /(^|\D)1[3-9][0-9]{9}(\D|$)/u.test(value) ||
+    /(^|[^0-9A-Za-z])[0-9]{17}[0-9Xx]([^0-9A-Za-z]|$)/u.test(value) ||
+    /(^|\D)[0-9]{16,19}(\D|$)/u.test(value) ||
+    /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/u.test(value)
+  );
 }
 
 function optionalHttpsUrl(value: string | undefined): string | null {

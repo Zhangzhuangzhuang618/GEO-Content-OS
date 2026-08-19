@@ -56,11 +56,16 @@ export function SourceUploadForm() {
       effective_from: '',
       effective_to: '',
       holder_name: '',
+      insurance_type: '',
+      insured_count: '',
+      insurer_name: '',
       issuing_authority: '',
       language: 'zh-CN',
       material_kind: 'document',
+      policyholder_name: '',
       project_id: '',
       public_display_confirmed: false,
+      summary_use_confirmed: false,
       title: '',
       trust_level: 'normal',
       url: '',
@@ -70,6 +75,7 @@ export function SourceUploadForm() {
   });
   const workspaceId = watch('workspace_id');
   const certificateMaterial = watch('material_kind') === 'certificate';
+  const insuranceProofMaterial = watch('material_kind') === 'insurance_proof';
   const articleUseAllowed = watch('article_use_allowed');
   useEffect(() => setMode(readMode()), []);
   useEffect(() => {
@@ -127,7 +133,7 @@ export function SourceUploadForm() {
       return;
     }
     if (mode === 'file') {
-      const fileError = validateFile(file);
+      const fileError = validateFile(file, parsed.data.material_kind);
       if (fileError) {
         setMessage(fileError);
         return;
@@ -200,7 +206,17 @@ export function SourceUploadForm() {
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
         {mode !== 'batch-url' ? (
           <Field error={errors.title?.message} label="标题" name="source-title">
-            <input className={controlClass} id="source-title" {...register('title')} />
+            <input
+              className={controlClass}
+              id="source-title"
+              readOnly={insuranceProofMaterial}
+              {...register('title')}
+            />
+            {insuranceProofMaterial ? (
+              <p className="mt-1 text-xs text-ink-500">
+                保险证明标题固定为“企业保险证明”，避免文件名或保单编号进入检索。
+              </p>
+            ) : null}
           </Field>
         ) : null}
         <Field error={errors.language?.message} label="语言" name="source-language">
@@ -238,7 +254,7 @@ export function SourceUploadForm() {
           </select>
         </Field>
         <div />
-        <Field label="有效期开始" name="source-from">
+        <Field error={errors.effective_from?.message} label="有效期开始" name="source-from">
           <input
             className={controlClass}
             id="source-from"
@@ -266,9 +282,15 @@ export function SourceUploadForm() {
                     onChange={(event) => {
                       const selected = event.currentTarget.files?.[0] ?? null;
                       setFile(selected);
+                      const currentKind = getValues('material_kind');
                       setValue(
                         'material_kind',
-                        selected && IMAGE_TYPES.has(selected.type) ? 'certificate' : 'document',
+                        selected && IMAGE_TYPES.has(selected.type)
+                          ? 'certificate'
+                          : selected?.type === 'application/pdf' &&
+                              currentKind === 'insurance_proof'
+                            ? 'insurance_proof'
+                            : 'document',
                       );
                     }}
                     type="file"
@@ -283,6 +305,26 @@ export function SourceUploadForm() {
                     上限。证照获授权并随文发布时会自动等比缩图。
                   </p>
                 </Field>
+                <div className="mt-5">
+                  <Field label="资料类型" name="source-material-kind">
+                    <select
+                      className={controlClass}
+                      id="source-material-kind"
+                      {...register('material_kind', {
+                        onChange: (event) => {
+                          if (event.target.value === 'insurance_proof') {
+                            setValue('trust_level', 'verified');
+                            setValue('title', '企业保险证明', { shouldValidate: true });
+                          }
+                        },
+                      })}
+                    >
+                      <option value="document">普通文档</option>
+                      <option value="certificate">企业证照图片</option>
+                      <option value="insurance_proof">保险证明 PDF</option>
+                    </select>
+                  </Field>
+                </div>
                 {certificateMaterial ? (
                   <section className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
                     <h3 className="font-semibold text-ink-950">证照核验信息</h3>
@@ -378,6 +420,80 @@ export function SourceUploadForm() {
                     ) : null}
                   </section>
                 ) : null}
+                {insuranceProofMaterial ? (
+                  <section className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
+                    <h3 className="font-semibold text-ink-950">保险证明脱敏摘要</h3>
+                    <p className="mt-2 text-xs leading-5 text-ink-500">
+                      仅接受 PDF。系统私有保存原件，不执行
+                      OCR，也不会索引人员名单、证件号、电话、保单号或原始正文；只有以下人工确认字段生成的脱敏摘要可参与检索和生文。
+                    </p>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <Field
+                        error={errors.policyholder_name?.message}
+                        label="投保主体"
+                        name="insurance-policyholder"
+                      >
+                        <input
+                          className={controlClass}
+                          id="insurance-policyholder"
+                          {...register('policyholder_name')}
+                        />
+                      </Field>
+                      <Field
+                        error={errors.insurer_name?.message}
+                        label="承保机构"
+                        name="insurance-insurer"
+                      >
+                        <input
+                          className={controlClass}
+                          id="insurance-insurer"
+                          {...register('insurer_name')}
+                        />
+                      </Field>
+                      <Field
+                        error={errors.insurance_type?.message}
+                        label="保险类型"
+                        name="insurance-type"
+                      >
+                        <input
+                          className={controlClass}
+                          id="insurance-type"
+                          {...register('insurance_type')}
+                        />
+                      </Field>
+                      <Field
+                        error={errors.insured_count?.message}
+                        label="参保人数"
+                        name="insurance-insured-count"
+                      >
+                        <input
+                          className={controlClass}
+                          id="insurance-insured-count"
+                          inputMode="numeric"
+                          min="1"
+                          max="100000"
+                          type="number"
+                          {...register('insured_count')}
+                        />
+                      </Field>
+                    </div>
+                    <label className="mt-5 flex items-start gap-3 text-sm text-ink-700">
+                      <input
+                        className="mt-1"
+                        type="checkbox"
+                        {...register('summary_use_confirmed')}
+                      />
+                      <span>
+                        我确认上述字段不含个人信息，并只允许系统生成的脱敏摘要参与检索和生文；保险原件不得公开或作为文章图片。
+                      </span>
+                    </label>
+                    {errors.summary_use_confirmed?.message ? (
+                      <p className="mt-2 text-sm text-red-700">
+                        {errors.summary_use_confirmed.message}
+                      </p>
+                    ) : null}
+                  </section>
+                ) : null}
               </>
             ) : (
               <Field error={errors.url?.message} label="URL" name="source-url">
@@ -450,7 +566,7 @@ function ingestStatusLabel(status: string) {
     }[status] ?? '处理中'
   );
 }
-function validateFile(file: File | null) {
+function validateFile(file: File | null, materialKind: UploadForm['material_kind']) {
   if (!file) return '请选择文件。';
   if (file.size === 0) return '文件不能为空。';
   if (file.size > MAX_FILE_BYTES) return '文件超过默认 25 MiB 上限。';
@@ -459,6 +575,10 @@ function validateFile(file: File | null) {
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (!extension || ALLOWED_TYPES.get(extension) !== file.type)
     return '文件扩展名与 MIME 类型必须匹配允许格式。';
+  if (materialKind === 'certificate' && !IMAGE_TYPES.has(file.type))
+    return '企业证照必须上传 PNG、JPEG 或 WebP 图片。';
+  if (materialKind === 'insurance_proof' && file.type !== 'application/pdf')
+    return '保险证明必须上传 PDF 文件。';
   return null;
 }
 function Field({

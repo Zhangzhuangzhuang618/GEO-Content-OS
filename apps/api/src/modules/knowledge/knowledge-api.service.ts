@@ -3,6 +3,7 @@ import type {
   FactQuery,
   FactView,
   IngestJobView,
+  InsuranceProofSourceProfile,
   ReindexRequest,
   ReasonRequest,
   SourceChunkView,
@@ -11,7 +12,10 @@ import type {
   SourceScopeQuery,
   SourceView,
 } from '@geo-content-os/contracts';
-import { CertificateSourceProfileSchema } from '@geo-content-os/contracts';
+import {
+  CertificateSourceProfileSchema,
+  InsuranceProofSourceProfileSchema,
+} from '@geo-content-os/contracts';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import type { WebFetchAdapter } from '@geo-content-os/adapter-web-fetch';
 import { Inject, Injectable } from '@nestjs/common';
@@ -55,6 +59,7 @@ export interface SourceDetailView {
   readonly citation_count: number;
   readonly facts: readonly FactView[];
   readonly ingest_jobs: readonly IngestJobView[];
+  readonly insurance_proof: InsuranceProofSourceProfile | null;
   readonly source: SourceView;
 }
 
@@ -153,6 +158,7 @@ export class KnowledgeApiService {
       citation_count: citationRows[0]?.count ?? 0,
       facts: related.map(({ evidence, fact }) => toFactView(fact, evidence)),
       ingest_jobs: jobs.map(toIngestJobView),
+      insurance_proof: insuranceProofProfile(source.metadata),
       source: toSourceView(source),
     };
   }
@@ -473,6 +479,11 @@ export class KnowledgeApiService {
 
 function certificateProfile(metadata: unknown): CertificateSourceProfile | null {
   const parsed = CertificateSourceProfileSchema.safeParse(metadata);
+  return parsed.success ? parsed.data : null;
+}
+
+function insuranceProofProfile(metadata: unknown): InsuranceProofSourceProfile | null {
+  const parsed = InsuranceProofSourceProfileSchema.safeParse(metadata);
   return parsed.success ? parsed.data : null;
 }
 

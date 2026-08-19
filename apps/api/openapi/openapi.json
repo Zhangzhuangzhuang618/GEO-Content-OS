@@ -42868,6 +42868,9 @@
                   },
                   "file": {},
                   "holder_name": { "type": "string", "minLength": 1, "maxLength": 240 },
+                  "insurance_type": { "type": "string", "minLength": 1, "maxLength": 240 },
+                  "insured_count": { "type": "integer", "minimum": 1, "maximum": 100000 },
+                  "insurer_name": { "type": "string", "minLength": 1, "maxLength": 240 },
                   "issuing_authority": { "type": "string", "minLength": 1, "maxLength": 240 },
                   "language": {
                     "default": "zh-CN",
@@ -42877,8 +42880,9 @@
                   "material_kind": {
                     "default": "document",
                     "type": "string",
-                    "enum": ["document", "certificate"]
+                    "enum": ["document", "certificate", "insurance_proof"]
                   },
+                  "policyholder_name": { "type": "string", "minLength": 1, "maxLength": 240 },
                   "project_id": {
                     "anyOf": [
                       {
@@ -42890,6 +42894,7 @@
                     ]
                   },
                   "public_display_confirmed": { "type": "boolean" },
+                  "summary_use_confirmed": { "type": "boolean" },
                   "title": { "type": "string", "minLength": 1, "maxLength": 240 },
                   "trust_level": {
                     "default": "normal",
@@ -43434,6 +43439,50 @@
                             { "type": "null" }
                           ]
                         },
+                        "insurance_proof": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "insurance_type": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 240
+                                },
+                                "insured_count": {
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100000
+                                },
+                                "insurer_name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 240
+                                },
+                                "policyholder_name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 240
+                                },
+                                "schema_version": {
+                                  "type": "string",
+                                  "const": "source-insurance-proof@1"
+                                },
+                                "summary_use_confirmed": { "type": "boolean", "const": true }
+                              },
+                              "required": [
+                                "insurance_type",
+                                "insured_count",
+                                "insurer_name",
+                                "policyholder_name",
+                                "schema_version",
+                                "summary_use_confirmed"
+                              ],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
+                        },
                         "chunks": {
                           "type": "array",
                           "items": {
@@ -43853,6 +43902,7 @@
                       },
                       "required": [
                         "certificate",
+                        "insurance_proof",
                         "chunks",
                         "citation_count",
                         "facts",

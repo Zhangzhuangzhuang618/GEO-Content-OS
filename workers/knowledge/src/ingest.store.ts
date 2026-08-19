@@ -14,6 +14,8 @@ import type {
 interface ClaimRow {
   readonly attemptCount: number;
   readonly contentHash: string;
+  readonly effectiveFrom: string | null;
+  readonly effectiveTo: string | null;
   readonly id: string;
   readonly language: string;
   readonly mimeType: string;
@@ -57,6 +59,8 @@ export class PostgresIngestStore implements IngestStorePort {
         SELECT
           job.attempt_count AS "attemptCount",
           source.content_hash AS "contentHash",
+          source.effective_from::text AS "effectiveFrom",
+          source.effective_to::text AS "effectiveTo",
           source.id,
           source.language,
           source.mime_type AS "mimeType",
@@ -357,6 +361,8 @@ export class PostgresIngestStore implements IngestStorePort {
 function toSource(row: ClaimRow, tenantId: string): IngestSource {
   return Object.freeze({
     contentHash: row.contentHash,
+    effectiveFrom: row.effectiveFrom,
+    effectiveTo: row.effectiveTo,
     id: row.id,
     language: row.language,
     mimeType: row.mimeType,

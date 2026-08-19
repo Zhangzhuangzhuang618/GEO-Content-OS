@@ -17,6 +17,17 @@ const CertificateSchema = z
   })
   .strict();
 
+const InsuranceProofSchema = z
+  .object({
+    insurance_type: z.string().min(1),
+    insured_count: z.number().int().min(1).max(100_000),
+    insurer_name: z.string().min(1),
+    policyholder_name: z.string().min(1),
+    schema_version: z.literal('source-insurance-proof@1'),
+    summary_use_confirmed: z.literal(true),
+  })
+  .strict();
+
 export const SourceSchema = z
   .object({
     content_hash: HashSchema,
@@ -124,6 +135,7 @@ export const SourceDetailResponseSchema = z
         citation_count: z.number().int().nonnegative(),
         facts: z.array(FactSchema),
         ingest_jobs: z.array(IngestJobSchema),
+        insurance_proof: InsuranceProofSchema.nullable().default(null),
         source: SourceSchema,
       })
       .strict(),
