@@ -147,7 +147,7 @@ test('requires certificate verification fields and explicit article-display cons
     buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
   });
   await expect(page.getByRole('heading', { name: '证照核验信息' })).toBeVisible();
-  await expect(page.getByText(/最长边不超过 8192 像素/u)).toBeVisible();
+  await expect(page.getByText(/资料图片.*最长边不超过 8192 像素/u)).toBeVisible();
   await page.getByLabel('证照名称').fill('道路运输经营许可证');
   await page.getByLabel('证照编号').fill('粤交运管许可字 2026-001');
   await page.getByLabel('持证主体').fill('广州示例搬家服务有限公司');

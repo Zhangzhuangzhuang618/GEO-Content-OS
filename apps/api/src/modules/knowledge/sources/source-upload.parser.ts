@@ -7,7 +7,7 @@ import type {
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
-import { certificateImageMetadata } from '@geo-content-os/adapter-image';
+import { sourceImageMetadata } from '@geo-content-os/adapter-image';
 import type { FastifyRequest } from 'fastify';
 
 import { SourceUploadValidationError } from './source.errors.js';
@@ -15,6 +15,7 @@ import { SourceUploadValidationError } from './source.errors.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
+const MAX_CERTIFICATE_IMAGE_BYTES = 10_000_000;
 const ALLOWED_FIELDS = new Set([
   'article_use_allowed',
   'certificate_name',
@@ -165,9 +166,11 @@ export async function parseSourceUpload(
     return { ...metadata, kind: 'url-submission', requestedUrl };
   }
   const detected = detectFile(file.body, file.mimetype, file.filename);
+  const kind = materialKind(fields);
+  if (detected.sourceType === 'image') await validateSourceImage(file.body, kind);
   const sourceMetadata =
-    detected.sourceType === 'image' && materialKind(fields) === 'certificate'
-      ? await validatedCertificateMetadata(file.body, fields)
+    detected.sourceType === 'image' && kind === 'certificate'
+      ? parseCertificateMetadata(fields)
       : (requireDocumentMaterial(fields), {} as const);
   if (
     trustLevel === 'untrusted' &&
@@ -191,18 +194,15 @@ export async function parseSourceUpload(
   };
 }
 
-async function validatedCertificateMetadata(
-  body: Buffer,
-  fields: ReadonlyMap<string, string>,
-): Promise<CertificateSourceMetadata> {
+async function validateSourceImage(body: Buffer, kind: 'certificate' | 'document'): Promise<void> {
   try {
-    await certificateImageMetadata(body);
+    if (kind === 'certificate' && body.byteLength > MAX_CERTIFICATE_IMAGE_BYTES) throw new Error();
+    await sourceImageMetadata(body);
   } catch {
     throw new SourceUploadValidationError(
-      'Certificate image must be decodable, at least 768x512, no more than 8192 pixels per side or 50 megapixels, and no larger than 10 MB',
+      `Source image must be decodable, at least 768x512, no more than 8192 pixels per side or 50 megapixels, and no larger than ${kind === 'certificate' ? '10 MB' : '25 MiB'}`,
     );
   }
-  return parseCertificateMetadata(fields);
 }
 
 function parseCertificateMetadata(fields: ReadonlyMap<string, string>): CertificateSourceMetadata {

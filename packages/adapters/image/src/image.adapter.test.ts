@@ -5,13 +5,13 @@ import { CloudflareWorkersAiImageAdapter } from './cloudflare.adapter.js';
 import { readImageProviderConfiguration } from './config.js';
 import {
   applyAiDisclosure,
-  certificateImageMetadata,
   imageHash,
   imageMetadata,
   inspectionPassed,
   normalizeGeneratedImage,
   normalizePublishedSourceImage,
   renderTemplateImage,
+  sourceImageMetadata,
 } from './image-processing.js';
 
 describe('image adapter', () => {
@@ -102,7 +102,7 @@ describe('image adapter', () => {
     })
       .jpeg()
       .toBuffer();
-    expect(await certificateImageMetadata(portrait)).toMatchObject({ height: 1_200, width: 800 });
+    expect(await sourceImageMetadata(portrait)).toMatchObject({ height: 1_200, width: 800 });
     expect(await imageMetadata(await normalizePublishedSourceImage(portrait))).toMatchObject({
       height: 800,
       width: 1_200,
@@ -116,7 +116,7 @@ describe('image adapter', () => {
       .jpeg({ quality: 85 })
       .toBuffer();
     await expect(imageMetadata(scan)).rejects.toThrow('media gate');
-    expect(await certificateImageMetadata(scan)).toMatchObject({
+    expect(await sourceImageMetadata(scan)).toMatchObject({
       format: 'jpeg',
       height: 4_493,
       width: 6_355,
@@ -134,7 +134,7 @@ describe('image adapter', () => {
     })
       .jpeg()
       .toBuffer();
-    await expect(certificateImageMetadata(oversizedEdge)).rejects.toThrow('media gate');
+    await expect(sourceImageMetadata(oversizedEdge)).rejects.toThrow('media gate');
   });
 
   it('calls the official Workers AI envelope without exposing provider errors', async () => {

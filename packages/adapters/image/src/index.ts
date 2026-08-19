@@ -6,13 +6,13 @@ export {
 } from './config.js';
 export {
   applyAiDisclosure,
-  certificateImageMetadata,
   imageHash,
   imageMetadata,
   inspectionPassed,
   normalizeGeneratedImage,
   normalizePublishedSourceImage,
   renderTemplateImage,
+  sourceImageMetadata,
 } from './image-processing.js';
 export type {
   ImageGenerationRequest,
