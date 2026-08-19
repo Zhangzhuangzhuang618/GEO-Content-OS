@@ -17,7 +17,7 @@ const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.u
 
 describe('official_site render contract', () => {
   it('publishes immutable versioned rules and Draft 2020-12 payload schemas', async () => {
-    expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.1.0');
+    expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.2.0');
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1)).toBe(true);
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1.title)).toBe(true);
     expect(OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA.$schema).toBe(
@@ -213,14 +213,16 @@ describe('official_site render contract', () => {
 
   it('blocks other company names but permits the owner and anonymous companies', async () => {
     const input = (await readJson('official-site.valid.input.json')) as {
+      owner_company_names: string[];
       content: { blocks: { block_type: string; text: string }[] };
     };
+    input.owner_company_names = ['广东众人搬家起重吊装有限公司'];
     const paragraph = input.content.blocks.find((block) => block.block_type === 'paragraph');
     if (!paragraph) throw new Error('Golden fixture is missing a paragraph');
     paragraph.text +=
-      '广州志远搬家服务有限公司会核对服务记录，某公司和某搬家公司也可采用匿名方式说明。';
+      '广东众人搬家起重吊装有限公司会核对服务记录，某公司和某搬家公司也可采用匿名方式说明。';
     expect(renderOfficialSite(input).ok).toBe(true);
-    paragraph.text += '广州家盛搬家有限公司不得公开出现。';
+    paragraph.text += '广州志远搬家服务有限公司不得公开出现。';
 
     const result = renderOfficialSite(input);
     expect(result.ok).toBe(false);
@@ -229,7 +231,30 @@ describe('official_site render contract', () => {
       expect.arrayContaining([
         expect.objectContaining({
           code: 'OTHER_COMPANY_NAME_FORBIDDEN',
-          message: expect.stringContaining('广州家盛搬家有限公司'),
+          message: expect.stringContaining('广州志远搬家服务有限公司'),
+        }),
+      ]),
+    );
+  });
+
+  it('fails closed instead of borrowing another tenant owner name', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      owner_company_names: string[];
+      content: { blocks: { block_type: string; text: string }[] };
+    };
+    const paragraph = input.content.blocks.find((block) => block.block_type === 'paragraph');
+    if (!paragraph) throw new Error('Golden fixture is missing a paragraph');
+    paragraph.text += '广州志远搬家服务有限公司会核对服务记录。';
+
+    const result = renderOfficialSite(input);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'OTHER_COMPANY_NAME_FORBIDDEN',
+          message: expect.stringContaining('未声明法定名称'),
         }),
       ]),
     );

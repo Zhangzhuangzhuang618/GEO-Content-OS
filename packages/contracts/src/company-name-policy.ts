@@ -1,12 +1,8 @@
-export const ALLOWED_COMPANY_NAME = '广州志远搬家服务有限公司';
-
 const LEGAL_COMPANY_NAME_PATTERN =
   /[\p{Script=Han}A-Za-z0-9（）()·]{2,40}(?:有限责任公司|股份有限公司|集团有限公司|有限公司|股份公司|集团公司)/gu;
 const COMPLETE_LEGAL_COMPANY_NAME_PATTERN =
   /^[\p{Script=Han}A-Za-z0-9（）()·]{2,40}(?:有限责任公司|股份有限公司|集团有限公司|有限公司|股份公司|集团公司)$/u;
 const NAMED_BUSINESS_DATA_PROVIDER_PATTERN = /企查查|天眼查|爱企查/gu;
-
-export const COMPANY_NAME_POLICY_INSTRUCTION = companyNamePolicyInstruction([ALLOWED_COMPANY_NAME]);
 
 export function findPublishedOwnerCompanyNames(profile: unknown): readonly string[] {
   if (!record(profile)) return Object.freeze([]);
@@ -39,7 +35,7 @@ export function companyNamePolicyInstruction(allowedCompanyNames: readonly strin
 
 export function findDisallowedCompanyNames(
   value: string,
-  allowedCompanyNames: readonly string[] = [ALLOWED_COMPANY_NAME],
+  allowedCompanyNames: readonly string[] = [],
 ): readonly string[] {
   const withoutAllowedName = normalizeAllowedCompanyNames(allowedCompanyNames)
     .sort((left, right) => right.length - left.length)

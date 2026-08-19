@@ -1,7 +1,7 @@
 {
-  "payload_sha256": "23546be8a38f0286a739f0d8de67db56681be9750f94d86ba8ec9da13a9e41d2",
+  "payload_sha256": "3248bac744ae3f6e4d8deebe4049a279377964ca5c55b20a31326899e25a34ce",
   "schema_version": "official-site-payload@2",
-  "rule_version": "official-site-render-rules@1.1.0",
+  "rule_version": "official-site-render-rules@1.2.0",
   "platform_code": "official_site",
   "slug": "enterprise-geo-content-system",
   "citation_link_count": 2

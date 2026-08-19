@@ -84,6 +84,7 @@ export const OfficialSiteRenderInputSchema = z
       .max(11)
       .refine((items) => unique(items.map((item) => `${item.role}:${item.position}`)))
       .optional(),
+    owner_company_names: z.array(z.string().trim().min(1).max(80)).max(8).refine(unique),
     rule_version: z.literal(OFFICIAL_SITE_RENDER_RULE_VERSION),
   })
   .strict();
@@ -113,7 +114,7 @@ export const OfficialSitePayloadSchema = z
   .strict();
 
 export const OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
-  $id: 'https://geo.example/schemas/official-site-render-input-1.json',
+  $id: 'https://geo.example/schemas/official-site-render-input-2.json',
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   additionalProperties: false,
   properties: {
@@ -128,9 +129,15 @@ export const OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
       maxItems: 11,
       type: 'array',
     },
+    owner_company_names: {
+      items: { maxLength: 80, minLength: 1, type: 'string' },
+      maxItems: 8,
+      type: 'array',
+      uniqueItems: true,
+    },
     rule_version: { const: OFFICIAL_SITE_RENDER_RULE_VERSION },
   },
-  required: ['rule_version', 'content', 'citations'],
+  required: ['rule_version', 'content', 'citations', 'owner_company_names'],
   type: 'object',
   $defs: schemaDefinitions(),
 });

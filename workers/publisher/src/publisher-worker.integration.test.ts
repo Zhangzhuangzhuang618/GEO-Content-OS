@@ -42,6 +42,7 @@ const BROWSER_PUBLICATION_ID = 'b3000000-0000-4000-8000-000000000125';
 const CONTENT_HASH = 'a'.repeat(64);
 const PLATFORM_PAYLOAD_HASH = 'b'.repeat(64);
 const ACCESS_TOKEN = 't125-platform-secret';
+const OWNER_COMPANY_NAME = '广东众人搬家起重吊装有限公司';
 const MIGRATIONS = new URL('../../../apps/api/src/database/migrations/', import.meta.url);
 
 describe('publisher worker', () => {
@@ -63,8 +64,9 @@ describe('publisher worker', () => {
     await database`
       TRUNCATE
         export_artifacts, publish_attempts, publish_jobs, media_assets, platform_accounts,
-        content_versions, content_variants, content_packages, briefs, workspace_memberships,
-        projects, workspaces, audit_events, outbox_events, memberships, tenants, users
+        content_versions, content_variants, content_packages, briefs, brand_profiles,
+        workspace_memberships, projects, workspaces, audit_events, outbox_events,
+        memberships, tenants, users
       CASCADE
     `;
     await seed(database, requireCredentials(credentials));
@@ -95,6 +97,7 @@ describe('publisher worker', () => {
 
     expect(platform.claims).toHaveLength(1);
     expect(platform.claims[0]?.idempotencyKey).toBe('publish-job-125-stable');
+    expect(platform.claims[0]?.ownerCompanyNames).toEqual([OWNER_COMPANY_NAME]);
     expect(platform.credentials[0]).toEqual({ access_token: ACCESS_TOKEN });
     await expect(state(database)).resolves.toMatchObject({
       attemptCount: 1,
@@ -1323,6 +1326,23 @@ async function seed(database: Sql, credentials: CredentialEnvelopeService): Prom
   await database`
     INSERT INTO workspace_memberships(workspace_id,user_id,scope_json)
     VALUES(${WORKSPACE_ID}::uuid,${USER_ID}::uuid,'{}'::jsonb)
+  `;
+  await database`
+    INSERT INTO brand_profiles(
+      tenant_id,workspace_id,version,status,schema_version,profile_json,created_by,published_at
+    ) VALUES(
+      ${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,1,'published','brand-profile@1',
+      ${database.json({
+        audience: ['广州搬家用户'],
+        banned: ['未经证实的价格和排名'],
+        compliance: ['只使用可核验事实'],
+        cta: `联系${OWNER_COMPANY_NAME}获取搬迁方案`,
+        differentiators: ['本地搬迁服务经验'],
+        positioning: `${OWNER_COMPANY_NAME}面向广州提供搬迁服务。`,
+        tone: '专业、直接、实用',
+      })},
+      ${USER_ID}::uuid,now()
+    )
   `;
   await database`
     INSERT INTO projects(id,tenant_id,workspace_id,name,owner_id,status)

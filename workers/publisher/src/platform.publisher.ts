@@ -160,6 +160,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           citations: claim.citations,
           content,
           media_assets: prepared.assets,
+          owner_company_names: claim.ownerCompanyNames,
           rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
         });
         if (claim.publishMode !== 'api') {

@@ -71,6 +71,41 @@ describe('PlatformPublisher', () => {
     );
   });
 
+  it('uses the current tenant owner name for official-site render validation', async () => {
+    const fixture = (await readJson(fixtureUrl)) as {
+      readonly citations: PublishClaim['citations'];
+      readonly content: Readonly<Record<string, unknown>> & {
+        readonly blocks: readonly Readonly<Record<string, unknown>>[];
+      };
+    };
+    const owner = '广东众人搬家起重吊装有限公司';
+    const otherTenant = '广州志远搬家服务有限公司';
+    const withCompany = (company: string) => ({
+      ...fixture.content,
+      blocks: fixture.content.blocks.map((block, index) =>
+        index === 0
+          ? { ...block, text: `${String(block['text'])}${company}会核对服务记录。` }
+          : block,
+      ),
+      schema_version: 'content-writer-data@1',
+    });
+
+    await expect(
+      new PlatformPublisher().deliver(
+        createClaim(withCompany(owner), fixture.citations, [], { ownerCompanyNames: [owner] }),
+        null,
+      ),
+    ).resolves.toMatchObject({ mode: 'export' });
+    await expect(
+      new PlatformPublisher().deliver(
+        createClaim(withCompany(otherTenant), fixture.citations, [], {
+          ownerCompanyNames: [owner],
+        }),
+        null,
+      ),
+    ).rejects.toThrow('OTHER_COMPANY_NAME_FORBIDDEN');
+  });
+
   it('uploads local immutable media before publishing official-site HTML', async () => {
     const fixture = (await readJson(fixtureUrl)) as {
       readonly citations: PublishClaim['citations'];
@@ -236,6 +271,7 @@ function createClaim(
     idempotencyKey: `official-site:${randomUUID()}`,
     jobId: randomUUID(),
     mediaAssets,
+    ownerCompanyNames: [],
     payloadHash: 'a'.repeat(64),
     platformCode: 'official_site',
     publishMode: 'export',

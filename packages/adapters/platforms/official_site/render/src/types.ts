@@ -1,7 +1,7 @@
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
 
 export const OFFICIAL_SITE_PLATFORM_CODE = 'official_site' as const;
-export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.1.0' as const;
+export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.2.0' as const;
 export const OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION = 'official-site-payload@2' as const;
 
 export interface OfficialSiteFaqItem {
@@ -41,6 +41,7 @@ export interface OfficialSiteRenderInput {
   readonly citations: readonly OfficialSiteCitationLink[];
   readonly content: OfficialSiteContent;
   readonly media_assets?: readonly OfficialSiteMediaAsset[];
+  readonly owner_company_names: readonly string[];
   readonly rule_version: typeof OFFICIAL_SITE_RENDER_RULE_VERSION;
 }
 

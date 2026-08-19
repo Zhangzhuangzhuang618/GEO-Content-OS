@@ -1,5 +1,5 @@
 import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
-import { ALLOWED_COMPANY_NAME, findDisallowedCompanyNames } from '@geo-content-os/contracts';
+import { findDisallowedCompanyNames } from '@geo-content-os/contracts';
 import { createHash } from 'node:crypto';
 
 import { safeError } from './safe-error.js';
@@ -265,7 +265,6 @@ function parseScene(value: unknown): ArticleImageScene {
     prompt.length < 20 ||
     prompt.length > 1_600 ||
     findDisallowedCompanyNames(forbidden).length > 0 ||
-    forbidden.includes(ALLOWED_COMPANY_NAME) ||
     /https?:\/\/|www\.|\b1[3-9]\d{9}\b|[¥￥$€£]|二维码|QR\s*code/iu.test(forbidden)
   ) {
     throw new Error('Image scene violates the deterministic prompt gate');

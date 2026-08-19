@@ -1,4 +1,4 @@
-import { ALLOWED_COMPANY_NAME, findDisallowedCompanyNames } from '@geo-content-os/contracts';
+import { findDisallowedCompanyNames } from '@geo-content-os/contracts';
 
 import { OfficialSiteRenderInputSchema } from './schema.js';
 import { OFFICIAL_SITE_RENDER_RULES_V1 } from './rules.js';
@@ -90,12 +90,19 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
     );
   }
 
-  const disallowedCompanyNames = findDisallowedCompanyNames(JSON.stringify(value));
+  const disallowedCompanyNames = findDisallowedCompanyNames(
+    JSON.stringify(value),
+    value.owner_company_names,
+  );
   if (disallowedCompanyNames.length > 0) {
+    const ownerBoundary =
+      value.owner_company_names.length > 0
+        ? `只允许出现当前企业名称：${value.owner_company_names.map((name) => `“${name}”`).join('、')}。`
+        : '当前企业已发布品牌档案未声明法定名称，内容不得出现可识别企业或品牌名称。';
     issues.push(
       blocker(
         'OTHER_COMPANY_NAME_FORBIDDEN',
-        `官网内容不得出现其他企业或品牌名称：${disallowedCompanyNames.join('、')}。请改为“某公司”等匿名表述；只允许出现“${ALLOWED_COMPANY_NAME}”。`,
+        `官网内容不得出现其他企业或品牌名称：${disallowedCompanyNames.join('、')}。请改为“某公司”等匿名表述；${ownerBoundary}`,
         'content',
       ),
     );

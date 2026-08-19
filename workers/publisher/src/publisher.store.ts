@@ -1,7 +1,8 @@
-import type {
-  ContentPackageStatus,
-  ContentVariantStatus,
-  PlatformCode,
+import {
+  findPublishedOwnerCompanyNames,
+  type ContentPackageStatus,
+  type ContentVariantStatus,
+  type PlatformCode,
 } from '@geo-content-os/contracts';
 import { redactSensitiveData } from '@geo-content-os/security';
 import { randomUUID } from 'node:crypto';
@@ -25,6 +26,7 @@ interface JobRow {
   readonly accountStatus: 'active' | 'disabled' | 'reauth';
   readonly accountTokenExpiresAt: Date | null;
   readonly attemptCount: number;
+  readonly brandProfile: Readonly<Record<string, unknown>> | null;
   readonly content: Readonly<Record<string, unknown>>;
   readonly contentHash: string;
   readonly contentVersionId: string;
@@ -135,7 +137,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
           account.publish_mode AS "publishMode", account.status AS "accountStatus",
           account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
           account.token_expires_at AS "accountTokenExpiresAt",
-          account.deleted_at AS "accountDeletedAt"
+          account.deleted_at AS "accountDeletedAt",
+          brand.profile_json AS "brandProfile"
         FROM publish_jobs AS job
         JOIN content_variants AS variant
           ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
@@ -148,6 +151,9 @@ export class PostgresPublisherStore implements PublisherStorePort {
           ON account.id=job.account_id AND account.tenant_id=job.tenant_id
           AND account.workspace_id=package.workspace_id
           AND account.platform_code=variant.platform_code
+        LEFT JOIN brand_profiles AS brand
+          ON brand.tenant_id=job.tenant_id AND brand.workspace_id=package.workspace_id
+          AND brand.status='published'
         WHERE job.id=${event.jobId}::uuid AND job.tenant_id=${event.tenantId}::uuid
         FOR UPDATE OF job, variant, package, account
       `;
@@ -270,6 +276,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
               Object.freeze({ ...asset, sizeBytes: Number(asset.sizeBytes) }),
             ),
           ),
+          ownerCompanyNames: findPublishedOwnerCompanyNames(row.brandProfile),
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,
           publishMode: row.publishMode,
