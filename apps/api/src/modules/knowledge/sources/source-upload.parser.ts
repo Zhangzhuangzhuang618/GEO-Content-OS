@@ -7,7 +7,7 @@ import type {
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
-import { imageMetadata } from '@geo-content-os/adapter-image';
+import { certificateImageMetadata } from '@geo-content-os/adapter-image';
 import type { FastifyRequest } from 'fastify';
 
 import { SourceUploadValidationError } from './source.errors.js';
@@ -196,10 +196,10 @@ async function validatedCertificateMetadata(
   fields: ReadonlyMap<string, string>,
 ): Promise<CertificateSourceMetadata> {
   try {
-    await imageMetadata(body);
+    await certificateImageMetadata(body);
   } catch {
     throw new SourceUploadValidationError(
-      'Certificate image must be decodable, 768x512 to 4096x4096, and no larger than 10 MB',
+      'Certificate image must be decodable, at least 768x512, no more than 8192 pixels per side or 50 megapixels, and no larger than 10 MB',
     );
   }
   return parseCertificateMetadata(fields);

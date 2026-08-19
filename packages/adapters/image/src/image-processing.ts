@@ -5,6 +5,11 @@ import type { ImageInspectionResult, ImageMetadata, TemplateImageInput } from '.
 
 const WIDTH = 1_200;
 const HEIGHT = 800;
+const MAX_MEDIA_EDGE = 4_096;
+const MAX_CERTIFICATE_EDGE = 8_192;
+const MAX_CERTIFICATE_PIXELS = 50_000_000;
+const MAX_IMAGE_BYTES = 10_000_000;
+const MEDIA_GATE_ERROR = 'Image dimensions, format, or size failed the media gate';
 
 export async function normalizeGeneratedImage(body: Uint8Array): Promise<Uint8Array> {
   if (body.byteLength < 128 || body.byteLength > 10_000_000) {
@@ -92,26 +97,18 @@ export async function renderTemplateImage(input: TemplateImageInput): Promise<Ui
 }
 
 export async function imageMetadata(body: Uint8Array): Promise<ImageMetadata> {
-  if (body.byteLength > 10_000_000) {
-    throw new Error('Image dimensions, format, or size failed the media gate');
-  }
-  const metadata = await sharp(body, { failOn: 'error' }).metadata();
-  if (
-    (metadata.format !== 'jpeg' && metadata.format !== 'png' && metadata.format !== 'webp') ||
-    !metadata.width ||
-    !metadata.height ||
-    Math.min(metadata.width, metadata.height) < 512 ||
-    Math.max(metadata.width, metadata.height) < 768 ||
-    metadata.width > 4_096 ||
-    metadata.height > 4_096
-  ) {
-    throw new Error('Image dimensions, format, or size failed the media gate');
-  }
-  return Object.freeze({
-    format: metadata.format,
-    height: metadata.height,
-    sizeBytes: body.byteLength,
-    width: metadata.width,
+  return validatedImageMetadata(body, {
+    maxBytes: MAX_IMAGE_BYTES,
+    maxEdge: MAX_MEDIA_EDGE,
+    maxPixels: MAX_MEDIA_EDGE * MAX_MEDIA_EDGE,
+  });
+}
+
+export async function certificateImageMetadata(body: Uint8Array): Promise<ImageMetadata> {
+  return validatedImageMetadata(body, {
+    maxBytes: MAX_IMAGE_BYTES,
+    maxEdge: MAX_CERTIFICATE_EDGE,
+    maxPixels: MAX_CERTIFICATE_PIXELS,
   });
 }
 
@@ -130,6 +127,42 @@ export function inspectionPassed(result: ImageInspectionResult): boolean {
 
 export function imageHash(body: Uint8Array): string {
   return createHash('sha256').update(body).digest('hex');
+}
+
+async function validatedImageMetadata(
+  body: Uint8Array,
+  limits: Readonly<{ maxBytes: number; maxEdge: number; maxPixels: number }>,
+): Promise<ImageMetadata> {
+  if (body.byteLength > limits.maxBytes) {
+    throw new Error(MEDIA_GATE_ERROR);
+  }
+  let metadata: sharp.Metadata;
+  try {
+    metadata = await sharp(body, {
+      failOn: 'error',
+      limitInputPixels: limits.maxPixels,
+    }).metadata();
+  } catch {
+    throw new Error(MEDIA_GATE_ERROR);
+  }
+  if (
+    (metadata.format !== 'jpeg' && metadata.format !== 'png' && metadata.format !== 'webp') ||
+    !metadata.width ||
+    !metadata.height ||
+    Math.min(metadata.width, metadata.height) < 512 ||
+    Math.max(metadata.width, metadata.height) < 768 ||
+    metadata.width > limits.maxEdge ||
+    metadata.height > limits.maxEdge ||
+    metadata.width * metadata.height > limits.maxPixels
+  ) {
+    throw new Error(MEDIA_GATE_ERROR);
+  }
+  return Object.freeze({
+    format: metadata.format,
+    height: metadata.height,
+    sizeBytes: body.byteLength,
+    width: metadata.width,
+  });
 }
 
 function titleLines(value: string): readonly string[] {

@@ -6,6 +6,7 @@ export {
 } from './config.js';
 export {
   applyAiDisclosure,
+  certificateImageMetadata,
   imageHash,
   imageMetadata,
   inspectionPassed,

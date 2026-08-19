@@ -278,7 +278,8 @@ export function SourceUploadForm() {
                     MiB。服务端会复核内容签名并执行安全扫描。
                   </p>
                   <p className="mt-1 text-xs text-ink-500">
-                    证照图片需可正常打开、至少 768×512 像素、最长边不超过 4096 像素且不超过 10 MB。
+                    证照图片需可正常打开、至少 768×512 像素、最长边不超过 8192 像素、总像素不超过
+                    5000 万且文件不超过 10 MB；随文发布时会自动等比缩图。
                   </p>
                 </Field>
                 {certificateMaterial ? (

@@ -5,6 +5,7 @@ import { CloudflareWorkersAiImageAdapter } from './cloudflare.adapter.js';
 import { readImageProviderConfiguration } from './config.js';
 import {
   applyAiDisclosure,
+  certificateImageMetadata,
   imageHash,
   imageMetadata,
   inspectionPassed,
@@ -95,17 +96,45 @@ describe('image adapter', () => {
     expect((await sharp(normalized).metadata()).exif).toBeUndefined();
   });
 
-  it('accepts a portrait certificate image that meets the same dimension gate', async () => {
+  it('accepts a portrait certificate image and normalizes its publication copy', async () => {
     const portrait = await sharp({
       create: { background: '#ffffff', channels: 3, height: 1_200, width: 800 },
     })
       .jpeg()
       .toBuffer();
-    expect(await imageMetadata(portrait)).toMatchObject({ height: 1_200, width: 800 });
+    expect(await certificateImageMetadata(portrait)).toMatchObject({ height: 1_200, width: 800 });
     expect(await imageMetadata(await normalizePublishedSourceImage(portrait))).toMatchObject({
       height: 800,
       width: 1_200,
     });
+  });
+
+  it('accepts a high-resolution certificate scan without relaxing the general media gate', async () => {
+    const scan = await sharp({
+      create: { background: '#ffffff', channels: 3, height: 4_493, width: 6_355 },
+    })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    await expect(imageMetadata(scan)).rejects.toThrow('media gate');
+    expect(await certificateImageMetadata(scan)).toMatchObject({
+      format: 'jpeg',
+      height: 4_493,
+      width: 6_355,
+    });
+    expect(await imageMetadata(await normalizePublishedSourceImage(scan))).toMatchObject({
+      format: 'jpeg',
+      height: 800,
+      width: 1_200,
+    });
+  });
+
+  it('rejects certificate scans beyond the high-resolution safety gate', async () => {
+    const oversizedEdge = await sharp({
+      create: { background: '#ffffff', channels: 3, height: 512, width: 8_193 },
+    })
+      .jpeg()
+      .toBuffer();
+    await expect(certificateImageMetadata(oversizedEdge)).rejects.toThrow('media gate');
   });
 
   it('calls the official Workers AI envelope without exposing provider errors', async () => {
