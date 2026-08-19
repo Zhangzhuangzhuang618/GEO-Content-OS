@@ -360,6 +360,27 @@ export const BaijiahaoBrowserLoginResponseSchema = z
   .object({ data: BaijiahaoBrowserLoginSchema, meta: ResponseMetaSchema })
   .strict();
 
+const LIEJU_MOBILE_PHONE_PATTERN = /^(?:[0-9]{6,12}|[0-9]{3,4}-[0-9]{6,8}(?:-[0-9]{1,6})?)$/u;
+const LIEJU_QQ_PATTERN = /^(?:[0-9]{5,15})?$/u;
+const LIEJU_WECHAT_PATTERN = /^(?:[A-Za-z][-_A-Za-z0-9]{5,19})?$/u;
+const LIEJU_ZONE_IDS = new Set([
+  '73',
+  '3038',
+  '3037',
+  '3036',
+  '83',
+  '82',
+  '81',
+  '80',
+  '79',
+  '78',
+  '77',
+  '76',
+  '75',
+  '74',
+  '3081',
+]);
+
 export const PlatformAccountFormSchema = z
   .object({
     address: z.string(),
@@ -407,15 +428,42 @@ export const PlatformAccountFormSchema = z
           });
         }
       }
-      if (
-        value.address.trim().length > 120 ||
-        value.contact_name.trim().length > 25 ||
-        value.mobile_phone.trim().length > 20
-      ) {
+      if (value.address.trim().length > 120 || value.contact_name.trim().length > 25) {
         context.addIssue({
           code: 'custom',
           message: '列举网联系方式超出长度限制。',
+          path: ['contact_name'],
+        });
+      }
+      if (
+        value.mobile_phone.trim() &&
+        !LIEJU_MOBILE_PHONE_PATTERN.test(value.mobile_phone.trim())
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: '联系电话应为 6～12 位数字，或带区号的固定电话。',
           path: ['mobile_phone'],
+        });
+      }
+      if (!LIEJU_QQ_PATTERN.test(value.qq.trim())) {
+        context.addIssue({
+          code: 'custom',
+          message: 'QQ 号应为 5～15 位数字；不使用可留空。',
+          path: ['qq'],
+        });
+      }
+      if (!LIEJU_WECHAT_PATTERN.test(value.wechat.trim())) {
+        context.addIssue({
+          code: 'custom',
+          message: '微信号应以字母开头，只含字母、数字、下划线或减号，共 6～20 位；不使用可留空。',
+          path: ['wechat'],
+        });
+      }
+      if (value.zone_id.trim() && !LIEJU_ZONE_IDS.has(value.zone_id.trim())) {
+        context.addIssue({
+          code: 'custom',
+          message: '请选择有效的广州区域。',
+          path: ['zone_id'],
         });
       }
       if (!/^[\x21-\x7e]{16,256}$/u.test(value.api_key.trim())) {
@@ -449,10 +497,17 @@ export const PlatformAccountEditSchema = z
     api_key: z.string(),
     base_url: z.string(),
     bearer_token: z.string(),
+    clear_qq: z.boolean(),
+    clear_wechat: z.boolean(),
+    contact_name: z.string().max(25),
     display_name: z.string().trim().min(1, '请填写账号名称。').max(120),
+    mobile_phone: z.string().max(20),
     publishing_url: z.string(),
     publish_mode: z.enum(['api', 'export', 'manual']),
+    qq: z.string().max(15),
     timezone: z.string().trim().min(1, '请填写 IANA 时区。').max(64),
+    wechat: z.string().max(20),
+    zone_id: z.string(),
   })
   .superRefine((value, context) => {
     if (value.publishing_url.trim() && !isHttpUrl(value.publishing_url.trim())) {
@@ -469,6 +524,48 @@ export const PlatformAccountEditSchema = z
         code: 'custom',
         message: '请输入列举网提供的有效 API Key。',
         path: ['api_key'],
+      });
+    }
+    if (value.mobile_phone.trim() && !LIEJU_MOBILE_PHONE_PATTERN.test(value.mobile_phone.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: '联系电话应为 6～12 位数字，或带区号的固定电话。',
+        path: ['mobile_phone'],
+      });
+    }
+    if (value.qq.trim() && !LIEJU_QQ_PATTERN.test(value.qq.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: 'QQ 号应为 5～15 位数字。',
+        path: ['qq'],
+      });
+    }
+    if (value.wechat.trim() && !LIEJU_WECHAT_PATTERN.test(value.wechat.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: '微信号应以字母开头，只含字母、数字、下划线或减号，共 6～20 位。',
+        path: ['wechat'],
+      });
+    }
+    if (value.zone_id.trim() && !LIEJU_ZONE_IDS.has(value.zone_id.trim())) {
+      context.addIssue({
+        code: 'custom',
+        message: '请选择有效的广州区域。',
+        path: ['zone_id'],
+      });
+    }
+    if (value.clear_qq && value.qq.trim()) {
+      context.addIssue({
+        code: 'custom',
+        message: '填写新 QQ 号和清空 QQ 不能同时选择。',
+        path: ['qq'],
+      });
+    }
+    if (value.clear_wechat && value.wechat.trim()) {
+      context.addIssue({
+        code: 'custom',
+        message: '填写新微信号和清空微信号不能同时选择。',
+        path: ['wechat'],
       });
     }
     if (!baseUrl && !token) return;

@@ -198,6 +198,19 @@ describe('lieju delivery integration', () => {
     expect(transport.requests).toHaveLength(1);
   });
 
+  it('treats the current official API contact validation message as a definitive rejection', async () => {
+    const transport = new FakeTransport([
+      response(200, '请正确填写微信号，打开微信右下角“我”，头像右侧查看您的微信号'),
+    ]);
+
+    await expect(
+      officialApiAdapter(transport).publish(await deliveryInput()),
+    ).rejects.toMatchObject({
+      code: 'PUBLISH_REJECTED',
+    });
+    expect(transport.requests).toHaveLength(1);
+  });
+
   it('attaches only safe diagnostics to an unrecognized official API response', async () => {
     const remoteBody = '<html><title>会员登录</title><body>api_key=remote-secret</body></html>';
     const transport = new FakeTransport([
@@ -342,6 +355,58 @@ describe('lieju delivery integration', () => {
         posting_profile: { ...POSTING_PROFILE, category_id: '7' },
       }).success,
     ).toBe(false);
+  });
+
+  it.each([
+    ['telephone', { mobile_phone: 'phone-number' }],
+    ['QQ', { qq: 'invalid-qq' }],
+    ['WeChat', { wechat: '123456' }],
+  ])('rejects an invalid official posting profile %s before publication', (_field, change) => {
+    expect(
+      LiejuDeliveryConfigSchema.safeParse({
+        api_key: 'official-api-key-123456',
+        delivery_method: 'official_api',
+        mode: 'api',
+        posting_profile: {
+          address: '广州市天河区示例路',
+          contact_name: '广州志远搬家服务有限公司',
+          mobile_phone: '02085627757',
+          qq: '',
+          wechat: '',
+          zone_id: '76',
+          ...change,
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('fails an invalid saved posting profile before making an external request', () => {
+    const transport = new FakeTransport([]);
+
+    expect(
+      () =>
+        new LiejuDeliveryAdapter(
+          {
+            api_key: 'official-api-key-123456',
+            delivery_method: 'official_api',
+            mode: 'api',
+            posting_profile: {
+              address: '广州市天河区示例路',
+              contact_name: '广州志远搬家服务有限公司',
+              mobile_phone: '02085627757',
+              qq: '',
+              wechat: '123456',
+              zone_id: '76',
+            },
+          },
+          transport,
+        ),
+    ).toThrow(
+      expect.objectContaining({
+        code: 'PLATFORM_ACCOUNT_CONFIGURATION_INVALID',
+      }),
+    );
+    expect(transport.requests).toHaveLength(0);
   });
 });
 

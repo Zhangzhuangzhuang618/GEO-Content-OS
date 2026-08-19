@@ -116,7 +116,7 @@ export function diagnoseLiejuOfficialApiResponse(
 }
 
 const REJECTION =
-  /(?:发布失败|提交失败|错误|无效|过期|未授权|禁止|余额不足|次数不足|验证码|api[_ ]?key[^\n]{0,20}(?:错误|无效))/iu;
+  /(?:发布失败|提交失败|错误|无效|过期|未授权|禁止|余额不足|次数不足|验证码|请正确填写(?:联系电话|QQ号|微信号)|请填写(?:地址|描述|联系人)|请选择(?:区域|类别)|api[_ ]?key[^\n]{0,20}(?:错误|无效))/iu;
 const SUCCESS = /(?:发布成功|提交成功|信息发布成功)/u;
 const OFFICIAL_RESPONSE_FIELDS = Object.freeze([
   'code',

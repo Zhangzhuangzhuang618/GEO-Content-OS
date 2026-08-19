@@ -38,7 +38,7 @@ export class LiejuDeliveryAdapter {
   private readonly transport: LiejuHttpTransport;
 
   public constructor(configuration: unknown, transport?: LiejuHttpTransport) {
-    this.configuration = parseLiejuDeliveryConfig(configuration);
+    this.configuration = parseConfiguration(configuration);
     this.transport =
       transport ??
       new FetchLiejuTransport(
@@ -271,6 +271,17 @@ export class LiejuDeliveryAdapter {
       responseContext(response),
     );
     return result;
+  }
+}
+
+function parseConfiguration(configuration: unknown): LiejuDeliveryConfig {
+  try {
+    return parseLiejuDeliveryConfig(configuration);
+  } catch {
+    throw new LiejuDeliveryError(
+      'PLATFORM_ACCOUNT_CONFIGURATION_INVALID',
+      'Lieju account posting profile is invalid',
+    );
   }
 }
 

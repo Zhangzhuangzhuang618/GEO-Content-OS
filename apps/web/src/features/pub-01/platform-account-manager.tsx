@@ -144,10 +144,17 @@ export function PlatformAccountManager() {
       api_key: String(data.get('api_key') ?? ''),
       base_url: String(data.get('base_url') ?? ''),
       bearer_token: String(data.get('bearer_token') ?? ''),
+      clear_qq: data.has('clear_qq'),
+      clear_wechat: data.has('clear_wechat'),
+      contact_name: String(data.get('contact_name') ?? ''),
       display_name: String(data.get('display_name') ?? ''),
+      mobile_phone: String(data.get('mobile_phone') ?? ''),
       publishing_url: String(data.get('publishing_url') ?? ''),
       publish_mode: data.get('publish_mode'),
+      qq: String(data.get('qq') ?? ''),
       timezone: String(data.get('timezone') ?? ''),
+      wechat: String(data.get('wechat') ?? ''),
+      zone_id: String(data.get('zone_id') ?? ''),
     });
     if (!parsed.success) {
       setFormError(parsed.error.issues[0]?.message ?? '请检查账号信息。');
@@ -494,7 +501,18 @@ function EditForm({
                 填写后账号将使用列举网官方 API；原 Key 不会回显。
               </span>
             </label>
-            <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
+            <label className="text-sm text-ink-700">
+              广州区域
+              <select className={controlClass} defaultValue="" name="zone_id">
+                <option value="">不修改</option>
+                {LIEJU_ZONE_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm text-ink-700 sm:col-span-2">
               发布地址
               <input
                 className={controlClass}
@@ -506,11 +524,71 @@ function EditForm({
                 列举网当前发布页要求地址必填；保存后不会在账号列表中回显。
               </span>
             </label>
+            <label className="text-sm text-ink-700">
+              新联系人
+              <input
+                className={controlClass}
+                maxLength={25}
+                name="contact_name"
+                placeholder="不修改可留空"
+              />
+            </label>
+            <label className="text-sm text-ink-700">
+              新联系电话
+              <input
+                autoComplete="tel"
+                className={controlClass}
+                maxLength={20}
+                name="mobile_phone"
+                placeholder="不修改可留空"
+                type="tel"
+              />
+            </label>
+            <div className="text-sm text-ink-700">
+              <label>
+                新 QQ 号
+                <input
+                  className={controlClass}
+                  inputMode="numeric"
+                  maxLength={15}
+                  name="qq"
+                  placeholder="不修改可留空"
+                />
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-xs text-ink-600">
+                <input name="clear_qq" type="checkbox" />
+                清空已保存的 QQ 号
+              </label>
+            </div>
+            <div className="text-sm text-ink-700">
+              <label>
+                新微信号
+                <input
+                  className={controlClass}
+                  maxLength={20}
+                  name="wechat"
+                  placeholder="不修改可留空"
+                />
+              </label>
+              <label className="mt-2 flex items-center gap-2 text-xs text-ink-600">
+                <input name="clear_wechat" type="checkbox" />
+                清空已保存的微信号
+              </label>
+            </div>
+            <p className="text-xs leading-5 text-ink-500 sm:col-span-2 lg:col-span-3">
+              已保存的联系方式经过加密，不会回显。只填写需要修改的字段；如旧 QQ
+              或微信号有误，请勾选对应的清空选项。
+            </p>
           </>
         ) : (
           <>
             <input name="address" type="hidden" value="" />
             <input name="api_key" type="hidden" value="" />
+            <input name="contact_name" type="hidden" value="" />
+            <input name="mobile_phone" type="hidden" value="" />
+            <input name="qq" type="hidden" value="" />
+            <input name="wechat" type="hidden" value="" />
+            <input name="zone_id" type="hidden" value="" />
           </>
         )}
         {publishMode === 'api' &&
@@ -711,7 +789,7 @@ function ConnectForm({
             </label>
             <label className="text-sm text-ink-700">
               微信号（可选）
-              <input className={controlClass} maxLength={25} name="wechat" />
+              <input className={controlClass} maxLength={20} name="wechat" />
             </label>
             <input name="street_id" type="hidden" value="" />
             <input name="category_id" type="hidden" value="4" />

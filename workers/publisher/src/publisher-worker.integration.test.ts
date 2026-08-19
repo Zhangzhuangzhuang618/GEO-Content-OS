@@ -203,6 +203,29 @@ describe('publisher worker', () => {
     });
   });
 
+  it('records an invalid Lieju posting profile as rejected without claiming an unknown submission', async () => {
+    const database = requireClient(client);
+    await enableLiejuOfficialPublishing(database);
+    const platform = new FakePlatform(undefined, 'PLATFORM_ACCOUNT_CONFIGURATION_INVALID');
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+
+    expect(platform.claims).toHaveLength(1);
+    expect(
+      await database<{ status: string }[]>`
+        SELECT status FROM lieju_api_publications
+        WHERE publish_job_id=${JOB_ID}::uuid
+      `,
+    ).toEqual([{ status: 'rejected' }]);
+    await expect(state(database)).resolves.toMatchObject({
+      attemptCount: 1,
+      attemptStatus: ['failed'],
+      jobStatus: 'failed',
+      variantStatus: 'publish_failed',
+    });
+  });
+
   it('completes the Lieju automation batch after the platform explicitly accepts submission', async () => {
     const database = requireClient(client);
     await enableLiejuOfficialAutomationPublishing(database);

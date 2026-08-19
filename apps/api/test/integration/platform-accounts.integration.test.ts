@@ -330,7 +330,7 @@ describe('platform accounts', () => {
             contact_name: '广州志远搬家服务有限公司',
             mobile_phone: '02085627757',
             qq: '',
-            wechat: '',
+            wechat: 'Zhiyuan_2026',
             zone_id: '76',
           },
         },
@@ -401,6 +401,43 @@ describe('platform accounts', () => {
         category_id: '4',
         contact_name: '广州志远搬家服务有限公司',
         mobile_phone: '02085627757',
+        wechat: 'Zhiyuan_2026',
+        zone_id: '76',
+      },
+    });
+
+    const cleared = await service.update(
+      SCOPE,
+      connected.id,
+      {
+        credential: {
+          delivery_method: 'official_api',
+          posting_profile: { wechat: '' },
+        },
+        display_name: updated.display_name,
+        publish_mode: 'api',
+        timezone: updated.timezone,
+      },
+      updated.version,
+      { requestId: 'req-lieju-official-api-clear-wechat' },
+    );
+    expect(cleared).toMatchObject({ status: 'active', version: updated.version + 1 });
+    const clearedRows = await database<
+      { credentialCiphertext: string; credentialKeyVersion: string }[]
+    >`
+      SELECT credential_ciphertext AS "credentialCiphertext",
+        credential_key_version AS "credentialKeyVersion"
+      FROM platform_accounts WHERE id=${connected.id}::uuid
+    `;
+    const clearedStored = clearedRows[0];
+    if (!clearedStored) throw new Error('Cleared Lieju credential was not stored');
+    expect(JSON.parse(await envelope.decrypt(clearedStored))).toMatchObject({
+      api_key: apiKey,
+      posting_profile: {
+        address: '广州市天河区更新路2号',
+        contact_name: '广州志远搬家服务有限公司',
+        mobile_phone: '02085627757',
+        wechat: '',
         zone_id: '76',
       },
     });

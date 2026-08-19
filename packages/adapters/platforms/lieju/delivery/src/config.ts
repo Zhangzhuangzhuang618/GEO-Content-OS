@@ -21,6 +21,21 @@ const ZoneIdSchema = z.enum([
   '3081',
 ]);
 
+const MobilePhoneSchema = z
+  .string()
+  .trim()
+  .regex(/^(?:[0-9]{6,12}|[0-9]{3,4}-[0-9]{6,8}(?:-[0-9]{1,6})?)$/u);
+const QqSchema = z
+  .string()
+  .trim()
+  .regex(/^(?:[0-9]{5,15})?$/u)
+  .default('');
+const WechatSchema = z
+  .string()
+  .trim()
+  .regex(/^(?:[A-Za-z][-_A-Za-z0-9]{5,19})?$/u)
+  .default('');
+
 const ApiPathSchema = z
   .string()
   .regex(/^\/(?!\/)[A-Za-z0-9/_-]*$/u)
@@ -40,14 +55,14 @@ export const LiejuPostingProfileSchema = z
     address: z.string().trim().min(1).max(120),
     category_id: z.enum(['1', '2', '3', '4', '5', '6']),
     contact_name: z.string().trim().min(1).max(25),
-    mobile_phone: z.string().trim().min(6).max(20),
-    qq: z.string().trim().max(15).default(''),
+    mobile_phone: MobilePhoneSchema,
+    qq: QqSchema,
     street_id: z
       .string()
       .regex(/^\d{1,8}$/u)
       .nullable()
       .default(null),
-    wechat: z.string().trim().max(25).default(''),
+    wechat: WechatSchema,
     zone_id: ZoneIdSchema,
   })
   .strict();
@@ -59,9 +74,9 @@ export const LiejuOfficialPostingProfileSchema = z
     address: z.string().trim().min(1).max(120),
     category_id: z.enum(['1', '2', '3', '4', '5', '6']).default('4'),
     contact_name: z.string().trim().min(1).max(25),
-    mobile_phone: z.string().trim().min(6).max(20),
-    qq: z.string().trim().max(15).default(''),
-    wechat: z.string().trim().max(25).default(''),
+    mobile_phone: MobilePhoneSchema,
+    qq: QqSchema,
+    wechat: WechatSchema,
     zone_id: ZoneIdSchema,
   })
   .strict();

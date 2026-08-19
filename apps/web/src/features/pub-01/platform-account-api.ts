@@ -131,15 +131,27 @@ export async function updatePlatformAccount(
   const baseUrl = form.base_url.trim();
   const token = form.bearer_token.trim();
   const liejuApiKey = form.api_key.trim();
-  const liejuAddress = form.address.trim();
+  const liejuPostingProfile = {
+    ...(form.address.trim() ? { address: form.address.trim() } : {}),
+    ...(form.contact_name.trim() ? { contact_name: form.contact_name.trim() } : {}),
+    ...(form.mobile_phone.trim() ? { mobile_phone: form.mobile_phone.trim() } : {}),
+    ...(form.qq.trim() ? { qq: form.qq.trim() } : form.clear_qq ? { qq: '' } : {}),
+    ...(form.wechat.trim()
+      ? { wechat: form.wechat.trim() }
+      : form.clear_wechat
+        ? { wechat: '' }
+        : {}),
+    ...(form.zone_id.trim() ? { zone_id: form.zone_id.trim() } : {}),
+  };
+  const updatesLiejuProfile = Object.keys(liejuPostingProfile).length > 0;
   const response = await fetch(`${API_ORIGIN}/api/v1/platform-accounts/${account.id}`, {
     body: JSON.stringify({
-      ...(account.platform_code === 'lieju' && (liejuApiKey || liejuAddress)
+      ...(account.platform_code === 'lieju' && (liejuApiKey || updatesLiejuProfile)
         ? {
             credential: {
               ...(liejuApiKey ? { api_key: liejuApiKey } : {}),
               delivery_method: 'official_api',
-              ...(liejuAddress ? { posting_profile: { address: liejuAddress } } : {}),
+              ...(updatesLiejuProfile ? { posting_profile: liejuPostingProfile } : {}),
             },
           }
         : baseUrl && token

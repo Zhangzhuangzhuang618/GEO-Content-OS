@@ -229,6 +229,47 @@ test('edits credentials, tests, stops, restores and deletes with optimistic vers
   expect(JSON.stringify(writes)).not.toContain('credential_ciphertext');
 });
 
+test('updates or clears encrypted Lieju posting details without echoing old values', async ({
+  page,
+}) => {
+  let current = liejuAccount();
+  let updateBody: Record<string, unknown> | undefined;
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const request = route.request();
+    if (request.method() === 'PATCH') {
+      updateBody = request.postDataJSON() as Record<string, unknown>;
+      current = { ...current, version: current.version + 1 };
+      await json(route, { data: current, meta: { request_id: 'lieju-account-update' } });
+      return;
+    }
+    await json(route, { data: [current], meta: { request_id: 'lieju-account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '修改账号' }).click();
+  const editForm = page.getByRole('form', { name: '编辑账号 列举网生产账号' });
+  await expect(editForm.getByText('已保存的联系方式经过加密，不会回显。')).toBeVisible();
+  await editForm.getByLabel('广州区域').selectOption('79');
+  await editForm.getByLabel('新联系电话').fill('02085627757');
+  await editForm.getByLabel('清空已保存的微信号').check();
+  await editForm.getByRole('button', { name: '保存修改' }).click();
+
+  await expect(
+    page.getByText('账号信息已保存。新凭证已替换旧凭证，且不会在页面回显。'),
+  ).toBeVisible();
+  expect(updateBody).toMatchObject({
+    credential: {
+      delivery_method: 'official_api',
+      posting_profile: {
+        mobile_phone: '02085627757',
+        wechat: '',
+        zone_id: '79',
+      },
+    },
+  });
+  expect(updateBody?.['credential']).not.toHaveProperty('api_key');
+});
+
 test('persists platform, status and workspace filters in the URL', async ({ page }) => {
   const listUrls: string[] = [];
   await page.route('**/api/v1/platform-accounts**', async (route) => {
@@ -970,6 +1011,22 @@ function sohuAccount() {
     platform_code: 'sohu',
     provider_account_id: null,
     publishing_url: 'https://mp.sohu.com/',
+    token_expires_at: null,
+  };
+}
+
+function liejuAccount() {
+  return {
+    ...account({ version: 1 }),
+    capabilities: {
+      delivery_method: 'official_api',
+      get_status: false,
+      publish: true,
+    },
+    display_name: '列举网生产账号',
+    platform_code: 'lieju',
+    provider_account_id: null,
+    publishing_url: null,
     token_expires_at: null,
   };
 }
