@@ -487,8 +487,14 @@ function EditForm({
         </label>
         {publishMode === 'api' && account.platform_code === 'lieju' ? (
           <>
+            <p className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900 sm:col-span-2 lg:col-span-3">
+              标有“列举网必填”的资料必须已保存在账号中；修改时留空表示沿用已保存值，无需重复填写。
+            </p>
             <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
-              新的列举网官方 API Key
+              <span className="flex flex-wrap items-center gap-2">
+                新的列举网官方 API Key
+                <LiejuRequiredBadge />
+              </span>
               <input
                 autoComplete="new-password"
                 className={controlClass}
@@ -502,7 +508,10 @@ function EditForm({
               </span>
             </label>
             <label className="text-sm text-ink-700">
-              广州区域
+              <span className="flex flex-wrap items-center gap-2">
+                广州区域
+                <LiejuRequiredBadge />
+              </span>
               <select className={controlClass} defaultValue="" name="zone_id">
                 <option value="">不修改</option>
                 {LIEJU_ZONE_OPTIONS.map(([value, label]) => (
@@ -513,7 +522,10 @@ function EditForm({
               </select>
             </label>
             <label className="text-sm text-ink-700 sm:col-span-2">
-              发布地址
+              <span className="flex flex-wrap items-center gap-2">
+                发布地址
+                <LiejuRequiredBadge />
+              </span>
               <input
                 className={controlClass}
                 maxLength={120}
@@ -525,7 +537,10 @@ function EditForm({
               </span>
             </label>
             <label className="text-sm text-ink-700">
-              新联系人
+              <span className="flex flex-wrap items-center gap-2">
+                新联系人
+                <LiejuRequiredBadge />
+              </span>
               <input
                 className={controlClass}
                 maxLength={25}
@@ -534,7 +549,10 @@ function EditForm({
               />
             </label>
             <label className="text-sm text-ink-700">
-              新联系电话
+              <span className="flex flex-wrap items-center gap-2">
+                新联系电话
+                <LiejuRequiredBadge />
+              </span>
               <input
                 autoComplete="tel"
                 className={controlClass}
@@ -546,7 +564,7 @@ function EditForm({
             </label>
             <div className="text-sm text-ink-700">
               <label>
-                新 QQ 号
+                新 QQ 号（可选）
                 <input
                   className={controlClass}
                   inputMode="numeric"
@@ -562,7 +580,7 @@ function EditForm({
             </div>
             <div className="text-sm text-ink-700">
               <label>
-                新微信号
+                新微信号（可选）
                 <input
                   className={controlClass}
                   maxLength={20}
@@ -737,8 +755,14 @@ function ConnectForm({
         </label>
         {publishMode === 'api' && platformCode === 'lieju' ? (
           <>
+            <p className="rounded-lg bg-amber-50 p-3 text-sm leading-6 text-amber-900 sm:col-span-2 lg:col-span-3">
+              标有“列举网必填”的五项资料必须填写；QQ 和微信号可选。
+            </p>
             <label className="text-sm text-ink-700 sm:col-span-2 lg:col-span-3">
-              列举网官方 API Key
+              <span className="flex flex-wrap items-center gap-2">
+                列举网官方 API Key
+                <LiejuRequiredBadge />
+              </span>
               <input
                 autoComplete="new-password"
                 className={controlClass}
@@ -752,7 +776,10 @@ function ConnectForm({
               </span>
             </label>
             <label className="text-sm text-ink-700">
-              广州区域
+              <span className="flex flex-wrap items-center gap-2">
+                广州区域
+                <LiejuRequiredBadge />
+              </span>
               <select className={controlClass} defaultValue="" name="zone_id" required>
                 <option disabled value="">
                   请选择区域
@@ -765,15 +792,24 @@ function ConnectForm({
               </select>
             </label>
             <label className="text-sm text-ink-700 sm:col-span-2">
-              发布地址
+              <span className="flex flex-wrap items-center gap-2">
+                发布地址
+                <LiejuRequiredBadge />
+              </span>
               <input className={controlClass} maxLength={120} name="address" required />
             </label>
             <label className="text-sm text-ink-700">
-              联系人
+              <span className="flex flex-wrap items-center gap-2">
+                联系人
+                <LiejuRequiredBadge />
+              </span>
               <input className={controlClass} maxLength={25} name="contact_name" required />
             </label>
             <label className="text-sm text-ink-700">
-              联系电话
+              <span className="flex flex-wrap items-center gap-2">
+                联系电话
+                <LiejuRequiredBadge />
+              </span>
               <input
                 autoComplete="tel"
                 className={controlClass}
@@ -916,6 +952,14 @@ function DeliveryModeChooser({
         ))}
       </div>
     </fieldset>
+  );
+}
+
+function LiejuRequiredBadge() {
+  return (
+    <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700">
+      列举网必填
+    </span>
   );
 }
 

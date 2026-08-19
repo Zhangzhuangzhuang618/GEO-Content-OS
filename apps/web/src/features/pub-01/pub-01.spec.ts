@@ -84,6 +84,26 @@ test('connects an API account without ever echoing its credential', async ({ pag
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
 
+test('marks the five required Lieju account fields and identifies optional contacts', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [], meta: { request_id: 'lieju-required-fields' } }),
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '连接账号' }).click();
+  const connectForm = page.getByRole('form', { name: '连接平台账号' });
+  await connectForm.getByRole('combobox', { exact: true, name: '平台' }).selectOption('lieju');
+
+  await expect(connectForm.getByText('列举网必填', { exact: true })).toHaveCount(5);
+  await expect(
+    connectForm.getByText('标有“列举网必填”的五项资料必须填写；QQ 和微信号可选。'),
+  ).toBeVisible();
+  await expect(connectForm.getByLabel('QQ（可选）')).toBeVisible();
+  await expect(connectForm.getByLabel('微信号（可选）')).toBeVisible();
+});
+
 test('edits credentials, tests, stops, restores and deletes with optimistic versions', async ({
   page,
 }) => {
@@ -249,6 +269,12 @@ test('updates or clears encrypted Lieju posting details without echoing old valu
   await page.getByRole('button', { name: '修改账号' }).click();
   const editForm = page.getByRole('form', { name: '编辑账号 列举网生产账号' });
   await expect(editForm.getByText('已保存的联系方式经过加密，不会回显。')).toBeVisible();
+  await expect(editForm.getByText('列举网必填', { exact: true })).toHaveCount(5);
+  await expect(
+    editForm.getByText(
+      '标有“列举网必填”的资料必须已保存在账号中；修改时留空表示沿用已保存值，无需重复填写。',
+    ),
+  ).toBeVisible();
   await editForm.getByLabel('广州区域').selectOption('79');
   await editForm.getByLabel('新联系电话').fill('02085627757');
   await editForm.getByLabel('清空已保存的微信号').check();
