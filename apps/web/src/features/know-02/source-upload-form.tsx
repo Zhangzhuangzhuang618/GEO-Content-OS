@@ -20,11 +20,17 @@ const MANAGER_ROLES = new Set<TenantRole>([
   'content_editor',
 ]);
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_CERTIFICATE_IMAGE_BYTES = 10_000_000;
 const ALLOWED_TYPES = new Map([
   ['pdf', 'application/pdf'],
   ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
   ['txt', 'text/plain'],
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['webp', 'image/webp'],
 ]);
+const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 export function SourceUploadForm() {
   const [mode, setMode] = useState<'batch-url' | 'file' | 'url'>('file');
   const [file, setFile] = useState<File | null>(null);
@@ -40,20 +46,31 @@ export function SourceUploadForm() {
     register,
     reset,
     setError,
+    setValue,
     watch,
   } = useForm<UploadForm>({
     defaultValues: {
+      article_use_allowed: false,
+      certificate_name: '',
+      certificate_number: '',
       effective_from: '',
       effective_to: '',
+      holder_name: '',
+      issuing_authority: '',
       language: 'zh-CN',
+      material_kind: 'document',
       project_id: '',
+      public_display_confirmed: false,
       title: '',
       trust_level: 'normal',
       url: '',
+      verification_url: '',
       workspace_id: '',
     },
   });
   const workspaceId = watch('workspace_id');
+  const certificateMaterial = watch('material_kind') === 'certificate';
+  const articleUseAllowed = watch('article_use_allowed');
   useEffect(() => setMode(readMode()), []);
   useEffect(() => {
     const controller = new AbortController();
@@ -93,6 +110,7 @@ export function SourceUploadForm() {
     setFile(null);
     setResult(null);
     setMessage(null);
+    setValue('material_kind', 'document');
     window.history.replaceState(null, '', `/know-02?mode=${next}`);
   }
   const submit = handleSubmit(async (values) => {
@@ -239,18 +257,126 @@ export function SourceUploadForm() {
         {mode !== 'batch-url' ? (
           <div className="sm:col-span-2">
             {mode === 'file' ? (
-              <Field label="文件" name="source-file">
-                <input
-                  accept=".pdf,.docx,.txt"
-                  className={`${controlClass} py-2`}
-                  id="source-file"
-                  onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
-                  type="file"
-                />
-                <p className="mt-2 text-xs text-ink-500">
-                  支持 PDF、DOCX、TXT，默认最大 25 MiB。服务端会复核内容签名并执行安全扫描。
-                </p>
-              </Field>
+              <>
+                <Field label="文件" name="source-file">
+                  <input
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp"
+                    className={`${controlClass} py-2`}
+                    id="source-file"
+                    onChange={(event) => {
+                      const selected = event.currentTarget.files?.[0] ?? null;
+                      setFile(selected);
+                      setValue(
+                        'material_kind',
+                        selected && IMAGE_TYPES.has(selected.type) ? 'certificate' : 'document',
+                      );
+                    }}
+                    type="file"
+                  />
+                  <p className="mt-2 text-xs text-ink-500">
+                    支持 PDF、DOCX、TXT 及 PNG、JPEG、WebP 企业证照，默认最大 25
+                    MiB。服务端会复核内容签名并执行安全扫描。
+                  </p>
+                  <p className="mt-1 text-xs text-ink-500">
+                    证照图片需可正常打开、至少 768×512 像素、最长边不超过 4096 像素且不超过 10 MB。
+                  </p>
+                </Field>
+                {certificateMaterial ? (
+                  <section className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
+                    <h3 className="font-semibold text-ink-950">证照核验信息</h3>
+                    <p className="mt-2 text-xs leading-5 text-ink-500">
+                      当前生产环境不会自动
+                      OCR。以下人工确认字段会作为可检索事实；原图保持私有，只有正文引用且获得公开授权时才生成随文副本。
+                    </p>
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      <Field
+                        error={errors.certificate_name?.message}
+                        label="证照名称"
+                        name="certificate-name"
+                      >
+                        <input
+                          className={controlClass}
+                          id="certificate-name"
+                          {...register('certificate_name')}
+                        />
+                      </Field>
+                      <Field
+                        error={errors.certificate_number?.message}
+                        label="证照编号"
+                        name="certificate-number"
+                      >
+                        <input
+                          className={controlClass}
+                          id="certificate-number"
+                          {...register('certificate_number')}
+                        />
+                      </Field>
+                      <Field
+                        error={errors.holder_name?.message}
+                        label="持证主体"
+                        name="certificate-holder"
+                      >
+                        <input
+                          className={controlClass}
+                          id="certificate-holder"
+                          {...register('holder_name')}
+                        />
+                      </Field>
+                      <Field
+                        error={errors.issuing_authority?.message}
+                        label="发证机关"
+                        name="certificate-authority"
+                      >
+                        <input
+                          className={controlClass}
+                          id="certificate-authority"
+                          {...register('issuing_authority')}
+                        />
+                      </Field>
+                      <div className="sm:col-span-2">
+                        <Field
+                          error={errors.verification_url?.message}
+                          label="官方核验链接（可选）"
+                          name="certificate-verification-url"
+                        >
+                          <input
+                            className={controlClass}
+                            id="certificate-verification-url"
+                            placeholder="https://..."
+                            type="url"
+                            {...register('verification_url')}
+                          />
+                        </Field>
+                      </div>
+                    </div>
+                    <label className="mt-5 flex items-start gap-3 text-sm text-ink-700">
+                      <input
+                        className="mt-1"
+                        type="checkbox"
+                        {...register('article_use_allowed')}
+                      />
+                      <span>允许文章在实际引用这份证照时展示发布副本。</span>
+                    </label>
+                    {articleUseAllowed ? (
+                      <label className="mt-3 flex items-start gap-3 text-sm text-ink-700">
+                        <input
+                          className="mt-1"
+                          type="checkbox"
+                          {...register('public_display_confirmed')}
+                        />
+                        <span>
+                          我确认有权公开该证照，且图片不含无关个人证件号、银行卡或私人联系方式。证照编号、持证主体、发证机关和有效期将保留用于核验。
+                        </span>
+                      </label>
+                    ) : null}
+                    {errors.public_display_confirmed?.message ? (
+                      <p className="mt-2 text-sm text-red-700">
+                        {errors.public_display_confirmed.message}
+                      </p>
+                    ) : null}
+                  </section>
+                ) : null}
+              </>
             ) : (
               <Field error={errors.url?.message} label="URL" name="source-url">
                 <input
@@ -326,6 +452,8 @@ function validateFile(file: File | null) {
   if (!file) return '请选择文件。';
   if (file.size === 0) return '文件不能为空。';
   if (file.size > MAX_FILE_BYTES) return '文件超过默认 25 MiB 上限。';
+  if (IMAGE_TYPES.has(file.type) && file.size > MAX_CERTIFICATE_IMAGE_BYTES)
+    return '证照图片超过 10 MB 上限。';
   const extension = file.name.split('.').pop()?.toLowerCase();
   if (!extension || ALLOWED_TYPES.get(extension) !== file.type)
     return '文件扩展名与 MIME 类型必须匹配允许格式。';

@@ -54,6 +54,42 @@ test('shows the original text and keeps traceability identifiers in technical de
   await expect(chunk.getByText(`文本校验值：${'b'.repeat(64)}`)).toBeVisible();
 });
 
+test('shows certificate verification fields and publication authorization', async ({ page }) => {
+  await page.route(`**/api/v1/sources/${sourceId}?*`, async (route) => {
+    const base = detailResponse();
+    const response = {
+      ...base,
+      data: {
+        ...base.data,
+        certificate: {
+          article_use_allowed: true,
+          certificate_name: '道路运输经营许可证',
+          certificate_number: '粤交运管许可字 2026-001',
+          holder_name: '广州示例搬家服务有限公司',
+          issuing_authority: '广州市交通运输局',
+          public_display_confirmed: true,
+          schema_version: 'source-certificate@1',
+          verification_url: 'https://example.gov.cn/verify/2026-001',
+        },
+        source: { ...base.data.source, mime_type: 'image/png', source_type: 'image' },
+      },
+    };
+    await route.fulfill({
+      body: JSON.stringify(response),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+  await page.goto(pageUrl);
+  await expect(page.getByText('企业证照')).toBeVisible();
+  await expect(page.getByText('粤交运管许可字 2026-001')).toBeVisible();
+  await expect(page.getByText('已授权（仅正文引用时）')).toBeVisible();
+  await expect(page.getByRole('link', { name: '打开官方核验链接' })).toHaveAttribute(
+    'href',
+    'https://example.gov.cn/verify/2026-001',
+  );
+});
+
 test('retries parsing with exact source hash and expires with current revision', async ({
   page,
 }) => {

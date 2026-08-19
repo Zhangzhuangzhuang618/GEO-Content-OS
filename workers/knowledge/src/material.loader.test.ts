@@ -12,6 +12,7 @@ const SOURCE: IngestSource = {
   id: '53000000-0000-4000-8000-000000000040',
   language: 'zh-CN',
   mimeType: 'text/plain',
+  metadata: {},
   sourceType: 'txt',
   status: 'processing',
   tenantId: '23000000-0000-4000-8000-000000000040',

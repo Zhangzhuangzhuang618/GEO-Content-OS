@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import sharp from 'sharp';
 
 import { CloudflareWorkersAiImageAdapter } from './cloudflare.adapter.js';
 import { readImageProviderConfiguration } from './config.js';
@@ -8,6 +9,7 @@ import {
   imageMetadata,
   inspectionPassed,
   normalizeGeneratedImage,
+  normalizePublishedSourceImage,
   renderTemplateImage,
 } from './image-processing.js';
 
@@ -74,6 +76,36 @@ describe('image adapter', () => {
         unsafe: false,
       }),
     ).toBe(false);
+  });
+
+  it('normalizes a publication source without applying an AI disclosure label', async () => {
+    const source = await renderTemplateImage({
+      accent: 'gold',
+      label: '企业证照',
+      title: '证照原图',
+    });
+    const sourceWithMetadata = await sharp(source).withMetadata({ orientation: 1 }).toBuffer();
+    expect((await sharp(sourceWithMetadata).metadata()).exif).toBeDefined();
+    const normalized = await normalizePublishedSourceImage(sourceWithMetadata);
+    expect(await imageMetadata(normalized)).toMatchObject({
+      format: 'jpeg',
+      height: 800,
+      width: 1_200,
+    });
+    expect((await sharp(normalized).metadata()).exif).toBeUndefined();
+  });
+
+  it('accepts a portrait certificate image that meets the same dimension gate', async () => {
+    const portrait = await sharp({
+      create: { background: '#ffffff', channels: 3, height: 1_200, width: 800 },
+    })
+      .jpeg()
+      .toBuffer();
+    expect(await imageMetadata(portrait)).toMatchObject({ height: 1_200, width: 800 });
+    expect(await imageMetadata(await normalizePublishedSourceImage(portrait))).toMatchObject({
+      height: 800,
+      width: 1_200,
+    });
   });
 
   it('calls the official Workers AI envelope without exposing provider errors', async () => {

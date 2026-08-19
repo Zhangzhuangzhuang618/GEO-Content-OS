@@ -33,6 +33,7 @@ export interface IngestSource {
   readonly id: string;
   readonly language: string;
   readonly mimeType: string;
+  readonly metadata: Readonly<Record<string, unknown>>;
   readonly sourceType: 'docx' | 'image' | 'pdf' | 'txt' | 'url';
   readonly status: 'active' | 'processing';
   readonly tenantId: string;

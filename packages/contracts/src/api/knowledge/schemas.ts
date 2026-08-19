@@ -11,6 +11,31 @@ import {
 const IsoDateSchema = z.string().date();
 const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/u);
 const LanguageSchema = z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u);
+const HttpsUrlSchema = z
+  .string()
+  .url()
+  .max(2_048)
+  .refine((value) => {
+    try {
+      const parsed = new URL(value);
+      return parsed.protocol === 'https:' && !parsed.username && !parsed.password;
+    } catch {
+      return false;
+    }
+  });
+
+export const CertificateSourceProfileSchema = z
+  .object({
+    article_use_allowed: z.boolean(),
+    certificate_name: z.string().trim().min(1).max(240),
+    certificate_number: z.string().trim().min(1).max(120),
+    holder_name: z.string().trim().min(1).max(240),
+    issuing_authority: z.string().trim().min(1).max(240),
+    public_display_confirmed: z.boolean(),
+    schema_version: z.literal('source-certificate@1'),
+    verification_url: HttpsUrlSchema.nullable(),
+  })
+  .strict();
 
 export const SourceIdSchema = UuidSchema;
 export const IngestJobIdSchema = UuidSchema;
@@ -18,14 +43,22 @@ export const FactIdSchema = UuidSchema;
 
 export const SourceCreateSchema = z
   .object({
+    article_use_allowed: z.boolean().optional(),
+    certificate_name: z.string().trim().min(1).max(240).optional(),
+    certificate_number: z.string().trim().min(1).max(120).optional(),
     effective_from: IsoDateSchema.nullable().optional(),
     effective_to: IsoDateSchema.nullable().optional(),
     file: z.unknown().optional(),
+    holder_name: z.string().trim().min(1).max(240).optional(),
+    issuing_authority: z.string().trim().min(1).max(240).optional(),
     language: LanguageSchema.default('zh-CN'),
+    material_kind: z.enum(['document', 'certificate']).default('document'),
     project_id: UuidSchema.nullable().optional(),
+    public_display_confirmed: z.boolean().optional(),
     title: z.string().trim().min(1).max(240),
     trust_level: z.enum(['verified', 'normal', 'untrusted']).default('normal'),
     url: z.string().url().max(2_048).optional(),
+    verification_url: HttpsUrlSchema.optional(),
     workspace_id: UuidSchema,
   })
   .strict()
@@ -42,6 +75,46 @@ export const SourceCreateSchema = z
         code: 'custom',
         message: 'effective_to must be on or after effective_from',
         path: ['effective_to'],
+      });
+    }
+    const certificateFields = [
+      value.certificate_name,
+      value.certificate_number,
+      value.holder_name,
+      value.issuing_authority,
+    ];
+    if (value.material_kind === 'certificate' && certificateFields.some((field) => !field)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Certificate fields are required for certificate material',
+        path: ['certificate_name'],
+      });
+    }
+    if (value.material_kind === 'certificate' && value.file === undefined) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Certificate material requires an image file',
+        path: ['file'],
+      });
+    }
+    if (
+      value.material_kind === 'document' &&
+      (certificateFields.some(Boolean) ||
+        value.verification_url !== undefined ||
+        value.article_use_allowed !== undefined ||
+        value.public_display_confirmed !== undefined)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Certificate fields are only allowed for certificate material',
+        path: ['material_kind'],
+      });
+    }
+    if (value.article_use_allowed && !value.public_display_confirmed) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Public display confirmation is required before article use',
+        path: ['public_display_confirmed'],
       });
     }
   });
@@ -272,6 +345,7 @@ export const SourceDetailResponseSchema = z
   .object({
     data: z
       .object({
+        certificate: CertificateSourceProfileSchema.nullable(),
         chunks: z.array(SourceChunkViewSchema),
         citation_count: z.number().int().nonnegative(),
         facts: z.array(FactViewSchema),
@@ -292,6 +366,7 @@ export type FactQuery = z.infer<typeof FactQuerySchema>;
 export type ReindexRequest = z.infer<typeof ReindexRequestSchema>;
 export type VerifyFactRequest = z.infer<typeof VerifyFactRequestSchema>;
 export type SourceView = z.infer<typeof SourceViewSchema>;
+export type CertificateSourceProfile = z.infer<typeof CertificateSourceProfileSchema>;
 export type SourceListItem = z.infer<typeof SourceListItemSchema>;
 export type IngestJobView = z.infer<typeof IngestJobViewSchema>;
 export type SourceChunkView = z.infer<typeof SourceChunkViewSchema>;

@@ -351,6 +351,13 @@
       "when": 1786971600000,
       "tag": "0049_cross_platform_daily_batch_attempts",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1787126400000,
+      "tag": "0050_certificate_source_materials",
+      "breakpoints": true
     }
   ]
 }

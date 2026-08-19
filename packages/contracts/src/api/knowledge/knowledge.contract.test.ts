@@ -124,7 +124,14 @@ describe('knowledge API contract', () => {
     );
     expect(
       SourceDetailResponseSchema.safeParse(
-        response({ chunks: [], citation_count: 1, facts: [fact], ingest_jobs: [job], source }),
+        response({
+          certificate: null,
+          chunks: [],
+          citation_count: 1,
+          facts: [fact],
+          ingest_jobs: [job],
+          source,
+        }),
       ).success,
     ).toBe(true);
     expect(IngestJobResponseSchema.safeParse(response(job)).success).toBe(true);
@@ -165,6 +172,47 @@ describe('knowledge API contract', () => {
       false,
     );
     expect(create?.safeParse({ ...base }).success).toBe(false);
+    expect(
+      create?.safeParse({
+        ...base,
+        article_use_allowed: true,
+        certificate_name: '道路运输经营许可证',
+        certificate_number: '粤交运管许可字 2026-001',
+        file: {},
+        holder_name: '广州示例搬家服务有限公司',
+        issuing_authority: '广州市交通运输局',
+        material_kind: 'certificate',
+        public_display_confirmed: true,
+        verification_url: 'https://example.gov.cn/verify/2026-001',
+      }).success,
+    ).toBe(true);
+    expect(
+      create?.safeParse({
+        ...base,
+        article_use_allowed: true,
+        certificate_name: '道路运输经营许可证',
+        certificate_number: '粤交运管许可字 2026-001',
+        file: {},
+        holder_name: '广州示例搬家服务有限公司',
+        issuing_authority: '广州市交通运输局',
+        material_kind: 'certificate',
+        public_display_confirmed: false,
+      }).success,
+    ).toBe(false);
+    expect(
+      create?.safeParse({
+        ...base,
+        article_use_allowed: false,
+        certificate_name: '道路运输经营许可证',
+        certificate_number: '粤交运管许可字 2026-001',
+        file: {},
+        holder_name: '广州示例搬家服务有限公司',
+        issuing_authority: '广州市交通运输局',
+        material_kind: 'certificate',
+        public_display_confirmed: false,
+        verification_url: 'http://example.gov.cn/verify/2026-001',
+      }).success,
+    ).toBe(false);
     expect(
       create?.safeParse({
         ...base,

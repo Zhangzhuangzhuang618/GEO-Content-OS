@@ -19,6 +19,25 @@ export async function normalizeGeneratedImage(body: Uint8Array): Promise<Uint8Ar
   );
 }
 
+export async function normalizePublishedSourceImage(body: Uint8Array): Promise<Uint8Array> {
+  if (body.byteLength < 128 || body.byteLength > 25 * 1024 * 1024) {
+    throw new Error('Source image size is outside the allowed range');
+  }
+  return Uint8Array.from(
+    await sharp(body, { failOn: 'error' })
+      .rotate()
+      .resize(WIDTH, HEIGHT, {
+        background: '#ffffff',
+        fit: 'contain',
+        position: 'centre',
+        withoutEnlargement: true,
+      })
+      .flatten({ background: '#ffffff' })
+      .jpeg({ chromaSubsampling: '4:4:4', mozjpeg: true, quality: 92 })
+      .toBuffer(),
+  );
+}
+
 export async function applyAiDisclosure(body: Uint8Array): Promise<Uint8Array> {
   const label = Buffer.from(`
     <svg width="250" height="72" xmlns="http://www.w3.org/2000/svg">
@@ -73,16 +92,18 @@ export async function renderTemplateImage(input: TemplateImageInput): Promise<Ui
 }
 
 export async function imageMetadata(body: Uint8Array): Promise<ImageMetadata> {
+  if (body.byteLength > 10_000_000) {
+    throw new Error('Image dimensions, format, or size failed the media gate');
+  }
   const metadata = await sharp(body, { failOn: 'error' }).metadata();
   if (
     (metadata.format !== 'jpeg' && metadata.format !== 'png' && metadata.format !== 'webp') ||
     !metadata.width ||
     !metadata.height ||
-    metadata.width < 768 ||
-    metadata.height < 512 ||
+    Math.min(metadata.width, metadata.height) < 512 ||
+    Math.max(metadata.width, metadata.height) < 768 ||
     metadata.width > 4_096 ||
-    metadata.height > 4_096 ||
-    body.byteLength > 10_000_000
+    metadata.height > 4_096
   ) {
     throw new Error('Image dimensions, format, or size failed the media gate');
   }

@@ -68,6 +68,7 @@ export const OfficialSiteMediaAssetSchema = z
     alt_text: z.string().trim().min(1).max(240),
     position: z.number().int().min(0).max(10),
     role: z.enum(['cover', 'body']),
+    source: z.enum(['generated', 'certificate']).default('generated'),
     url: z.url().refine((value) => value.startsWith('https://') || value.startsWith('http://')),
   })
   .strict();
@@ -277,6 +278,7 @@ function schemaDefinitions() {
         alt_text: { maxLength: 240, minLength: 1, type: 'string' },
         position: { maximum: 10, minimum: 0, type: 'integer' },
         role: { enum: ['cover', 'body'] },
+        source: { default: 'generated', enum: ['generated', 'certificate'] },
         url: { format: 'uri', pattern: '^https?://', type: 'string' },
       },
       required: ['alt_text', 'position', 'role', 'url'],

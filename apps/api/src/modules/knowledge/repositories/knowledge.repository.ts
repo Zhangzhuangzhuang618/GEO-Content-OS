@@ -7,6 +7,7 @@ import type {
   IngestStage,
   SourceChunkStatus,
   SourceDocumentStatus,
+  SourceDocumentMetadata,
   SourceTrustLevel,
   SourceType,
 } from '../../../database/schema/index.js';
@@ -28,6 +29,7 @@ export interface SourceDocumentView {
   readonly id: string;
   readonly language: string;
   readonly mimeType: string;
+  readonly metadata: SourceDocumentMetadata;
   readonly projectId: string | null;
   readonly sourceType: SourceType;
   readonly status: SourceDocumentStatus;
@@ -118,6 +120,7 @@ export class KnowledgeRepository {
         source.title,
         source.source_type AS "sourceType",
         source.mime_type AS "mimeType",
+        source.metadata_json AS metadata,
         source.language,
         source.uri,
         source.content_hash AS "contentHash",
@@ -168,6 +171,7 @@ export class KnowledgeRepository {
         source.title,
         source.source_type AS "sourceType",
         source.mime_type AS "mimeType",
+        source.metadata_json AS metadata,
         source.language,
         source.uri,
         source.content_hash AS "contentHash",

@@ -33,6 +33,8 @@ export class MaterialIngestParser implements IngestParserPort {
         ...(material.url ? { url: material.url } : {}),
       });
     }
+    const certificate = certificateMetadata(source.metadata);
+    if (certificate) return certificateDocument(source, material, certificate);
     if (!isOcrMime(material.mimeType)) {
       throw new IngestWorkerError('OCR_MIME_INVALID', 'Image MIME type is not supported by OCR', {
         retryable: false,
@@ -79,6 +81,67 @@ export class MaterialIngestParser implements IngestParserPort {
       warnings: Object.freeze([]),
     });
   }
+}
+
+interface CertificateMetadata {
+  readonly certificateName: string;
+  readonly certificateNumber: string;
+  readonly holderName: string;
+  readonly issuingAuthority: string;
+  readonly verificationUrl: string | null;
+}
+
+function certificateMetadata(value: Readonly<Record<string, unknown>>): CertificateMetadata | null {
+  if (value['schema_version'] !== 'source-certificate@1') return null;
+  const certificateName = text(value['certificate_name']);
+  const certificateNumber = text(value['certificate_number']);
+  const holderName = text(value['holder_name']);
+  const issuingAuthority = text(value['issuing_authority']);
+  const verificationUrl = value['verification_url'];
+  if (!certificateName || !certificateNumber || !holderName || !issuingAuthority) return null;
+  if (verificationUrl !== null && typeof verificationUrl !== 'string') return null;
+  return { certificateName, certificateNumber, holderName, issuingAuthority, verificationUrl };
+}
+
+function certificateDocument(
+  source: IngestSource,
+  material: LoadedMaterial,
+  certificate: CertificateMetadata,
+): ParsedMaterialDocument {
+  const textValue = [
+    '资料类型：企业证照',
+    `证照名称：${certificate.certificateName}`,
+    `持证主体：${certificate.holderName}`,
+    `证照编号：${certificate.certificateNumber}`,
+    `发证机关：${certificate.issuingAuthority}`,
+    ...(certificate.verificationUrl ? [`官方核验链接：${certificate.verificationUrl}`] : []),
+  ].join('\n');
+  return Object.freeze({
+    content_hash: material.contentHash,
+    language: source.language,
+    metadata: Object.freeze({ page_count: 1, source_type: 'image' as const }),
+    parser_version: MATERIAL_PARSER_VERSION,
+    text: textValue,
+    title: source.title,
+    units: Object.freeze([
+      Object.freeze({
+        locator: Object.freeze({
+          char_end: textValue.length,
+          char_start: 0,
+          headings: Object.freeze([]),
+          page: 1,
+          url: certificate.verificationUrl,
+        }),
+        text: textValue,
+        text_hash: sha256(textValue),
+      }),
+    ]),
+    warnings: Object.freeze([]),
+  });
+}
+
+function text(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function isOcrMime(value: string): value is OcrMimeType {

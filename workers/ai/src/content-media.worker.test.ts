@@ -94,6 +94,7 @@ describe('content media run lease', () => {
         ];
       }
       if (query.includes("SET status='running'")) return [{ version: 2 }];
+      if (query.includes('FROM ai_citations AS citation')) return [];
       if (query.includes("SET status='queued'")) return [{ id: 'media-run' }];
       throw new Error(`Unexpected SQL: ${query}`);
     }) as unknown as postgres.TransactionSql;
@@ -124,8 +125,17 @@ describe('content media run lease', () => {
     expect(queries).toEqual([
       expect.stringContaining('FROM content_media_runs AS run'),
       expect.stringContaining("SET status='running'"),
+      expect.stringContaining('FROM ai_citations AS citation'),
       expect.stringContaining("SET status='queued',started_at=NULL,finished_at=NULL"),
     ]);
+    const certificateQuery = queries[2] ?? '';
+    expect(certificateQuery).toContain('citation.content_version_id');
+    expect(certificateQuery).toContain('source.workspace_id');
+    expect(certificateQuery).toContain('source.project_id');
+    expect(certificateQuery).toContain("source.trust_level <> 'untrusted'");
+    expect(certificateQuery).toContain("article_use_allowed')::boolean IS TRUE");
+    expect(certificateQuery).toContain("public_display_confirmed')::boolean IS TRUE");
+    expect(certificateQuery).toContain("brand.status='published'");
   });
 
   it('requeues only stale automatic media runs that are still media pending', async () => {

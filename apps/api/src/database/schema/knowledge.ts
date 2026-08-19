@@ -59,6 +59,19 @@ export interface ChunkMetadata {
   readonly url?: string;
 }
 
+export interface CertificateSourceMetadata {
+  readonly article_use_allowed: boolean;
+  readonly certificate_name: string;
+  readonly certificate_number: string;
+  readonly holder_name: string;
+  readonly issuing_authority: string;
+  readonly public_display_confirmed: boolean;
+  readonly schema_version: 'source-certificate@1';
+  readonly verification_url: string | null;
+}
+
+export type SourceDocumentMetadata = CertificateSourceMetadata | Readonly<Record<string, never>>;
+
 export const sourceDocuments = pgTable(
   'source_documents',
   {
@@ -78,6 +91,10 @@ export const sourceDocuments = pgTable(
       .default('normal'),
     effectiveFrom: date('effective_from', { mode: 'string' }),
     effectiveTo: date('effective_to', { mode: 'string' }),
+    metadataJson: jsonb('metadata_json')
+      .$type<SourceDocumentMetadata>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     status: varchar({ length: 16 }).$type<SourceDocumentStatus>().notNull().default('processing'),
     createdBy: uuid('created_by').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -156,6 +173,41 @@ export const sourceDocuments = pgTable(
     check(
       'source_documents_effective_range_check',
       sql`${table.effectiveTo} IS NULL OR ${table.effectiveFrom} IS NULL OR ${table.effectiveTo} >= ${table.effectiveFrom}`,
+    ),
+    check(
+      'source_documents_metadata_object_check',
+      sql`jsonb_typeof(${table.metadataJson}) = 'object'`,
+    ),
+    check(
+      'source_documents_metadata_schema_check',
+      sql`${table.metadataJson} = '{}'::jsonb OR COALESCE(
+        ${table.sourceType} = 'image'
+        AND ${table.metadataJson}->>'schema_version' = 'source-certificate@1'
+        AND (${table.metadataJson} - ARRAY[
+          'schema_version', 'certificate_name', 'certificate_number', 'holder_name',
+          'issuing_authority', 'verification_url', 'article_use_allowed',
+          'public_display_confirmed'
+        ]::text[]) = '{}'::jsonb
+        AND char_length(btrim(${table.metadataJson}->>'certificate_name')) BETWEEN 1 AND 240
+        AND char_length(btrim(${table.metadataJson}->>'certificate_number')) BETWEEN 1 AND 120
+        AND char_length(btrim(${table.metadataJson}->>'holder_name')) BETWEEN 1 AND 240
+        AND char_length(btrim(${table.metadataJson}->>'issuing_authority')) BETWEEN 1 AND 240
+        AND jsonb_typeof(${table.metadataJson}->'article_use_allowed') = 'boolean'
+        AND jsonb_typeof(${table.metadataJson}->'public_display_confirmed') = 'boolean'
+        AND (
+          ${table.metadataJson}->'verification_url' = 'null'::jsonb
+          OR (
+            jsonb_typeof(${table.metadataJson}->'verification_url') = 'string'
+            AND char_length(${table.metadataJson}->>'verification_url') BETWEEN 1 AND 2048
+            AND ${table.metadataJson}->>'verification_url' ~ '^https://'
+          )
+        )
+        AND (
+          (${table.metadataJson}->>'article_use_allowed')::boolean IS NOT TRUE
+          OR (${table.metadataJson}->>'public_display_confirmed')::boolean IS TRUE
+        ),
+        false
+      )`,
     ),
     check(
       'source_documents_deleted_status_check',

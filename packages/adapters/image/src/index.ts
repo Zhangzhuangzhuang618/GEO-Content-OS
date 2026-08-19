@@ -10,6 +10,7 @@ export {
   imageMetadata,
   inspectionPassed,
   normalizeGeneratedImage,
+  normalizePublishedSourceImage,
   renderTemplateImage,
 } from './image-processing.js';
 export type {

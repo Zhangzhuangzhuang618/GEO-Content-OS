@@ -1,4 +1,5 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import { renderTemplateImage } from '@geo-content-os/adapter-image';
 import { type WebFetchAdapter, WebFetchBlockedError } from '@geo-content-os/adapter-web-fetch';
 import {
   minioEndpoint,
@@ -58,7 +59,7 @@ describe('source upload', () => {
     setEnvironment('S3_REGION', 'us-east-1');
     setEnvironment('S3_SECRET_ACCESS_KEY', MINIO_TEST_SECRET_KEY);
     setEnvironment('S3_SERVER_SIDE_ENCRYPTION', 'false');
-    setEnvironment('SOURCE_UPLOAD_MAX_BYTES', '64');
+    setEnvironment('SOURCE_UPLOAD_MAX_BYTES', String(1024 * 1024));
     setEnvironment('STORAGE_DRIVER', 's3');
     application = await createApplication({
       enableShutdownHooks: false,
@@ -182,6 +183,89 @@ describe('source upload', () => {
     expect(Buffer.from(await download.arrayBuffer())).toEqual(body);
     const source = await database<{ uri: string }[]>`SELECT uri FROM source_documents`;
     expect(source[0]?.uri).toBe(`s3://geo-source-integration/${objectKey}`);
+  });
+
+  it('stores certificate images privately with explicit verifiable fields and publication consent', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from(
+      await renderTemplateImage({
+        accent: 'blue',
+        label: '道路运输经营许可证',
+        title: '企业证照测试原图',
+      }),
+    );
+    const response = await sendCertificateUpload(
+      application,
+      tokens,
+      'source-certificate-001',
+      body,
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const sourceId = String(response.body.data.source.id);
+    expect(response.body.data.source).toMatchObject({
+      id: sourceId,
+      mime_type: 'image/jpeg',
+      source_type: 'image',
+      trust_level: 'verified',
+    });
+    const rows = await database<{ metadata: Record<string, unknown>; uri: string }[]>`
+      SELECT metadata_json AS metadata,uri
+      FROM source_documents
+      WHERE id=${sourceId}::uuid AND tenant_id=${TENANT_ID}::uuid
+    `;
+    expect(rows).toEqual([
+      {
+        metadata: {
+          article_use_allowed: true,
+          certificate_name: '道路运输经营许可证',
+          certificate_number: '粤交运管许可字 2026-001',
+          holder_name: '广州示例搬家服务有限公司',
+          issuing_authority: '广州市交通运输局',
+          public_display_confirmed: true,
+          schema_version: 'source-certificate@1',
+          verification_url: 'https://example.gov.cn/verify/2026-001',
+        },
+        uri: `s3://geo-source-integration/tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sha256(body)}.jpg`,
+      },
+    ]);
+    const detail = await authenticatedRequest(application, tokens).get(
+      `${API_PATH}/${sourceId}?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_A}`,
+    );
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(detail.body.data.certificate).toMatchObject({
+      article_use_allowed: true,
+      certificate_name: '道路运输经营许可证',
+      certificate_number: '粤交运管许可字 2026-001',
+      public_display_confirmed: true,
+    });
+  });
+
+  it('preserves generic image ingestion for OCR-capable deployments', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from(
+      await renderTemplateImage({
+        accent: 'teal',
+        label: '普通图片资料',
+        title: '非证照图片兼容测试',
+      }),
+    );
+    const response = await sendUpload(application, tokens, 'source-image-document-001', body, {
+      contentType: 'image/jpeg',
+      filename: 'source-image.jpg',
+    });
+
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect(response.body.data.source).toMatchObject({
+      mime_type: 'image/jpeg',
+      source_type: 'image',
+    });
+    expect(
+      await database<{ metadata: Record<string, unknown> }[]>`
+        SELECT metadata_json AS metadata FROM source_documents
+      `,
+    ).toEqual([{ metadata: {} }]);
   });
 
   it('serves the complete source and ingest-job API lifecycle with scope, role, audit, and outbox enforcement', async () => {
@@ -374,11 +458,49 @@ describe('source upload', () => {
       { contentType: 'application/pdf', filename: 'source.pdf' },
     );
     expectApiError(spoofed, 422, 'SCHEMA_VALIDATION_FAILED');
+    const corruptCertificate = await sendCertificateUpload(
+      application,
+      tokens,
+      'source-upload-corrupt-certificate',
+      Buffer.from('ffd8ffd9', 'hex'),
+    );
+    expectApiError(corruptCertificate, 422, 'SCHEMA_VALIDATION_FAILED');
+    const certificateBody = Buffer.from(
+      await renderTemplateImage({
+        accent: 'gold',
+        label: '证照安全校验',
+        title: '证照安全校验',
+      }),
+    );
+    const missingConsent = await sendCertificateUpload(
+      application,
+      tokens,
+      'source-upload-certificate-missing-consent',
+      certificateBody,
+      { publicDisplayConfirmed: false },
+    );
+    expectApiError(missingConsent, 422, 'SCHEMA_VALIDATION_FAILED');
+    const untrustedCertificate = await sendCertificateUpload(
+      application,
+      tokens,
+      'source-upload-certificate-untrusted',
+      certificateBody,
+      { trustLevel: 'untrusted' },
+    );
+    expectApiError(untrustedCertificate, 422, 'SCHEMA_VALIDATION_FAILED');
+    const insecureVerification = await sendCertificateUpload(
+      application,
+      tokens,
+      'source-upload-certificate-insecure-url',
+      certificateBody,
+      { verificationUrl: 'http://example.gov.cn/verify/2026-001' },
+    );
+    expectApiError(insecureVerification, 422, 'SCHEMA_VALIDATION_FAILED');
     const oversized = await sendUpload(
       application,
       tokens,
       'source-upload-005',
-      Buffer.alloc(65, 0x61),
+      Buffer.alloc(1024 * 1024 + 1, 0x61),
     );
     expectApiError(oversized, 422, 'SCHEMA_VALIDATION_FAILED');
     const badDate = await sendUpload(
@@ -822,6 +944,38 @@ async function sendUpload(
   });
 }
 
+async function sendCertificateUpload(
+  value: NestFastifyApplication | undefined,
+  tokens: { readonly csrf: string; readonly session: string },
+  idempotencyKey: string,
+  body: Buffer,
+  options: {
+    readonly publicDisplayConfirmed?: boolean;
+    readonly trustLevel?: 'normal' | 'untrusted' | 'verified';
+    readonly verificationUrl?: string;
+  } = {},
+) {
+  return request(requireApplication(value).getHttpServer())
+    .post(API_PATH)
+    .set('Cookie', `geo_session=${tokens.session}; geo_csrf=${tokens.csrf}`)
+    .set('idempotency-key', idempotencyKey)
+    .set('x-csrf-token', tokens.csrf)
+    .field('workspace_id', WORKSPACE_ID)
+    .field('project_id', PROJECT_A)
+    .field('title', '道路运输经营许可证')
+    .field('language', 'zh-CN')
+    .field('trust_level', options.trustLevel ?? 'verified')
+    .field('material_kind', 'certificate')
+    .field('certificate_name', '道路运输经营许可证')
+    .field('certificate_number', '粤交运管许可字 2026-001')
+    .field('holder_name', '广州示例搬家服务有限公司')
+    .field('issuing_authority', '广州市交通运输局')
+    .field('verification_url', options.verificationUrl ?? 'https://example.gov.cn/verify/2026-001')
+    .field('article_use_allowed', 'true')
+    .field('public_display_confirmed', String(options.publicDisplayConfirmed ?? true))
+    .attach('file', body, { contentType: 'image/jpeg', filename: 'certificate.jpg' });
+}
+
 async function sendUrl(
   value: NestFastifyApplication | undefined,
   tokens: { readonly csrf: string; readonly session: string },
@@ -890,6 +1044,7 @@ function sourceInput(body: Buffer): ParsedSourceUpload {
     kind: 'file',
     language: 'zh-CN',
     mimeType: 'text/plain',
+    metadata: {},
     projectId: PROJECT_A,
     sourceType: 'txt',
     title: 'Service-layer source',

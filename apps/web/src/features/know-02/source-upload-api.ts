@@ -37,6 +37,17 @@ export async function uploadSource(
   if (input.form.project_id) body.set('project_id', input.form.project_id);
   if (input.form.effective_from) body.set('effective_from', input.form.effective_from);
   if (input.form.effective_to) body.set('effective_to', input.form.effective_to);
+  if (input.form.material_kind === 'certificate') {
+    body.set('material_kind', 'certificate');
+    body.set('article_use_allowed', String(input.form.article_use_allowed));
+    body.set('certificate_name', input.form.certificate_name.trim());
+    body.set('certificate_number', input.form.certificate_number.trim());
+    body.set('holder_name', input.form.holder_name.trim());
+    body.set('issuing_authority', input.form.issuing_authority.trim());
+    body.set('public_display_confirmed', String(input.form.public_display_confirmed));
+    if (input.form.verification_url)
+      body.set('verification_url', input.form.verification_url.trim());
+  }
   if (input.mode === 'file' && input.file) body.set('file', input.file);
   if (input.mode === 'url') body.set('url', input.form.url.trim());
   const response = await fetch(`${API_ORIGIN}/api/v1/sources`, {

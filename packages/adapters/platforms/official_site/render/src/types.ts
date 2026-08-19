@@ -26,6 +26,7 @@ export interface OfficialSiteMediaAsset {
   readonly alt_text: string;
   readonly position: number;
   readonly role: 'body' | 'cover';
+  readonly source: 'certificate' | 'generated';
   readonly url: string;
 }
 

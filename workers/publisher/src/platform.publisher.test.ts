@@ -40,6 +40,7 @@ describe('PlatformPublisher', () => {
           publicUrl: 'https://cdn.example.com/generated-media/cover.jpg',
           role: 'cover',
           sizeBytes: 100,
+          source: 'template',
         },
       ],
     );
@@ -136,6 +137,7 @@ describe('PlatformPublisher', () => {
             publicUrl: null,
             role: 'cover',
             sizeBytes: body.byteLength,
+            source: 'template',
           },
         ],
       ),
@@ -209,6 +211,7 @@ describe('PlatformPublisher', () => {
       publicUrl: null,
       role,
       sizeBytes: 100,
+      source: 'template' as const,
     });
     const claim = createClaim(
       { ...fixture.content, schema_version: 'content-writer-data@1' },

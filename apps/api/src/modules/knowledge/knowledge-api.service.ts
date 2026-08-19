@@ -1,4 +1,5 @@
 import type {
+  CertificateSourceProfile,
   FactQuery,
   FactView,
   IngestJobView,
@@ -10,6 +11,7 @@ import type {
   SourceScopeQuery,
   SourceView,
 } from '@geo-content-os/contracts';
+import { CertificateSourceProfileSchema } from '@geo-content-os/contracts';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import type { WebFetchAdapter } from '@geo-content-os/adapter-web-fetch';
 import { Inject, Injectable } from '@nestjs/common';
@@ -48,6 +50,7 @@ export interface CursorPage<T> {
 }
 
 export interface SourceDetailView {
+  readonly certificate: CertificateSourceProfile | null;
   readonly chunks: readonly SourceChunkView[];
   readonly citation_count: number;
   readonly facts: readonly FactView[];
@@ -145,6 +148,7 @@ export class KnowledgeApiService {
       evidence.some((item) => item.sourceDocumentId === sourceId),
     );
     return {
+      certificate: certificateProfile(source.metadata),
       chunks: chunks.map(toChunkView),
       citation_count: citationRows[0]?.count ?? 0,
       facts: related.map(({ evidence, fact }) => toFactView(fact, evidence)),
@@ -467,6 +471,11 @@ export class KnowledgeApiService {
   }
 }
 
+function certificateProfile(metadata: unknown): CertificateSourceProfile | null {
+  const parsed = CertificateSourceProfileSchema.safeParse(metadata);
+  return parsed.success ? parsed.data : null;
+}
+
 function scope(tenantId: string, userId: string, query: SourceScopeQuery) {
   return { projectId: query.project_id, tenantId, userId, workspaceId: query.workspace_id };
 }
@@ -486,6 +495,7 @@ async function lockManagedSource(
       source.title,
       source.source_type AS "sourceType",
       source.mime_type AS "mimeType",
+      source.metadata_json AS metadata,
       source.language,
       source.uri,
       source.content_hash AS "contentHash",

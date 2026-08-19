@@ -38,6 +38,7 @@ export interface PublishMediaAsset {
   readonly publicUrl: string | null;
   readonly role: 'body' | 'cover';
   readonly sizeBytes: number;
+  readonly source: 'certificate' | 'cloudflare' | 'template';
 }
 
 export interface PublishClaim {

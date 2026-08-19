@@ -211,6 +211,27 @@ describe('official_site render contract', () => {
     expect(result.payload.markdown).toContain('![搬家验收步骤封面示意图]');
   });
 
+  it('labels an authorized certificate as verifiable evidence instead of an AI illustration', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as Record<string, unknown>;
+    input['media_assets'] = [
+      {
+        alt_text: '企业道路运输经营许可证',
+        position: 1,
+        role: 'body',
+        source: 'certificate',
+        url: 'https://cdn.example.com/published-source-media/certificate.jpg',
+      },
+    ];
+
+    const result = renderOfficialSite(input);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.body_html).toContain('data-image-source="certificate"');
+    expect(result.payload.body_html).toContain('企业证照，请按编号或官方渠道核验');
+    expect(result.payload.body_html).not.toContain('道路运输经营许可证（AI示意图）');
+  });
+
   it('blocks other company names but permits the owner and anonymous companies', async () => {
     const input = (await readJson('official-site.valid.input.json')) as {
       owner_company_names: string[];

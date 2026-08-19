@@ -4,12 +4,17 @@ import {
   imageMetadata,
   inspectionPassed,
   normalizeGeneratedImage,
+  normalizePublishedSourceImage,
   renderTemplateImage,
   type ImageInspectionResult,
   type ImageProvider,
 } from '@geo-content-os/adapter-image';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
-import { DomainEventEnvelopeSchema, findDisallowedCompanyNames } from '@geo-content-os/contracts';
+import {
+  DomainEventEnvelopeSchema,
+  findDisallowedCompanyNames,
+  findPublishedOwnerCompanyNames,
+} from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
 import { randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
@@ -34,6 +39,7 @@ export { safeError } from './safe-error.js';
 type MediaStatus = 'fallback' | 'succeeded';
 
 interface MediaClaim {
+  readonly certificateSource: CertificateMediaSource | null;
   readonly content: Readonly<Record<string, unknown>>;
   readonly contentHash: string;
   readonly createdBy: string;
@@ -46,6 +52,15 @@ interface MediaClaim {
   readonly version: number;
 }
 
+interface CertificateMediaSource {
+  readonly altText: string;
+  readonly contentHash: string;
+  readonly mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  readonly objectUri: string;
+  readonly sourceDocumentId: string;
+  readonly verificationUrl: string | null;
+}
+
 interface PreparedAsset {
   readonly altText: string;
   readonly body: Uint8Array;
@@ -53,7 +68,8 @@ interface PreparedAsset {
   readonly promptHash: string | null;
   readonly quality: Readonly<Record<string, unknown>>;
   readonly role: 'body' | 'cover';
-  readonly source: 'cloudflare' | 'template';
+  readonly source: 'certificate' | 'cloudflare' | 'template';
+  readonly sourceDocumentId: string | null;
 }
 
 interface StoredAsset extends PreparedAsset {
@@ -225,6 +241,7 @@ export class ContentMediaWorker {
           assets: Object.freeze([]),
           externalCalls: 0,
           providerErrors: Object.freeze([safeError(error)]),
+          sourceMediaErrors: Object.freeze([]),
           usedFallback: true,
         });
       }
@@ -255,6 +272,7 @@ export class ContentMediaWorker {
         external_calls: prepared.externalCalls,
         planner_failure: plan.plannerFailure,
         provider_failures: prepared.providerErrors,
+        source_media_failures: prepared.sourceMediaErrors,
         storage_failures: storageErrors,
       });
       return Object.freeze({ disposition: 'processed' });
@@ -360,7 +378,10 @@ export class ContentMediaWorker {
       `;
       const lease = changed[0];
       if (!lease) throw new Error('Content media run lease was lost');
+      const certificateSource =
+        row.platformCode === 'lieju' ? null : await this.findCertificateSource(transaction, event);
       return Object.freeze({
+        certificateSource,
         content: Object.freeze(row.content),
         contentHash: row.contentHash,
         createdBy: row.createdBy,
@@ -375,6 +396,64 @@ export class ContentMediaWorker {
     });
   }
 
+  private async findCertificateSource(
+    transaction: postgres.TransactionSql,
+    event: ReturnType<typeof validateMediaGenerationEvent>,
+  ): Promise<CertificateMediaSource | null> {
+    const rows = await transaction<
+      {
+        certificateName: string;
+        brandProfile: Readonly<Record<string, unknown>> | null;
+        contentHash: string;
+        holderName: string;
+        mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+        objectUri: string;
+        sourceDocumentId: string;
+        verificationUrl: string | null;
+      }[]
+    >`
+      SELECT source.id AS "sourceDocumentId",source.uri AS "objectUri",
+        source.content_hash AS "contentHash",source.mime_type AS "mimeType",
+        source.metadata_json->>'certificate_name' AS "certificateName",
+        source.metadata_json->>'holder_name' AS "holderName",
+        source.metadata_json->>'verification_url' AS "verificationUrl",
+        brand.profile_json AS "brandProfile"
+      FROM ai_citations AS citation
+      JOIN source_chunks AS chunk
+        ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
+      JOIN source_documents AS source
+        ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
+      LEFT JOIN brand_profiles AS brand
+        ON brand.tenant_id=source.tenant_id AND brand.workspace_id=source.workspace_id
+        AND brand.status='published'
+      WHERE citation.tenant_id=${event.tenantId}::uuid
+        AND citation.content_version_id=${event.data.contentVersionId}::uuid
+        AND source.workspace_id=${event.data.workspaceId}::uuid
+        AND (source.project_id IS NULL OR source.project_id=${event.data.projectId}::uuid)
+        AND source.source_type='image' AND source.status='active' AND source.deleted_at IS NULL
+        AND source.trust_level <> 'untrusted'
+        AND (source.effective_from IS NULL OR source.effective_from <= CURRENT_DATE)
+        AND (source.effective_to IS NULL OR source.effective_to >= CURRENT_DATE)
+        AND source.metadata_json->>'schema_version'='source-certificate@1'
+        AND (source.metadata_json->>'article_use_allowed')::boolean IS TRUE
+        AND (source.metadata_json->>'public_display_confirmed')::boolean IS TRUE
+      ORDER BY source.updated_at DESC,source.id
+      LIMIT 20
+    `;
+    const row = rows.find((candidate) =>
+      findPublishedOwnerCompanyNames(candidate.brandProfile).includes(candidate.holderName.trim()),
+    );
+    if (!row) return null;
+    return Object.freeze({
+      altText: safeSourceAltText(`${row.holderName}的${row.certificateName}`, '企业证照', 220),
+      contentHash: row.contentHash,
+      mimeType: row.mimeType,
+      objectUri: row.objectUri,
+      sourceDocumentId: row.sourceDocumentId,
+      verificationUrl: row.verificationUrl,
+    });
+  }
+
   private async prepareAssets(
     plan: ArticleImagePlan,
     claim: MediaClaim,
@@ -384,6 +463,7 @@ export class ContentMediaWorker {
     readonly assets: readonly PreparedAsset[];
     readonly externalCalls: number;
     readonly providerErrors: readonly string[];
+    readonly sourceMediaErrors: readonly string[];
     readonly usedFallback: boolean;
   }> {
     const title = safeDisplayText(string(claim.content['title']) || '内容指南', '内容指南', 90);
@@ -396,9 +476,11 @@ export class ContentMediaWorker {
         quality: templateQuality(),
         role: 'cover',
         source: 'template',
+        sourceDocumentId: null,
       },
     ];
     const providerErrors: string[] = [];
+    const sourceMediaErrors: string[] = [];
     let externalCalls = 0;
     let usedFallback = plan.source === 'template' || !this.provider;
     for (const [index, scene] of plan.scenes.entries()) {
@@ -431,6 +513,7 @@ export class ContentMediaWorker {
             quality: providerQuality(inspection),
             role: 'body',
             source: 'cloudflare',
+            sourceDocumentId: null,
           };
         } catch (error) {
           usedFallback = true;
@@ -450,13 +533,40 @@ export class ContentMediaWorker {
           quality: templateQuality(),
           role: 'body',
           source: 'template',
+          sourceDocumentId: null,
         },
       );
+    }
+    if (claim.certificateSource) {
+      try {
+        const original = await this.storage.getObject(
+          storageKey(claim.certificateSource.objectUri),
+        );
+        if (imageHash(original) !== claim.certificateSource.contentHash) {
+          throw new Error('Certificate image does not match its immutable source hash');
+        }
+        const position = Math.max(...assets.map((asset) => asset.position)) + 1;
+        if (position > 10) throw new Error('No article image position remains for certificate');
+        assets.push({
+          altText: claim.certificateSource.altText,
+          body: await normalizePublishedSourceImage(original),
+          position,
+          promptHash: null,
+          quality: certificateQuality(claim.certificateSource),
+          role: 'body',
+          source: 'certificate',
+          sourceDocumentId: claim.certificateSource.sourceDocumentId,
+        });
+      } catch (error) {
+        usedFallback = true;
+        sourceMediaErrors.push(safeError(error));
+      }
     }
     return Object.freeze({
       assets: Object.freeze(assets),
       externalCalls,
       providerErrors: Object.freeze(providerErrors),
+      sourceMediaErrors: Object.freeze(sourceMediaErrors),
       usedFallback,
     });
   }
@@ -476,9 +586,11 @@ export class ContentMediaWorker {
       key,
       metadata: {
         // S3 user metadata is serialized as HTTP headers, so values must remain ASCII-safe.
-        ai_disclosure: AI_DISCLOSURE_STORAGE_VALUE,
+        ai_disclosure:
+          asset.source === 'certificate' ? 'not_ai_generated' : AI_DISCLOSURE_STORAGE_VALUE,
         content_version_id: contentVersionId,
         promotional_watermark: 'false',
+        ...(asset.sourceDocumentId ? { source_document_id: asset.sourceDocumentId } : {}),
         source: asset.source,
         tenant_id: tenantId,
       },
@@ -525,18 +637,27 @@ export class ContentMediaWorker {
 
       for (const asset of assets) {
         const metadata = {
-          ai_disclosure: AI_DISCLOSURE_LABEL,
-          ai_generated: true,
+          ai_disclosure: asset.source === 'certificate' ? null : AI_DISCLOSURE_LABEL,
+          ai_generated: asset.source !== 'certificate',
           content_version_id: event.data.contentVersionId,
           height: asset.height,
           media_run_id: event.data.mediaRunId,
           model: asset.source === 'cloudflare' ? claim.generationModel : null,
           promotional_watermark: false,
           prompt_hash: asset.promptHash,
-          provider: asset.source === 'cloudflare' ? claim.provider : 'internal',
+          provider:
+            asset.source === 'cloudflare'
+              ? claim.provider
+              : asset.source === 'certificate'
+                ? 'user_upload'
+                : 'internal',
           role: asset.role,
-          schema_version: 'generated-media@1',
+          schema_version:
+            asset.source === 'certificate' ? 'published-source-media@1' : 'generated-media@1',
           source: asset.source,
+          ...(asset.sourceDocumentId
+            ? { publication_authorized: true, source_document_id: asset.sourceDocumentId }
+            : {}),
           width: asset.width,
         };
         const rows = await transaction<{ id: string }[]>`
@@ -778,6 +899,16 @@ function providerQuality(value: ImageInspectionResult): Readonly<Record<string, 
   });
 }
 
+function certificateQuality(source: CertificateMediaSource): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    decision: 'pass',
+    method: 'publication_attestation',
+    schema_version: 'content-image-quality@1',
+    source_document_id: source.sourceDocumentId,
+    verification_url: source.verificationUrl,
+  });
+}
+
 function inspectionScene(scene: ArticleImagePlan['scenes'][number]): string {
   return `Article scene (Chinese): ${scene.caption}\nPlanned visual representation (English): ${scene.prompt}`;
 }
@@ -790,6 +921,17 @@ function safeDisplayText(value: string, fallback: string, maxLength: number): st
   normalized = normalized
     .replace(/https?:\/\/\S+|www\.\S+/giu, '')
     .replace(/\b1[3-9]\d{9}\b/gu, '')
+    .trim();
+  return [...(normalized || fallback)].slice(0, maxLength).join('');
+}
+
+function safeSourceAltText(value: string, fallback: string, maxLength: number): string {
+  const normalized = Array.from(value)
+    .filter((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code >= 32 && code !== 127;
+    })
+    .join('')
     .trim();
   return [...(normalized || fallback)].slice(0, maxLength).join('');
 }
@@ -810,6 +952,16 @@ function scope(event: ReturnType<typeof validateMediaGenerationEvent>) {
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function storageKey(uri: string): string {
+  const match = /^(?:s3|memory):\/\/[^/]+\/(.+)$/u.exec(uri);
+  if (!match?.[1]) throw new Error('Certificate source object URI is invalid');
+  const key = decodeURIComponent(match[1]);
+  if (!key || key.startsWith('/') || key.includes('..')) {
+    throw new Error('Certificate source object key is invalid');
+  }
+  return key;
 }
 
 function string(value: unknown): string {

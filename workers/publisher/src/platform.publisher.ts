@@ -404,6 +404,7 @@ interface PreparedOfficialSiteMedia {
     readonly alt_text: string;
     readonly position: number;
     readonly role: 'body' | 'cover';
+    readonly source: 'certificate' | 'generated';
     readonly url: string;
   }[];
   readonly diagnostics: Readonly<Record<string, unknown>>;
@@ -437,6 +438,7 @@ async function prepareOfficialSiteMedia(
     readonly alt_text: string;
     readonly position: number;
     readonly role: 'body' | 'cover';
+    readonly source: 'certificate' | 'generated';
     readonly url: string;
   }[] = [];
   let skipped = 0;
@@ -465,6 +467,7 @@ async function prepareOfficialSiteMedia(
           alt_text: asset.altText,
           position: asset.position,
           role: asset.role,
+          source: asset.source === 'certificate' ? 'certificate' : 'generated',
           url: result.url,
         }),
       );
@@ -484,6 +487,7 @@ async function prepareOfficialSiteMedia(
             alt_text: asset.altText,
             position: asset.position,
             role: asset.role,
+            source: asset.source === 'certificate' ? 'certificate' : 'generated',
             url: asset.publicUrl,
           }),
         );
@@ -514,6 +518,7 @@ function existingOfficialSiteMedia(
             alt_text: asset.altText,
             position: asset.position,
             role: asset.role,
+            source: asset.source === 'certificate' ? 'certificate' : 'generated',
             url: asset.publicUrl as string,
           }),
         ),

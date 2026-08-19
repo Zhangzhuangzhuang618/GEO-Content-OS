@@ -110,6 +110,61 @@ test('uploads multipart metadata and only reports success after an ingest job is
   expect(requestHeaders?.['content-type']).toContain('multipart/form-data');
   expect(bodyText).toContain('产品白皮书');
   expect(bodyText).toContain(PROJECT_ID);
+  expect(bodyText).not.toContain('name="material_kind"');
+});
+test('requires certificate verification fields and explicit article-display consent', async ({
+  page,
+}) => {
+  let uploads = 0;
+  let bodyText = '';
+  await page.route('**/api/v1/sources', async (route) => {
+    uploads += 1;
+    bodyText = route.request().postData() ?? '';
+    await route.fulfill({
+      body: JSON.stringify({
+        data: {
+          source: {
+            id: '40000000-0000-4000-8000-000000000080',
+            project_id: PROJECT_ID,
+            title: '道路运输经营许可证',
+            status: 'processing',
+            workspace_id: WORKSPACE_ID,
+          },
+          ingest_job: { id: '50000000-0000-4000-8000-000000000080', status: 'queued' },
+        },
+        meta: { request_id: 'certificate-upload' },
+      }),
+      contentType: 'application/json',
+      status: 201,
+    });
+  });
+  await page.goto('/know-02');
+  await page.getByLabel('标题').fill('道路运输经营许可证');
+  await page.getByLabel('项目（可选）').selectOption(PROJECT_ID);
+  await page.getByLabel('文件').setInputFiles({
+    name: 'certificate.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('89504e470d0a1a0a', 'hex'),
+  });
+  await expect(page.getByRole('heading', { name: '证照核验信息' })).toBeVisible();
+  await page.getByLabel('证照名称').fill('道路运输经营许可证');
+  await page.getByLabel('证照编号').fill('粤交运管许可字 2026-001');
+  await page.getByLabel('持证主体').fill('广州示例搬家服务有限公司');
+  await page.getByLabel('发证机关').fill('广州市交通运输局');
+  await page.getByLabel('官方核验链接（可选）').fill('https://example.gov.cn/verify/2026-001');
+  await page.getByLabel(/允许文章在实际引用/u).check();
+  await page.getByRole('button', { name: '上传并创建解析任务' }).click();
+  await expect(page.getByText('允许文章展示前必须完成公开内容确认。')).toBeVisible();
+  expect(uploads).toBe(0);
+  await page.getByLabel(/我确认有权公开/u).check();
+  await page.getByRole('button', { name: '上传并创建解析任务' }).click();
+  await expect(page.getByRole('status')).toContainText('安全扫描与解析任务已创建');
+  expect(uploads).toBe(1);
+  expect(bodyText).toContain('name="material_kind"');
+  expect(bodyText).toContain('certificate');
+  expect(bodyText).toContain('粤交运管许可字 2026-001');
+  expect(bodyText).toContain('article_use_allowed');
+  expect(bodyText).toContain('public_display_confirmed');
 });
 test('surfaces server virus or SSRF rejection without creating a fake job', async ({ page }) => {
   await page.route('**/api/v1/sources', async (route) =>

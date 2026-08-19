@@ -65,6 +65,9 @@ importers:
       '@geo-content-os/adapter-embedding':
         specifier: workspace:*
         version: link:../../packages/adapters/embedding
+      '@geo-content-os/adapter-image':
+        specifier: workspace:*
+        version: link:../../packages/adapters/image
       '@geo-content-os/adapter-model':
         specifier: workspace:*
         version: link:../../packages/adapters/model

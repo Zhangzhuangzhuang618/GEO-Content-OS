@@ -226,7 +226,7 @@ export function SourceList() {
               ['docx', 'DOCX'],
               ['txt', 'TXT'],
               ['url', 'URL'],
-              ['image', '图片'],
+              ['image', '图片（含企业证照）'],
             ]}
           />
           <Filter
@@ -321,7 +321,9 @@ function SourceRow({
               {source.title}
             </a>
             <StatusBadge status={source.status} />
-            <span className="text-xs text-ink-500">{source.source_type.toUpperCase()}</span>
+            <span className="text-xs text-ink-500">
+              {source.source_type === 'image' ? '图片资料' : source.source_type.toUpperCase()}
+            </span>
           </div>
           <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs text-ink-500">
             <div>

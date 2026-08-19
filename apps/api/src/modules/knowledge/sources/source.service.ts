@@ -126,6 +126,7 @@ export class SourceService {
             trust_level,
             effective_from,
             effective_to,
+            metadata_json,
             status,
             created_by
           ) VALUES (
@@ -142,6 +143,7 @@ export class SourceService {
             ${input.trustLevel},
             ${input.effectiveFrom},
             ${input.effectiveTo},
+            ${JSON.stringify(input.metadata)}::text::jsonb,
             'processing',
             ${actorUserId}
           )
@@ -296,6 +298,7 @@ async function insertSourceAudit(
       ${JSON.stringify({
         content_hash: input.input.contentHash,
         mime_type: input.input.mimeType,
+        material_kind: sourceMaterialKind(input.input.metadata),
         project_id: input.input.projectId,
         ...(input.input.kind === 'url' ? { source_url: input.input.finalUrl } : {}),
         size_bytes: input.input.body.byteLength,
@@ -354,6 +357,12 @@ function toUploadResult(
 
 function toIso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function sourceMaterialKind(metadata: ParsedSourceUpload['metadata']): 'certificate' | 'document' {
+  return 'schema_version' in metadata && metadata.schema_version === 'source-certificate@1'
+    ? 'certificate'
+    : 'document';
 }
 
 function isDuplicateSourceConstraint(error: unknown): boolean {

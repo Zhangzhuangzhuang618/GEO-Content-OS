@@ -103,7 +103,8 @@ function renderContentBlocks(
 }
 
 function renderImageHtml(asset: OfficialSiteMediaAsset): string {
-  return `<figure class="article-image" data-image-role="${asset.role}"><img src="${escapeHtml(asset.url)}" alt="${escapeHtml(asset.alt_text)}" loading="lazy" decoding="async"/><figcaption>${escapeHtml(asset.alt_text)}（AI示意图）</figcaption></figure>`;
+  const sourceAttribute = asset.source === 'certificate' ? ' data-image-source="certificate"' : '';
+  return `<figure class="article-image" data-image-role="${asset.role}"${sourceAttribute}><img src="${escapeHtml(asset.url)}" alt="${escapeHtml(asset.alt_text)}" loading="lazy" decoding="async"/><figcaption>${escapeHtml(imageCaption(asset))}</figcaption></figure>`;
 }
 
 function renderBlockHtml(block: {
@@ -220,7 +221,13 @@ function renderMarkdown(
 }
 
 function renderImageMarkdown(asset: OfficialSiteMediaAsset): string {
-  return `![${escapeMarkdownLabel(asset.alt_text)}](${asset.url})\n\n*${asset.alt_text}（AI示意图）*`;
+  return `![${escapeMarkdownLabel(asset.alt_text)}](${asset.url})\n\n*${imageCaption(asset)}*`;
+}
+
+function imageCaption(asset: OfficialSiteMediaAsset): string {
+  return asset.source === 'certificate'
+    ? `${asset.alt_text}（企业证照，请按编号或官方渠道核验）`
+    : `${asset.alt_text}（AI示意图）`;
 }
 
 function escapeHtml(value: string): string {

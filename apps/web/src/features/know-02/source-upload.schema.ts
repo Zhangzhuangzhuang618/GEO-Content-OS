@@ -1,13 +1,21 @@
 import { z } from 'zod';
 export const UploadFormSchema = z
   .object({
+    article_use_allowed: z.boolean(),
+    certificate_name: z.string(),
+    certificate_number: z.string(),
     effective_from: z.string(),
     effective_to: z.string(),
+    holder_name: z.string(),
+    issuing_authority: z.string(),
     language: z.string().regex(/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u, '请输入有效语言标签。'),
+    material_kind: z.enum(['document', 'certificate']),
     project_id: z.string(),
+    public_display_confirmed: z.boolean(),
     title: z.string().trim().min(1, '请填写标题。').max(240),
     trust_level: z.enum(['verified', 'normal', 'untrusted']),
     url: z.string(),
+    verification_url: z.string(),
     workspace_id: z.string().uuid('请选择工作区。'),
   })
   .superRefine((value, context) => {
@@ -17,6 +25,42 @@ export const UploadFormSchema = z
         message: '结束日期不能早于开始日期。',
         path: ['effective_to'],
       });
+    if (value.material_kind === 'certificate') {
+      for (const [field, message, maximum] of [
+        ['certificate_name', '请填写证照名称。', 240],
+        ['certificate_number', '请填写证照编号。', 120],
+        ['holder_name', '请填写持证主体。', 240],
+        ['issuing_authority', '请填写发证机关。', 240],
+      ] as const) {
+        const current = value[field].trim();
+        if (!current || current.length > maximum)
+          context.addIssue({ code: 'custom', message, path: [field] });
+      }
+      if (value.verification_url) {
+        try {
+          const verificationUrl = new URL(value.verification_url);
+          if (verificationUrl.protocol !== 'https:') throw new Error();
+        } catch {
+          context.addIssue({
+            code: 'custom',
+            message: '核验链接必须是有效的 HTTPS 地址。',
+            path: ['verification_url'],
+          });
+        }
+      }
+      if (value.article_use_allowed && !value.public_display_confirmed)
+        context.addIssue({
+          code: 'custom',
+          message: '允许文章展示前必须完成公开内容确认。',
+          path: ['public_display_confirmed'],
+        });
+      if (value.article_use_allowed && value.trust_level === 'untrusted')
+        context.addIssue({
+          code: 'custom',
+          message: '不可信资料不能授权随文章展示。',
+          path: ['trust_level'],
+        });
+    }
   });
 export const ProjectPageSchema = z
   .object({

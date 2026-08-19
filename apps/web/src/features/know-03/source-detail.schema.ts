@@ -4,6 +4,19 @@ const UuidSchema = z.string().uuid();
 const DateTimeSchema = z.iso.datetime();
 const HashSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 
+const CertificateSchema = z
+  .object({
+    article_use_allowed: z.boolean(),
+    certificate_name: z.string().min(1),
+    certificate_number: z.string().min(1),
+    holder_name: z.string().min(1),
+    issuing_authority: z.string().min(1),
+    public_display_confirmed: z.boolean(),
+    schema_version: z.literal('source-certificate@1'),
+    verification_url: z.string().url().nullable(),
+  })
+  .strict();
+
 export const SourceSchema = z
   .object({
     content_hash: HashSchema,
@@ -106,6 +119,7 @@ export const SourceDetailResponseSchema = z
   .object({
     data: z
       .object({
+        certificate: CertificateSchema.nullable().default(null),
         chunks: z.array(ChunkSchema),
         citation_count: z.number().int().nonnegative(),
         facts: z.array(FactSchema),

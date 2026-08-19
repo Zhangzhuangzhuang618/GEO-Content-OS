@@ -17,6 +17,7 @@ interface ClaimRow {
   readonly id: string;
   readonly language: string;
   readonly mimeType: string;
+  readonly metadata: unknown;
   readonly sourceStatus: string;
   readonly sourceType: string;
   readonly status: string;
@@ -59,6 +60,7 @@ export class PostgresIngestStore implements IngestStorePort {
           source.id,
           source.language,
           source.mime_type AS "mimeType",
+          source.metadata_json AS metadata,
           source.status AS "sourceStatus",
           source.source_type AS "sourceType",
           job.status,
@@ -358,12 +360,17 @@ function toSource(row: ClaimRow, tenantId: string): IngestSource {
     id: row.id,
     language: row.language,
     mimeType: row.mimeType,
+    metadata: isMetadata(row.metadata) ? Object.freeze({ ...row.metadata }) : Object.freeze({}),
     sourceType: row.sourceType as IngestSource['sourceType'],
     status: row.sourceStatus as IngestSource['status'],
     tenantId,
     title: row.title,
     workspaceId: row.workspaceId,
   });
+}
+
+function isMetadata(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 async function requireLease(

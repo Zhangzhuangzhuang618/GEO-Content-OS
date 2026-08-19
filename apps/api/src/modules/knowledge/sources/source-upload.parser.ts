@@ -1,7 +1,13 @@
-import type { SourceTrustLevel, SourceType } from '../../../database/schema/index.js';
+import type {
+  CertificateSourceMetadata,
+  SourceDocumentMetadata,
+  SourceTrustLevel,
+  SourceType,
+} from '../../../database/schema/index.js';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { TextDecoder } from 'node:util';
+import { imageMetadata } from '@geo-content-os/adapter-image';
 import type { FastifyRequest } from 'fastify';
 
 import { SourceUploadValidationError } from './source.errors.js';
@@ -10,13 +16,21 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/u;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 const ALLOWED_FIELDS = new Set([
+  'article_use_allowed',
+  'certificate_name',
+  'certificate_number',
   'effective_from',
   'effective_to',
+  'holder_name',
+  'issuing_authority',
   'language',
+  'material_kind',
   'project_id',
+  'public_display_confirmed',
   'title',
   'trust_level',
   'url',
+  'verification_url',
   'workspace_id',
 ]);
 
@@ -24,6 +38,7 @@ interface ParsedSourceMetadata {
   readonly effectiveFrom: string | null;
   readonly effectiveTo: string | null;
   readonly language: string;
+  readonly metadata: SourceDocumentMetadata;
   readonly projectId: string | null;
   readonly title: string;
   readonly trustLevel: SourceTrustLevel;
@@ -136,18 +151,33 @@ export async function parseSourceUpload(
     effectiveFrom,
     effectiveTo,
     language,
+    metadata: {} as const,
     projectId,
     title,
     trustLevel,
     workspaceId,
   } as const;
   if (!file) {
+    requireDocumentMaterial(fields);
     if (!requestedUrl || requestedUrl.length > 2_048 || hasControlCharacter(requestedUrl)) {
       throw new SourceUploadValidationError('url must contain 1 to 2048 safe characters');
     }
     return { ...metadata, kind: 'url-submission', requestedUrl };
   }
   const detected = detectFile(file.body, file.mimetype, file.filename);
+  const sourceMetadata =
+    detected.sourceType === 'image' && materialKind(fields) === 'certificate'
+      ? await validatedCertificateMetadata(file.body, fields)
+      : (requireDocumentMaterial(fields), {} as const);
+  if (
+    trustLevel === 'untrusted' &&
+    'article_use_allowed' in sourceMetadata &&
+    sourceMetadata.article_use_allowed
+  ) {
+    throw new SourceUploadValidationError(
+      'Untrusted certificate material cannot be authorized for article display',
+    );
+  }
   return {
     ...metadata,
     body: file.body,
@@ -156,8 +186,114 @@ export async function parseSourceUpload(
     filename: normalizeFilename(file.filename),
     kind: 'file',
     mimeType: detected.mimeType,
+    metadata: sourceMetadata,
     sourceType: detected.sourceType,
   };
+}
+
+async function validatedCertificateMetadata(
+  body: Buffer,
+  fields: ReadonlyMap<string, string>,
+): Promise<CertificateSourceMetadata> {
+  try {
+    await imageMetadata(body);
+  } catch {
+    throw new SourceUploadValidationError(
+      'Certificate image must be decodable, 768x512 to 4096x4096, and no larger than 10 MB',
+    );
+  }
+  return parseCertificateMetadata(fields);
+}
+
+function parseCertificateMetadata(fields: ReadonlyMap<string, string>): CertificateSourceMetadata {
+  const articleUseAllowed = optionalBoolean(
+    fields.get('article_use_allowed'),
+    'article_use_allowed',
+  );
+  const publicDisplayConfirmed = optionalBoolean(
+    fields.get('public_display_confirmed'),
+    'public_display_confirmed',
+  );
+  if (articleUseAllowed && !publicDisplayConfirmed) {
+    throw new SourceUploadValidationError(
+      'public_display_confirmed is required before article use is allowed',
+    );
+  }
+  return Object.freeze({
+    article_use_allowed: articleUseAllowed,
+    certificate_name: safeRequiredText(fields, 'certificate_name', 240),
+    certificate_number: safeRequiredText(fields, 'certificate_number', 120),
+    holder_name: safeRequiredText(fields, 'holder_name', 240),
+    issuing_authority: safeRequiredText(fields, 'issuing_authority', 240),
+    public_display_confirmed: publicDisplayConfirmed,
+    schema_version: 'source-certificate@1',
+    verification_url: optionalHttpsUrl(fields.get('verification_url')),
+  });
+}
+
+function materialKind(fields: ReadonlyMap<string, string>): 'certificate' | 'document' {
+  const value = fields.get('material_kind') || 'document';
+  if (value !== 'certificate' && value !== 'document') {
+    throw new SourceUploadValidationError('material_kind must be document or certificate');
+  }
+  return value;
+}
+
+function requireDocumentMaterial(fields: ReadonlyMap<string, string>): void {
+  if (materialKind(fields) !== 'document') {
+    throw new SourceUploadValidationError(
+      'Certificate material requires a PNG, JPEG, or WebP image file',
+    );
+  }
+  const certificateFields = [
+    'article_use_allowed',
+    'certificate_name',
+    'certificate_number',
+    'holder_name',
+    'issuing_authority',
+    'public_display_confirmed',
+    'verification_url',
+  ];
+  if (certificateFields.some((name) => fields.has(name))) {
+    throw new SourceUploadValidationError(
+      'Certificate fields are only allowed for certificate image material',
+    );
+  }
+}
+
+function safeRequiredText(
+  fields: ReadonlyMap<string, string>,
+  name: string,
+  maximum: number,
+): string {
+  const value = required(fields, name);
+  if (value.length > maximum || hasControlCharacter(value)) {
+    throw new SourceUploadValidationError(
+      `${name} must contain 1 to ${maximum} characters without control characters`,
+    );
+  }
+  return value;
+}
+
+function optionalBoolean(value: string | undefined, name: string): boolean {
+  if (value === undefined || value === '') return false;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new SourceUploadValidationError(`${name} must be true or false`);
+}
+
+function optionalHttpsUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  if (value.length > 2_048 || hasControlCharacter(value)) {
+    throw new SourceUploadValidationError('verification_url must be a safe HTTPS URL');
+  }
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Error();
+    return parsed.toString();
+  } catch {
+    throw new SourceUploadValidationError('verification_url must be a safe HTTPS URL');
+  }
 }
 
 function detectFile(

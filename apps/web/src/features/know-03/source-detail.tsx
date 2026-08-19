@@ -180,12 +180,44 @@ export function SourceDetail() {
           ) : null}
         </div>
         <dl className="mt-6 grid gap-4 border-t border-line pt-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Detail label="资料类型" value={sourceTypeLabel(detail.source.source_type)} />
+          <Detail
+            label="资料类型"
+            value={detail.certificate ? '企业证照' : sourceTypeLabel(detail.source.source_type)}
+          />
           <Detail label="语言" value={detail.source.language} />
           <Detail label="有效期" value={effectiveRange(detail.source)} />
           <Detail label="引用次数" value={String(detail.citation_count)} />
           <Detail label="更新时间" value={formatDateTime(detail.source.updated_at)} />
         </dl>
+        {detail.certificate ? (
+          <section className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
+            <h3 className="font-semibold text-ink-950">证照核验信息</h3>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Detail label="证照名称" value={detail.certificate.certificate_name} />
+              <Detail label="证照编号" value={detail.certificate.certificate_number} />
+              <Detail label="持证主体" value={detail.certificate.holder_name} />
+              <Detail label="发证机关" value={detail.certificate.issuing_authority} />
+              <Detail
+                label="文章展示"
+                value={detail.certificate.article_use_allowed ? '已授权（仅正文引用时）' : '未授权'}
+              />
+              <Detail
+                label="公开内容确认"
+                value={detail.certificate.public_display_confirmed ? '已确认' : '未确认'}
+              />
+            </dl>
+            {detail.certificate.verification_url ? (
+              <a
+                className="mt-4 inline-flex text-sm font-semibold text-brand-700 underline"
+                href={detail.certificate.verification_url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                打开官方核验链接
+              </a>
+            ) : null}
+          </section>
+        ) : null}
         <div className="mt-5">
           <TechnicalDetails summary="资料技术信息">
             <p>资料编号：{detail.source.id}</p>
@@ -442,9 +474,13 @@ function factStatusLabel(value: Fact['status']): string {
 }
 
 function sourceTypeLabel(value: Source['source_type']): string {
-  return { pdf: 'PDF 文档', docx: 'Word 文档', txt: '文本文件', url: '网页链接', image: '图片' }[
-    value
-  ];
+  return {
+    pdf: 'PDF 文档',
+    docx: 'Word 文档',
+    txt: '文本文件',
+    url: '网页链接',
+    image: '图片',
+  }[value];
 }
 
 function trustLabel(value: Source['trust_level']): string {

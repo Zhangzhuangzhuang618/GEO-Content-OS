@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm build:runtime-dependencies && nest build",
     "build:contracts": "pnpm --filter @geo-content-os/contracts build",
-    "build:runtime-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/security build && pnpm --filter @geo-content-os/observability build && pnpm --filter @geo-content-os/adapter-email build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-model build && pnpm --filter @geo-content-os/adapter-platforms build && pnpm --filter @geo-content-os/adapter-rerank build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build",
+    "build:runtime-dependencies": "pnpm build:contracts && pnpm --filter @geo-content-os/security build && pnpm --filter @geo-content-os/observability build && pnpm --filter @geo-content-os/adapter-email build && pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-image build && pnpm --filter @geo-content-os/adapter-model build && pnpm --filter @geo-content-os/adapter-platforms build && pnpm --filter @geo-content-os/adapter-rerank build && pnpm --filter @geo-content-os/adapter-storage build && pnpm --filter @geo-content-os/adapter-web-fetch build && pnpm --filter @geo-content-os/parsers build",
     "build:test-dependencies": "pnpm build:runtime-dependencies && pnpm --filter @geo-content-os/testkit build && pnpm --filter @geo-content-os/worker-outbox-relay build && pnpm --filter @geo-content-os/worker-knowledge build && pnpm --filter @geo-content-os/worker-ai build && pnpm --filter @geo-content-os/worker-lifecycle build",
     "db:check": "tsx src/database/cli/check.ts",
     "db:generate": "drizzle-kit generate --config ../../drizzle.config.ts",
@@ -38,6 +38,7 @@
     "@fastify/multipart": "^10.1.0",
     "@geo-content-os/adapter-email": "workspace:*",
     "@geo-content-os/adapter-embedding": "workspace:*",
+    "@geo-content-os/adapter-image": "workspace:*",
     "@geo-content-os/adapter-model": "workspace:*",
     "@geo-content-os/adapter-platforms": "workspace:*",
     "@geo-content-os/adapter-rerank": "workspace:*",
