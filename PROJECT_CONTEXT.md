@@ -315,6 +315,11 @@ usage_ledger 归属 tenant/workspace/project/package/variant/generation_run，�
 
 RAG：ingest -> normalize -> chunk(500..900,overlap=80) -> PostgreSQL FTS(ts_rank_cd)+pgvector -> fuse -> rerank -> diversify -> cite。URL 按 ADR-0018 保存登记时抓取快照，解析与重建索引优先读取该快照。MVP 不称 BM25。强制 tenant/workspace/project/trust/effective/status 过滤。
 
+HOTFIX-20260819-08 支持建行龙集采 `#/content?pId=...&id=...` 详情链接：严格解析数字路由参数，
+通过公开栏目索引和详情 JSON 生成 HTML 快照，同时保留完整原始语义 URL 供重建索引与引用定位。
+该能力不启用通用浏览器渲染，不放宽 SSRF、MIME、大小、重定向或超时边界；已丢失 fragment 的旧
+失败资料不会自动恢复，需使用完整链接重新导入。无数据库迁移，不影响冻结质量门槛和旧质量报告。
+
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
 ## 7. API 约定

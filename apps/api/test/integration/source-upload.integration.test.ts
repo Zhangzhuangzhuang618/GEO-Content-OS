@@ -664,6 +664,71 @@ describe('source upload', () => {
     }
   });
 
+  it('persists a resolved semantic hash route for later reindexing and citations', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const body = Buffer.from(
+      '<html><body><main><h1>采购结果</h1><p>众人搬家中标。</p></main></body></html>',
+      'utf8',
+    );
+    const sourceUrl = 'https://ibuy.ccb.com/cms/index.html#/content?pId=353&id=27541';
+    const webFetch = requireApplication(application).get<WebFetchAdapter>(SOURCE_WEB_FETCH);
+    const fetch = vi.spyOn(webFetch, 'fetch').mockResolvedValue({
+      body,
+      contentHash: sha256(body),
+      contentType: 'text/html',
+      finalUrl: sourceUrl,
+      redirectChain: [],
+      statusCode: 200,
+    });
+    try {
+      const response = await sendUrl(application, tokens, 'source-url-ccb-001', sourceUrl);
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+      expect(fetch).toHaveBeenCalledWith(sourceUrl);
+      const sourceId = String(response.body.data.source.id);
+      expect(
+        await database<{ eventSourceUrl: string; uri: string }[]>`
+          SELECT
+            event.payload_json->'data'->>'source_url' AS "eventSourceUrl",
+            source.uri
+          FROM source_documents AS source
+          JOIN outbox_events AS event ON event.aggregate_id = source.id
+          WHERE source.id = ${sourceId}::uuid
+        `,
+      ).toEqual([{ eventSourceUrl: sourceUrl, uri: sourceUrl }]);
+
+      const contentHash = sha256(body);
+      const snapshotKey = `tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sourceId}/${contentHash}.url`;
+      await requireStorage(application).deleteObject(snapshotKey);
+      await database`
+        UPDATE ingest_jobs
+        SET
+          status = 'failed', attempt_count = 1, stage = 'upload', progress = 5,
+          error_json = '{"code":"SOURCE_OBJECT_INVALID","message":"missing snapshot","schema_version":"job-error@1"}'::jsonb,
+          started_at = now() - interval '1 second', finished_at = now(), updated_at = now()
+        WHERE source_document_id = ${sourceId}::uuid
+      `;
+      await database`
+        UPDATE source_documents SET status = 'failed', updated_at = now()
+        WHERE id = ${sourceId}::uuid
+      `;
+      fetch.mockClear();
+
+      const reindex = await authenticatedRequest(application, tokens)
+        .post(`${API_PATH}/${sourceId}/reindex`)
+        .send({
+          expected_content_hash: contentHash,
+          reason: 'restore CCB semantic route snapshot',
+        });
+
+      expect(reindex.status, JSON.stringify(reindex.body)).toBe(202);
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledWith(sourceUrl);
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it('refreshes a failed legacy URL snapshot before creating its reindex job', async () => {
     const database = requireClient(client);
     const tokens = await createSession(database, MANAGER_ID);

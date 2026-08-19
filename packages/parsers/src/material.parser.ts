@@ -271,7 +271,7 @@ function normalizeSourceUrl(raw: string | undefined): string {
     const url = new URL(raw);
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
       throw new Error();
-    url.hash = '';
+    if (!url.hash.startsWith('#/')) url.hash = '';
     url.hostname = url.hostname.toLowerCase().replace(/\.$/u, '');
     return url.toString();
   } catch {

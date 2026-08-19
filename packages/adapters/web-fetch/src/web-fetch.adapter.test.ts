@@ -97,6 +97,74 @@ describe('SSRF-safe web fetch adapter', () => {
     });
   });
 
+  it('resolves a CCB semantic hash route to its public detail snapshot', async () => {
+    const firstPage = Array.from({ length: 1_000 }, (_value, index) => ({
+      channelId: '353',
+      id: String(index),
+      releaseDate: '2026-08-01 00:00:00',
+    }));
+    const request = vi.fn(async (url: URL) => {
+      if (url.pathname === '/json/contentFile/353/1.json') {
+        return jsonResponse(firstPage);
+      }
+      if (url.pathname === '/json/contentFile/353/2.json') {
+        return jsonResponse([
+          {
+            channelId: '353',
+            id: '27541',
+            releaseDate: '2026-07-31 11:43:59',
+          },
+        ]);
+      }
+      if (url.pathname === '/json/contentFile/353/2026/27541.json') {
+        return jsonResponse({
+          area: '广东省',
+          content: '<p>广东众人搬家起重吊装有限公司中标。</p>',
+          id: '27541',
+          ptInst: '广东省分行',
+          releaseDate: '2026-07-31 11:43:59',
+          releaseInst: '分行',
+          title: '佛山市分行搬运服务项目采购结果信息公开',
+        });
+      }
+      throw new Error(`Unexpected URL ${url.toString()}`);
+    });
+    const adapter = createAdapter(
+      { request },
+      { WEB_FETCH_MAX_BYTES: '1048576', WEB_FETCH_TIMEOUT_MS: '30000' },
+    );
+    const sourceUrl = 'https://ibuy.ccb.com/cms/index.html#/content?pId=353&id=27541';
+    const result = await adapter.fetch(sourceUrl);
+
+    expect(request.mock.calls.map(([url]) => url.toString())).toEqual([
+      'https://ibuy.ccb.com/json/contentFile/353/1.json',
+      'https://ibuy.ccb.com/json/contentFile/353/2.json',
+      'https://ibuy.ccb.com/json/contentFile/353/2026/27541.json',
+    ]);
+    expect(result).toMatchObject({
+      contentType: 'text/html',
+      finalUrl: sourceUrl,
+      redirectChain: [],
+      statusCode: 200,
+    });
+    expect(result.body.toString('utf8')).toContain('佛山市分行搬运服务项目采购结果信息公开');
+    expect(result.body.toString('utf8')).toContain('广东众人搬家起重吊装有限公司中标。');
+    expect(result.contentHash).toBe(createHash('sha256').update(result.body).digest('hex'));
+  });
+
+  it('rejects malformed CCB semantic routes before opening a socket', async () => {
+    const request = vi.fn(async () => htmlResponse());
+    const adapter = createAdapter({ request });
+
+    await expect(
+      adapter.fetch('https://ibuy.ccb.com/cms/index.html#/content?pId=353&id=27541&id=27542'),
+    ).rejects.toBeInstanceOf(WebFetchValidationError);
+    await expect(
+      adapter.fetch('https://ibuy.ccb.com/cms/index.html#/content?pId=353&id=27541#unexpected'),
+    ).rejects.toBeInstanceOf(WebFetchValidationError);
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it('revalidates every redirect target and blocks HTTPS downgrade', async () => {
     const request = vi.fn(async (url: URL) =>
       url.hostname === 'example.com'
@@ -212,6 +280,14 @@ function htmlResponse() {
   return {
     body: Buffer.from('<html>ok</html>'),
     headers: { 'content-type': 'text/html' },
+    statusCode: 200,
+  };
+}
+
+function jsonResponse(value: unknown) {
+  return {
+    body: Buffer.from(JSON.stringify(value), 'utf8'),
+    headers: { 'content-type': 'application/json' },
     statusCode: 200,
   };
 }

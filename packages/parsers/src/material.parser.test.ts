@@ -58,6 +58,17 @@ describe('MaterialParser', () => {
     ]);
   });
 
+  it('preserves a semantic SPA hash route in URL locators', async () => {
+    const sourceUrl = 'https://ibuy.ccb.com/cms/index.html#/content?pId=353&id=27541';
+    const body = Buffer.from(
+      '<html><body><main><h1>采购结果</h1><p>广东众人搬家起重吊装有限公司中标。</p></main></body></html>',
+      'utf8',
+    );
+    const result = await new MaterialParser().parse(source(body, 'url', 'text/html', sourceUrl));
+
+    expect(result.units.every((unit) => unit.locator.url === sourceUrl)).toBe(true);
+  });
+
   it('parses text/plain URL sources allowed by the safe fetch Adapter', async () => {
     const body = Buffer.from('第一段。\n\n第二段。', 'utf8');
     const result = await new MaterialParser().parse(

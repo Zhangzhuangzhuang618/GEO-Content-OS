@@ -3,11 +3,17 @@ import { createHash } from 'node:crypto';
 import http, { type IncomingMessage, type RequestOptions } from 'node:http';
 import https from 'node:https';
 import { BlockList, isIP } from 'node:net';
+import { TextDecoder } from 'node:util';
 
 import type { WebFetchConfiguration } from './web-fetch.config.js';
 
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const ALLOWED_CONTENT_TYPES = new Set(['application/xhtml+xml', 'text/html', 'text/plain']);
+const JSON_CONTENT_TYPES = new Set(['application/json', 'text/json']);
+const CCB_CONTENT_HOST = 'ibuy.ccb.com';
+const CCB_CONTENT_PATH = '/cms/index.html';
+const CCB_INDEX_PAGE_SIZE = 1_000;
+const CCB_MAX_INDEX_PAGES = 20;
 const BLOCKED_HOST_SUFFIXES = [
   'internal',
   'invalid',
@@ -51,6 +57,12 @@ interface RawResponse {
   readonly body: Buffer;
   readonly headers: Readonly<Record<string, string | readonly string[] | undefined>>;
   readonly statusCode: number;
+}
+
+interface CcbContentRoute {
+  readonly id: string;
+  readonly pId: string;
+  readonly sourceUrl: string;
 }
 
 export class WebFetchValidationError extends Error {
@@ -102,6 +114,16 @@ export class SafeWebFetchAdapter implements WebFetchAdapter {
 
   public async fetch(rawUrl: string): Promise<WebFetchResult> {
     const deadline = Date.now() + this.configuration.timeoutMs;
+    const ccbContentRoute = parseCcbContentRoute(rawUrl);
+    if (ccbContentRoute) return this.fetchCcbContent(ccbContentRoute, deadline);
+    return this.fetchAllowedContent(rawUrl, deadline, ALLOWED_CONTENT_TYPES);
+  }
+
+  private async fetchAllowedContent(
+    rawUrl: string,
+    deadline: number,
+    allowedContentTypes: ReadonlySet<string>,
+  ): Promise<WebFetchResult> {
     let current = normalizeUrl(rawUrl);
     const redirects: string[] = [];
     const visited = new Set<string>();
@@ -148,7 +170,7 @@ export class SafeWebFetchAdapter implements WebFetchAdapter {
       }
       if (response.body.byteLength > this.configuration.maxBytes) throw new WebFetchSizeError();
       const contentType = normalizeContentType(singleHeader(response.headers['content-type']));
-      if (!ALLOWED_CONTENT_TYPES.has(contentType)) {
+      if (!allowedContentTypes.has(contentType)) {
         throw new WebFetchResponseError('Web source content type is not allowed');
       }
       if (response.body.byteLength === 0) {
@@ -163,6 +185,34 @@ export class SafeWebFetchAdapter implements WebFetchAdapter {
         statusCode: response.statusCode,
       };
     }
+  }
+
+  private async fetchCcbContent(route: CcbContentRoute, deadline: number): Promise<WebFetchResult> {
+    for (let page = 1; page <= CCB_MAX_INDEX_PAGES; page += 1) {
+      const indexUrl = `https://${CCB_CONTENT_HOST}/json/contentFile/${route.pId}/${page}.json`;
+      const index = await this.fetchAllowedContent(indexUrl, deadline, JSON_CONTENT_TYPES);
+      const entries = parseCcbIndex(index.body);
+      const match = entries.find((entry): entry is Readonly<Record<string, unknown>> =>
+        isCcbIndexMatch(entry, route),
+      );
+      if (match) {
+        const year = ccbReleaseYear(match['releaseDate']);
+        const detailUrl = `https://${CCB_CONTENT_HOST}/json/contentFile/${route.pId}/${year}/${route.id}.json`;
+        const response = await this.fetchAllowedContent(detailUrl, deadline, JSON_CONTENT_TYPES);
+        const body = renderCcbDetail(response.body, route);
+        if (body.byteLength > this.configuration.maxBytes) throw new WebFetchSizeError();
+        return {
+          body,
+          contentHash: createHash('sha256').update(body).digest('hex'),
+          contentType: 'text/html',
+          finalUrl: route.sourceUrl,
+          redirectChain: Object.freeze([]),
+          statusCode: response.statusCode,
+        };
+      }
+      if (entries.length < CCB_INDEX_PAGE_SIZE) break;
+    }
+    throw new WebFetchResponseError('CCB content route did not resolve to a public detail');
   }
 }
 
@@ -194,6 +244,124 @@ function normalizeUrl(raw: string, base?: URL): URL {
     url.port = '';
   }
   return url;
+}
+
+function parseCcbContentRoute(raw: string): CcbContentRoute | undefined {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  const hostname = url.hostname.toLowerCase().replace(/\.$/u, '');
+  const targetPage =
+    url.protocol === 'https:' &&
+    hostname === CCB_CONTENT_HOST &&
+    (url.port === '' || url.port === '443') &&
+    url.pathname === CCB_CONTENT_PATH;
+  if (!targetPage || !url.hash.startsWith('#/content')) return undefined;
+  if (url.username || url.password || url.search) {
+    throw new WebFetchValidationError('CCB content URL is invalid');
+  }
+  let route: URL;
+  try {
+    route = new URL(url.hash.slice(1), `https://${CCB_CONTENT_HOST}`);
+  } catch {
+    throw new WebFetchValidationError('CCB content URL is invalid');
+  }
+  const keys = [...route.searchParams.keys()];
+  const pIds = route.searchParams.getAll('pId');
+  const ids = route.searchParams.getAll('id');
+  if (
+    route.pathname !== '/content' ||
+    route.hash ||
+    keys.length !== 2 ||
+    keys.some((key) => key !== 'pId' && key !== 'id') ||
+    pIds.length !== 1 ||
+    ids.length !== 1 ||
+    !/^\d{1,10}$/u.test(pIds[0] ?? '') ||
+    !/^\d{1,20}$/u.test(ids[0] ?? '')
+  ) {
+    throw new WebFetchValidationError('CCB content URL is invalid');
+  }
+  const pId = pIds[0] as string;
+  const id = ids[0] as string;
+  return {
+    id,
+    pId,
+    sourceUrl: `https://${CCB_CONTENT_HOST}${CCB_CONTENT_PATH}#/content?pId=${pId}&id=${id}`,
+  };
+}
+
+function parseCcbIndex(body: Uint8Array): readonly unknown[] {
+  const parsed = parseJson(body, 'CCB content index');
+  if (!Array.isArray(parsed)) {
+    throw new WebFetchResponseError('CCB content index is invalid');
+  }
+  return parsed;
+}
+
+function isCcbIndexMatch(
+  value: unknown,
+  route: CcbContentRoute,
+): value is Readonly<Record<string, unknown>> {
+  return (
+    isRecord(value) && String(value['id']) === route.id && String(value['channelId']) === route.pId
+  );
+}
+
+function ccbReleaseYear(value: unknown): string {
+  const match = typeof value === 'string' ? /^(\d{4})-/u.exec(value) : null;
+  if (!match?.[1]) throw new WebFetchResponseError('CCB content release date is invalid');
+  return match[1];
+}
+
+function renderCcbDetail(body: Uint8Array, route: CcbContentRoute): Buffer {
+  const detail = parseJson(body, 'CCB content detail');
+  if (
+    !isRecord(detail) ||
+    String(detail['id']) !== route.id ||
+    typeof detail['title'] !== 'string' ||
+    !detail['title'].trim() ||
+    typeof detail['content'] !== 'string' ||
+    !detail['content'].trim()
+  ) {
+    throw new WebFetchResponseError('CCB content detail is invalid');
+  }
+  const metadata = [
+    ['发布时间', detail['releaseDate']],
+    ['发布机构', detail['releaseInst']],
+    ['所属机构', detail['ptInst']],
+    ['地区', detail['area']],
+  ]
+    .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && Boolean(entry[1]))
+    .map(([label, value]) => `<p>${label}：${escapeHtml(value)}</p>`)
+    .join('');
+  return Buffer.from(
+    `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escapeHtml(detail['title'])}</title><link rel="canonical" href="${escapeHtml(route.sourceUrl)}"></head><body><main><article><h1>${escapeHtml(detail['title'])}</h1>${metadata}${detail['content']}</article></main></body></html>`,
+    'utf8',
+  );
+}
+
+function parseJson(body: Uint8Array, label: string): unknown {
+  try {
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)) as unknown;
+  } catch {
+    throw new WebFetchResponseError(`${label} is invalid`);
+  }
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function validateHostPolicy(url: URL, configuration: WebFetchConfiguration): void {
