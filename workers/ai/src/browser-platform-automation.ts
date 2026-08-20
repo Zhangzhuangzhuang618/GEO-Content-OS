@@ -340,9 +340,8 @@ export class BrowserPlatformAutomation {
       const writerInput = await loadWriterInput(
         transaction,
         event.tenantId,
-        event.data.workspaceId,
         event.data.packageId,
-        event.data.contentVersionId,
+        event.data.variantId,
         event.data.platformCode,
       );
       const runs = await transaction<{ id: string }[]>`
@@ -706,78 +705,66 @@ export class BrowserPlatformAutomation {
 async function loadWriterInput(
   transaction: postgres.TransactionSql,
   tenantId: string,
-  workspaceId: string,
   packageId: string,
-  contentVersionId: string,
+  variantId: string,
   platformCode: Platform,
 ): Promise<JsonObject> {
-  const [sources, brands, rules, citations] = await Promise.all([
-    transaction<
-      {
-        audience: string;
-        briefId: string;
-        constraints: JsonObject;
-        objective: string;
-        title: string;
-      }[]
-    >`
-      SELECT brief.id AS "briefId",brief.audience,brief.objective,brief.title,
-        brief.constraints_json AS constraints
-      FROM content_packages AS package
-      JOIN briefs AS brief ON brief.id=package.brief_id AND brief.tenant_id=package.tenant_id
-      WHERE package.id=${packageId}::uuid AND package.tenant_id=${tenantId}::uuid
-    `,
-    transaction<{ id: string; profile: JsonObject; version: number }[]>`
-      SELECT id,profile_json AS profile,version FROM brand_profiles
-      WHERE tenant_id=${tenantId}::uuid AND workspace_id=${workspaceId}::uuid AND status='published'
-      ORDER BY version DESC LIMIT 1
-    `,
-    transaction<{ hash: string; id: string; rules: JsonObject }[]>`
-      SELECT id,content_hash AS hash,rules_json AS rules FROM platform_rule_versions
-      WHERE platform_code=${platformCode} AND status='published'
-      ORDER BY published_at DESC NULLS LAST,created_at DESC,id DESC LIMIT 1
-    `,
-    transaction<{ chunkId: string; citationId: string; quoteText: string; sourceId: string }[]>`
-      SELECT citation.id AS "citationId",citation.chunk_id AS "chunkId",
-        citation.quote_text AS "quoteText",source.id AS "sourceId"
-      FROM ai_citations AS citation
-      JOIN source_chunks AS chunk ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
-      JOIN source_documents AS source
-        ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
-      WHERE citation.tenant_id=${tenantId}::uuid
-        AND citation.content_version_id=${contentVersionId}::uuid
-      ORDER BY citation.claim_key,citation.id
-    `,
-  ]);
-  const source = sources[0];
-  const brand = brands[0];
-  const rule = rules[0];
-  if (!source || !brand || !rule) throw new Error('Rewrite prerequisites are missing');
+  const rows = await transaction<{ writerInput: unknown }[]>`
+    SELECT payload_json->'data'->'writer_input' AS "writerInput"
+    FROM outbox_events
+    WHERE tenant_id=${tenantId}::uuid AND aggregate_id=${packageId}::uuid
+      AND event_type='content.package.generation_requested.v1'
+      AND payload_json->'data'->'variant_runs' @>
+        ${JSON.stringify([{ variant_id: variantId }])}::text::jsonb
+    ORDER BY created_at DESC,id DESC
+    LIMIT 1
+  `;
+  return buildBrowserPlatformRewriteInput(rows[0]?.writerInput, platformCode);
+}
+
+export function buildBrowserPlatformRewriteInput(
+  value: unknown,
+  platformCode: Platform,
+): JsonObject {
+  if (!record(value)) throw new Error('Original Content Writer input is missing');
+  const brief = record(value['brief']) ? value['brief'] : {};
+  const constraints = record(brief['constraints']) ? brief['constraints'] : {};
+  const rulesByCode = record(value['platform_rules_by_code'])
+    ? value['platform_rules_by_code']
+    : {};
+  const platformRules = rulesByCode[platformCode];
+  if (!record(platformRules)) throw new Error(`${platformCode} platform rules are missing`);
+  const strategy = record(value['strategy']) ? value['strategy'] : {};
+  const citations = Array.isArray(value['citations']) ? value['citations'] : [];
+  const locked = Array.isArray(value['locked_blocks'])
+    ? value['locked_blocks'].filter(
+        (item) =>
+          record(item) &&
+          (item['platform_code'] === 'master' || item['platform_code'] === platformCode),
+      )
+    : [];
   const additional =
     platformCode === 'lieju'
       ? '这是列举网自动化分类信息。标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务并自然提示通过页面联系方式咨询；不得在正文写具体电话或手机号、微信/QQ账号或网址，不得使用极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
       : '这是搜狐号自动化图文。不得声明原创，不得伪造热点、排行、亲历或用户评价。';
+  const originalAdditional =
+    typeof constraints['additional_instructions'] === 'string'
+      ? constraints['additional_instructions'].trim()
+      : '';
   return {
     brief: {
-      audience: source.audience,
-      brief_id: source.briefId,
-      constraints: { ...source.constraints, additional_instructions: additional },
-      objective: source.objective,
+      ...(brief as JsonObject),
+      constraints: {
+        ...(constraints as JsonObject),
+        additional_instructions: [originalAdditional, additional].filter(Boolean).join('\n'),
+      },
       platform_codes: [platformCode],
-      title: source.title,
     },
-    citations: citations.map((citation) => ({
-      chunk_id: citation.chunkId,
-      citation_id: citation.citationId,
-      quote_text: citation.quoteText,
-      source_id: citation.sourceId,
-    })),
-    generation_mode: 'adapt',
-    locked_blocks: [],
-    platform_rules_by_code: {
-      [platformCode]: { rules: rule.rules, rules_hash: rule.hash, version_id: rule.id },
-    },
-    strategy: { brand_profile_id: brand.id, profile: brand.profile, version: brand.version },
+    citations: citations as JsonObject[],
+    generation_mode: 'rewrite',
+    locked_blocks: locked as JsonObject[],
+    platform_rules_by_code: { [platformCode]: platformRules as JsonObject },
+    strategy: strategy as JsonObject,
   };
 }
 

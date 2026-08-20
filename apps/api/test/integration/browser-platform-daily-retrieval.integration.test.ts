@@ -22,6 +22,8 @@ const KEYWORD_SET_ID = '62000000-0000-4000-8000-000000000154';
 const KEYWORD_ID = '72000000-0000-4000-8000-000000000154';
 const SOURCE_ID = '82000000-0000-4000-8000-000000000154';
 const CHUNK_ID = '92000000-0000-4000-8000-000000000154';
+const CERTIFICATE_SOURCE_ID = '83000000-0000-4000-8000-000000000154';
+const CERTIFICATE_CHUNK_ID = '93000000-0000-4000-8000-000000000154';
 const SOHU_ACCOUNT_ID = 'a1000000-0000-4000-8000-000000000154';
 const LIEJU_ACCOUNT_ID = 'a2000000-0000-4000-8000-000000000154';
 const SOHU_POLICY_ID = 'a3000000-0000-4000-8000-000000000154';
@@ -59,7 +61,18 @@ describe('browser-platform daily candidate retrieval', () => {
       retrieve: (input) => {
         requests.push(input);
         return Promise.resolve({
-          citations: [{ chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID }],
+          citations: [
+            { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
+            ...(input.authoritySourceIds?.includes(CERTIFICATE_SOURCE_ID)
+              ? [
+                  {
+                    chunkId: CERTIFICATE_CHUNK_ID,
+                    quoteText: '资料类型：企业证照\n证照名称：道路运输经营许可证',
+                    sourceId: CERTIFICATE_SOURCE_ID,
+                  },
+                ]
+              : []),
+          ],
           contextHash: sha256(`context:${input.platformCode}`),
           degraded: false,
           queryHash: sha256(`query:${input.title}`),
@@ -94,6 +107,9 @@ describe('browser-platform daily candidate retrieval', () => {
       ),
     ).toBe(true);
     expect(
+      requests.every((request) => request.authoritySourceIds?.[0] === CERTIFICATE_SOURCE_ID),
+    ).toBe(true);
+    expect(
       await database<{ count: number }[]>`
         SELECT count(*)::integer AS count
         FROM brief_sources
@@ -101,9 +117,26 @@ describe('browser-platform daily candidate retrieval', () => {
       `,
     ).toEqual([{ count: 2 }]);
     expect(
-      await database<{ chunkId: string; platformCode: string; sourceId: string }[]>`
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM brief_sources
+        WHERE tenant_id=${TENANT_ID}::uuid
+          AND source_document_id=${CERTIFICATE_SOURCE_ID}::uuid
+      `,
+    ).toEqual([{ count: 2 }]);
+    expect(
+      await database<
+        {
+          authorizedSourceIds: string[];
+          chunkId: string;
+          platformCode: string;
+          sourceId: string;
+        }[]
+      >`
         SELECT
           event.payload_json->'data'->'variant_runs'->0->>'platform_code' AS "platformCode",
+          event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+            ->'authorized_certificate_source_ids' AS "authorizedSourceIds",
           event.payload_json->'data'->'writer_input'->'citations'->0->>'chunk_id' AS "chunkId",
           event.payload_json->'data'->'writer_input'->'citations'->0->>'source_id' AS "sourceId"
         FROM outbox_events AS event
@@ -112,8 +145,18 @@ describe('browser-platform daily candidate retrieval', () => {
         ORDER BY "platformCode"
       `,
     ).toEqual([
-      { chunkId: CHUNK_ID, platformCode: 'lieju', sourceId: SOURCE_ID },
-      { chunkId: CHUNK_ID, platformCode: 'sohu', sourceId: SOURCE_ID },
+      {
+        authorizedSourceIds: [CERTIFICATE_SOURCE_ID],
+        chunkId: CHUNK_ID,
+        platformCode: 'lieju',
+        sourceId: SOURCE_ID,
+      },
+      {
+        authorizedSourceIds: [CERTIFICATE_SOURCE_ID],
+        chunkId: CHUNK_ID,
+        platformCode: 'sohu',
+        sourceId: SOURCE_ID,
+      },
     ]);
   });
 });
@@ -163,7 +206,7 @@ async function seed(database: Sql): Promise<void> {
         compliance: ['只使用可核验事实'],
         cta: '通过页面联系方式咨询',
         differentiators: ['规范核对服务条件'],
-        positioning: '广州本地搬家服务',
+        positioning: '广州示例搬家有限公司提供广州本地搬家服务',
         tone: '专业、实用',
       })},
       ${USER_ID}::uuid,now()
@@ -172,6 +215,47 @@ async function seed(database: Sql): Promise<void> {
   await database`
     INSERT INTO keyword_sets(id,tenant_id,project_id,name)
     VALUES(${KEYWORD_SET_ID}::uuid,${TENANT_ID}::uuid,${PROJECT_ID}::uuid,'多平台关键词')
+  `;
+  const certificateEvidence = [
+    '资料类型：企业证照',
+    '证照名称：道路运输经营许可证',
+    '持证主体：广州示例搬家有限公司',
+    '证照编号：粤交运管许可示例号',
+    '发证机关：广州市交通运输主管部门',
+  ].join('\n');
+  await database`
+    INSERT INTO source_documents(
+      id,tenant_id,workspace_id,project_id,title,source_type,mime_type,
+      uri,content_hash,trust_level,status,metadata_json,created_by
+    ) VALUES(
+      ${CERTIFICATE_SOURCE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+      ${PROJECT_ID}::uuid,'道路运输经营许可证','image','image/jpeg',
+      'memory://browser-daily-certificate',${sha256(certificateEvidence)},'normal','active',
+      ${database.json({
+        article_use_allowed: true,
+        certificate_name: '道路运输经营许可证',
+        certificate_number: '粤交运管许可示例号',
+        holder_name: '广州示例搬家有限公司',
+        issuing_authority: '广州市交通运输主管部门',
+        public_display_confirmed: true,
+        schema_version: 'source-certificate@1',
+        verification_url: null,
+      })},${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO source_chunks(
+      id,tenant_id,source_document_id,chunk_no,text,text_hash,
+      metadata_json,token_count,status
+    ) VALUES(
+      ${CERTIFICATE_CHUNK_ID}::uuid,${TENANT_ID}::uuid,${CERTIFICATE_SOURCE_ID}::uuid,0,
+      ${certificateEvidence},${sha256(certificateEvidence)},
+      ${database.json({
+        char_end: certificateEvidence.length,
+        char_start: 0,
+        schema_version: 'chunk-metadata@1',
+      })},36,'active'
+    )
   `;
   await database`
     INSERT INTO keywords(

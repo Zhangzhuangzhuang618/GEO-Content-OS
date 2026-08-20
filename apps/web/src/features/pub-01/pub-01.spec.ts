@@ -771,6 +771,11 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
   expect(keywordSyncRequest).toEqual({ platform_codes: ['sohu'], project_id: PROJECT_ID });
   await expect(page.getByText('需要处理的内容')).toBeVisible();
   await expect(page.getByText('候选 1 · 广州搬家准备清单')).toBeVisible();
+  await expect(
+    page.getByText('质量检查返回了无效结果，本次结果未被采用。请稍后重新质检。'),
+  ).toBeVisible();
+  await expect(page.getByText(/QUALITY_CHECK_EXECUTION_FAILED/u)).toHaveCount(0);
+  await expect(page.getByText(/Quality Checker issues are unverifiable/u)).toHaveCount(0);
   await expect(page.getByRole('link', { name: '查看全文和处理' })).toHaveAttribute(
     'href',
     `/cont-04?id=${MANUAL_PACKAGE_ID}`,
@@ -1090,7 +1095,11 @@ function browserPlatformPolicy() {
           automation_run_id: MANUAL_RUN_ID,
           candidate_no: 1,
           content_version_id: MANUAL_VERSION_ID,
-          last_error: { code: 'QUALITY_GATE_FAILED_AFTER_MAX_REWRITES' },
+          last_error: {
+            code: 'QUALITY_CHECK_EXECUTION_FAILED',
+            message:
+              'Quality Checker issues are unverifiable: {"rejections":[{"reason":"only_allowed_owner_or_generic_name_is_quoted"}]}',
+          },
           package_id: MANUAL_PACKAGE_ID,
           publish_job_id: null,
           quality_report_id: MANUAL_REPORT_ID,

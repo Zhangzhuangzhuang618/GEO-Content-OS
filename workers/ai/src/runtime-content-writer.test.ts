@@ -138,6 +138,7 @@ describe('AI Worker runtime wiring', () => {
     const retryPrompt = adapter.requests[1]?.messages.map((message) => message.content).join('\n');
     expect(retryPrompt).toContain(issue);
     expect(retryPrompt).toContain('质量报告驱动重写结果与待修改版本完全相同');
+    expect(adapter.requests.every((request) => !request.tools?.length)).toBe(true);
     expect(variant.summary).toBe(rewritten.variants[0]!.summary);
   });
 
@@ -176,6 +177,176 @@ describe('AI Worker runtime wiring', () => {
     expect(prompt).toContain(issue);
     expect(prompt).toContain('即使这些词出现在否定、引用或举例中');
     expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('百分百');
+  });
+
+  it('repairs a Lieju credential claim until it cites the supplied structured certificate', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const base = multiPlatformContentData(['lieju'], new Set());
+    const variant = base.variants[0]!;
+    const credentialText = '公司持有道路运输经营许可证。';
+    const unsupported = {
+      ...base,
+      variants: [
+        {
+          ...variant,
+          blocks: variant.blocks.map((block, index) =>
+            index === variant.blocks.length - 1
+              ? { ...block, text: `${block.text}${credentialText}` }
+              : block,
+          ),
+        },
+      ],
+    };
+    const citationId = '10000000-0000-4000-8000-000000000162';
+    const sourceId = '20000000-0000-4000-8000-000000000162';
+    const repaired = {
+      ...unsupported,
+      variants: [
+        {
+          ...unsupported.variants[0]!,
+          citation_map: [
+            {
+              citation_ids: [citationId],
+              claim_key: 'transport-permit',
+              claim_text: credentialText,
+            },
+          ],
+        },
+      ],
+    };
+    const baseWriterInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const baseStrategy = baseWriterInput['strategy'] as JsonObject;
+    const writerInput = {
+      ...baseWriterInput,
+      brief: {
+        ...(baseWriterInput['brief'] as JsonObject),
+        constraints: {
+          ...((baseWriterInput['brief'] as JsonObject)['constraints'] as JsonObject),
+          authorized_certificate_source_ids: [sourceId],
+        },
+      },
+      citations: [
+        {
+          chunk_id: citationId,
+          citation_id: citationId,
+          quote_text:
+            '资料类型：企业证照\n证照名称：道路运输经营许可证\n持证主体：广州志远搬家服务有限公司',
+          source_id: sourceId,
+        },
+      ],
+      strategy: {
+        ...baseStrategy,
+        profile: {
+          ...(baseStrategy['profile'] as JsonObject),
+          positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。',
+        },
+      },
+    } as JsonObject;
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(unsupported) }, { text: JSON.stringify(repaired) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const master = await writer.generateMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-lieju-credential-repair-0162',
+      writerInput,
+    });
+    const generatedVariant = await writer.generateVariant({
+      context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000162'),
+      masterContent: master,
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-credential-variant-0162',
+      writerInput,
+    });
+
+    expect(generatedVariant.citation_map).toEqual(repaired.variants[0]!.citation_map);
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '必须通过 citation_map 关联',
+    );
+    expect(adapter.requests[1]!.tools).toBeUndefined();
+  });
+
+  it('does not accept a structured certificate citation from an unauthorized source', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const base = multiPlatformContentData(['lieju'], new Set());
+    const variant = base.variants[0]!;
+    const unsupported = {
+      ...base,
+      variants: [
+        {
+          ...variant,
+          blocks: variant.blocks.map((block, index) =>
+            index === variant.blocks.length - 1
+              ? { ...block, text: `${block.text}公司持有道路运输经营许可证。` }
+              : block,
+          ),
+          citation_map: [
+            {
+              citation_ids: ['10000000-0000-4000-8000-000000000163'],
+              claim_key: 'transport-permit',
+              claim_text: '公司持有道路运输经营许可证。',
+            },
+          ],
+        },
+      ],
+    };
+    const baseWriterInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const baseStrategy = baseWriterInput['strategy'] as JsonObject;
+    const writerInput = {
+      ...baseWriterInput,
+      citations: [
+        {
+          chunk_id: '10000000-0000-4000-8000-000000000163',
+          citation_id: '10000000-0000-4000-8000-000000000163',
+          quote_text:
+            '资料类型：企业证照\n证照名称：道路运输经营许可证\n持证主体：广州志远搬家服务有限公司',
+          source_id: '20000000-0000-4000-8000-000000000163',
+        },
+      ],
+      strategy: {
+        ...baseStrategy,
+        profile: {
+          ...(baseStrategy['profile'] as JsonObject),
+          positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。',
+        },
+      },
+    } as JsonObject;
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(unsupported) }, { text: JSON.stringify(base) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const master = await writer.generateMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-lieju-credential-unauthorized-0163',
+      writerInput,
+    });
+    await writer.generateVariant({
+      context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000163'),
+      masterContent: master,
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-credential-unauthorized-variant-0163',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '必须通过 citation_map 关联',
+    );
   });
 
   it('fails before persistence when a quality-guided rewrite remains unchanged', async () => {

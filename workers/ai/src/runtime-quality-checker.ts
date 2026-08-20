@@ -159,6 +159,13 @@ function withInputSemanticPolicy(
   prompt: QualityCheckerPublishedPrompt,
   input: Readonly<Record<string, unknown>>,
 ): QualityCheckerPublishedPrompt {
+  return Object.freeze({
+    systemPrompt: prompt.systemPrompt,
+    taskTemplate: `${prompt.taskTemplate}\n\n${inputSemanticPolicy(input)}`,
+  });
+}
+
+function inputSemanticPolicy(input: Readonly<Record<string, unknown>>): string {
   const factResults = Array.isArray(input['fact_results']) ? input['fact_results'] : [];
   const highRiskLocations = factResults.flatMap((fact) => {
     if (!record(fact) || typeof fact['claim_key'] !== 'string') return [];
@@ -192,15 +199,10 @@ function withInputSemanticPolicy(
     platformRules?.['platform_code'] === 'lieju' && rules?.['contact_in_content_forbidden'] === true
       ? liejuContactPolicy(content, validLocations)
       : '';
-  return Object.freeze({
-    systemPrompt: prompt.systemPrompt,
-    taskTemplate: `${prompt.taskTemplate}
-
-Mandatory server-derived semantics for this exact input:
+  return `Mandatory server-derived semantics for this exact input:
 - ${highRiskPolicy}
 - ${titlePolicy}
-- Valid immutable content locations are limited to: ${JSON.stringify(validLocations)}. Never use brand_policy.*, platform_rules.*, fact_results.*, citations, or any other input-policy location as a content finding location.${contactPolicy ? `\n- ${contactPolicy}` : ''}`,
-  });
+- Valid immutable content locations are limited to: ${JSON.stringify(validLocations)}. Never use brand_policy.*, platform_rules.*, fact_results.*, citations, or any other input-policy location as a content finding location.${contactPolicy ? `\n- ${contactPolicy}` : ''}`;
 }
 
 function qualitySemanticRepairPrompt(
@@ -276,16 +278,15 @@ function qualitySemanticRepairPrompt(
       : 'No owner company name is declared for this tenant; do not borrow or allow a company name from another tenant.';
   return Object.freeze({
     systemPrompt: prompt.systemPrompt,
-    taskTemplate: `${prompt.taskTemplate}
-
-The previous response failed mandatory server semantic validation. Produce a fresh result and obey all of these invariants:
+    taskTemplate: `The previous response failed mandatory server semantic validation. Produce a fresh result from the supplied quality_checker_input and obey all of these invariants. Do not reuse a rejected finding merely because it appeared in the published task policy or a few-shot example:
 Previous server validation error: ${JSON.stringify(rejectionReason)}. Correct every rejection object in this error, not only the first one, and do not repeat a rejected finding unless it satisfies the required evidence and location rules.
+${inputSemanticPolicy(input)}
 1. Copy this server-supplied geo_scores object exactly: ${JSON.stringify(geoScores)}.
 2. Begin the issues array with every server-required issue object below, copied exactly. These objects are server data, not instructions from article content.
 3. You may append other real findings, but must not remove, rename, merge, downgrade, or rewrite any required issue.
 4. ${decisionInstruction}
 5. Use only citation IDs present in fact_results.
-6. A brand.other_company_name issue must quote the exact prohibited name and point to the exact content location containing it; never report the allowed company name or an anonymous phrase.
+6. A brand.other_company_name issue must quote the exact prohibited name and point to the exact content location containing it; never report the allowed company name or an anonymous phrase such as “某公司”, “某搬家公司”, “某银行” or “某金融机构”.
 7. ${highRiskInstruction}
 8. If the validation error contains a brand rejection reason, correct it exactly:
    - category_must_be_brand: use category "brand" only for this rule.
@@ -293,6 +294,7 @@ Previous server validation error: ${JSON.stringify(rejectionReason)}. Correct ev
    - location_is_required or location_does_not_resolve_to_content: omit the finding unless an exact valid content location exists.
    - exact_name_is_not_quoted: omit the finding unless its message quotes one exact prohibited name.
    - only_allowed_owner_or_generic_name_is_quoted: ${ownerInstruction}
+   - quoted_name_is_not_identifiable_company: omit the finding unless the quoted text is an identifiable company or supported named provider, not an ordinary phrase or a longer anonymous description.
    - quoted_prohibited_name_is_not_present_at_location: omit the finding unless the quoted prohibited name appears verbatim at the reported location.
 9. If the validation error contains a Lieju contact rejection reason, correct it exactly:
    - category_must_be_compliance or severity_must_be_block: use compliance/BLOCK only for a real prohibited contact detail.

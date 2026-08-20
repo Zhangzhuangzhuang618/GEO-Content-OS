@@ -33,6 +33,7 @@ export interface ContentWriterSkillRunInput {
   readonly revision?: ContentWriterRevision;
   readonly signal?: AbortSignal;
   readonly temperature?: number;
+  readonly toolNames?: readonly string[];
 }
 
 export interface ContentWriterPublishedPrompt {
@@ -81,7 +82,7 @@ export class ContentWriterSkill {
       recordUsage: invocation.recordUsage,
       ...(invocation.signal ? { signal: invocation.signal } : {}),
       temperature: invocation.temperature ?? 0.4,
-      toolNames: CONTENT_WRITER_TOOL_NAMES_V1,
+      toolNames: invocation.toolNames ?? CONTENT_WRITER_TOOL_NAMES_V1,
     });
     const input = invocation.input as unknown as WriterInput;
     const output = serverOwnedOutput(invocation.context, input, generated.output, generated.usages);

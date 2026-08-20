@@ -40,6 +40,10 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 
 import { contentHash } from './generation.content.js';
+import {
+  findExternalCredentialClaims,
+  hasExternalCredentialEvidence,
+} from './deterministic-risk-scanner.js';
 import { GenerationWorkerError } from './generation.errors.js';
 import type {
   ContentWriterPort,
@@ -625,7 +629,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       maxOutputTokens: Math.min(32_768, adapter.capabilities().maxOutputTokens),
       prompt,
       recordUsage: (usage: ModelUsage) => this.recordUsage(input.context, usage),
-      ...(revision ? { revision } : {}),
+      ...(revision ? { revision, toolNames: [] as const } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       temperature: input.context.modelPolicy === 'quality' ? 0.25 : 0.35,
     } as const;
@@ -670,6 +674,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
           ...new Set([...(revision?.issues ?? []), ...assessment.issues, ...deterministicIssues]),
         ]),
       },
+      toolNames: [],
     });
     output = result.output;
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
@@ -1088,6 +1093,7 @@ function deterministicContentIssues(
     ),
   ];
   for (const content of data.variants) {
+    issues.push(...credentialCitationIssues(content, writerInput));
     if (
       content.platform_code === 'baijiahao' &&
       (content.cta !== null || content.blocks.some((block) => block.block_type === 'cta'))
@@ -1095,7 +1101,85 @@ function deterministicContentIssues(
       issues.push('baijiahao:不得包含 CTA 字段或 CTA 内容块，必须删除且不得用新增导流段落替代');
     }
   }
+  issues.push(...credentialCitationIssues(data.master_content, writerInput));
   return Object.freeze(issues);
+}
+
+function credentialCitationIssues(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): readonly string[] {
+  const supplied = suppliedCitations(writerInput);
+  const authorizedCertificateSources = authorizedCertificateSourceIds(writerInput);
+  const textValues = [
+    content.title,
+    content.summary,
+    content.cta,
+    ...content.blocks.map((block) => block.text),
+  ].filter((value): value is string => typeof value === 'string');
+  const issues: string[] = [];
+  for (const claim of textValues.flatMap(findExternalCredentialClaims)) {
+    const citations = content.citation_map
+      .filter((mapping) => contentClaimMatches(claim, mapping.claim_text))
+      .flatMap((mapping) =>
+        mapping.citation_ids.flatMap((citationId) => {
+          const citation = supplied.get(citationId);
+          return citation
+            ? [
+                {
+                  claimText: mapping.claim_text,
+                  credentialAuthorized: authorizedCertificateSources.has(citation.sourceId),
+                  id: citationId,
+                  quoteText: citation.quoteText,
+                },
+              ]
+            : [];
+        }),
+      );
+    if (
+      hasExternalCredentialEvidence(claim, citations, ownerCompanyNamesFromWriterInput(writerInput))
+    ) {
+      continue;
+    }
+    issues.push(
+      `${content.platform_code}:资质声明“${truncateUnicode(claim, 80)}”必须通过 citation_map 关联能直接证明每项资质的结构化企业证照；否则删除该声明`,
+    );
+  }
+  return Object.freeze(issues);
+}
+
+function suppliedCitations(
+  writerInput: JsonObject,
+): ReadonlyMap<string, { readonly quoteText: string; readonly sourceId: string }> {
+  const values = Array.isArray(writerInput['citations']) ? writerInput['citations'] : [];
+  return new Map(
+    values.flatMap((value) => {
+      if (!isJsonObject(value)) return [];
+      const id = value['citation_id'];
+      const quote = value['quote_text'];
+      const sourceId = value['source_id'];
+      return typeof id === 'string' && typeof quote === 'string' && typeof sourceId === 'string'
+        ? [[id, { quoteText: quote, sourceId }] as const]
+        : [];
+    }),
+  );
+}
+
+function authorizedCertificateSourceIds(writerInput: JsonObject): ReadonlySet<string> {
+  const brief = isJsonObject(writerInput['brief']) ? writerInput['brief'] : null;
+  const constraints = brief && isJsonObject(brief['constraints']) ? brief['constraints'] : null;
+  const values = constraints?.['authorized_certificate_source_ids'];
+  return new Set(
+    Array.isArray(values)
+      ? values.filter((value): value is string => typeof value === 'string')
+      : [],
+  );
+}
+
+function contentClaimMatches(claim: string, mappedClaim: string): boolean {
+  const expected = normalizeContentText(claim);
+  const actual = normalizeContentText(mappedClaim);
+  return Boolean(expected && actual && (actual.includes(expected) || expected.includes(actual)));
 }
 
 function rewriteDeterministicIssues(

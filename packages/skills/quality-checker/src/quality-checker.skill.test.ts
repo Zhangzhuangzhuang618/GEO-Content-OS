@@ -315,6 +315,63 @@ describe('QualityCheckerSkill', () => {
     });
   });
 
+  it('rejects a company-name block for the anonymous institution 某银行', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '可向某银行咨询企业结算流程。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“某银行”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({ context, input, recordUsage: () => undefined }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('only_allowed_owner_or_generic_name_is_quoted'),
+    });
+  });
+
+  it.each(['设备清单', '某银行结算服务'])(
+    'rejects a company-name block for non-identifiable quoted text %s',
+    async (quotedText) => {
+      const input = qualityInputWithBlocks([
+        { block_key: 'intro', text: `文章建议核对${quotedText}。` },
+      ]);
+      const output = blockedOutput({
+        category: 'brand',
+        citation_ids: [],
+        location: 'blocks[0].text',
+        message: `内容包含禁止的公司名称“${quotedText}”。`,
+        rule_id: 'brand.other_company_name',
+        severity: 'BLOCK',
+        suggestion: '改为匿名表述。',
+      });
+
+      await expect(
+        skill(
+          new MockModelAdapter({
+            modelKey: 'flash',
+            responses: [{ text: JSON.stringify(output) }],
+          }),
+        ).run({ context, input, recordUsage: () => undefined }),
+      ).rejects.toMatchObject({
+        code: 'SKILL_OUTPUT_INVALID',
+        message: expect.stringContaining('quoted_name_is_not_identifiable_company'),
+      });
+    },
+  );
+
   it('rejects a company-name block for the allowed owner company', async () => {
     const input = qualityInputWithBlocks(
       [
@@ -488,6 +545,27 @@ describe('QualityCheckerSkill', () => {
 
     await expect(
       skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
+  it('keeps an exact legal company name when ordinary words precede it in the sentence', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '可通过广州家盛搬家有限公司安排运输。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方企业“广州家盛搬家有限公司”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({ modelKey: 'flash', responses: [{ text: JSON.stringify(output) }] }),
+      ).run({ context, input, recordUsage: () => undefined }),
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
   });
 

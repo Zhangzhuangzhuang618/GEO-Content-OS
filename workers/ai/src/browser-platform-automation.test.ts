@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   BrowserPlatformAutomation,
+  buildBrowserPlatformRewriteInput,
   type BrowserPlatformAutomationPolicy,
   nextSchedule,
 } from './browser-platform-automation.js';
@@ -124,6 +125,38 @@ describe('browser-platform automation', () => {
     const outboxInsert = statements.find((sql) => sql.includes('INSERT INTO outbox_events'));
     expect(outboxInsert).toContain('next_attempt_at');
     expect(outboxInsert).not.toContain('available_at');
+  });
+
+  it('reuses the original frozen citations for a browser-platform quality rewrite', () => {
+    const citation = {
+      chunk_id: '10000000-0000-4000-8000-000000000154',
+      citation_id: '10000000-0000-4000-8000-000000000154',
+      quote_text: '资料类型：企业证照\n证照名称：道路运输经营许可证',
+      source_id: '20000000-0000-4000-8000-000000000154',
+    };
+    const input = {
+      brief: {
+        constraints: { additional_instructions: '仅使用已提供证据。' },
+        platform_codes: ['lieju'],
+        title: '厂房搬迁怎么选服务',
+      },
+      citations: [citation],
+      generation_mode: 'draft',
+      locked_blocks: [],
+      platform_rules_by_code: { lieju: { rules: { title_max_characters: 30 } } },
+      strategy: { profile: { positioning: '广州示例搬家有限公司提供搬迁服务。' } },
+    };
+
+    const rewrite = buildBrowserPlatformRewriteInput(input, 'lieju');
+
+    expect(rewrite['citations']).toEqual([citation]);
+    expect(rewrite['generation_mode']).toBe('rewrite');
+    expect(rewrite['brief']).toMatchObject({
+      constraints: {
+        additional_instructions: expect.stringContaining('仅使用已提供证据。'),
+      },
+      platform_codes: ['lieju'],
+    });
   });
 });
 

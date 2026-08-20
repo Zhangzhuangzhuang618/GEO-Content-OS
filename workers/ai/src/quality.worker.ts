@@ -42,6 +42,7 @@ interface QualityContext extends UsageContext {
 export interface CitationRow {
   readonly claimKey: string;
   readonly claimText: string;
+  readonly credentialAuthorized?: boolean;
   readonly id: string;
   readonly quoteText: string;
 }
@@ -123,6 +124,8 @@ export class QualityCheckWorker {
         scanDeterministicRisks({
           brandProfile: context.brandProfile,
           citations: citations.map((citation) => ({
+            claimText: citation.claimText,
+            credentialAuthorized: citation.credentialAuthorized === true,
             id: citation.id,
             quoteText: citation.quoteText,
           })),
@@ -273,12 +276,27 @@ export class QualityCheckWorker {
   private async loadCitations(event: ValidatedQualityEvent): Promise<readonly CitationRow[]> {
     return this.client<CitationRow[]>`
       SELECT
-        id, claim_key AS "claimKey", claim_text AS "claimText",
-        quote_text AS "quoteText"
-      FROM ai_citations
-      WHERE tenant_id = ${event.tenantId}::uuid
-        AND content_version_id = ${event.data.contentVersionId}::uuid
-      ORDER BY claim_key, id
+        citation.id, citation.claim_key AS "claimKey", citation.claim_text AS "claimText",
+        citation.quote_text AS "quoteText",
+        (
+          source.workspace_id=${event.data.workspaceId}::uuid
+          AND (source.project_id=${event.data.projectId}::uuid OR source.project_id IS NULL)
+          AND source.source_type='image' AND source.status='active' AND source.deleted_at IS NULL
+          AND source.trust_level IN ('verified','normal')
+          AND source.metadata_json->>'schema_version'='source-certificate@1'
+          AND source.metadata_json @>
+            '{"article_use_allowed":true,"public_display_confirmed":true}'::jsonb
+          AND (source.effective_from IS NULL OR source.effective_from<=CURRENT_DATE)
+          AND (source.effective_to IS NULL OR source.effective_to>=CURRENT_DATE)
+        ) AS "credentialAuthorized"
+      FROM ai_citations AS citation
+      JOIN source_chunks AS chunk
+        ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
+      JOIN source_documents AS source
+        ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
+      WHERE citation.tenant_id = ${event.tenantId}::uuid
+        AND citation.content_version_id = ${event.data.contentVersionId}::uuid
+      ORDER BY citation.claim_key, citation.id
     `;
   }
 

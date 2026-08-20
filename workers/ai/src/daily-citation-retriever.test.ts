@@ -88,6 +88,74 @@ describe('DailyCitationRetriever', () => {
       'chunk-d1',
     ]);
   });
+
+  it('reserves up to three slots for authorized certificate evidence before topical evidence', async () => {
+    const search = new FakeCitationSearch(
+      [
+        citationHit('chunk-topic-1', 'source-topic-1'),
+        citationHit('chunk-topic-2', 'source-topic-2'),
+        citationHit('chunk-topic-3', 'source-topic-3'),
+        citationHit('chunk-topic-4', 'source-topic-4'),
+      ],
+      [
+        citationHit('chunk-license', 'source-license'),
+        citationHit('chunk-license-back', 'source-license'),
+        citationHit('chunk-license-extra', 'source-license'),
+        citationHit('chunk-road-certificate', 'source-road-certificate'),
+        citationHit('chunk-permit', 'source-permit'),
+      ],
+    );
+
+    const selection = await new DailyCitationRetriever(new FakeEmbedding(), search).retrieve({
+      ...REQUEST,
+      authoritySourceIds: ['source-license', 'source-permit', 'source-road-certificate'],
+    });
+
+    expect(selection.citations.map((citation) => citation.chunkId)).toEqual([
+      'chunk-license',
+      'chunk-road-certificate',
+      'chunk-permit',
+      'chunk-topic-1',
+      'chunk-topic-2',
+    ]);
+    expect(search.inputs[1]).toMatchObject({
+      sourceDocumentIds: ['source-license', 'source-permit', 'source-road-certificate'],
+      trustLevels: ['verified', 'normal'],
+    });
+  });
+
+  it('drops unauthorized certificate hits from topic retrieval and never selects more than three certificates', async () => {
+    const certificate = (name: string) => `资料类型：企业证照\n证照名称：${name}`;
+    const search = new FakeCitationSearch(
+      [
+        citationHit('chunk-unauthorized', 'source-unauthorized', certificate('未授权证照')),
+        citationHit('chunk-authority-3-topic', 'source-authority-3', certificate('证照三')),
+        citationHit('chunk-authority-4-topic', 'source-authority-4', certificate('证照四')),
+        citationHit('chunk-topic', 'source-topic', '普通主题资料'),
+      ],
+      [
+        citationHit('chunk-authority-1', 'source-authority-1', certificate('证照一')),
+        citationHit('chunk-authority-2', 'source-authority-2', certificate('证照二')),
+      ],
+    );
+
+    const selection = await new DailyCitationRetriever(new FakeEmbedding(), search).retrieve({
+      ...REQUEST,
+      authoritySourceIds: [
+        'source-authority-1',
+        'source-authority-2',
+        'source-authority-3',
+        'source-authority-4',
+      ],
+    });
+
+    expect(selection.citations.map((citation) => citation.chunkId)).toEqual([
+      'chunk-authority-1',
+      'chunk-authority-2',
+      'chunk-authority-3-topic',
+      'chunk-topic',
+    ]);
+  });
 });
 
 class FakeEmbedding implements EmbeddingAdapter {
@@ -117,19 +185,22 @@ class FakeEmbedding implements EmbeddingAdapter {
 }
 
 class FakeCitationSearch {
+  public readonly inputs: CitationSearchInput[] = [];
   public lastInput: CitationSearchInput | undefined;
 
   public constructor(
     private readonly hits: CitationContext['hits'] = [citationHit('chunk-1', 'source-1')],
+    private readonly authorityHits: CitationContext['hits'] = [],
   ) {}
 
   public search(input: CitationSearchInput): Promise<CitationContext> {
     this.lastInput = input;
+    this.inputs.push(input);
     return Promise.resolve({
       contextHash: 'a'.repeat(64),
       contextVersion: 'citation-context/1.0.0',
       degraded: false,
-      hits: this.hits,
+      hits: input.sourceDocumentIds ? this.authorityHits : this.hits,
       queryHash: 'b'.repeat(64),
       rerankModelKey: 'rerank-test-v1',
       rerankUsage: null,
@@ -138,8 +209,11 @@ class FakeCitationSearch {
   }
 }
 
-function citationHit(chunkId: string, sourceDocumentId: string): CitationContext['hits'][number] {
-  const text = '候选相关证据';
+function citationHit(
+  chunkId: string,
+  sourceDocumentId: string,
+  text = '候选相关证据',
+): CitationContext['hits'][number] {
   return {
     chunkId,
     chunkNo: 0,

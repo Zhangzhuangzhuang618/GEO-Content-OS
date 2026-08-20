@@ -450,10 +450,18 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
 }
 
 function manualErrorSummary(value: Readonly<Record<string, unknown>> | null): string {
-  if (!value) return '未记录具体失败原因，请打开内容或发布任务查看当前状态。';
-  const code = typeof value['code'] === 'string' ? value['code'] : '';
-  const message = typeof value['message'] === 'string' ? value['message'] : '';
-  return [code, message].filter(Boolean).join('：') || '未记录具体失败原因。';
+  const code = typeof value?.['code'] === 'string' ? value['code'] : 'UNKNOWN';
+  return (
+    {
+      BROWSER_PLATFORM_REWRITE_FAILED:
+        '自动修改过程未完成，本候选没有进入发布。可稍后重新质检；若仍失败，请打开全文手动处理。',
+      GENERATION_FAILED_RETIRED:
+        '正文生成未完成，本候选已停止处理。请检查企业资料后重新发起今日批次。',
+      QUALITY_CHECK_EXECUTION_FAILED: '质量检查返回了无效结果，本次结果未被采用。请稍后重新质检。',
+      QUALITY_GATE_FAILED_AFTER_MAX_REWRITES:
+        '达到自动修改次数上限后仍未满足发布要求。请查看质量报告并编辑正文。',
+    }[code] ?? '自动处理未完成。请打开全文或发布任务查看可执行的处理入口。'
+  );
 }
 
 function normalizeTime(value: string): string | null {

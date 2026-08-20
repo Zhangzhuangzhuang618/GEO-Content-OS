@@ -114,7 +114,10 @@ describe('RuntimeQualityChecker', () => {
     expect(repairPrompt).toContain('No server-required BLOCK issue was identified');
     expect(repairPrompt).toContain('Mandatory server-required issues: []');
     expect(repairPrompt).toContain('There are no eligible high-risk fact locations');
+    expect(repairPrompt).toContain('Valid immutable content locations are limited to');
+    expect(repairPrompt).toMatch(/The current title has \d+ Unicode characters/u);
     expect(repairPrompt).toContain('Do not copy them from examples');
+    expect(repairPrompt).not.toContain('测试任务提示词');
   });
 
   it('binds Lieju title, contact, brand, and high-risk semantics before the first check', async () => {

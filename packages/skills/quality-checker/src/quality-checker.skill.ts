@@ -1,5 +1,9 @@
 import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
-import { findPublishedOwnerCompanyNames } from '@geo-content-os/contracts';
+import {
+  findPublishedOwnerCompanyNames,
+  isAllowedCompanyReference,
+  isDisallowedCompanyReferenceAtLocation,
+} from '@geo-content-os/contracts';
 import {
   QUALITY_CHECKER_DATA_SCHEMA,
   QUALITY_CHECKER_INPUT_SCHEMA,
@@ -329,10 +333,15 @@ function invalidBrandIssueReason(
   if (quotedNames.every((name) => isAllowedCompanyReference(name, allowedCompanyNames))) {
     return 'only_allowed_owner_or_generic_name_is_quoted';
   }
-  return quotedNames.some(
-    (name) => !isAllowedCompanyReference(name, allowedCompanyNames) && locationText.includes(name),
-  )
-    ? null
+  if (
+    quotedNames.some((name) =>
+      isDisallowedCompanyReferenceAtLocation(name, locationText, allowedCompanyNames),
+    )
+  ) {
+    return null;
+  }
+  return quotedNames.some((name) => locationText.includes(name))
+    ? 'quoted_name_is_not_identifiable_company'
     : 'quoted_prohibited_name_is_not_present_at_location';
 }
 
@@ -371,16 +380,6 @@ function invalidHighRiskFactIssueReason(
 function quotedCompanyNames(message: string): readonly string[] {
   return Object.freeze(
     [...message.matchAll(/[“"]([^”"]{2,80})[”"]/gu)].map((match) => match[1]!.trim()),
-  );
-}
-
-function isAllowedCompanyReference(value: string, allowedCompanyNames: readonly string[]): boolean {
-  return (
-    allowedCompanyNames.includes(value) ||
-    value === '某公司' ||
-    value === '某搬家公司' ||
-    value === '其他服务商' ||
-    /^(?:电话|搬家|物流|运输|家政|装修|物业|服务)公司$/u.test(value)
   );
 }
 

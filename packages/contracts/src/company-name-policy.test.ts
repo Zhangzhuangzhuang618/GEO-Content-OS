@@ -4,6 +4,8 @@ import {
   companyNamePolicyInstruction,
   findDisallowedCompanyNames,
   findPublishedOwnerCompanyNames,
+  isAllowedCompanyReference,
+  isDisallowedCompanyReferenceAtLocation,
 } from './company-name-policy.js';
 
 describe('company name publication policy', () => {
@@ -14,6 +16,12 @@ describe('company name publication policy', () => {
         ['广州志远搬家服务有限公司'],
       ),
     ).toEqual([]);
+    expect(isAllowedCompanyReference('某银行')).toBe(true);
+    expect(isAllowedCompanyReference('某金融机构')).toBe(true);
+    expect(
+      isAllowedCompanyReference('广州志远搬家服务有限公司', ['广州志远搬家服务有限公司']),
+    ).toBe(true);
+    expect(isAllowedCompanyReference('广州家盛搬家有限公司')).toBe(false);
   });
 
   it('does not use a historical owner when the caller omits tenant policy', () => {
@@ -26,6 +34,16 @@ describe('company name publication policy', () => {
     expect(
       findDisallowedCompanyNames('广州家盛搬家有限公司、广州四通搬家有限公司的信息来源于企查查。'),
     ).toEqual(['广州家盛搬家有限公司', '广州四通搬家有限公司', '企查查']);
+    expect(findDisallowedCompanyNames('可通过货拉拉安排运输。')).toEqual(['货拉拉']);
+    expect(
+      isDisallowedCompanyReferenceAtLocation(
+        '广州家盛搬家有限公司',
+        '可通过广州家盛搬家有限公司安排运输。',
+      ),
+    ).toBe(true);
+    expect(isDisallowedCompanyReferenceAtLocation('设备清单', '工厂搬迁前应确认设备清单。')).toBe(
+      false,
+    );
   });
 
   it('derives each tenant owner from first-party positioning and CTA only', () => {

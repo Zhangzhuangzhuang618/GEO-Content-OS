@@ -1,4 +1,7 @@
-import { DomainEventEnvelopeSchema } from '@geo-content-os/contracts';
+import {
+  DomainEventEnvelopeSchema,
+  findPublishedOwnerCompanyNames,
+} from '@geo-content-os/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
@@ -32,6 +35,7 @@ interface Seed {
     readonly timezone: string;
   };
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
+  readonly authoritySourceIds: readonly string[];
   readonly keywords: readonly { readonly id: string; readonly term: string }[];
   readonly rule: { readonly hash: string; readonly id: string; readonly rules: JsonObject };
 }
@@ -243,7 +247,7 @@ async function retireFailed(transaction: postgres.TransactionSql, batch: BatchRo
 }
 
 async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): Promise<Seed> {
-  const [brands, rules, keywords, knowledge, accounts] = await Promise.all([
+  const [brands, rules, keywords, knowledge, accounts, authoritySources] = await Promise.all([
     transaction<Seed['brand'][]>`
       SELECT id,profile_json AS profile,version FROM brand_profiles
       WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
@@ -285,6 +289,19 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         AND workspace_id=${batch.workspaceId}::uuid AND platform_code=${batch.platformCode}
         AND status='active' AND publish_mode='api' AND deleted_at IS NULL LIMIT 1
     `,
+    transaction<{ holderName: string; id: string }[]>`
+      SELECT id,metadata_json->>'holder_name' AS "holderName"
+      FROM source_documents
+      WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
+        AND (project_id=${batch.projectId}::uuid OR project_id IS NULL)
+        AND source_type='image' AND status='active' AND deleted_at IS NULL
+        AND trust_level IN ('verified','normal')
+        AND metadata_json->>'schema_version'='source-certificate@1'
+        AND metadata_json @> '{"article_use_allowed":true,"public_display_confirmed":true}'::jsonb
+        AND (effective_from IS NULL OR effective_from<=${batch.businessDate}::date)
+        AND (effective_to IS NULL OR effective_to>=${batch.businessDate}::date)
+      ORDER BY created_at DESC,id
+    `,
   ]);
   const brand = brands[0];
   const rule = rules[0];
@@ -294,8 +311,14 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
   if (!account) throw new Error(`${batch.platformCode} 托管浏览器账号不可用。`);
   if (!keywords.length) throw new Error(`项目没有适用于 ${batch.platformCode} 的关键词。`);
   if (!knowledge.length) throw new Error('项目没有可用的已解析知识资料。');
+  const ownerCompanyNames = findPublishedOwnerCompanyNames(brand.profile);
   return {
     account,
+    authoritySourceIds: Object.freeze(
+      authoritySources
+        .filter((source) => ownerCompanyNames.includes(source.holderName))
+        .map((source) => source.id),
+    ),
     brand,
     keywords: Object.freeze(keywords),
     rule,
@@ -318,6 +341,7 @@ async function createCandidate(
   const audience = `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
   const evidence = await dailyCitations.retrieve({
     angle: angle.label,
+    authoritySourceIds: seed.authoritySourceIds,
     audience,
     businessDate: batch.businessDate,
     candidateNo,
@@ -344,6 +368,7 @@ async function createCandidate(
       '只使用给定品牌资料和引用证据，不得编造价格、规模、资质、排名或承诺。',
       platformInstruction,
     ].join(''),
+    authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: batch.platformCode === 'lieju' ? '通过页面联系方式咨询具体需求' : null,
     schema_version: 'brief-constraints@1',
     target_accounts_by_code: {

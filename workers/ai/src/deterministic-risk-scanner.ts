@@ -2,11 +2,15 @@ import {
   findDisallowedCompanyNames,
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
+  isAllowedCompanyReference,
+  isDisallowedCompanyReferenceAtLocation,
   type PlatformCode,
 } from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityIssue } from '@geo-content-os/contracts/skills';
 
 export interface DeterministicRiskCitation {
+  readonly claimText?: string;
+  readonly credentialAuthorized?: boolean;
   readonly id: string;
   readonly quoteText: string;
 }
@@ -29,8 +33,11 @@ interface RiskRule {
   readonly pattern: RegExp;
   readonly ruleId: string;
   readonly suggestion: string;
-  readonly support: 'brand_or_citation' | 'citation' | 'never';
+  readonly support: 'brand_or_citation' | 'citation' | 'credential_citation' | 'never';
 }
+
+const EXTERNAL_CREDENTIAL_CLAIM_PATTERN =
+  /(?:获得|持有|拥有|通过|取得|获评|荣获|具备).{0,32}(?:营业执照|资质|认证|许可证|许可|荣誉|奖项|称号|AAA)|(?:本公司|本企业|公司)(?![^。！？；;\n]{0,8}(?:是否|应当|应该|需要|须|没有|未))[^。！？；;\n]{0,8}(?:现有|已有|有)[^。！？；;\n]{0,32}(?:营业执照|资质|认证|许可证|许可|荣誉|奖项|称号|AAA)|(?:营业执照|[\p{Script=Han}A-Za-z0-9·（）()]{1,32}?(?:经营许可证|许可证|运输证|资质证书|认证证书|信用证书|认证)|[\p{Script=Han}A-Za-z0-9·（）()]{0,16}?AAA(?:级)?(?:信用)?(?:认证|证书)?)[^。！？；;\n]{0,40}(?:齐全|在有效期内|仍有效|仍然有效|真实有效|已办理|已经办理|已取得|已经取得)|(?:国家级|省级|市级).{0,16}(?:资质|认证|荣誉|奖项|称号)/u;
 
 const TITLE_LIMITS: Readonly<Record<PlatformCode, number>> = Object.freeze({
   baijiahao: 40,
@@ -109,11 +116,10 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
   {
     category: 'fact',
     message: '内容包含需要外部证据支持的资质、认证、荣誉或许可声明。',
-    pattern:
-      /(?:获得|持有|拥有|通过|取得|获评|荣获).{0,24}(?:资质|认证|许可证|许可|荣誉|奖项|称号|AAA)|(?:国家级|省级|市级).{0,16}(?:资质|认证|荣誉|奖项|称号)/u,
+    pattern: EXTERNAL_CREDENTIAL_CLAIM_PATTERN,
     ruleId: 'deterministic.fact.external_credential_requires_evidence',
     suggestion: '删除该声明，或关联能直接支持它的权威外部证据。',
-    support: 'citation',
+    support: 'credential_citation',
   },
 ]);
 
@@ -139,6 +145,12 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
             ? `${brandEvidence}\n${citationEvidence}`
             : '';
       for (const matchedText of matchingClaims(section.text, rule.pattern)) {
+        if (
+          rule.support === 'credential_citation' &&
+          hasExternalCredentialEvidence(matchedText, input.citations, allowedCompanyNames)
+        ) {
+          continue;
+        }
         if (rule.support !== 'never' && hasMatchingEvidence(matchedText, evidence)) continue;
         issues.push(
           issue(
@@ -153,6 +165,85 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
     }
   }
   return Object.freeze(deduplicate(issues));
+}
+
+export function findExternalCredentialClaims(value: string): readonly string[] {
+  return matchingClaims(value, EXTERNAL_CREDENTIAL_CLAIM_PATTERN);
+}
+
+export function findExternalCredentialNames(value: string): readonly string[] {
+  const candidates = [
+    ...value.matchAll(
+      /营业执照|(?:(?![和与及、，,；;。])[\p{Script=Han}A-Za-z0-9·（）()]){1,32}?(?:经营许可证|许可证|运输证|资质证书|认证证书|信用证书|认证)(?=$|[、，,；;。]|和|与|及|并(?:持有|取得|获得)?|在有效期内|齐全|仍然?有效|真实有效|已(?:经)?(?:办理|取得))|(?:(?![和与及、，,；;。])[\p{Script=Han}A-Za-z0-9·（）()]){0,16}?AAA(?:级)?(?:信用)?(?:认证|证书)?(?=$|[、，,；;。]|和|与|及|在有效期内|齐全|仍然?有效|真实有效)/gu,
+    ),
+  ]
+    .map((match) => normalizeCredentialName(match[0]))
+    .filter((name) => name.length >= 2);
+  return Object.freeze([...new Set(candidates)]);
+}
+
+export function hasExternalCredentialEvidence(
+  claim: string,
+  citations: readonly DeterministicRiskCitation[],
+  allowedCompanyNames: readonly string[],
+): boolean {
+  const names = findExternalCredentialNames(claim);
+  const owners = new Set(allowedCompanyNames.map((name) => name.trim()).filter(Boolean));
+  if (names.length === 0 || owners.size === 0) return false;
+  const certificates = citations.flatMap((citation) => {
+    if (!citation.credentialAuthorized || !citation.claimText) return [];
+    if (!claimTextMatches(claim, citation.claimText)) return [];
+    const mappedNames = findExternalCredentialNames(citation.claimText);
+    if (mappedNames.length === 0) return [];
+    const quote = citation.quoteText;
+    if (!quote.includes('资料类型：企业证照')) return [];
+    const name = /(?:^|\n)证照名称：([^\n]+)/u.exec(quote)?.[1]?.trim();
+    const holder = /(?:^|\n)持证主体：([^\n]+)/u.exec(quote)?.[1]?.trim();
+    return name &&
+      holder &&
+      owners.has(holder) &&
+      mappedNames.some((mappedName) => credentialNameMatches(mappedName, name))
+      ? [{ holder, name }]
+      : [];
+  });
+  return names.every((name) =>
+    certificates.some((certificate) => credentialNameMatches(name, certificate.name)),
+  );
+}
+
+function normalizeCredentialName(value: string): string {
+  return value
+    .replace(
+      /^(?:(?:本公司|公司|企业|本企业|同时|以及|已经|已有|现有|已|并且|并|且|和|与|及|有|获得|持有|拥有|通过|取得|获评|荣获|具备|国家级|省级|市级))+/u,
+      '',
+    )
+    .trim();
+}
+
+function credentialNameMatches(claimName: string, certificateName: string): boolean {
+  const claim = credentialKey(claimName);
+  return claim.length >= 2 && claim === credentialKey(certificateName);
+}
+
+function credentialKey(value: string): string {
+  const normalized = canonicalize(value);
+  if (normalized.includes('营业执照')) return '营业执照';
+  if (normalized.includes('道路运输经营许可证') || normalized.includes('道路运输经营许可')) {
+    return '道路运输经营许可';
+  }
+  if (normalized === '道路运输证') return '道路运输证';
+  if (normalized.includes('aaa') && normalized.includes('信用')) return 'aaa信用';
+  return normalized;
+}
+
+function claimTextMatches(claim: string, mappedClaim: string): boolean {
+  const expected = canonicalize(claim);
+  const actual = canonicalize(mappedClaim);
+  return (
+    expected.length > 0 &&
+    actual.length > 0 &&
+    (actual.includes(expected) || expected.includes(actual))
+  );
 }
 
 function addLiejuPlatformIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
@@ -380,17 +471,9 @@ function keepModelIssue(
   if (quotedNames.length === 0) return false;
   const contentText = flattenStrings(content).join('\n');
   return quotedNames.some(
-    (name) => !isAllowedCompanyReference(name, allowedCompanyNames) && contentText.includes(name),
-  );
-}
-
-function isAllowedCompanyReference(value: string, allowedCompanyNames: readonly string[]): boolean {
-  return (
-    allowedCompanyNames.includes(value) ||
-    value === '某公司' ||
-    value === '某搬家公司' ||
-    value === '其他服务商' ||
-    /^(?:电话|搬家|物流|运输|家政|装修|物业|服务)公司$/u.test(value)
+    (name) =>
+      !isAllowedCompanyReference(name, allowedCompanyNames) &&
+      isDisallowedCompanyReferenceAtLocation(name, contentText, allowedCompanyNames),
   );
 }
 
