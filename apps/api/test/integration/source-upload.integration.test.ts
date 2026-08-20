@@ -1,6 +1,7 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import { renderTemplateImage } from '@geo-content-os/adapter-image';
 import { type WebFetchAdapter, WebFetchBlockedError } from '@geo-content-os/adapter-web-fetch';
+import { IngestJobResponseSchema, SourceDetailResponseSchema } from '@geo-content-os/contracts';
 import {
   minioEndpoint,
   MINIO_TEST_ACCESS_KEY,
@@ -303,6 +304,72 @@ describe('source upload', () => {
         summary_use_confirmed: true,
       },
     });
+  });
+
+  it('keeps insurance proof details contract-valid when an older ingest failure has internal retry metadata', async () => {
+    const database = requireClient(client);
+    const tokens = await createSession(database, MANAGER_ID);
+    const response = await sendInsuranceProofUpload(
+      application,
+      tokens,
+      'source-insurance-proof-failed-history-001',
+      Buffer.from('%PDF-1.7\nprivate insurance proof\n%%EOF', 'utf8'),
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const sourceId = String(response.body.data.source.id);
+    const failedJobId = String(response.body.data.ingest_job.id);
+    const succeededJobId = randomUUID();
+
+    await database`
+      UPDATE ingest_jobs
+      SET
+        status = 'failed', attempt_count = 5, stage = 'scan', progress = 15,
+        error_json = ${JSON.stringify({
+          code: 'MALWARE_SCANNER_UNAVAILABLE',
+          message: 'Malware scanner is unavailable',
+          retryable: false,
+          schema_version: 'job-error@1',
+        })}::text::jsonb,
+        started_at = now() - interval '2 minutes', finished_at = now() - interval '1 minute',
+        updated_at = now() - interval '1 minute'
+      WHERE id = ${failedJobId}::uuid AND tenant_id = ${TENANT_ID}::uuid
+    `;
+    await database`
+      INSERT INTO ingest_jobs (
+        id, tenant_id, source_document_id, status, attempt_count, stage, progress,
+        started_at, finished_at, created_at, updated_at
+      ) VALUES (
+        ${succeededJobId}::uuid, ${TENANT_ID}::uuid, ${sourceId}::uuid, 'succeeded', 1, 'done', 100,
+        now() - interval '30 seconds', now(), now() - interval '30 seconds', now()
+      )
+    `;
+    await database`
+      UPDATE source_documents SET status = 'active', updated_at = now()
+      WHERE id = ${sourceId}::uuid AND tenant_id = ${TENANT_ID}::uuid
+    `;
+
+    const scopeQuery = `workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_A}`;
+    const detail = await authenticatedRequest(application, tokens).get(
+      `${API_PATH}/${sourceId}?${scopeQuery}`,
+    );
+    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+    expect(SourceDetailResponseSchema.safeParse(detail.body).success).toBe(true);
+    const failedJob = detail.body.data.ingest_jobs.find(
+      (job: { readonly id: string }) => job.id === failedJobId,
+    );
+    expect(failedJob?.error).toEqual({
+      code: 'MALWARE_SCANNER_UNAVAILABLE',
+      message: 'Malware scanner is unavailable',
+      schema_version: 'job-error@1',
+    });
+    expect(failedJob?.error).not.toHaveProperty('retryable');
+
+    const job = await authenticatedRequest(application, tokens).get(
+      `/api/v1/ingest-jobs/${failedJobId}?${scopeQuery}`,
+    );
+    expect(job.status, JSON.stringify(job.body)).toBe(200);
+    expect(IngestJobResponseSchema.safeParse(job.body).success).toBe(true);
+    expect(job.body.data.error).not.toHaveProperty('retryable');
   });
 
   it('rejects personal identifiers from insurance summary fields before storage', async () => {

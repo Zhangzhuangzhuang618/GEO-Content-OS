@@ -629,7 +629,13 @@ function toIngestJobView(row: RepositoryIngestJobView): IngestJobView {
   return {
     attempt_count: row.attemptCount,
     created_at: toIso(row.createdAt),
-    error: row.error,
+    error: row.error
+      ? {
+          code: row.error.code,
+          message: row.error.message,
+          schema_version: row.error.schema_version,
+        }
+      : null,
     finished_at: row.finishedAt ? toIso(row.finishedAt) : null,
     id: row.id,
     progress: row.progress,
