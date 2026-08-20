@@ -384,6 +384,77 @@ describe('deterministic pre-publish risk scanner', () => {
     ).toContain('deterministic.fact.external_credential_requires_evidence');
   });
 
+  it.each([
+    '请核验营业执照与道路运输证照是否齐全。',
+    '选择服务商时，应确认其是否具备道路运输经营许可证。',
+    '建议选择具备营业执照的搬家公司。',
+  ])('does not treat credential verification guidance as an owner credential claim: %s', (text) => {
+    expect(
+      scanDeterministicRisks({
+        brandProfile: brand(),
+        citations: [],
+        content: content({ blocks: [block('credential-guidance', text)] }),
+        platformCode: 'lieju',
+      }).map((item) => item.rule_id),
+    ).not.toContain('deterministic.fact.external_credential_requires_evidence');
+  });
+
+  it('does not let credential guidance hide a later owner credential claim', () => {
+    expect(
+      scanDeterministicRisks({
+        brandProfile: brand(),
+        citations: [],
+        content: content({
+          blocks: [
+            block(
+              'credential-guidance-and-claim',
+              '建议选择具备营业执照的搬家公司，公司持有道路运输经营许可证。',
+            ),
+          ],
+        }),
+        platformCode: 'lieju',
+      }).map((item) => item.rule_id),
+    ).toContain('deterministic.fact.external_credential_requires_evidence');
+  });
+
+  it('does not let later credential guidance hide an earlier owner credential claim', () => {
+    expect(
+      scanDeterministicRisks({
+        brandProfile: brand(),
+        citations: [],
+        content: content({
+          blocks: [
+            block(
+              'credential-claim-and-guidance',
+              '公司持有营业执照，请核验服务商是否具备道路运输经营许可证。',
+            ),
+          ],
+        }),
+        platformCode: 'lieju',
+      }).map((item) => item.rule_id),
+    ).toContain('deterministic.fact.external_credential_requires_evidence');
+  });
+
+  it('requires evidence only for the owner claim when guidance and a claim share a sentence', () => {
+    const statement = '建议选择具备营业执照的搬家公司，公司持有道路运输经营许可证。';
+    expect(
+      scanDeterministicRisks({
+        brandProfile: brand(),
+        citations: [
+          {
+            claimText: '公司持有道路运输经营许可证。',
+            credentialAuthorized: true,
+            id: '10000000-0000-4000-8000-000000000039',
+            quoteText:
+              '资料类型：企业证照\n证照名称：道路运输经营许可证\n持证主体：广州志远搬家服务有限公司',
+          },
+        ],
+        content: content({ blocks: [block('credential-guidance-and-supported-claim', statement)] }),
+        platformCode: 'lieju',
+      }).map((item) => item.rule_id),
+    ).not.toContain('deterministic.fact.external_credential_requires_evidence');
+  });
+
   it('does not accept an unauthorized certificate or an unrelated citation mapping', () => {
     const statement = '公司持有营业执照和道路运输经营许可证。';
     const base = {

@@ -309,9 +309,10 @@ function withoutDeterministicFalsePositiveIssues(
   const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brand_policy.policy);
   const issues = data.issues.filter((issue) => {
     if (issue.rule_id === 'brand.other_company_name') {
+      const reason = invalidBrandIssueReason(input, issue, allowedCompanyNames);
       return (
-        invalidBrandIssueReason(input, issue, allowedCompanyNames) !==
-        'only_allowed_owner_or_generic_name_is_quoted'
+        reason !== 'only_allowed_owner_or_generic_name_is_quoted' &&
+        reason !== 'quoted_name_is_not_identifiable_company'
       );
     }
     if (
@@ -323,6 +324,12 @@ function withoutDeterministicFalsePositiveIssues(
         invalidLiejuContactIssueReason(input, issue) !==
         'prohibited_contact_detail_is_not_present_at_location'
       );
+    }
+    if (
+      issue.rule_id === 'fact.high_risk.unsupported' ||
+      issue.rule_id === 'fact.high_risk.unsupported_or_conflicted'
+    ) {
+      return invalidHighRiskFactIssueReason(input, issue) !== 'location_must_be_eligible_claim';
     }
     return true;
   });

@@ -154,6 +154,67 @@ describe('QualityCheckerSkill', () => {
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
+  it('can recover a repeated high-risk fact block at a provably ineligible location', async () => {
+    const input = qualityInputWithBlocks([
+      {
+        block_key: 'company-body',
+        text: '工厂搬迁前应先确认设备清单、责任边界和验收标准。',
+      },
+    ]);
+    const output = blockedOutput({
+      category: 'fact',
+      citation_ids: [],
+      location: 'blocks.company-body.text',
+      message: '高风险事实缺少支持证据。',
+      rule_id: 'fact.high_risk.unsupported',
+      severity: 'BLOCK',
+      suggestion: '补充权威证据或删除该事实。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).resolves.toMatchObject({
+      output: { data: { decision: 'pass', issues: [] } },
+    });
+  });
+
+  it('keeps a real unsupported high-risk fact when false-positive recovery is enabled', async () => {
+    const negative = QUALITY_CHECKER_CONTRACT_V1.fewShots[1]!;
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(negative.output.data) }],
+        }),
+      ).run({
+        context,
+        input: negative.input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).resolves.toMatchObject({
+      output: {
+        data: {
+          decision: 'block',
+          issues: expect.arrayContaining([
+            expect.objectContaining({ rule_id: 'fact.high_risk.unsupported' }),
+          ]),
+        },
+      },
+    });
+  });
+
   it('enforces the Lieju title_max_characters hard limit', async () => {
     const input = qualityInputWithTitleRule(
       '广州搬家服务流程与收费说明以及预约注意事项完整指南',
@@ -431,6 +492,37 @@ describe('QualityCheckerSkill', () => {
       });
     },
   );
+
+  it('can recover a repeated non-identifiable company-name block', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '文章建议先核对设备清单。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“设备清单”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).resolves.toMatchObject({
+      output: { data: { decision: 'pass', issues: [] } },
+    });
+  });
 
   it('rejects a company-name block for the allowed owner company', async () => {
     const input = qualityInputWithBlocks(
@@ -719,7 +811,7 @@ describe('QualityCheckerSkill', () => {
     });
   });
 
-  it('keeps an exact company-name block at the location containing the prohibited name', async () => {
+  it('keeps an exact company-name block during false-positive recovery', async () => {
     const input = qualityInputWithBlocks([{ block_key: 'intro', text: '可通过货拉拉安排运输。' }]);
     const output = blockedOutput({
       category: 'brand',
@@ -736,7 +828,12 @@ describe('QualityCheckerSkill', () => {
     });
 
     await expect(
-      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+      skill(adapter).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
   });
 

@@ -396,6 +396,83 @@ describe('AI Worker runtime wiring', () => {
     expect(rewritten.citation_map).toEqual(citationMap);
   });
 
+  it('repairs unsupported credentials together with a Lieju promotional term', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['lieju'], new Set());
+    const credentialText = '公司持有道路运输经营许可证。';
+    const promotionalText = '这是最好的选择。';
+    const masterBlockIndex = clean.master_content.blocks.length - 1;
+    const variantBlockIndex = clean.variants[0]!.blocks.length - 1;
+    const unsupported = {
+      master_content: {
+        ...clean.master_content,
+        blocks: clean.master_content.blocks.map((block, index) =>
+          index === masterBlockIndex ? { ...block, text: `${block.text}${credentialText}` } : block,
+        ),
+      },
+      variants: [
+        {
+          ...clean.variants[0]!,
+          blocks: clean.variants[0]!.blocks.map((block, index) =>
+            index === variantBlockIndex
+              ? { ...block, text: `${block.text}${credentialText}${promotionalText}` }
+              : block,
+          ),
+        },
+      ],
+    };
+    const targetedRepair = {
+      replacements: [
+        {
+          replacement_text: clean.master_content.blocks[masterBlockIndex]!.text,
+          target_id: `master_content.blocks[${masterBlockIndex}].text`,
+        },
+        {
+          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}可结合需求比较服务流程。`,
+          target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(targetedRepair) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const rewritten = await writer.rewriteBrowserPlatformVariant({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+      currentContent: {
+        ...unsupported.variants[0]!,
+        schema_version: 'content-writer-data@1' as const,
+      } as unknown as GeneratedContent,
+      issues: [
+        'deterministic.fact.external_credential_requires_evidence | blocks.section-7 | 资质声明缺少证据 | 删除该声明或补齐引用',
+        'deterministic.lieju.prohibited_promotional_term | blocks.section-7 | 包含最好 | 删除原词',
+      ],
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-mixed-targeted-repair-0167',
+      writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
+    });
+
+    expect(adapter.requests).toHaveLength(3);
+    const finalPrompt = adapter.requests[2]!.messages.map((message) => message.content).join('\n');
+    expect(finalPrompt).toContain('unsupported_credential_claims');
+    expect(finalPrompt).toContain('prohibited_promotional_terms');
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain(
+      '道路运输经营许可证',
+    );
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('最好');
+  });
+
   it('stops after two bounded targeted credential repairs remain unsupported', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const clean = multiPlatformContentData(['lieju'], new Set());
@@ -467,7 +544,9 @@ describe('AI Worker runtime wiring', () => {
       }),
     ).rejects.toMatchObject({
       code: 'CONTENT_QUALITY_INSUFFICIENT',
-      message: expect.stringContaining('必须通过 citation_map 关联'),
+      message: expect.stringMatching(
+        /必须通过 citation_map 关联.*targeted_repair_rejected:replacement_still_contains_unsupported_credential/u,
+      ),
     });
 
     expect(adapter.requests).toHaveLength(4);

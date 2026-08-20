@@ -144,7 +144,11 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
           : rule.support === 'brand_or_citation'
             ? `${brandEvidence}\n${citationEvidence}`
             : '';
-      for (const matchedText of matchingClaims(section.text, rule.pattern)) {
+      const matchedClaims =
+        rule.support === 'credential_citation'
+          ? findExternalCredentialClaims(section.text)
+          : matchingClaims(section.text, rule.pattern);
+      for (const matchedText of matchedClaims) {
         if (
           rule.support === 'credential_citation' &&
           hasExternalCredentialEvidence(matchedText, input.citations, allowedCompanyNames)
@@ -168,7 +172,11 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
 }
 
 export function findExternalCredentialClaims(value: string): readonly string[] {
-  return matchingClaims(value, EXTERNAL_CREDENTIAL_CLAIM_PATTERN);
+  return Object.freeze(
+    credentialClaimEntries(value)
+      .filter((match) => !isCredentialVerificationGuidance(value, match))
+      .map((match) => match.text),
+  );
 }
 
 export function findExternalCredentialNames(value: string): readonly string[] {
@@ -636,11 +644,67 @@ function hasMatchingEvidence(value: string, evidence: string): boolean {
 }
 
 function matchingClaims(value: string, pattern: RegExp): readonly string[] {
+  return Object.freeze(matchingClaimEntries(value, pattern).map((match) => match.text));
+}
+
+interface ClaimMatch {
+  readonly index: number;
+  readonly text: string;
+}
+
+function matchingClaimEntries(value: string, pattern: RegExp): readonly ClaimMatch[] {
   const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
   return Object.freeze(
     [...value.matchAll(new RegExp(pattern.source, flags))]
-      .map((match) => match[0].trim())
-      .filter(Boolean),
+      .map((match) => ({ index: match.index ?? 0, text: match[0].trim() }))
+      .filter((match) => match.text.length > 0),
+  );
+}
+
+function credentialClaimEntries(value: string): readonly ClaimMatch[] {
+  const boundaries = [0];
+  for (const match of value.matchAll(
+    /[，,](?=\s*(?:(?:(?:同时|另外|此外|不过|但是|但|而)\s*)?(?:本公司|本企业|公司|企业|我们)|(?:(?:同时|另外|此外)\s*)?(?:已|已经|现已)?(?:持有|拥有|取得|获得|通过|具备)|(?:请|建议|应当|应该|应|需要|需|务必|可(?:以)?先)(?:核验|核对|检查|确认|查看|询问|了解|判断)))/gu,
+  )) {
+    boundaries.push((match.index ?? 0) + match[0].length);
+  }
+  boundaries.push(value.length);
+  return Object.freeze(
+    boundaries.slice(0, -1).flatMap((start, index) => {
+      const segment = value.slice(start, boundaries[index + 1]);
+      return matchingClaimEntries(segment, EXTERNAL_CREDENTIAL_CLAIM_PATTERN).map((match) => ({
+        index: start + match.index,
+        text: match.text,
+      }));
+    }),
+  );
+}
+
+function isCredentialVerificationGuidance(value: string, match: ClaimMatch): boolean {
+  const clauseStart = Math.max(
+    value.lastIndexOf('。', match.index - 1),
+    value.lastIndexOf('！', match.index - 1),
+    value.lastIndexOf('？', match.index - 1),
+    value.lastIndexOf('；', match.index - 1),
+    value.lastIndexOf(';', match.index - 1),
+    value.lastIndexOf('，', match.index - 1),
+    value.lastIndexOf(',', match.index - 1),
+    value.lastIndexOf('\n', match.index - 1),
+  );
+  const followingBoundaries = ['。', '！', '？', '；', ';', '，', ',', '\n']
+    .map((separator) => value.indexOf(separator, match.index + match.text.length))
+    .filter((index) => index >= 0);
+  const clauseEnd =
+    followingBoundaries.length > 0 ? Math.min(...followingBoundaries) : value.length;
+  const clause = value.slice(clauseStart + 1, clauseEnd);
+  const prefix = value.slice(clauseStart + 1, match.index);
+
+  if (/(?:是否|有无)/u.test(match.text) || /(?:是否|有无)\s*$/u.test(prefix)) return true;
+  if (/(?:核验|核对|检查|确认|查看|询问|了解|判断).{0,32}(?:是否|有无)/u.test(clause)) {
+    return true;
+  }
+  return /(?:建议|应当|应该|需要|优先)?选择.{0,24}(?:具备|持有|拥有).{0,32}(?:营业执照|资质|认证|许可证|许可|运输证|AAA).{0,20}(?:服务商|搬家公司|公司|企业|团队|机构)/u.test(
+    clause,
   );
 }
 

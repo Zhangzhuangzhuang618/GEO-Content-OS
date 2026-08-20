@@ -534,6 +534,78 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests).toHaveLength(2);
   });
 
+  it('recovers repeated non-identifiable brand and ineligible high-risk findings together', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const qualityInput = {
+      ...clean.input,
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [{ block_key: 'company-body', text: '搬迁前应先核对设备清单。' }],
+          platform_code: 'lieju',
+          title: '厂房搬迁怎么选服务',
+        },
+      },
+    };
+    const falseBlocks = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '内容包含禁止的公司名称“设备清单”。',
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '改为匿名表述。',
+        },
+        {
+          category: 'fact' as const,
+          citation_ids: [],
+          location: 'blocks.company-body.text',
+          message: '高风险事实缺少支持证据。',
+          rule_id: 'fact.high_risk.unsupported',
+          severity: 'BLOCK' as const,
+          suggestion: '补充权威证据或删除该事实。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(falseBlocks),
+      JSON.stringify(falseBlocks),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000091',
+          projectId: '20000000-0000-4000-8000-000000000091',
+          promptVersionId: '70000000-0000-4000-8000-000000000078',
+          requestId: 'runtime-quality-checker-0091',
+          runId: '60000000-0000-4000-8000-000000000078',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000078',
+          variantId: '20000000-0000-4000-8000-000000000078',
+          workspaceId: '30000000-0000-4000-8000-000000000091',
+        },
+        qualityInput,
+      }),
+    ).resolves.toMatchObject({ decision: 'pass', issues: [] });
+
+    expect(adapter.requests).toHaveLength(2);
+  });
+
   it('uses one final repair when the first semantic repair returns only malformed brand findings', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const malformedBrandBlock = {

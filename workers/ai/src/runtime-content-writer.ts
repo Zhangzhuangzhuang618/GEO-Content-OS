@@ -2,6 +2,7 @@ import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/ada
 import {
   companyNamePolicyInstruction,
   findDisallowedCompanyNames,
+  findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
 } from '@geo-content-os/contracts';
 import {
@@ -70,23 +71,29 @@ interface ContentLengthShortfall {
   readonly platformCode: ContentWriterContent['platform_code'];
 }
 
-interface CredentialRepairTarget {
+interface TargetedTextRepairTarget {
   readonly content: ContentWriterContent;
   readonly id: string;
   readonly originalText: string;
+  readonly prohibitedPromotionalTerms: readonly string[];
   readonly unsupportedClaims: readonly string[];
 }
 
-interface CredentialRepairReplacement {
+interface TargetedTextRepairReplacement {
   readonly replacement_text: string;
   readonly target_id: string;
 }
 
-interface CredentialRepairOutput {
-  readonly replacements: readonly CredentialRepairReplacement[];
+interface TargetedTextRepairOutput {
+  readonly replacements: readonly TargetedTextRepairReplacement[];
 }
 
-const CREDENTIAL_REPAIR_SCHEMA: JsonObject = Object.freeze({
+interface TargetedTextRepairResult {
+  readonly output: ContentWriterOutput;
+  readonly rejectionReason: string | null;
+}
+
+const TARGETED_TEXT_REPAIR_SCHEMA: JsonObject = Object.freeze({
   additionalProperties: false,
   properties: {
     replacements: {
@@ -717,13 +724,15 @@ export class RuntimeContentWriter implements ContentWriterPort {
     output = result.output;
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    let targetedRepairRejection: string | null = null;
     if (
       revision &&
-      assessment.passed &&
       hasBrowserPlatformVariant(output.data) &&
-      onlyCredentialOrUnchangedRewriteIssues(deterministicIssues)
+      onlyTargetedTextRepairIssues(assessment.issues, deterministicIssues)
     ) {
-      output = await this.repairUnsupportedCredentialTargets(input, prompt, output);
+      const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
+      output = targetedRepair.output;
+      targetedRepairRejection = targetedRepair.rejectionReason;
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     }
@@ -737,15 +746,16 @@ export class RuntimeContentWriter implements ContentWriterPort {
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     }
     if (!assessment.passed || deterministicIssues.length > 0) {
-      throw new GenerationWorkerError(
-        'CONTENT_QUALITY_INSUFFICIENT',
-        [...assessment.issues, ...deterministicIssues].join('; '),
-      );
+      const issues = [...assessment.issues, ...deterministicIssues];
+      if (targetedRepairRejection) {
+        issues.push(`targeted_repair_rejected:${targetedRepairRejection}`);
+      }
+      throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', issues.join('; '));
     }
     return output;
   }
 
-  private async repairUnsupportedCredentialTargets(
+  private async repairDeterministicTextTargets(
     input: {
       readonly context: ContentWriterRunContext;
       readonly requestId: string;
@@ -754,30 +764,30 @@ export class RuntimeContentWriter implements ContentWriterPort {
     },
     prompt: ContentWriterPublishedPrompt,
     output: ContentWriterOutput,
-  ): Promise<ContentWriterOutput> {
-    const targets = credentialRepairTargets(output.data, input.writerInput);
-    if (targets.length === 0) return output;
+  ): Promise<TargetedTextRepairResult> {
+    const targets = targetedTextRepairTargets(output.data, input.writerInput);
+    if (targets.length === 0) return Object.freeze({ output, rejectionReason: null });
     const adapter = this.adapters.get(input.context.modelKey)!;
     const schemas = new SchemaGuard();
     const runner = new SkillRunner(adapter, schemas, new ToolRegistry([], schemas));
     let rejectionReason: string | null = null;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        const repaired = await runDirectWithStructuredOutputRetry<CredentialRepairOutput>(
+        const repaired = await runDirectWithStructuredOutputRetry<TargetedTextRepairOutput>(
           runner,
           directInvocation({
             context: input.context,
             input: input.writerInput,
             maxOutputTokens: Math.min(8_192, adapter.capabilities().maxOutputTokens),
-            messages: credentialRepairMessages(prompt, targets, rejectionReason),
-            outputSchema: CREDENTIAL_REPAIR_SCHEMA,
+            messages: targetedTextRepairMessages(prompt, targets, rejectionReason),
+            outputSchema: TARGETED_TEXT_REPAIR_SCHEMA,
             recordUsage: (usage) => this.recordUsage(input.context, usage),
             requestId: `${input.requestId}-credential-${attempt}`,
             ...(input.signal ? { signal: input.signal } : {}),
           }),
           1,
         );
-        const invalidReason = invalidCredentialRepairReason(
+        const invalidReason = invalidTargetedTextRepairReason(
           targets,
           repaired.output,
           input.writerInput,
@@ -787,17 +797,23 @@ export class RuntimeContentWriter implements ContentWriterPort {
           continue;
         }
         return Object.freeze({
-          ...output,
-          data: applyCredentialRepairs(output.data, repaired.output.replacements),
+          output: Object.freeze({
+            ...output,
+            data: applyTargetedTextRepairs(output.data, repaired.output.replacements),
+          }),
+          rejectionReason: null,
         });
       } catch (error) {
         if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') {
           throw error;
         }
-        rejectionReason = error.message;
+        rejectionReason = 'structured_output_invalid';
       }
     }
-    return output;
+    return Object.freeze({
+      output,
+      rejectionReason: rejectionReason ?? 'targeted_output_remained_invalid',
+    });
   }
 
   private async getPrompt(context: ContentWriterRunContext): Promise<ContentWriterPublishedPrompt> {
@@ -1328,24 +1344,31 @@ function hasBrowserPlatformVariant(data: ContentWriterData): boolean {
   );
 }
 
-function onlyCredentialOrUnchangedRewriteIssues(issues: readonly string[]): boolean {
-  let hasCredentialIssue = false;
+function onlyTargetedTextRepairIssues(
+  assessmentIssues: readonly string[],
+  deterministicIssues: readonly string[],
+): boolean {
+  let hasRepairableIssue = false;
+  const issues = [...assessmentIssues, ...deterministicIssues];
   if (issues.length === 0) return false;
   for (const issue of issues) {
-    if (issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照')) {
-      hasCredentialIssue = true;
+    if (
+      issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照') ||
+      issue.includes('包含发布层禁止的宣传词')
+    ) {
+      hasRepairableIssue = true;
       continue;
     }
     if (issue.includes('质量报告驱动重写结果与待修改版本完全相同')) continue;
     return false;
   }
-  return hasCredentialIssue;
+  return hasRepairableIssue;
 }
 
-function credentialRepairTargets(
+function targetedTextRepairTargets(
   data: ContentWriterData,
   writerInput: JsonObject,
-): readonly CredentialRepairTarget[] {
+): readonly TargetedTextRepairTarget[] {
   const locked = new Set(
     (Array.isArray(writerInput['locked_blocks']) ? writerInput['locked_blocks'] : []).flatMap(
       (value) => {
@@ -1358,22 +1381,34 @@ function credentialRepairTargets(
       },
     ),
   );
-  const targets: CredentialRepairTarget[] = [];
+  const targets: TargetedTextRepairTarget[] = [];
   const collect = (content: ContentWriterContent, prefix: string) => {
-    const add = (id: string, text: string | null) => {
+    const add = (id: string, text: string | null, scanPromotionalTerms: boolean) => {
       if (typeof text !== 'string') return;
       const unsupportedClaims = [
         ...new Set(unsupportedCredentialClaims(content, text, writerInput)),
       ];
-      if (unsupportedClaims.length === 0) return;
-      targets.push(Object.freeze({ content, id, originalText: text, unsupportedClaims }));
+      const prohibitedPromotionalTerms =
+        content.platform_code === 'lieju' && scanPromotionalTerms
+          ? findLiejuProhibitedPromotionalTerms(text)
+          : [];
+      if (unsupportedClaims.length === 0 && prohibitedPromotionalTerms.length === 0) return;
+      targets.push(
+        Object.freeze({
+          content,
+          id,
+          originalText: text,
+          prohibitedPromotionalTerms,
+          unsupportedClaims,
+        }),
+      );
     };
-    add(`${prefix}.title`, content.title);
-    add(`${prefix}.summary`, content.summary);
-    add(`${prefix}.cta`, content.cta);
+    add(`${prefix}.title`, content.title, true);
+    add(`${prefix}.summary`, content.summary, false);
+    add(`${prefix}.cta`, content.cta, false);
     content.blocks.forEach((block, index) => {
       if (locked.has(`${content.platform_code}:${block.block_key}`)) return;
-      add(`${prefix}.blocks[${index}].text`, block.text);
+      add(`${prefix}.blocks[${index}].text`, block.text, true);
     });
   };
   collect(data.master_content, 'master_content');
@@ -1381,9 +1416,9 @@ function credentialRepairTargets(
   return Object.freeze(targets);
 }
 
-function credentialRepairMessages(
+function targetedTextRepairMessages(
   prompt: ContentWriterPublishedPrompt,
-  targets: readonly CredentialRepairTarget[],
+  targets: readonly TargetedTextRepairTarget[],
   rejectionReason: string | null,
 ): readonly ModelMessage[] {
   return Object.freeze([
@@ -1399,7 +1434,7 @@ This is a bounded targeted repair stage. Rewrite only the supplied text targets.
     {
       content: `${prompt.taskTemplate}
 
-For every target, return exactly one replacement. Remove or neutralize every listed unsupported credential assertion while preserving the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
+For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.
 ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify(rejectionReason)}. Correct that exact problem.` : ''}`,
@@ -1407,8 +1442,9 @@ ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify
     },
     {
       content: JSON.stringify({
-        credential_repair_targets: targets.map((target) => ({
+        targeted_text_repair_targets: targets.map((target) => ({
           original_text: target.originalText,
+          prohibited_promotional_terms: target.prohibitedPromotionalTerms,
           target_id: target.id,
           unsupported_credential_claims: target.unsupportedClaims,
         })),
@@ -1420,13 +1456,13 @@ ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify
   ]);
 }
 
-function invalidCredentialRepairReason(
-  targets: readonly CredentialRepairTarget[],
-  output: CredentialRepairOutput,
+function invalidTargetedTextRepairReason(
+  targets: readonly TargetedTextRepairTarget[],
+  output: TargetedTextRepairOutput,
   writerInput: JsonObject,
 ): string | null {
   const targetById = new Map(targets.map((target) => [target.id, target]));
-  const replacements = new Map<string, CredentialRepairReplacement>();
+  const replacements = new Map<string, TargetedTextRepairReplacement>();
   for (const replacement of output.replacements) {
     if (!targetById.has(replacement.target_id)) return 'unknown_target_id';
     if (replacements.has(replacement.target_id)) return 'duplicate_target_id';
@@ -1445,13 +1481,19 @@ function invalidCredentialRepairReason(
     ) {
       return `replacement_still_contains_unsupported_credential:${target.id}`;
     }
+    if (
+      target.prohibitedPromotionalTerms.length > 0 &&
+      findLiejuProhibitedPromotionalTerms(replacement.replacement_text).length > 0
+    ) {
+      return `replacement_still_contains_prohibited_promotional_term:${target.id}`;
+    }
   }
   return null;
 }
 
-function applyCredentialRepairs(
+function applyTargetedTextRepairs(
   data: ContentWriterData,
-  replacements: readonly CredentialRepairReplacement[],
+  replacements: readonly TargetedTextRepairReplacement[],
 ): ContentWriterData {
   const byId = new Map(
     replacements.map((replacement) => [replacement.target_id, replacement.replacement_text]),
