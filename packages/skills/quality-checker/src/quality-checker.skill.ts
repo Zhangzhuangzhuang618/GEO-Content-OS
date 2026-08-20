@@ -31,6 +31,7 @@ export interface QualityCheckerSkillRunInput {
   readonly input: Readonly<Record<string, unknown>>;
   readonly prompt?: QualityCheckerPublishedPrompt;
   readonly recordUsage: (usage: ModelUsage) => Promise<void> | void;
+  readonly recoverAllowedBrandReferenceIssues?: boolean;
   readonly signal?: AbortSignal;
   readonly toolNames?: readonly string[];
 }
@@ -80,8 +81,12 @@ export class QualityCheckerSkill {
       temperature: 0,
       toolNames: invocation.toolNames ?? QUALITY_CHECKER_TOOL_NAMES_V1,
     });
-    const output = serverOwnedOutput(invocation.context, result.output, result.usages);
-    assertOutput(invocation.context, invocation.input as unknown as CheckerInput, output);
+    const checkerInput = invocation.input as unknown as CheckerInput;
+    const data = invocation.recoverAllowedBrandReferenceIssues
+      ? withoutAllowedBrandReferenceIssues(checkerInput, result.output)
+      : result.output;
+    const output = serverOwnedOutput(invocation.context, data, result.usages);
+    assertOutput(invocation.context, checkerInput, output);
     return Object.freeze({ ...result, output });
   }
 }
@@ -295,6 +300,33 @@ function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData[
       })}`,
     );
   }
+}
+
+function withoutAllowedBrandReferenceIssues(
+  input: CheckerInput,
+  data: QualityCheckerData,
+): QualityCheckerData {
+  const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brand_policy.policy);
+  const issues = data.issues.filter(
+    (issue) =>
+      issue.rule_id !== 'brand.other_company_name' ||
+      invalidBrandIssueReason(input, issue, allowedCompanyNames) !==
+        'only_allowed_owner_or_generic_name_is_quoted',
+  );
+  if (issues.length === data.issues.length) return data;
+  const blocks = issues.filter((issue) => issue.severity === 'BLOCK');
+  const warnings = issues.filter((issue) => issue.severity === 'WARN');
+  const decision =
+    blocks.length > 0
+      ? 'block'
+      : warnings.length > input.safety_policy.max_warnings_for_pass
+        ? 'revise'
+        : 'pass';
+  return Object.freeze({
+    ...data,
+    decision,
+    issues: Object.freeze(issues),
+  });
 }
 
 interface SemanticIssueRejection {

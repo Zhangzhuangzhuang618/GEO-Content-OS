@@ -425,6 +425,74 @@ describe('RuntimeQualityChecker', () => {
     expect(repairPrompt).toContain('do not report them as violations');
   });
 
+  it('recovers when semantic repair repeats the same unverifiable owner-company block', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const owner = '广州志远搬家服务有限公司';
+    const qualityInput = {
+      ...clean.input,
+      brand_policy: {
+        ...(clean.input['brand_policy'] as Readonly<Record<string, unknown>>),
+        policy: { positioning: `${owner}面向广州提供搬迁服务。` },
+      },
+      content_version: {
+        ...(clean.input['content_version'] as Readonly<Record<string, unknown>>),
+        content: {
+          blocks: [{ block_key: 'intro', text: `${owner}可根据现场情况说明服务边界。` }],
+          platform_code: 'lieju',
+          title: '厂房搬迁怎么选服务',
+        },
+      },
+    };
+    const falseOwnerBlock = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks.intro.text',
+          message: `内容包含禁止的公司名称“${owner}”。`,
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '删除公司名称。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(falseOwnerBlock),
+      JSON.stringify(falseOwnerBlock),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000088',
+          projectId: '20000000-0000-4000-8000-000000000088',
+          promptVersionId: '70000000-0000-4000-8000-000000000075',
+          requestId: 'runtime-quality-checker-0088',
+          runId: '60000000-0000-4000-8000-000000000075',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000075',
+          variantId: '20000000-0000-4000-8000-000000000075',
+          workspaceId: '30000000-0000-4000-8000-000000000088',
+        },
+        qualityInput,
+      }),
+    ).resolves.toMatchObject({ decision: 'pass', issues: [] });
+
+    expect(adapter.requests).toHaveLength(2);
+  });
+
   it('uses the current tenant owner in both initial policy and semantic repair', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const owner = '广州众人搬家起重吊装有限公司';

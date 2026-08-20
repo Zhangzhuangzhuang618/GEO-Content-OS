@@ -404,6 +404,138 @@ describe('QualityCheckerSkill', () => {
     });
   });
 
+  it('can recover an unverifiable owner-company block after model semantic repair', async () => {
+    const input = qualityInputWithBlocks(
+      [
+        {
+          block_key: 'intro',
+          text: '广州志远搬家服务有限公司可根据现场情况说明服务边界。',
+        },
+      ],
+      { positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。' },
+    );
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“广州志远搬家服务有限公司”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '删除公司名称。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverAllowedBrandReferenceIssues: true,
+      }),
+    ).resolves.toMatchObject({
+      output: { data: { decision: 'pass', issues: [] } },
+    });
+  });
+
+  it('can recover an unverifiable generic-company block after model semantic repair', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '可向某银行咨询企业结算流程。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的公司名称“某银行”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverAllowedBrandReferenceIssues: true,
+      }),
+    ).resolves.toMatchObject({
+      output: { data: { decision: 'pass', issues: [] } },
+    });
+  });
+
+  it('does not recover a verifiable prohibited third-party brand block', async () => {
+    const input = qualityInputWithBlocks([{ block_key: 'intro', text: '可通过货拉拉安排运输。' }]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方品牌“货拉拉”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverAllowedBrandReferenceIssues: true,
+      }),
+    ).resolves.toMatchObject({
+      output: {
+        data: {
+          decision: 'block',
+          issues: [expect.objectContaining({ rule_id: 'brand.other_company_name' })],
+        },
+      },
+    });
+  });
+
+  it('does not recover a malformed finding that may still target a prohibited brand', async () => {
+    const input = qualityInputWithBlocks([{ block_key: 'intro', text: '可通过货拉拉安排运输。' }]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方品牌“货拉拉”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({
+          modelKey: 'flash',
+          responses: [{ text: JSON.stringify(output) }],
+        }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverAllowedBrandReferenceIssues: true,
+      }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('category_must_be_brand'),
+    });
+  });
+
   it('uses the current tenant published owner instead of the legacy global owner', async () => {
     const input = qualityInputWithBlocks(
       [

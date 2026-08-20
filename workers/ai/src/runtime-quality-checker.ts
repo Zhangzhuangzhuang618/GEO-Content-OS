@@ -84,12 +84,16 @@ export class RuntimeQualityChecker {
       tenantId: input.context.tenantId,
       workspaceId: input.context.workspaceId,
     });
-    const run = (runPrompt: QualityCheckerPublishedPrompt) =>
+    const run = (
+      runPrompt: QualityCheckerPublishedPrompt,
+      recoverAllowedBrandReferenceIssues = false,
+    ) =>
       skill.run({
         context,
         input: input.qualityInput,
         prompt: runPrompt,
         recordUsage: (usage) => this.recordUsage(input.context, usage),
+        recoverAllowedBrandReferenceIssues,
         ...(input.signal ? { signal: input.signal } : {}),
         toolNames: [],
       });
@@ -100,7 +104,10 @@ export class RuntimeQualityChecker {
       if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') {
         throw error;
       }
-      result = await run(qualitySemanticRepairPrompt(prompt, input.qualityInput, error.message));
+      result = await run(
+        qualitySemanticRepairPrompt(prompt, input.qualityInput, error.message),
+        true,
+      );
     }
     if (result.output.status === 'failed') {
       throw new Error(
