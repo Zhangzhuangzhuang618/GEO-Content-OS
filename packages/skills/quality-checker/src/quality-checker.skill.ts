@@ -31,7 +31,7 @@ export interface QualityCheckerSkillRunInput {
   readonly input: Readonly<Record<string, unknown>>;
   readonly prompt?: QualityCheckerPublishedPrompt;
   readonly recordUsage: (usage: ModelUsage) => Promise<void> | void;
-  readonly recoverAllowedBrandReferenceIssues?: boolean;
+  readonly recoverDeterministicFalsePositiveIssues?: boolean;
   readonly signal?: AbortSignal;
   readonly toolNames?: readonly string[];
 }
@@ -82,8 +82,8 @@ export class QualityCheckerSkill {
       toolNames: invocation.toolNames ?? QUALITY_CHECKER_TOOL_NAMES_V1,
     });
     const checkerInput = invocation.input as unknown as CheckerInput;
-    const data = invocation.recoverAllowedBrandReferenceIssues
-      ? withoutAllowedBrandReferenceIssues(checkerInput, result.output)
+    const data = invocation.recoverDeterministicFalsePositiveIssues
+      ? withoutDeterministicFalsePositiveIssues(checkerInput, result.output)
       : result.output;
     const output = serverOwnedOutput(invocation.context, data, result.usages);
     assertOutput(invocation.context, checkerInput, output);
@@ -280,7 +280,7 @@ function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData[
     if (
       input.platform_rules.platform_code === 'lieju' &&
       input.platform_rules.rules.contact_in_content_forbidden === true &&
-      issue.rule_id.endsWith('contact_in_content_forbidden')
+      issue.rule_id === 'lieju.contact_in_content_forbidden'
     ) {
       const reason = invalidLiejuContactIssueReason(input, issue);
       if (reason) rejections.push(rejection(issue, reason));
@@ -302,17 +302,30 @@ function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData[
   }
 }
 
-function withoutAllowedBrandReferenceIssues(
+function withoutDeterministicFalsePositiveIssues(
   input: CheckerInput,
   data: QualityCheckerData,
 ): QualityCheckerData {
   const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brand_policy.policy);
-  const issues = data.issues.filter(
-    (issue) =>
-      issue.rule_id !== 'brand.other_company_name' ||
-      invalidBrandIssueReason(input, issue, allowedCompanyNames) !==
-        'only_allowed_owner_or_generic_name_is_quoted',
-  );
+  const issues = data.issues.filter((issue) => {
+    if (issue.rule_id === 'brand.other_company_name') {
+      return (
+        invalidBrandIssueReason(input, issue, allowedCompanyNames) !==
+        'only_allowed_owner_or_generic_name_is_quoted'
+      );
+    }
+    if (
+      input.platform_rules.platform_code === 'lieju' &&
+      input.platform_rules.rules.contact_in_content_forbidden === true &&
+      issue.rule_id === 'lieju.contact_in_content_forbidden'
+    ) {
+      return (
+        invalidLiejuContactIssueReason(input, issue) !==
+        'prohibited_contact_detail_is_not_present_at_location'
+      );
+    }
+    return true;
+  });
   if (issues.length === data.issues.length) return data;
   const blocks = issues.filter((issue) => issue.severity === 'BLOCK');
   const warnings = issues.filter((issue) => issue.severity === 'WARN');

@@ -86,14 +86,14 @@ export class RuntimeQualityChecker {
     });
     const run = (
       runPrompt: QualityCheckerPublishedPrompt,
-      recoverAllowedBrandReferenceIssues = false,
+      recoverDeterministicFalsePositiveIssues = false,
     ) =>
       skill.run({
         context,
         input: input.qualityInput,
         prompt: runPrompt,
         recordUsage: (usage) => this.recordUsage(input.context, usage),
-        recoverAllowedBrandReferenceIssues,
+        recoverDeterministicFalsePositiveIssues,
         ...(input.signal ? { signal: input.signal } : {}),
         toolNames: [],
       });

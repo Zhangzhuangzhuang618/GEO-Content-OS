@@ -223,7 +223,7 @@ describe('RuntimeQualityChecker', () => {
     expect(firstPrompt).not.toContain('"risk_level":"high"');
   });
 
-  it('gives the one semantic repair a structured Lieju contact rejection reason', async () => {
+  it('recovers when semantic repair repeats the same false Lieju contact block', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const qualityInput = {
       ...clean.input,
@@ -264,7 +264,7 @@ describe('RuntimeQualityChecker', () => {
     };
     const adapter = new QualityMockAdapter([
       JSON.stringify(falseContactBlock),
-      JSON.stringify(clean.output.data),
+      JSON.stringify(falseContactBlock),
     ]);
     const checker = new RuntimeQualityChecker(
       {} as postgres.Sql,
@@ -291,8 +291,9 @@ describe('RuntimeQualityChecker', () => {
         },
         qualityInput,
       }),
-    ).resolves.toEqual(clean.output.data);
+    ).resolves.toMatchObject({ decision: 'pass', issues: [], score: 35 });
 
+    expect(adapter.requests).toHaveLength(2);
     const repairPrompt = adapter.requests[1]!.messages.map((message) => message.content).join('\n');
     expect(repairPrompt).toContain('prohibited_contact_detail_is_not_present_at_location');
     expect(repairPrompt).toContain('omit the finding unless that location contains a literal');

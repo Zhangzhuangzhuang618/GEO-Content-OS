@@ -274,10 +274,21 @@ describe('AI Worker runtime wiring', () => {
     expect(adapter.requests[1]!.tools).toBeUndefined();
   });
 
-  it('uses one final browser rewrite to delete credential claims without frozen certificate evidence', async () => {
+  it('uses a targeted repair to remove only unsupported credentials and preserve cited credentials', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const clean = multiPlatformContentData(['lieju'], new Set());
-    const credentialText = '公司持有营业执照、道路运输经营许可证。';
+    const supportedCredentialText = '公司持有道路运输经营许可证。';
+    const unsupportedCredentialText = '公司持有安全生产许可证。';
+    const credentialText = `${supportedCredentialText}${unsupportedCredentialText}`;
+    const citationId = '10000000-0000-4000-8000-000000000164';
+    const sourceId = '20000000-0000-4000-8000-000000000164';
+    const citationMap = [
+      {
+        citation_ids: [citationId],
+        claim_key: 'transport-permit',
+        claim_text: supportedCredentialText,
+      },
+    ];
     const unsupported = {
       master_content: {
         ...clean.master_content,
@@ -286,6 +297,7 @@ describe('AI Worker runtime wiring', () => {
             ? { ...block, text: `${block.text}${credentialText}` }
             : block,
         ),
+        citation_map: citationMap,
       },
       variants: [
         {
@@ -295,14 +307,57 @@ describe('AI Worker runtime wiring', () => {
               ? { ...block, text: `${block.text}${credentialText}` }
               : block,
           ),
+          citation_map: citationMap,
         },
       ],
     };
+    const masterBlockIndex = clean.master_content.blocks.length - 1;
+    const variantBlockIndex = clean.variants[0]!.blocks.length - 1;
+    const targetedRepair = {
+      replacements: [
+        {
+          replacement_text: `${clean.master_content.blocks[masterBlockIndex]!.text}${supportedCredentialText}`,
+          target_id: `master_content.blocks[${masterBlockIndex}].text`,
+        },
+        {
+          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}${supportedCredentialText}`,
+          target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
+        },
+      ],
+    };
+    const baseWriterInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const baseStrategy = baseWriterInput['strategy'] as JsonObject;
+    const writerInput = {
+      ...baseWriterInput,
+      brief: {
+        ...(baseWriterInput['brief'] as JsonObject),
+        constraints: {
+          ...((baseWriterInput['brief'] as JsonObject)['constraints'] as JsonObject),
+          authorized_certificate_source_ids: [sourceId],
+        },
+      },
+      citations: [
+        {
+          chunk_id: citationId,
+          citation_id: citationId,
+          quote_text:
+            '资料类型：企业证照\n证照名称：道路运输经营许可证\n持证主体：广州志远搬家服务有限公司',
+          source_id: sourceId,
+        },
+      ],
+      strategy: {
+        ...baseStrategy,
+        profile: {
+          ...(baseStrategy['profile'] as JsonObject),
+          positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。',
+        },
+      },
+    } as JsonObject;
     const adapter = new LooseMockAdapter(
       [
         { text: JSON.stringify(unsupported) },
         { text: JSON.stringify(unsupported) },
-        { text: JSON.stringify(clean) },
+        { text: JSON.stringify(targetedRepair) },
       ],
       'deepseek-v4-flash',
     );
@@ -325,21 +380,23 @@ describe('AI Worker runtime wiring', () => {
       ],
       platformCode: 'lieju',
       requestId: 'runtime-lieju-final-credential-repair-0164',
-      writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
+      writerInput,
     });
 
     expect(adapter.requests).toHaveLength(3);
     const finalPrompt = adapter.requests[2]!.messages.map((message) => message.content).join('\n');
-    expect(finalPrompt).toContain('当前候选冻结输入没有已授权的结构化企业证照引用');
-    expect(finalPrompt).toContain('彻底删除');
+    expect(finalPrompt).toContain('bounded targeted repair stage');
+    expect(finalPrompt).toContain('unsupported_credential_claims');
+    expect(finalPrompt).toContain(`variants.lieju.blocks[${variantBlockIndex}].text`);
     expect(adapter.requests.every((request) => !request.tools?.length)).toBe(true);
-    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('营业执照');
-    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain(
-      '道路运输经营许可证',
-    );
+    expect(rewritten.title).toBe(clean.variants[0]!.title);
+    expect(rewritten.blocks.slice(0, -1)).toEqual(clean.variants[0]!.blocks.slice(0, -1));
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).toContain('道路运输经营许可证');
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('安全生产许可证');
+    expect(rewritten.citation_map).toEqual(citationMap);
   });
 
-  it('stops after the bounded final browser credential rewrite remains unsupported', async () => {
+  it('stops after two bounded targeted credential repairs remain unsupported', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const clean = multiPlatformContentData(['lieju'], new Set());
     const credentialText = '公司持有营业执照、道路运输经营许可证。';
@@ -363,11 +420,26 @@ describe('AI Worker runtime wiring', () => {
         },
       ],
     };
+    const masterBlockIndex = clean.master_content.blocks.length - 1;
+    const variantBlockIndex = clean.variants[0]!.blocks.length - 1;
+    const invalidTargetedRepair = {
+      replacements: [
+        {
+          replacement_text: `请核验。${credentialText}`,
+          target_id: `master_content.blocks[${masterBlockIndex}].text`,
+        },
+        {
+          replacement_text: `请核验。${credentialText}`,
+          target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
+        },
+      ],
+    };
     const adapter = new LooseMockAdapter(
       [
         { text: JSON.stringify(unsupported) },
         { text: JSON.stringify(unsupported) },
-        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(invalidTargetedRepair) },
+        { text: JSON.stringify(invalidTargetedRepair) },
       ],
       'deepseek-v4-flash',
     );
@@ -398,7 +470,85 @@ describe('AI Worker runtime wiring', () => {
       message: expect.stringContaining('必须通过 citation_map 关联'),
     });
 
-    expect(adapter.requests).toHaveLength(3);
+    expect(adapter.requests).toHaveLength(4);
+    expect(adapter.requests[3]!.messages.map((message) => message.content).join('\n')).toContain(
+      'replacement_still_contains_unsupported_credential',
+    );
+  });
+
+  it('never changes a locked block during targeted credential repair', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['lieju'], new Set());
+    const variant = clean.variants[0]!;
+    const blockIndex = variant.blocks.length - 1;
+    const citationId = '10000000-0000-4000-8000-000000000166';
+    const sourceId = '20000000-0000-4000-8000-000000000166';
+    const credentialText = `${variant.blocks[blockIndex]!.text}公司持有营业执照。`;
+    const unsupported = {
+      ...clean,
+      variants: [
+        {
+          ...variant,
+          blocks: variant.blocks.map((block, index) =>
+            index === blockIndex ? { ...block, text: credentialText } : block,
+          ),
+          citation_map: [
+            ...variant.citation_map,
+            {
+              citation_ids: [citationId],
+              claim_key: 'locked-credential',
+              claim_text: credentialText,
+            },
+          ],
+        },
+      ],
+    };
+    const baseInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        {
+          chunk_id: '30000000-0000-4000-8000-000000000166',
+          citation_id: citationId,
+          quote_text: '企业资料介绍了基础服务安排。',
+          source_id: sourceId,
+        },
+      ],
+      locked_blocks: [
+        {
+          block_key: variant.blocks[blockIndex]!.block_key,
+          citation_ids: [citationId],
+          platform_code: 'lieju',
+          text: credentialText,
+        },
+      ],
+    } as JsonObject;
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(unsupported) }, { text: JSON.stringify(unsupported) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      writer.rewriteBrowserPlatformVariant({
+        context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+        currentContent: {
+          ...unsupported.variants[0]!,
+          schema_version: 'content-writer-data@1' as const,
+        } as unknown as GeneratedContent,
+        issues: ['资质声明缺少证据'],
+        platformCode: 'lieju',
+        requestId: 'runtime-lieju-locked-credential-0166',
+        writerInput,
+      }),
+    ).rejects.toMatchObject({ code: 'CONTENT_QUALITY_INSUFFICIENT' });
+
+    expect(adapter.requests).toHaveLength(2);
   });
 
   it('does not accept a structured certificate citation from an unauthorized source', async () => {

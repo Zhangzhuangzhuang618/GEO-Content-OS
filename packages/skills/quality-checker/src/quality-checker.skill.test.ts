@@ -243,6 +243,32 @@ describe('QualityCheckerSkill', () => {
     ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
   });
 
+  it('recovers an exact false Lieju contact block after semantic repair', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      { block_key: 'contact', text: '如需进一步确认，可通过页面联系方式说明搬运需求。' },
+    ]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文包含联系方式引导。',
+      rule_id: 'lieju.contact_in_content_forbidden',
+      severity: 'BLOCK',
+      suggestion: '删除该句。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({ modelKey: 'flash', responses: [{ text: JSON.stringify(output) }] }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'pass', issues: [] } } });
+  });
+
   it('accepts a Lieju contact block that points to a literal phone number', async () => {
     const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
       { block_key: 'contact', text: '可拨打02085627757咨询。' },
@@ -262,8 +288,42 @@ describe('QualityCheckerSkill', () => {
     });
 
     await expect(
-      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+      skill(adapter).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
+  it('does not recover a malformed Lieju contact finding', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      { block_key: 'contact', text: '通过页面联系方式说明需求。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文包含联系方式。',
+      rule_id: 'lieju.contact_in_content_forbidden',
+      severity: 'BLOCK',
+      suggestion: '删除联系方式。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({ modelKey: 'flash', responses: [{ text: JSON.stringify(output) }] }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+      message: expect.stringContaining('category_must_be_compliance'),
+    });
   });
 
   it('accepts a Lieju contact block for an account value without a separator', async () => {
@@ -434,7 +494,7 @@ describe('QualityCheckerSkill', () => {
         context,
         input,
         recordUsage: () => undefined,
-        recoverAllowedBrandReferenceIssues: true,
+        recoverDeterministicFalsePositiveIssues: true,
       }),
     ).resolves.toMatchObject({
       output: { data: { decision: 'pass', issues: [] } },
@@ -465,7 +525,7 @@ describe('QualityCheckerSkill', () => {
         context,
         input,
         recordUsage: () => undefined,
-        recoverAllowedBrandReferenceIssues: true,
+        recoverDeterministicFalsePositiveIssues: true,
       }),
     ).resolves.toMatchObject({
       output: { data: { decision: 'pass', issues: [] } },
@@ -494,7 +554,7 @@ describe('QualityCheckerSkill', () => {
         context,
         input,
         recordUsage: () => undefined,
-        recoverAllowedBrandReferenceIssues: true,
+        recoverDeterministicFalsePositiveIssues: true,
       }),
     ).resolves.toMatchObject({
       output: {
@@ -528,7 +588,7 @@ describe('QualityCheckerSkill', () => {
         context,
         input,
         recordUsage: () => undefined,
-        recoverAllowedBrandReferenceIssues: true,
+        recoverDeterministicFalsePositiveIssues: true,
       }),
     ).rejects.toMatchObject({
       code: 'SKILL_OUTPUT_INVALID',
