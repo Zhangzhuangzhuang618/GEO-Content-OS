@@ -611,6 +611,28 @@ export class BaijiahaoAutomation {
       await this.schedulePublication(transaction, event, policy, run, reportId);
       return;
     }
+    if (event.data.validationMode === 'manual_edit') {
+      const error = {
+        blocking_rules: gate.blocking_rules,
+        code: 'MANUAL_EDIT_QUALITY_FAILED',
+        schema_version: 'baijiahao-automation-error@1',
+        source_publish_job_id: event.data.sourcePublishJobId,
+      };
+      await transaction`
+        UPDATE baijiahao_automation_runs SET
+          status='manual_required',last_quality_report_id=${reportId}::uuid,
+          last_error_json=${JSON.stringify(error)}::text::jsonb,
+          finished_at=now(),version=version+1
+        WHERE id=${run.id}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND version=${run.version}
+      `;
+      await transaction`
+        UPDATE baijiahao_daily_batch_items SET
+          status='manual_required',last_error_json=${JSON.stringify(error)}::text::jsonb
+        WHERE tenant_id=${event.tenantId}::uuid AND automation_run_id=${run.id}::uuid
+      `;
+      return;
+    }
     if (run.rewriteCount >= policy.maxRewrites) {
       const error = {
         blocking_rules: gate.blocking_rules,
@@ -644,6 +666,9 @@ export class BaijiahaoAutomation {
       code: 'QUALITY_CHECK_EXECUTION_FAILED',
       message: safeError(error),
       schema_version: 'baijiahao-automation-error@1',
+      ...(event.data.validationMode === 'manual_edit'
+        ? { source_publish_job_id: event.data.sourcePublishJobId }
+        : {}),
     };
     const runs = await transaction<{ id: string }[]>`
       UPDATE baijiahao_automation_runs SET

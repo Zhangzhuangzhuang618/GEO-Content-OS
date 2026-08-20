@@ -226,6 +226,26 @@ export class BrowserPlatformAutomation {
       await this.schedulePublication(transaction, event, policy, run, reportId);
       return;
     }
+    if (event.data.validationMode === 'manual_edit') {
+      const failure = errorDocument('MANUAL_EDIT_QUALITY_FAILED', {
+        blocking_rules: gate.blocking_rules,
+        source_publish_job_id: event.data.sourcePublishJobId,
+      });
+      await transaction`
+        UPDATE browser_platform_automation_runs SET status='manual_required',
+          last_quality_report_id=${reportId}::uuid,
+          last_error_json=${JSON.stringify(failure)}::text::jsonb,
+          finished_at=now(),version=version+1
+        WHERE id=${run.id}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND version=${run.version}
+      `;
+      await transaction`
+        UPDATE browser_platform_daily_batch_items SET status='manual_required',
+          last_error_json=${JSON.stringify(failure)}::text::jsonb
+        WHERE tenant_id=${event.tenantId}::uuid AND automation_run_id=${run.id}::uuid
+      `;
+      return;
+    }
     if (run.rewriteCount >= policy.maxRewrites) {
       const failure = errorDocument('QUALITY_GATE_FAILED_AFTER_MAX_REWRITES', {
         blocking_rules: gate.blocking_rules,
@@ -251,7 +271,12 @@ export class BrowserPlatformAutomation {
     event: ValidatedQualityEvent,
     error: unknown,
   ): Promise<void> {
-    const failure = errorDocument('QUALITY_CHECK_EXECUTION_FAILED', { message: safeError(error) });
+    const failure = errorDocument('QUALITY_CHECK_EXECUTION_FAILED', {
+      message: safeError(error),
+      ...(event.data.validationMode === 'manual_edit'
+        ? { source_publish_job_id: event.data.sourcePublishJobId }
+        : {}),
+    });
     const rows = await transaction<{ id: string }[]>`
       UPDATE browser_platform_automation_runs SET status='manual_required',
         last_error_json=${JSON.stringify(failure)}::text::jsonb,finished_at=now(),version=version+1

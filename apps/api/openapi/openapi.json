@@ -15658,9 +15658,28 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": { "mode": { "default": "full", "type": "string", "const": "full" } },
-                "additionalProperties": false
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": { "default": "full", "type": "string", "const": "full" }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "mode": { "type": "string", "const": "manual_edit" },
+                      "source_publish_job_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    },
+                    "required": ["mode", "source_publish_job_id"],
+                    "additionalProperties": false
+                  }
+                ]
               }
             }
           },
@@ -37674,6 +37693,130 @@
                           "required": ["asset_count", "run_id", "status", "supported"],
                           "additionalProperties": false
                         },
+                        "content_snapshot": {
+                          "type": "object",
+                          "properties": {
+                            "content": {
+                              "type": "object",
+                              "properties": {
+                                "blocks": {
+                                  "minItems": 1,
+                                  "maxItems": 1000,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "block_key": {
+                                        "type": "string",
+                                        "pattern": "^[a-z0-9_-]{1,80}$"
+                                      },
+                                      "block_type": {
+                                        "type": "string",
+                                        "enum": [
+                                          "heading",
+                                          "paragraph",
+                                          "list",
+                                          "quote",
+                                          "media",
+                                          "cta"
+                                        ]
+                                      },
+                                      "text": { "type": "string", "maxLength": 100000 }
+                                    },
+                                    "required": ["block_key", "block_type", "text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "citation_map": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "citation_ids": {
+                                        "maxItems": 100,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "string",
+                                          "format": "uuid",
+                                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                        }
+                                      },
+                                      "claim_key": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 160
+                                      },
+                                      "claim_text": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 4000
+                                      }
+                                    },
+                                    "required": ["citation_ids", "claim_key", "claim_text"],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "cta": {
+                                  "anyOf": [
+                                    { "type": "string", "maxLength": 500 },
+                                    { "type": "null" }
+                                  ]
+                                },
+                                "hashtags": {
+                                  "maxItems": 100,
+                                  "type": "array",
+                                  "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+                                },
+                                "platform_code": {
+                                  "type": "string",
+                                  "enum": [
+                                    "master",
+                                    "official_site",
+                                    "baijiahao",
+                                    "sohu",
+                                    "lieju",
+                                    "toutiao",
+                                    "zhihu",
+                                    "xiaohongshu",
+                                    "wechat_mp",
+                                    "douyin"
+                                  ]
+                                },
+                                "platform_meta": {
+                                  "type": "object",
+                                  "propertyNames": { "type": "string" },
+                                  "additionalProperties": {}
+                                },
+                                "schema_version": {
+                                  "type": "string",
+                                  "const": "content-writer-data@1"
+                                },
+                                "summary": { "type": "string", "maxLength": 1000 },
+                                "title": { "type": "string", "minLength": 2, "maxLength": 80 }
+                              },
+                              "required": [
+                                "blocks",
+                                "citation_map",
+                                "cta",
+                                "hashtags",
+                                "platform_code",
+                                "platform_meta",
+                                "schema_version",
+                                "summary",
+                                "title"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                            "content_version_id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            }
+                          },
+                          "required": ["content", "content_hash", "content_version_id"],
+                          "additionalProperties": false
+                        },
                         "unknown_resolution": {
                           "anyOf": [
                             {
@@ -37712,6 +37855,7 @@
                         "export_artifact",
                         "job",
                         "media",
+                        "content_snapshot",
                         "unknown_resolution"
                       ],
                       "additionalProperties": false

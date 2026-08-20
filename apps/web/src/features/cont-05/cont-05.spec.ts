@@ -42,6 +42,38 @@ test('saves a complete document with the required variant version', async ({ pag
   });
 });
 
+test('saves an edited scheduled article and requests manual revalidation', async ({ page }) => {
+  const sourceJobId = 'c0000000-0000-4000-8000-000000000086';
+  let saved: unknown;
+  let quality: { readonly body: unknown; readonly headers: Record<string, string> } | undefined;
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, async (route) => {
+    if (route.request().method() === 'PATCH') {
+      saved = route.request().postDataJSON();
+      await json(route, detail());
+    } else await json(route, detail());
+  });
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}/quality-check`, async (route) => {
+    quality = {
+      body: route.request().postDataJSON(),
+      headers: route.request().headers(),
+    };
+    await json(route, { id: 'c1000000-0000-4000-8000-000000000086' }, 202);
+  });
+
+  await page.goto(`/cont-05?id=${VARIANT_ID}&publish_edit=1&publish_job_id=${sourceJobId}`);
+  await expect(page.getByText('正在修改已取消排期的文章')).toBeVisible();
+  await page.getByLabel('文章标题').fill('人工修改后的发布标题');
+  await page.getByRole('button', { name: '保存并重新质检' }).click();
+
+  await expect(page.getByText(/修改已提交重新质检/u)).toBeVisible();
+  expect(saved).toMatchObject({ content: { title: '人工修改后的发布标题' } });
+  expect(quality?.body).toEqual({
+    mode: 'manual_edit',
+    source_publish_job_id: sourceJobId,
+  });
+  expect(quality?.headers['idempotency-key']).toMatch(/^content-publish-edit-quality-/u);
+});
+
 test('surfaces 409 without silently overwriting local content', async ({ page }) => {
   let ifMatch: string | undefined;
   await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, async (route) => {

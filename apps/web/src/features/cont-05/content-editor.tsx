@@ -11,6 +11,7 @@ import {
   getVariantDetail,
   loadVersionDiff,
   regenerateVariant,
+  requestManualEditQuality,
   rollbackVersion,
   saveVariant,
   setBlockLock,
@@ -50,6 +51,7 @@ const BLOCK_TYPES: readonly EditableBlock['block_type'][] = [
 ];
 
 export function ContentEditor() {
+  const [publishEdit] = useState(readPublishEdit);
   const [detail, setDetail] = useState<VariantDetail | null>(null);
   const [draft, setDraft] = useState<ContentDocument | null>(null);
   const [platformMetaText, setPlatformMetaText] = useState('{}');
@@ -110,28 +112,74 @@ export function ContentEditor() {
     return () => controller.abort();
   }, []);
 
-  async function save() {
-    if (!detail || !draft) return;
+  function validatedDraft(): ContentDocument | null {
+    if (!detail || !draft) return null;
     let platformMeta: unknown;
     try {
       platformMeta = JSON.parse(platformMetaText);
     } catch {
       setMessage('平台字段必须是有效的 JSON 对象。');
-      return;
+      return null;
     }
     if (!platformMeta || typeof platformMeta !== 'object' || Array.isArray(platformMeta)) {
       setMessage('平台字段必须是有效的 JSON 对象。');
-      return;
+      return null;
     }
     const parsed = ContentDocumentSchema.safeParse({ ...draft, platform_meta: platformMeta });
     if (!parsed.success) {
       setMessage(parsed.error.issues[0]?.message ?? '内容格式无效。');
-      return;
+      return null;
     }
+    return parsed.data;
+  }
+
+  async function save() {
+    if (!detail) return;
+    const parsed = validatedDraft();
+    if (!parsed) return;
     await mutate(
-      async (csrf) => applyLoaded(await saveVariant(detail, parsed.data, csrf)),
+      async (csrf) => applyLoaded(await saveVariant(detail, parsed, csrf)),
       '内容已保存。',
     );
+  }
+
+  async function saveAndRevalidatePublishEdit() {
+    if (!detail || !publishEdit) return;
+    const parsed = validatedDraft();
+    if (!parsed) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy(true);
+    setConflict(false);
+    setMessage(null);
+    let saved = false;
+    try {
+      const target = dirty ? await saveVariant(detail, parsed, csrf) : detail;
+      if (dirty) {
+        saved = true;
+        applyLoaded(target);
+      }
+      await requestManualEditQuality(target.variant.id, publishEdit.sourceJobId, csrf);
+      setMessage(
+        '修改已提交重新质检。自动化来源通过后会创建新任务，人工来源通过后按现有审核流程重新排期；不通过时保留为人工处理，不会自动改写。',
+      );
+    } catch (error) {
+      if (error instanceof ContentEditorRequestError && error.status === 409) {
+        setConflict(true);
+        setMessage('版本或任务状态已变化，请重新加载后再提交。');
+      } else {
+        setMessage(
+          saved
+            ? '内容已保存，但重新质检未能启动；请保留当前页面并重试。'
+            : '修改未能提交，请检查内容或任务状态后重试。',
+        );
+      }
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function toggleLock(blockId: string, locked: boolean) {
@@ -253,6 +301,21 @@ export function ContentEditor() {
         ) : null}
       </section>
 
+      {publishEdit ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950 shadow-panel">
+          <h2 className="font-semibold">正在修改已取消排期的文章</h2>
+          <p className="mt-2 leading-6">
+            原发布任务和历史尝试不会被覆盖。提交后会对这个新内容版本重新质检；未通过时保留给人工继续修改，不触发自动重写。
+          </p>
+          <Link
+            className="mt-3 inline-block font-semibold underline"
+            href={`/pub-03?id=${publishEdit.sourceJobId}`}
+          >
+            查看原发布任务
+          </Link>
+        </section>
+      ) : null}
+
       {message ? (
         <p
           aria-live="polite"
@@ -273,9 +336,11 @@ export function ContentEditor() {
           onChange={setDraft}
           onLockReason={setLockReason}
           onPlatformMeta={setPlatformMetaText}
+          onPublishEdit={saveAndRevalidatePublishEdit}
           onSave={save}
           onToggleLock={toggleLock}
           platformMetaText={platformMetaText}
+          publishEdit={publishEdit !== null}
         />
       ) : (
         <StatePanel title="暂无可编辑内容" text="该平台内容尚未生成，可返回内容详情重新生成。" />
@@ -378,9 +443,11 @@ function EditorForm({
   onChange,
   onLockReason,
   onPlatformMeta,
+  onPublishEdit,
   onSave,
   onToggleLock,
   platformMetaText,
+  publishEdit,
 }: {
   readonly busy: boolean;
   readonly detail: VariantDetail;
@@ -391,9 +458,11 @@ function EditorForm({
   readonly onChange: (value: ContentDocument) => void;
   readonly onLockReason: (value: string) => void;
   readonly onPlatformMeta: (value: string) => void;
+  readonly onPublishEdit: () => Promise<void>;
   readonly onSave: () => Promise<void>;
   readonly onToggleLock: (blockId: string, locked: boolean) => Promise<void>;
   readonly platformMetaText: string;
+  readonly publishEdit: boolean;
 }) {
   const [pendingLockKey, setPendingLockKey] = useState<string | null>(null);
 
@@ -440,11 +509,17 @@ function EditorForm({
         </div>
         <button
           className={primaryButton}
-          disabled={busy || !editable || !dirty}
-          onClick={() => void onSave()}
+          disabled={busy || !editable || (!publishEdit && !dirty)}
+          onClick={() => void (publishEdit ? onPublishEdit() : onSave())}
           type="button"
         >
-          {busy ? '处理中…' : '保存修改'}
+          {busy
+            ? '处理中…'
+            : publishEdit
+              ? dirty
+                ? '保存并重新质检'
+                : '重新质检当前内容'
+              : '保存修改'}
         </button>
       </div>
 
@@ -1022,6 +1097,8 @@ function platformLabel(code: string) {
     {
       official_site: '官网',
       baijiahao: '百家号',
+      lieju: '列举网',
+      sohu: '搜狐号',
       toutiao: '头条号',
       zhihu: '知乎',
       xiaohongshu: '小红书',
@@ -1068,6 +1145,16 @@ function isAccessError(error: unknown) {
   if (!error || typeof error !== 'object') return false;
   const status = (error as { readonly status?: unknown }).status;
   return typeof status === 'number' && [401, 403, 404].includes(status);
+}
+function readPublishEdit(): { readonly sourceJobId: string } | null {
+  if (typeof window === 'undefined') return null;
+  const query = new URLSearchParams(window.location.search);
+  const sourceJobId = query.get('publish_job_id');
+  return query.get('publish_edit') === '1' &&
+    sourceJobId &&
+    z.string().uuid().safeParse(sourceJobId).success
+    ? Object.freeze({ sourceJobId })
+    : null;
 }
 function readCookie(name: string) {
   const entry = document.cookie.split('; ').find((value) => value.startsWith(`${name}=`));

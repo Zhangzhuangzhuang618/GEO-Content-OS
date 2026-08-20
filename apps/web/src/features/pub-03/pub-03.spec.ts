@@ -89,6 +89,43 @@ test('cancels only an unexecuted scheduled task with optimistic versioning', asy
   expect(writes[0]?.headers['idempotency-key']).toBeUndefined();
 });
 
+test('previews the exact scheduled article and opens an immutable manual-edit flow', async ({
+  page,
+}) => {
+  await page.unroute('**/api/v1/auth/tenants');
+  await mockRole(page, 'tenant_admin');
+  const scheduled = {
+    ...job({ attemptCount: 0, status: 'scheduled', version: 4 }),
+    origin: 'lieju_automation',
+  };
+  const cancellations: { readonly body: unknown; readonly headers: Record<string, string> }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    if (route.request().method() === 'GET') {
+      await json(route, detail(scheduled, []));
+      return;
+    }
+    cancellations.push({
+      body: route.request().postDataJSON(),
+      headers: route.request().headers(),
+    });
+    await json(route, {
+      data: { ...scheduled, status: 'cancelled', version: 5 },
+      meta: { request_id: 'publish-edit-cancel' },
+    });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await expect(page.getByRole('heading', { name: '全文预览' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '发布任务实际绑定的文章标题' })).toBeVisible();
+  await expect(page.getByText('这是发布任务实际绑定的文章正文。')).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '修改并重新质检' }).click();
+  await page.waitForURL(`/cont-05?id=${VARIANT_ID}&publish_edit=1&publish_job_id=${JOB_ID}`);
+
+  expect(cancellations[0]?.body).toEqual({ reason: '人工修改已排期内容并重新质检。' });
+  expect(cancellations[0]?.headers['if-match']).toBe('"4"');
+});
+
 test('requires manual verification before retrying an unknown Baijiahao publication', async ({
   page,
 }) => {
@@ -505,6 +542,27 @@ function detail(
     data: {
       attempts,
       baijiahao_reconciliation: baijiahaoReconciliation,
+      content_snapshot: {
+        content: {
+          blocks: [
+            {
+              block_key: 'intro',
+              block_type: 'paragraph',
+              text: '这是发布任务实际绑定的文章正文。',
+            },
+          ],
+          citation_map: [],
+          cta: null,
+          hashtags: ['发布预览'],
+          platform_code: 'official_site',
+          platform_meta: {},
+          schema_version: 'content-writer-data@1',
+          summary: '这是发布任务实际绑定的摘要。',
+          title: '发布任务实际绑定的文章标题',
+        },
+        content_hash: '9'.repeat(64),
+        content_version_id: CONTENT_VERSION_ID,
+      },
       export_artifact: exportArtifact,
       job: currentJob,
       media: { asset_count: 0, run_id: null, status: 'none', supported: true },

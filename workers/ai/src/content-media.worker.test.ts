@@ -138,9 +138,11 @@ describe('content media run lease', () => {
     expect(certificateQuery).toContain("brand.status='published'");
   });
 
-  it('requeues only stale automatic media runs that are still media pending', async () => {
+  it('requeues only stale automatic media runs and preserves manual-edit lineage', async () => {
     const queries: string[] = [];
-    const transaction = (async (strings: TemplateStringsArray) => {
+    const payloads: Readonly<Record<string, unknown>>[] = [];
+    const sourcePublishJobId = '10000000-0000-4000-8000-000000000014';
+    const transaction = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
       const query = strings.join('?');
       queries.push(query);
       if (query.includes('FROM content_media_runs AS run')) {
@@ -154,14 +156,25 @@ describe('content media run lease', () => {
             platformCode: 'baijiahao',
             projectId: '10000000-0000-4000-8000-000000000007',
             qualityReportId: '10000000-0000-4000-8000-000000000008',
+            sourcePublishJobId,
             tenantId: '10000000-0000-4000-8000-000000000002',
+            validationMode: 'manual_edit',
             variantId: '10000000-0000-4000-8000-000000000010',
             workspaceId: '10000000-0000-4000-8000-000000000011',
           },
         ];
       }
       if (query.includes('STALE_MEDIA_RUN_RECOVERED')) return [{ id: 'media-run' }];
-      if (query.includes('INSERT INTO outbox_events')) return [];
+      if (query.includes('INSERT INTO outbox_events')) {
+        const payload = values.find(
+          (value) =>
+            typeof value === 'string' &&
+            value.startsWith('{') &&
+            value.includes('media_generation_requested'),
+        );
+        if (typeof payload === 'string') payloads.push(JSON.parse(payload));
+        return [];
+      }
       throw new Error(`Unexpected SQL: ${query}`);
     }) as unknown as postgres.TransactionSql;
     const client = Object.assign(transaction, {
@@ -189,6 +202,10 @@ describe('content media run lease', () => {
       expect.stringContaining('STALE_MEDIA_RUN_RECOVERED'),
       expect.stringContaining('INSERT INTO outbox_events'),
     ]);
+    expect(payloads[0]?.['data']).toMatchObject({
+      source_publish_job_id: sourcePublishJobId,
+      validation_mode: 'manual_edit',
+    });
   });
 });
 

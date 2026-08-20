@@ -37,14 +37,20 @@ export class ContentMediaAutomation {
       INSERT INTO content_media_runs (
         tenant_id,workspace_id,project_id,package_id,variant_id,content_version_id,
         quality_report_id,platform_code,planner_model_key,provider,generation_model,
-        inspection_model,created_by
+        inspection_model,diagnostics_json,created_by
       ) VALUES (
         ${event.tenantId}::uuid,${event.data.workspaceId}::uuid,
         ${event.data.projectId}::uuid,${event.data.packageId}::uuid,
         ${event.data.variantId}::uuid,${event.data.contentVersionId}::uuid,
         ${reportId}::uuid,${policy.kind === 'browser_platform' ? policy.value.platformCode : policy.kind},${this.config.plannerModelKey},
         ${this.provider.provider},${this.provider.generationModel},
-        ${this.provider.inspectionModel},${event.data.actorUserId}::uuid
+        ${this.provider.inspectionModel},${JSON.stringify({
+          handoff: {
+            schema_version: 'content-media-handoff@1',
+            source_publish_job_id: event.data.sourcePublishJobId ?? null,
+            validation_mode: event.data.validationMode ?? 'full',
+          },
+        })}::text::jsonb,${event.data.actorUserId}::uuid
       )
       ON CONFLICT (tenant_id,quality_report_id) DO UPDATE
         SET quality_report_id=EXCLUDED.quality_report_id
@@ -122,6 +128,9 @@ export class ContentMediaAutomation {
       `;
     }
 
+    if (event.data.validationMode === 'manual_edit' && !event.data.sourcePublishJobId) {
+      throw new Error('Manual-edit media handoff is missing its source publish job');
+    }
     const queued = DomainEventEnvelopeSchema.parse({
       aggregate: { id: mediaRun.id, type: 'content_media_run' },
       data: {
@@ -134,6 +143,12 @@ export class ContentMediaAutomation {
         project_id: event.data.projectId,
         quality_report_id: reportId,
         request_id: boundedRequestId(`media-${mediaRun.id}`),
+        ...(event.data.validationMode === 'manual_edit'
+          ? {
+              source_publish_job_id: event.data.sourcePublishJobId,
+              validation_mode: event.data.validationMode,
+            }
+          : {}),
         variant_id: event.data.variantId,
         workspace_id: event.data.workspaceId,
       },

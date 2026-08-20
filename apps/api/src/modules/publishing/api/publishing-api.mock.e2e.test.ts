@@ -83,6 +83,21 @@ const attempt: PublishAttemptView = {
 const detail: PublishJobDetail = {
   attempts: [attempt],
   baijiahao_reconciliation: null,
+  content_snapshot: {
+    content: {
+      blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '发布正文。' }],
+      citation_map: [],
+      cta: null,
+      hashtags: [],
+      platform_code: 'official_site',
+      platform_meta: {},
+      schema_version: 'content-writer-data@1',
+      summary: '发布摘要。',
+      title: '发布内容标题',
+    },
+    content_hash: job.payload_hash,
+    content_version_id: CONTENT_VERSION_ID,
+  },
   export_artifact: {
     content_hash: 'c'.repeat(64),
     content_version_id: CONTENT_VERSION_ID,

@@ -16,6 +16,8 @@ const DATA_KEYS = new Set([
   'publish_job_id',
   'quality_report_id',
   'request_id',
+  'source_publish_job_id',
+  'validation_mode',
   'variant_id',
   'workspace_id',
 ]);
@@ -32,6 +34,8 @@ export interface ValidatedMediaGenerationEvent {
     readonly publishJobId: string | null;
     readonly qualityReportId: string;
     readonly requestId: string;
+    readonly sourcePublishJobId?: string | null;
+    readonly validationMode?: 'full' | 'manual_edit';
     readonly variantId: string;
     readonly workspaceId: string;
   };
@@ -62,6 +66,9 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
     publishJobId: optionalString(event.data.publish_job_id),
     qualityReportId: string(event.data.quality_report_id),
     requestId: string(event.data.request_id),
+    sourcePublishJobId: optionalString(event.data.source_publish_job_id),
+    validationMode:
+      event.data.validation_mode === undefined ? 'full' : string(event.data.validation_mode),
     variantId: string(event.data.variant_id),
     workspaceId: string(event.data.workspace_id),
   };
@@ -69,6 +76,10 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
     event.aggregate.id !== data.mediaRunId ||
     !HASH.test(data.contentHash) ||
     !REQUEST_ID.test(data.requestId) ||
+    (data.validationMode !== 'full' && data.validationMode !== 'manual_edit') ||
+    (data.validationMode === 'manual_edit'
+      ? !data.sourcePublishJobId || !UUID.test(data.sourcePublishJobId)
+      : data.sourcePublishJobId !== null) ||
     !['official_site', 'baijiahao', 'sohu', 'lieju'].includes(data.platformCode) ||
     [
       data.actorUserId,
@@ -88,6 +99,7 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
     data: Object.freeze({
       ...data,
       platformCode: data.platformCode as 'baijiahao' | 'lieju' | 'official_site' | 'sohu',
+      validationMode: data.validationMode as 'full' | 'manual_edit',
     }),
     eventId: event.event_id,
     tenantId: event.tenant.id,

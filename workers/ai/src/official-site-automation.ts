@@ -234,6 +234,9 @@ export class OfficialSiteAutomation {
           code: 'QUALITY_CHECK_EXECUTION_FAILED',
           message,
           schema_version: 'official-site-automation-error@1',
+          ...(event.data.validationMode === 'manual_edit'
+            ? { source_publish_job_id: event.data.sourcePublishJobId }
+            : {}),
         })}::text::jsonb,
         finished_at=now(),
         version=version+1
@@ -247,13 +250,26 @@ export class OfficialSiteAutomation {
         status='retired',
         last_error_json=${JSON.stringify({
           code: 'QUALITY_CHECK_EXECUTION_FAILED',
-          message: '机器质检连续执行失败，系统将创建新候选补位。',
+          message:
+            event.data.validationMode === 'manual_edit'
+              ? '人工修改后的内容质检执行失败，请继续修改或重新质检。'
+              : '机器质检连续执行失败，系统将创建新候选补位。',
           schema_version: 'official-site-daily-error@1',
+          ...(event.data.validationMode === 'manual_edit'
+            ? { source_publish_job_id: event.data.sourcePublishJobId }
+            : {}),
         })}::text::jsonb
       WHERE tenant_id=${event.tenantId}::uuid
         AND variant_id=${event.data.variantId}::uuid
         AND content_version_id=${event.data.contentVersionId}::uuid
-        AND status='quality_check'
+        AND (
+          status='quality_check'
+          OR (
+            ${event.data.validationMode === 'manual_edit'}
+            AND status='retired'
+            AND last_error_json->>'code'='MANUAL_EDIT_REVALIDATION'
+          )
+        )
     `;
   }
 
@@ -278,10 +294,39 @@ export class OfficialSiteAutomation {
     const automationRun = rows[0];
     if (!automationRun) return;
     if (gate.passed) {
-      if (await this.holdDailyQualified(transaction, event, automationRun, reportId)) {
+      if (
+        event.data.validationMode !== 'manual_edit' &&
+        (await this.holdDailyQualified(transaction, event, automationRun, reportId))
+      ) {
         return;
       }
       await this.schedulePublication(transaction, event, policy, automationRun, reportId);
+      return;
+    }
+    if (event.data.validationMode === 'manual_edit') {
+      const failure = {
+        blocking_rules: gate.blocking_rules,
+        code: 'MANUAL_EDIT_QUALITY_FAILED',
+        schema_version: 'official-site-automation-error@1',
+        source_publish_job_id: event.data.sourcePublishJobId,
+      };
+      await transaction`
+        UPDATE official_site_automation_runs SET
+          status='manual_required',last_quality_report_id=${reportId}::uuid,
+          last_error_json=${JSON.stringify(failure)}::text::jsonb,
+          finished_at=now(),version=version+1
+        WHERE id=${automationRun.id}::uuid AND tenant_id=${event.tenantId}::uuid
+          AND version=${automationRun.version}
+      `;
+      await transaction`
+        UPDATE official_site_daily_batch_items SET
+          status='retired',last_error_json=${JSON.stringify(failure)}::text::jsonb
+        WHERE tenant_id=${event.tenantId}::uuid
+          AND variant_id=${event.data.variantId}::uuid
+          AND content_version_id=${event.data.contentVersionId}::uuid
+          AND status='retired'
+          AND last_error_json->>'code'='MANUAL_EDIT_REVALIDATION'
+      `;
       return;
     }
     if (automationRun.rewriteCount >= policy.maxRewrites) {
@@ -569,6 +614,18 @@ export class OfficialSiteAutomation {
       RETURNING id
     `;
     if (changed.length !== 1) throw new Error('Automation run lease was lost');
+    if (event.data.validationMode === 'manual_edit') {
+      await transaction`
+        UPDATE official_site_daily_batch_items SET
+          status='scheduled',publish_job_id=${job.id}::uuid,scheduled_at=now(),
+          qualified_at=now(),last_error_json=NULL
+        WHERE tenant_id=${event.tenantId}::uuid
+          AND variant_id=${event.data.variantId}::uuid
+          AND content_version_id=${event.data.contentVersionId}::uuid
+          AND status='retired'
+          AND last_error_json->>'code'='MANUAL_EDIT_REVALIDATION'
+      `;
+    }
     const publishEvent = createEvent(
       event.tenantId,
       'publishing.job.execution_requested.v1',

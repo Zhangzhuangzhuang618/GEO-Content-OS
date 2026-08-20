@@ -6,6 +6,7 @@ import {
   ContentDocumentSchema,
   ContentPackageQuerySchema,
   GenerateContentRequestSchema,
+  QualityCheckRequestSchema,
   UpdateVariantRequestSchema,
 } from './index.js';
 
@@ -258,6 +259,24 @@ describe('Content API frozen contract', () => {
     expect(
       UpdateVariantRequestSchema.safeParse({
         content: { ...content, blocks: [...content.blocks, content.blocks[0]] },
+      }).success,
+    ).toBe(false);
+  });
+
+  it('keeps normal quality checks backward compatible and binds publish edits to a source job', () => {
+    const sourcePublishJobId = crypto.randomUUID();
+    expect(QualityCheckRequestSchema.parse({})).toEqual({ mode: 'full' });
+    expect(
+      QualityCheckRequestSchema.parse({
+        mode: 'manual_edit',
+        source_publish_job_id: sourcePublishJobId,
+      }),
+    ).toEqual({ mode: 'manual_edit', source_publish_job_id: sourcePublishJobId });
+    expect(QualityCheckRequestSchema.safeParse({ mode: 'manual_edit' }).success).toBe(false);
+    expect(
+      QualityCheckRequestSchema.safeParse({
+        mode: 'full',
+        source_publish_job_id: sourcePublishJobId,
       }).success,
     ).toBe(false);
   });

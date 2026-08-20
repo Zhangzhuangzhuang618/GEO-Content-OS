@@ -31,6 +31,8 @@ const BROWSER_SESSION_ID = 'a4000000-0000-4000-8000-000000000124';
 const BROWSER_PUBLICATION_ID = 'a5000000-0000-4000-8000-000000000124';
 const BAIJIAHAO_BATCH_ID = 'a6000000-0000-4000-8000-000000000124';
 const BAIJIAHAO_BATCH_ITEM_ID = 'a7000000-0000-4000-8000-000000000124';
+const OFFICIAL_BATCH_ID = 'a8000000-0000-4000-8000-000000000124';
+const OFFICIAL_BATCH_ITEM_ID = 'a9000000-0000-4000-8000-000000000124';
 const CONTENT_HASH = 'a'.repeat(64);
 const SCHEDULED_AT = '2027-01-02T03:04:05.000Z';
 
@@ -691,6 +693,7 @@ describe('publish jobs', () => {
   it('cancels and restores a queued website automation without replacing its job', async () => {
     const database = requireClient(client);
     await seedAutomationJob(database, 'scheduled', 0);
+    await seedOfficialDailyItem(database);
     const service = new PublishJobService(database);
 
     const cancelled = await service.cancel(
@@ -705,6 +708,14 @@ describe('publish jobs', () => {
       automationStatus: 'disabled',
       jobStatus: 'cancelled',
       variantStatus: 'quality_passed',
+    });
+    await expect(officialDailyItemState(database)).resolves.toEqual({
+      errorCode: 'PUBLISH_CANCELLED_BY_USER',
+      qualifiedAt: null,
+      publishJobId: null,
+      scheduledAt: null,
+      sourcePublishJobId: AUTO_JOB_ID,
+      status: 'retired',
     });
 
     const rescheduled = await service.retry(
@@ -726,6 +737,14 @@ describe('publish jobs', () => {
       jobStatus: 'scheduled',
       variantStatus: 'scheduled',
     });
+    await expect(officialDailyItemState(database)).resolves.toMatchObject({
+      errorCode: null,
+      publishJobId: AUTO_JOB_ID,
+      scheduledAt: new Date(SCHEDULED_AT),
+      sourcePublishJobId: null,
+      status: 'scheduled',
+    });
+    expect((await officialDailyItemState(database)).qualifiedAt).toBeInstanceOf(Date);
   });
 
   it('retries a conclusive website automation failure and enforces the three-attempt limit', async () => {
@@ -1227,6 +1246,48 @@ async function seedAutomationJob(
   }
 }
 
+async function seedOfficialDailyItem(database: Sql): Promise<void> {
+  await database`
+    INSERT INTO official_site_daily_batches(
+      id,tenant_id,policy_id,business_date,status,scheduled_at
+    ) VALUES(
+      ${OFFICIAL_BATCH_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+      DATE '2027-01-02','scheduled',${SCHEDULED_AT}::timestamptz
+    )
+  `;
+  await database`
+    INSERT INTO official_site_daily_batch_items(
+      id,tenant_id,batch_id,candidate_no,angle_key,title,brief_id,package_id,
+      variant_id,content_version_id,publish_job_id,status,scheduled_at,qualified_at
+    ) VALUES(
+      ${OFFICIAL_BATCH_ITEM_ID}::uuid,${TENANT_ID}::uuid,${OFFICIAL_BATCH_ID}::uuid,1,
+      'publish-edit','Website automation',${BRIEF_ID}::uuid,${PACKAGE_ID}::uuid,
+      ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${AUTO_JOB_ID}::uuid,'scheduled',
+      ${SCHEDULED_AT}::timestamptz,now()
+    )
+  `;
+}
+
+async function officialDailyItemState(database: Sql) {
+  const rows = await database<
+    {
+      errorCode: string | null;
+      qualifiedAt: Date | null;
+      publishJobId: string | null;
+      scheduledAt: Date | null;
+      sourcePublishJobId: string | null;
+      status: string;
+    }[]
+  >`
+    SELECT status,publish_job_id AS "publishJobId",scheduled_at AS "scheduledAt",
+      qualified_at AS "qualifiedAt",last_error_json->>'code' AS "errorCode",
+      last_error_json->>'source_publish_job_id' AS "sourcePublishJobId"
+    FROM official_site_daily_batch_items
+    WHERE id=${OFFICIAL_BATCH_ITEM_ID}::uuid
+  `;
+  return rows[0];
+}
+
 async function automationState(database: Sql) {
   const rows = await database<
     { automationStatus: string; jobStatus: string; variantStatus: string }[]
@@ -1298,9 +1359,22 @@ async function seed(database: Sql): Promise<void> {
       content_json,content_hash,created_by
     ) VALUES(
       ${VERSION_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,
-      1,'content-writer@1',${database.json({
-        body: 'Approved publication body',
-        schema_version: 'content-writer@1',
+      1,'content-writer-data@1',${database.json({
+        blocks: [
+          {
+            block_key: 'intro',
+            block_type: 'paragraph',
+            text: 'Approved publication body',
+          },
+        ],
+        citation_map: [],
+        cta: null,
+        hashtags: [],
+        platform_code: 'official_site',
+        platform_meta: {},
+        schema_version: 'content-writer-data@1',
+        summary: 'Approved publication summary',
+        title: 'Approved publication',
       })},${CONTENT_HASH},${USER_ID}::uuid
     )
   `;

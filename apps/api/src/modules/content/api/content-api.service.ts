@@ -7,6 +7,7 @@ import {
   type DomainEventEnvelope,
   type GenerateContentRequest,
   type PlatformCode,
+  type QualityCheckRequest,
   type RegenerateVariantRequest,
   type ReopenVariantsRequest,
   qualityEvaluationFingerprintSource,
@@ -678,6 +679,7 @@ export class ContentApiService {
     variantId: string,
     expectedContentHash: string,
     audit: ContentApiAudit,
+    input: QualityCheckRequest = { mode: 'full' },
   ): Promise<JsonValue> {
     const scope = await this.scopeForVariant(transaction, tenantId, userId, variantId);
     const variant = await lockVariant(transaction, tenantId, variantId);
@@ -690,7 +692,17 @@ export class ContentApiService {
       throw contentStateInvalid('Variant state does not permit a quality check');
     }
     await assertNoActiveVariantRun(transaction, tenantId, variantId);
-    const baijiahaoTerminalRuns = await transaction<{ errorCode: string | null }[]>`
+    if (input.mode === 'manual_edit') {
+      await assertTenantAdministrator(transaction, tenantId, userId);
+      await recoverCancelledPublishAutomation(
+        transaction,
+        tenantId,
+        variantId,
+        variant.currentContentVersionId,
+        input.source_publish_job_id,
+      );
+    } else {
+      const baijiahaoTerminalRuns = await transaction<{ errorCode: string | null }[]>`
       SELECT automation.last_error_json->>'code' AS "errorCode"
       FROM baijiahao_automation_runs AS automation
       JOIN baijiahao_automation_policies AS policy
@@ -698,16 +710,16 @@ export class ContentApiService {
       WHERE automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
         AND automation.status IN ('manual_required','disabled') AND policy.enabled
     `;
-    if (
-      baijiahaoTerminalRuns.some(
-        ({ errorCode }) => !RECOVERABLE_BAIJIAHAO_MANUAL_CODES.includes(errorCode ?? ''),
-      )
-    ) {
-      throw contentStateInvalid(
-        'Baijiahao manual state must be resolved from its publication record',
-      );
-    }
-    const browserPlatformTerminalRuns = await transaction<{ publishJobId: string | null }[]>`
+      if (
+        baijiahaoTerminalRuns.some(
+          ({ errorCode }) => !RECOVERABLE_BAIJIAHAO_MANUAL_CODES.includes(errorCode ?? ''),
+        )
+      ) {
+        throw contentStateInvalid(
+          'Baijiahao manual state must be resolved from its publication record',
+        );
+      }
+      const browserPlatformTerminalRuns = await transaction<{ publishJobId: string | null }[]>`
       SELECT automation.publish_job_id AS "publishJobId"
       FROM browser_platform_automation_runs AS automation
       JOIN browser_platform_automation_policies AS policy
@@ -715,12 +727,12 @@ export class ContentApiService {
       WHERE automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
         AND automation.status='manual_required' AND policy.enabled
     `;
-    if (browserPlatformTerminalRuns.some(({ publishJobId }) => publishJobId !== null)) {
-      throw contentStateInvalid(
-        'Browser platform publication state must be resolved from its publication record',
-      );
-    }
-    await transaction`
+      if (browserPlatformTerminalRuns.some(({ publishJobId }) => publishJobId !== null)) {
+        throw contentStateInvalid(
+          'Browser platform publication state must be resolved from its publication record',
+        );
+      }
+      await transaction`
       UPDATE official_site_automation_runs AS automation SET
         status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
         rewrite_count=0,last_quality_report_id=NULL,
@@ -730,7 +742,7 @@ export class ContentApiService {
         AND automation.tenant_id=${tenantId}::uuid AND automation.variant_id=${variantId}::uuid
         AND automation.status='manual_required' AND policy.enabled
     `;
-    const recoveredBaijiahaoRuns = await transaction<{ id: string }[]>`
+      const recoveredBaijiahaoRuns = await transaction<{ id: string }[]>`
       UPDATE baijiahao_automation_runs AS automation SET
         status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
         rewrite_count=0,last_quality_report_id=NULL,
@@ -752,8 +764,8 @@ export class ContentApiService {
         )
       RETURNING automation.id
     `;
-    if (recoveredBaijiahaoRuns.length > 0) {
-      await transaction`
+      if (recoveredBaijiahaoRuns.length > 0) {
+        await transaction`
         UPDATE baijiahao_daily_batch_items AS item SET
           status='quality_check',content_version_id=${variant.currentContentVersionId}::uuid,
           publish_job_id=NULL,scheduled_at=NULL,last_error_json=NULL
@@ -763,8 +775,8 @@ export class ContentApiService {
           AND automation.variant_id=${variantId}::uuid
           AND automation.status='quality_pending'
       `;
-    }
-    const recoveredBrowserPlatformRuns = await transaction<{ id: string }[]>`
+      }
+      const recoveredBrowserPlatformRuns = await transaction<{ id: string }[]>`
       UPDATE browser_platform_automation_runs AS automation SET
         status='quality_pending',content_version_id=${variant.currentContentVersionId}::uuid,
         rewrite_count=0,last_quality_report_id=NULL,publish_job_id=NULL,
@@ -776,8 +788,8 @@ export class ContentApiService {
         AND automation.publish_job_id IS NULL
       RETURNING automation.id
     `;
-    if (recoveredBrowserPlatformRuns.length > 0) {
-      await transaction`
+      if (recoveredBrowserPlatformRuns.length > 0) {
+        await transaction`
         UPDATE browser_platform_daily_batch_items AS item SET
           status='quality_check',content_version_id=${variant.currentContentVersionId}::uuid,
           publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,last_error_json=NULL
@@ -787,7 +799,7 @@ export class ContentApiService {
           AND automation.variant_id=${variantId}::uuid
           AND automation.status='quality_pending'
       `;
-      await transaction`
+        await transaction`
         UPDATE browser_platform_daily_batches AS batch SET
           status='running',last_error_json=NULL,version=batch.version+1
         FROM browser_platform_daily_batch_items AS item,
@@ -808,6 +820,7 @@ export class ContentApiService {
               AND active_batch.status IN ('running','scheduled')
           )
       `;
+      }
     }
     const runtime = readQualityRuntime();
     const current = await requireContentVersion(
@@ -841,6 +854,12 @@ export class ContentApiService {
           package_id: variant.packageId,
           project_id: scope.projectId,
           request_id: audit.requestId,
+          ...(input.mode === 'manual_edit'
+            ? {
+                source_publish_job_id: input.source_publish_job_id,
+                validation_mode: input.mode,
+              }
+            : {}),
           variant_id: variantId,
           workspace_id: scope.workspaceId,
         },
@@ -857,7 +876,13 @@ export class ContentApiService {
       'content_variant',
       variantId,
       variant,
-      { generation_run_id: run.id },
+      {
+        generation_run_id: run.id,
+        validation_mode: input.mode,
+        ...(input.mode === 'manual_edit'
+          ? { source_publish_job_id: input.source_publish_job_id }
+          : {}),
+      },
       null,
       audit,
     );
@@ -1657,6 +1682,172 @@ async function lockVariant(client: TransactionSql, tenantId: string, variantId: 
     FROM content_variants WHERE id = ${variantId}::uuid AND tenant_id = ${tenantId}::uuid FOR UPDATE
   `;
   return rows[0];
+}
+
+type PublishEditOrigin =
+  | 'manual'
+  | 'official_site_automation'
+  | 'baijiahao_automation'
+  | 'sohu_automation'
+  | 'lieju_automation';
+
+async function recoverCancelledPublishAutomation(
+  transaction: TransactionSql,
+  tenantId: string,
+  variantId: string,
+  contentVersionId: string,
+  sourcePublishJobId: string,
+): Promise<void> {
+  const jobs = await transaction<{ origin: PublishEditOrigin; status: string }[]>`
+    SELECT origin,status FROM publish_jobs
+    WHERE id=${sourcePublishJobId}::uuid AND tenant_id=${tenantId}::uuid
+      AND variant_id=${variantId}::uuid
+    FOR UPDATE
+  `;
+  const job = jobs[0];
+  if (!job || job.status !== 'cancelled') {
+    throw contentStateInvalid('Source publish job must be cancelled before manual revalidation');
+  }
+  if (job.origin === 'manual') return;
+
+  const marker = JSON.stringify({
+    code: 'MANUAL_EDIT_REVALIDATION',
+    message: '人工修改后的内容正在重新质检。',
+    schema_version: 'publish-edit-revalidation@1',
+    source_publish_job_id: sourcePublishJobId,
+  });
+  if (job.origin === 'official_site_automation') {
+    const runs = await transaction<{ id: string }[]>`
+      UPDATE official_site_automation_runs AS automation SET
+        status='quality_pending',content_version_id=${contentVersionId}::uuid,
+        rewrite_count=0,last_quality_report_id=NULL,publish_job_id=NULL,
+        last_error_json=NULL,finished_at=NULL,version=automation.version+1
+      FROM official_site_automation_policies AS policy
+      WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
+        AND automation.tenant_id=${tenantId}::uuid
+        AND automation.variant_id=${variantId}::uuid
+        AND (
+          (
+            automation.publish_job_id=${sourcePublishJobId}::uuid
+            AND automation.status='disabled'
+            AND automation.last_error_json->>'code'='PUBLISH_CANCELLED_BY_USER'
+          )
+          OR (
+            automation.publish_job_id IS NULL
+            AND automation.status='manual_required'
+            AND automation.last_error_json->>'source_publish_job_id'=${sourcePublishJobId}
+            AND automation.last_error_json->>'code' IN (
+              'MANUAL_EDIT_QUALITY_FAILED','QUALITY_CHECK_EXECUTION_FAILED'
+            )
+          )
+        )
+        AND policy.enabled
+      RETURNING automation.id
+    `;
+    if (runs.length !== 1) {
+      throw contentStateInvalid('Cancelled official-site automation state is unavailable');
+    }
+    await transaction`
+      UPDATE official_site_daily_batch_items SET
+        status='retired',content_version_id=${contentVersionId}::uuid,
+        publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,
+        last_error_json=${marker}::text::jsonb
+      WHERE tenant_id=${tenantId}::uuid AND variant_id=${variantId}::uuid
+        AND (
+          publish_job_id=${sourcePublishJobId}::uuid
+          OR (
+            status='retired'
+            AND last_error_json->>'source_publish_job_id'=${sourcePublishJobId}
+            AND last_error_json->>'code' IN (
+              'PUBLISH_CANCELLED_BY_USER','MANUAL_EDIT_QUALITY_FAILED',
+              'QUALITY_CHECK_EXECUTION_FAILED'
+            )
+          )
+        )
+    `;
+    return;
+  }
+
+  if (job.origin === 'baijiahao_automation') {
+    const runs = await transaction<{ id: string }[]>`
+      UPDATE baijiahao_automation_runs AS automation SET
+        status='quality_pending',content_version_id=${contentVersionId}::uuid,
+        rewrite_count=0,last_quality_report_id=NULL,publish_job_id=NULL,
+        last_error_json=NULL,finished_at=NULL,version=automation.version+1
+      FROM baijiahao_automation_policies AS policy
+      WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
+        AND automation.tenant_id=${tenantId}::uuid
+        AND automation.variant_id=${variantId}::uuid
+        AND (
+          (
+            automation.publish_job_id=${sourcePublishJobId}::uuid
+            AND automation.status='disabled'
+            AND automation.last_error_json->>'code'='PUBLISH_CANCELLED_BY_USER'
+          )
+          OR (
+            automation.publish_job_id IS NULL
+            AND automation.status='manual_required'
+            AND automation.last_error_json->>'source_publish_job_id'=${sourcePublishJobId}
+            AND automation.last_error_json->>'code' IN (
+              'MANUAL_EDIT_QUALITY_FAILED','QUALITY_CHECK_EXECUTION_FAILED'
+            )
+          )
+        )
+        AND policy.enabled
+      RETURNING automation.id
+    `;
+    const run = runs[0];
+    if (!run || runs.length !== 1) {
+      throw contentStateInvalid('Cancelled Baijiahao automation state is unavailable');
+    }
+    await transaction`
+      UPDATE baijiahao_daily_batch_items SET
+        status='quality_check',content_version_id=${contentVersionId}::uuid,
+        publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,last_error_json=NULL
+      WHERE tenant_id=${tenantId}::uuid AND automation_run_id=${run.id}::uuid
+    `;
+    return;
+  }
+
+  const platformCode = job.origin === 'sohu_automation' ? 'sohu' : 'lieju';
+  const runs = await transaction<{ id: string }[]>`
+    UPDATE browser_platform_automation_runs AS automation SET
+      status='quality_pending',content_version_id=${contentVersionId}::uuid,
+      rewrite_count=0,last_quality_report_id=NULL,publish_job_id=NULL,
+      last_error_json=NULL,finished_at=NULL,version=automation.version+1
+    FROM browser_platform_automation_policies AS policy
+    WHERE automation.policy_id=policy.id AND automation.tenant_id=policy.tenant_id
+      AND automation.tenant_id=${tenantId}::uuid
+      AND automation.variant_id=${variantId}::uuid
+      AND automation.platform_code=${platformCode}
+      AND (
+        (
+          automation.publish_job_id=${sourcePublishJobId}::uuid
+          AND automation.status='disabled'
+          AND automation.last_error_json->>'code'='PUBLISH_CANCELLED_BY_USER'
+        )
+        OR (
+          automation.publish_job_id IS NULL
+          AND automation.status='manual_required'
+          AND automation.last_error_json->>'source_publish_job_id'=${sourcePublishJobId}
+          AND automation.last_error_json->>'code' IN (
+            'MANUAL_EDIT_QUALITY_FAILED','QUALITY_CHECK_EXECUTION_FAILED'
+          )
+        )
+      )
+      AND policy.enabled
+    RETURNING automation.id
+  `;
+  const run = runs[0];
+  if (!run || runs.length !== 1) {
+    throw contentStateInvalid('Cancelled browser-platform automation state is unavailable');
+  }
+  await transaction`
+    UPDATE browser_platform_daily_batch_items SET
+      status='quality_check',content_version_id=${contentVersionId}::uuid,
+      publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,last_error_json=NULL
+    WHERE tenant_id=${tenantId}::uuid AND automation_run_id=${run.id}::uuid
+  `;
 }
 
 async function assertNoActivePackageRuns(client: SqlClient, tenantId: string, packageId: string) {

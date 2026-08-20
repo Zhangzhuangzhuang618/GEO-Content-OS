@@ -25,9 +25,10 @@ import type {
 } from './publish-job-detail.schema';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
+const PUBLISH_EDIT_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin']);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 type BusyAction =
-  'retry' | 'reschedule' | 'cancel' | 'download' | 'media' | 'reconcile' | 'resolve';
+  'retry' | 'reschedule' | 'cancel' | 'download' | 'edit' | 'media' | 'reconcile' | 'resolve';
 
 export function PublishJobDetailView() {
   const [jobId] = useState(readJobId);
@@ -36,6 +37,7 @@ export function PublishJobDetailView() {
     'loading',
   );
   const [busy, setBusy] = useState<BusyAction | null>(null);
+  const [role, setRole] = useState<TenantRole | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [download, setDownload] = useState<SignedDownload | null>(null);
 
@@ -48,6 +50,7 @@ export function PublishJobDetailView() {
         setState('permission');
         return;
       }
+      setRole(role);
       if (!nextId) {
         setDetail(null);
         setState('empty');
@@ -149,6 +152,38 @@ export function PublishJobDetailView() {
     } catch {
       setMessage('导出包暂不可下载，请确认制品仍在有效期内。');
     } finally {
+      setBusy(null);
+    }
+  }
+
+  async function editScheduledContent() {
+    if (!detail || detail.job.status !== 'scheduled' || !role || !PUBLISH_EDIT_ROLES.has(role)) {
+      return;
+    }
+    if (
+      !window.confirm(
+        '继续后会取消当前排期并保留任务历史，然后打开该任务实际绑定的文章版本供修改。修改完成后必须重新质检，通过后才会创建新发布任务。',
+      )
+    ) {
+      return;
+    }
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy('edit');
+    setMessage(null);
+    try {
+      await cancelUnexecutedPublishJob(detail.job, '人工修改已排期内容并重新质检。', csrf);
+      const query = new URLSearchParams({
+        id: detail.job.variant_id,
+        publish_edit: '1',
+        publish_job_id: detail.job.id,
+      });
+      window.location.assign(`/cont-05?${query.toString()}`);
+    } catch {
+      setMessage('无法进入修改流程；任务状态或版本可能已变化，请刷新后重试。');
       setBusy(null);
     }
   }
@@ -295,10 +330,12 @@ export function PublishJobDetailView() {
       ) : (
         <DetailContent
           busy={busy}
+          canEditScheduled={Boolean(role && PUBLISH_EDIT_ROLES.has(role))}
           detail={detail}
           onAction={runAction}
           onDownload={prepareDownload}
           onGenerateMedia={generateMedia}
+          onEditScheduled={editScheduledContent}
           onReconcileBaijiahao={reconcileBaijiahao}
           onResolveUnknown={resolveUnknown}
         />
@@ -309,18 +346,22 @@ export function PublishJobDetailView() {
 
 function DetailContent({
   busy,
+  canEditScheduled,
   detail,
   onAction,
   onDownload,
   onGenerateMedia,
+  onEditScheduled,
   onReconcileBaijiahao,
   onResolveUnknown,
 }: {
   readonly busy: BusyAction | null;
+  readonly canEditScheduled: boolean;
   readonly detail: PublishJobDetail;
   readonly onAction: (action: 'retry' | 'reschedule' | 'cancel') => Promise<void>;
   readonly onDownload: () => Promise<void>;
   readonly onGenerateMedia: () => Promise<void>;
+  readonly onEditScheduled: () => Promise<void>;
   readonly onReconcileBaijiahao: () => Promise<void>;
   readonly onResolveUnknown: (
     resolution: 'not_published' | 'not_published_closed' | 'published',
@@ -389,6 +430,18 @@ function DetailContent({
               >
                 {busy === 'reschedule' ? '正在重新排期…' : '重新排期'}
               </button>
+            ) : null}
+            {job.status === 'scheduled' ? (
+              canEditScheduled ? (
+                <button
+                  className={secondaryButton}
+                  disabled={busy !== null}
+                  onClick={() => void onEditScheduled()}
+                  type="button"
+                >
+                  {busy === 'edit' ? '正在打开…' : '修改并重新质检'}
+                </button>
+              ) : null
             ) : null}
             {job.status === 'scheduled' ? (
               <button
@@ -520,6 +573,8 @@ function DetailContent({
         </div>
       </section>
 
+      <ContentSnapshotPreview snapshot={detail.content_snapshot} />
+
       <AttemptHistory attempts={detail.attempts} />
       <ExportPanel
         artifact={detail.export_artifact}
@@ -530,12 +585,94 @@ function DetailContent({
   );
 }
 
+function ContentSnapshotPreview({
+  snapshot,
+}: {
+  readonly snapshot: PublishJobDetail['content_snapshot'];
+}) {
+  const { content } = snapshot;
+  return (
+    <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-brand-700">实际发布内容</p>
+          <h2 className="mt-2 text-xl font-semibold text-ink-950">全文预览</h2>
+        </div>
+        <span className="rounded-full bg-surface-subtle px-3 py-1 text-xs text-ink-500">
+          {platformContentLabel(content.platform_code)}
+        </span>
+      </div>
+      <article className="mx-auto mt-6 max-w-3xl">
+        <h3 className="text-2xl font-semibold leading-tight text-ink-950">{content.title}</h3>
+        {content.summary ? (
+          <p className="mt-4 rounded-xl bg-surface-subtle p-4 text-sm leading-7 text-ink-600">
+            {content.summary}
+          </p>
+        ) : null}
+        <div className="mt-6 space-y-5">
+          {content.blocks.map((block) =>
+            block.block_type === 'heading' ? (
+              <h4 className="pt-2 text-lg font-semibold text-ink-950" key={block.block_key}>
+                {block.text}
+              </h4>
+            ) : block.block_type === 'quote' ? (
+              <blockquote
+                className="border-l-4 border-brand-200 pl-4 whitespace-pre-wrap text-ink-600"
+                key={block.block_key}
+              >
+                {block.text}
+              </blockquote>
+            ) : (
+              <p
+                className="whitespace-pre-wrap text-base leading-8 text-ink-800"
+                key={block.block_key}
+              >
+                {block.text}
+              </p>
+            ),
+          )}
+        </div>
+        {content.cta ? (
+          <p className="mt-6 rounded-xl border border-brand-100 bg-brand-50 p-4 leading-7 text-brand-900">
+            {content.cta}
+          </p>
+        ) : null}
+        {content.hashtags.length ? (
+          <p className="mt-5 text-sm text-brand-700">
+            {content.hashtags.map((tag) => (tag.startsWith('#') ? tag : `#${tag}`)).join(' ')}
+          </p>
+        ) : null}
+      </article>
+      <TechnicalDetails summary="内容版本信息">
+        <p>内容版本：{snapshot.content_version_id}</p>
+        <p>内容校验值：{snapshot.content_hash}</p>
+      </TechnicalDetails>
+    </section>
+  );
+}
+
 function originLabel(origin: PublishJob['origin']) {
   if (origin === 'official_site_automation') return '官网机器质检通过后自动创建';
   if (origin === 'baijiahao_automation') return '百家号自动化创建';
   if (origin === 'sohu_automation') return '搜狐号自动化创建';
   if (origin === 'lieju_automation') return '列举网自动化创建';
   return '人工创建';
+}
+
+function platformContentLabel(platformCode: string): string {
+  return (
+    {
+      baijiahao: '百家号',
+      douyin: '抖音',
+      lieju: '列举网',
+      official_site: '官网',
+      sohu: '搜狐号',
+      toutiao: '头条号',
+      wechat_mp: '微信公众号',
+      xiaohongshu: '小红书',
+      zhihu: '知乎',
+    }[platformCode] ?? platformCode
+  );
 }
 
 function AttemptHistory({ attempts }: { readonly attempts: readonly PublishAttempt[] }) {

@@ -737,6 +737,7 @@ export class ContentVariantController {
               parsedId.data,
               contentHash,
               audit(request),
+              parsedBody.data,
             ),
             request.id,
           ),

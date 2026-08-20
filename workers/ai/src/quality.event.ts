@@ -13,6 +13,8 @@ const DATA_KEYS = new Set([
   'package_id',
   'project_id',
   'request_id',
+  'source_publish_job_id',
+  'validation_mode',
   'variant_id',
   'workspace_id',
 ]);
@@ -26,6 +28,8 @@ export interface ValidatedQualityEvent {
     readonly packageId: string;
     readonly projectId: string;
     readonly requestId: string;
+    readonly sourcePublishJobId?: string | null;
+    readonly validationMode?: 'full' | 'manual_edit';
     readonly variantId: string;
     readonly workspaceId: string;
   };
@@ -54,6 +58,8 @@ export function validateQualityEvent(raw: unknown): ValidatedQualityEvent {
     packageId: string(data.package_id),
     projectId: string(data.project_id),
     requestId: string(data.request_id),
+    sourcePublishJobId: optionalString(data.source_publish_job_id),
+    validationMode: data.validation_mode === undefined ? 'full' : string(data.validation_mode),
     variantId: string(data.variant_id),
     workspaceId: string(data.workspace_id),
   };
@@ -61,6 +67,10 @@ export function validateQualityEvent(raw: unknown): ValidatedQualityEvent {
     event.aggregate.id !== values.variantId ||
     !HASH.test(values.contentHash) ||
     !REQUEST_ID.test(values.requestId) ||
+    (values.validationMode !== 'full' && values.validationMode !== 'manual_edit') ||
+    (values.validationMode === 'manual_edit'
+      ? !values.sourcePublishJobId || !UUID.test(values.sourcePublishJobId)
+      : values.sourcePublishJobId !== null) ||
     [
       values.actorUserId,
       values.contentVersionId,
@@ -74,7 +84,10 @@ export function validateQualityEvent(raw: unknown): ValidatedQualityEvent {
     throw invalidEvent();
   }
   return Object.freeze({
-    data: Object.freeze(values),
+    data: Object.freeze({
+      ...values,
+      validationMode: values.validationMode as 'full' | 'manual_edit',
+    }),
     eventId: event.event_id,
     tenantId: event.tenant.id,
   });
@@ -86,6 +99,10 @@ function record(value: unknown): value is Record<string, unknown> {
 
 function string(value: unknown): string {
   return typeof value === 'string' ? value : '';
+}
+
+function optionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 function invalidEvent(): GenerationWorkerError {

@@ -1433,9 +1433,11 @@ async function disableAutomationRun(
     if (rows.length !== 1) throw stateInvalid('Baijiahao automation run is inconsistent');
     await transaction`
       UPDATE baijiahao_daily_batch_items SET status='retired',
+        publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,
         last_error_json=jsonb_build_object(
           'code','PUBLISH_CANCELLED_BY_USER','message',${reason}::text,
-          'schema_version','baijiahao-daily-error@1'
+          'schema_version','baijiahao-daily-error@1',
+          'source_publish_job_id',${publishJobId}::text
         )
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
         AND status IN ('scheduled','processing','manual_required','publish_failed')
@@ -1459,9 +1461,11 @@ async function disableAutomationRun(
     if (rows.length !== 1) throw stateInvalid('Browser-platform automation run is inconsistent');
     await transaction`
       UPDATE browser_platform_daily_batch_items SET status='retired',
+        publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,
         last_error_json=jsonb_build_object(
           'code','PUBLISH_CANCELLED_BY_USER','message',${reason}::text,
-          'schema_version','browser-platform-daily-error@1'
+          'schema_version','browser-platform-daily-error@1',
+          'source_publish_job_id',${publishJobId}::text
         )
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
         AND status IN ('scheduled','processing','manual_required','publish_failed')
@@ -1482,6 +1486,17 @@ async function disableAutomationRun(
     RETURNING id
   `;
   if (rows.length !== 1) throw stateInvalid('Official-site automation run is inconsistent');
+  await transaction`
+    UPDATE official_site_daily_batch_items SET status='retired',
+      publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,
+      last_error_json=jsonb_build_object(
+        'code','PUBLISH_CANCELLED_BY_USER','message',${reason}::text,
+        'schema_version','official-site-daily-error@1',
+        'source_publish_job_id',${publishJobId}::text
+      )
+    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+      AND status IN ('scheduled','publish_failed')
+  `;
 }
 
 async function restartAutomationRun(
@@ -1533,8 +1548,18 @@ async function syncDailyBatchSchedule(
   if (origin === 'baijiahao_automation') {
     await transaction`
       UPDATE baijiahao_daily_batch_items SET
-        status='scheduled',scheduled_at=${scheduledAtIso}::timestamptz,last_error_json=NULL
-      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        status='scheduled',publish_job_id=${publishJobId}::uuid,
+        scheduled_at=${scheduledAtIso}::timestamptz,
+        qualified_at=COALESCE(qualified_at,now()),last_error_json=NULL
+      WHERE tenant_id=${tenantId}::uuid
+        AND (
+          publish_job_id=${publishJobId}::uuid
+          OR (
+            status='retired'
+            AND last_error_json->>'code'='PUBLISH_CANCELLED_BY_USER'
+            AND last_error_json->>'source_publish_job_id'=${publishJobId}
+          )
+        )
         AND status IN ('retired','scheduled','manual_required','publish_failed')
     `;
     return;
@@ -1542,17 +1567,37 @@ async function syncDailyBatchSchedule(
   if (isBrowserPlatformAutomatedOrigin(origin)) {
     await transaction`
       UPDATE browser_platform_daily_batch_items SET
-        status='scheduled',scheduled_at=${scheduledAtIso}::timestamptz,last_error_json=NULL
-      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
+        status='scheduled',publish_job_id=${publishJobId}::uuid,
+        scheduled_at=${scheduledAtIso}::timestamptz,
+        qualified_at=COALESCE(qualified_at,now()),last_error_json=NULL
+      WHERE tenant_id=${tenantId}::uuid
+        AND (
+          publish_job_id=${publishJobId}::uuid
+          OR (
+            status='retired'
+            AND last_error_json->>'code'='PUBLISH_CANCELLED_BY_USER'
+            AND last_error_json->>'source_publish_job_id'=${publishJobId}
+          )
+        )
         AND status IN ('retired','scheduled','manual_required','publish_failed')
     `;
     return;
   }
   const items = await transaction<{ batchId: string }[]>`
     UPDATE official_site_daily_batch_items SET
-      status='scheduled', scheduled_at=${scheduledAtIso}::timestamptz, last_error_json=NULL
-    WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${publishJobId}::uuid
-      AND status IN ('scheduled','publish_failed')
+      status='scheduled',publish_job_id=${publishJobId}::uuid,
+      scheduled_at=${scheduledAtIso}::timestamptz,
+      qualified_at=COALESCE(qualified_at,now()),last_error_json=NULL
+    WHERE tenant_id=${tenantId}::uuid
+      AND (
+        publish_job_id=${publishJobId}::uuid
+        OR (
+          status='retired'
+          AND last_error_json->>'code'='PUBLISH_CANCELLED_BY_USER'
+          AND last_error_json->>'source_publish_job_id'=${publishJobId}
+        )
+      )
+      AND status IN ('retired','scheduled','publish_failed')
     RETURNING batch_id AS "batchId"
   `;
   const batchId = items[0]?.batchId;

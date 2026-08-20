@@ -42,6 +42,7 @@ const QUALITY_REPORT_ID = 'a4000000-0000-4000-8000-000000000126';
 const SOURCE_EVENT_ID = 'a5000000-0000-4000-8000-000000000126';
 const DAILY_BATCH_ID = 'a7000000-0000-4000-8000-000000000126';
 const DAILY_ITEM_ID = 'a8000000-0000-4000-8000-000000000126';
+const SOURCE_PUBLISH_JOB_ID = 'a9000000-0000-4000-8000-000000000126';
 const WRITER_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
 const QUALITY_PROMPT_ID = '25000000-0000-4000-8000-000000000007';
 
@@ -647,6 +648,132 @@ describe('official-site quality, rewrite, and publication automation', () => {
           AND payload_json->'data'->>'content_version_id'=${MANUAL_VERSION_ID}
       `,
     ).toEqual([{ count: 1 }]);
+  });
+
+  it('revalidates a cancelled scheduled automation only through its exact source job', async () => {
+    const database = requireClient(client);
+    const edited = content('User edited scheduled website article');
+    await database`
+      UPDATE memberships SET role_code='tenant_admin'
+      WHERE tenant_id=${TENANT_ID}::uuid AND user_id=${USER_ID}::uuid
+    `;
+    await database`
+      INSERT INTO content_versions(
+        id,tenant_id,package_id,variant_id,version_no,schema_version,
+        content_json,content_hash,created_by
+      ) VALUES(
+        ${MANUAL_VERSION_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,
+        ${VARIANT_ID}::uuid,2,${edited.schema_version},${database.json(edited)},
+        ${contentHash(edited)},${USER_ID}::uuid
+      )
+    `;
+    await database`
+      UPDATE content_variants SET current_content_version_id=${MANUAL_VERSION_ID}::uuid,
+        status='quality_failed' WHERE id=${VARIANT_ID}::uuid
+    `;
+    await database`
+      INSERT INTO publish_jobs(
+        id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+        idempotency_key,payload_hash,status,created_by,origin
+      ) VALUES(
+        ${SOURCE_PUBLISH_JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,
+        ${VERSION_ID}::uuid,${ACCOUNT_ID}::uuid,now(),'official-site:cancelled-edit-126',
+        ${contentHash(INITIAL)},'cancelled',${USER_ID}::uuid,'official_site_automation'
+      )
+    `;
+    await database`
+      INSERT INTO official_site_automation_runs(
+        id,tenant_id,policy_id,variant_id,content_version_id,publish_job_id,status,
+        rewrite_count,last_error_json,finished_at
+      ) VALUES(
+        ${AUTOMATION_RUN_ID}::uuid,${TENANT_ID}::uuid,${POLICY_ID}::uuid,
+        ${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${SOURCE_PUBLISH_JOB_ID}::uuid,'disabled',
+        2,${database.json({ code: 'PUBLISH_CANCELLED_BY_USER' })},now()
+      )
+    `;
+    await seedDailyItem(database);
+    await database`
+      UPDATE official_site_daily_batch_items SET status='retired',
+        publish_job_id=NULL,scheduled_at=NULL,qualified_at=NULL,
+        last_error_json=${database.json({
+          code: 'PUBLISH_CANCELLED_BY_USER',
+          source_publish_job_id: SOURCE_PUBLISH_JOB_ID,
+        })}
+      WHERE id=${DAILY_ITEM_ID}::uuid
+    `;
+    const service = new ContentApiService(
+      { client: database } as IdentityAuthDatabase,
+      new OutboxWriter(database as never),
+    );
+    const previousEnvironment = {
+      model: process.env['QUALITY_CHECKER_MODEL_KEY'],
+      prompt: process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'],
+      version: process.env['QUALITY_CHECKER_SKILL_VERSION'],
+    };
+    process.env['QUALITY_CHECKER_MODEL_KEY'] = 'deepseek-v4-pro';
+    process.env['QUALITY_CHECKER_PROMPT_VERSION_ID'] = QUALITY_PROMPT_ID;
+    process.env['QUALITY_CHECKER_SKILL_VERSION'] = '1.0.0';
+    try {
+      await database.begin((transaction) =>
+        service.requestQualityCheck(
+          transaction,
+          TENANT_ID,
+          USER_ID,
+          VARIANT_ID,
+          contentHash(edited),
+          { requestId: 'scheduled-manual-revalidation-126' },
+          { mode: 'manual_edit', source_publish_job_id: SOURCE_PUBLISH_JOB_ID },
+        ),
+      );
+    } finally {
+      restoreEnvironment('QUALITY_CHECKER_MODEL_KEY', previousEnvironment.model);
+      restoreEnvironment('QUALITY_CHECKER_PROMPT_VERSION_ID', previousEnvironment.prompt);
+      restoreEnvironment('QUALITY_CHECKER_SKILL_VERSION', previousEnvironment.version);
+    }
+
+    expect(
+      await database<
+        {
+          contentVersionId: string;
+          itemCode: string;
+          itemStatus: string;
+          publishJobId: string | null;
+          rewriteCount: number;
+          runStatus: string;
+        }[]
+      >`
+        SELECT automation.status AS "runStatus",automation.rewrite_count AS "rewriteCount",
+          automation.content_version_id AS "contentVersionId",
+          automation.publish_job_id AS "publishJobId",item.status AS "itemStatus",
+          item.last_error_json->>'code' AS "itemCode"
+        FROM official_site_automation_runs AS automation
+        JOIN official_site_daily_batch_items AS item
+          ON item.variant_id=automation.variant_id AND item.tenant_id=automation.tenant_id
+        WHERE automation.id=${AUTOMATION_RUN_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        contentVersionId: MANUAL_VERSION_ID,
+        itemCode: 'MANUAL_EDIT_REVALIDATION',
+        itemStatus: 'retired',
+        publishJobId: null,
+        rewriteCount: 0,
+        runStatus: 'quality_pending',
+      },
+    ]);
+    const events = await database<{ data: Record<string, unknown> }[]>`
+      SELECT payload_json->'data' AS data FROM outbox_events
+      WHERE event_type='content.variant.quality_check_requested.v1'
+        AND payload_json->'data'->>'content_version_id'=${MANUAL_VERSION_ID}
+    `;
+    expect(events).toEqual([
+      {
+        data: expect.objectContaining({
+          source_publish_job_id: SOURCE_PUBLISH_JOB_ID,
+          validation_mode: 'manual_edit',
+        }),
+      },
+    ]);
   });
 });
 

@@ -29,11 +29,45 @@ describe('Quality event validation', () => {
       data: {
         contentHash: EVENT.data.content_hash,
         generationRunId: EVENT.data.generation_run_id,
+        sourcePublishJobId: null,
+        validationMode: 'full',
         variantId: VARIANT_ID,
       },
       eventId: EVENT.event_id,
       tenantId: EVENT.tenant.id,
     });
+  });
+
+  it('accepts manual-edit validation only with its cancelled source job identifier', () => {
+    const sourcePublishJobId = 'b0000000-0000-4000-8000-000000000054';
+    expect(
+      validateQualityEvent({
+        ...EVENT,
+        data: {
+          ...EVENT.data,
+          source_publish_job_id: sourcePublishJobId,
+          validation_mode: 'manual_edit',
+        },
+      }),
+    ).toMatchObject({
+      data: { sourcePublishJobId, validationMode: 'manual_edit' },
+    });
+    expect(() =>
+      validateQualityEvent({
+        ...EVENT,
+        data: { ...EVENT.data, validation_mode: 'manual_edit' },
+      }),
+    ).toThrow('Quality event is invalid');
+    expect(() =>
+      validateQualityEvent({
+        ...EVENT,
+        data: {
+          ...EVENT.data,
+          source_publish_job_id: sourcePublishJobId,
+          validation_mode: 'full',
+        },
+      }),
+    ).toThrow('Quality event is invalid');
   });
 
   it('rejects unknown fields and mismatched aggregate identifiers', () => {

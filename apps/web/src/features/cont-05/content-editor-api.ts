@@ -77,6 +77,29 @@ export async function regenerateVariant(
   if (!parsed.success) throw new ContentEditorRequestError(502);
 }
 
+export async function requestManualEditQuality(
+  variantId: string,
+  sourcePublishJobId: string,
+  csrf: string,
+) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/content-variants/${variantId}/quality-check`, {
+    body: JSON.stringify({
+      mode: 'manual_edit',
+      source_publish_job_id: sourcePublishJobId,
+    }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `content-publish-edit-quality-${createRequestUuid()}`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw new ContentEditorRequestError(response.status);
+  const parsed = GenerationResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new ContentEditorRequestError(502);
+}
+
 export async function loadVersionDiff(baseId: string, targetId: string): Promise<ContentDiff> {
   const query = new URLSearchParams({ target_version_id: targetId });
   const response = await fetch(`${API_ORIGIN}/api/v1/content-versions/${baseId}/diff?${query}`, {

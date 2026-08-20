@@ -1,5 +1,6 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
 import type {
+  ContentDocument,
   ContentVariantStatus,
   ExportArtifactView,
   PlatformCode,
@@ -11,7 +12,7 @@ import type {
   PublishMediaState,
   SignedDownloadView,
 } from '@geo-content-os/contracts';
-import { PublishJobParamsSchema } from '@geo-content-os/contracts';
+import { ContentDocumentSchema, PublishJobParamsSchema } from '@geo-content-os/contracts';
 import type postgres from 'postgres';
 
 import { resolveDatabaseClient, type DatabaseClientSource } from '../../../database/index.js';
@@ -112,6 +113,12 @@ interface MediaRequestRow {
   readonly workspaceId: string;
 }
 
+interface ContentSnapshotRow {
+  readonly content: unknown;
+  readonly contentHash: string;
+  readonly contentVersionId: string;
+}
+
 export class PublishingApiService {
   private readonly outbox: OutboxWriter;
 
@@ -185,20 +192,69 @@ export class PublishingApiService {
 
   public async detail(scope: PublishingApiScope, jobId: string): Promise<PublishJobDetail> {
     const job = await this.requireJob(scope, jobId);
-    const [attempts, artifact, media, baijiahaoReconciliation] = await Promise.all([
-      this.attemptRows(scope, jobId),
-      this.latestArtifact(scope, jobId),
-      this.mediaState(scope, jobId),
-      this.baijiahaoReconciliation(scope, job),
-    ]);
+    const [attempts, artifact, media, baijiahaoReconciliation, contentSnapshot] = await Promise.all(
+      [
+        this.attemptRows(scope, jobId),
+        this.latestArtifact(scope, jobId),
+        this.mediaState(scope, jobId),
+        this.baijiahaoReconciliation(scope, job),
+        this.contentSnapshot(scope, job),
+      ],
+    );
     return {
       attempts: attempts.map(mapAttempt),
       baijiahao_reconciliation: baijiahaoReconciliation,
+      content_snapshot: contentSnapshot,
       export_artifact: artifact ? mapArtifact(artifact) : null,
       job: mapJob(job),
       media,
       unknown_resolution: unknownResolution(job, attempts),
     };
+  }
+
+  private async contentSnapshot(
+    scope: PublishingApiScope,
+    job: JobRow,
+  ): Promise<{
+    readonly content: ContentDocument;
+    readonly content_hash: string;
+    readonly content_version_id: string;
+  }> {
+    const rows = await this.database<ContentSnapshotRow[]>`
+      SELECT
+        version.id AS "contentVersionId",version.content_hash AS "contentHash",
+        version.content_json AS content
+      FROM content_versions AS version
+      JOIN content_variants AS variant
+        ON variant.id=${job.variantId}::uuid AND variant.tenant_id=version.tenant_id
+        AND version.variant_id=variant.id AND version.package_id=variant.package_id
+      JOIN content_packages AS package
+        ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+      WHERE version.tenant_id=${scope.tenantId}::uuid
+        AND version.id=${job.contentVersionId}::uuid
+        AND has_project_scope_access(
+          package.tenant_id,package.workspace_id,package.project_id,${scope.userId}::uuid
+        )
+      LIMIT 1
+    `;
+    const row = rows[0];
+    const parsed = ContentDocumentSchema.safeParse(row?.content);
+    if (
+      !row ||
+      row.contentVersionId !== job.contentVersionId ||
+      row.contentHash !== job.payloadHash ||
+      !parsed.success
+    ) {
+      throw new PublishingApiError(
+        'PUBLISHING_STATE_INVALID',
+        'Publish job content snapshot is unavailable or inconsistent',
+      );
+    }
+    return Object.freeze({
+      content: parsed.data,
+      content_hash: row.contentHash,
+      content_version_id: row.contentVersionId,
+    });
   }
 
   private async baijiahaoReconciliation(

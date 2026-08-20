@@ -125,9 +125,15 @@ export const LockBlockRequestSchema = z
   .object({ reason: z.string().trim().min(1).max(1_000).nullable().default(null) })
   .strict();
 
-export const QualityCheckRequestSchema = z
-  .object({ mode: z.literal('full').default('full') })
-  .strict();
+export const QualityCheckRequestSchema = z.union([
+  z.object({ mode: z.literal('full').default('full') }).strict(),
+  z
+    .object({
+      mode: z.literal('manual_edit'),
+      source_publish_job_id: UuidSchema,
+    })
+    .strict(),
+]);
 
 export const RegenerateVariantRequestSchema = z
   .object({

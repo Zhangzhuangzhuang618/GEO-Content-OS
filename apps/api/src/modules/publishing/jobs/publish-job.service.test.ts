@@ -26,6 +26,55 @@ const SCOPE: PublishJobScope = {
 };
 
 describe('PublishJobService rescheduling', () => {
+  it('cancels a scheduled official-site edit safely and retires its daily item', async () => {
+    const sqlStatements: string[] = [];
+    const sqlValues: unknown[] = [];
+    const before = jobRow({
+      origin: 'official_site_automation',
+      status: 'scheduled',
+      variantStatus: 'scheduled',
+    });
+    const transaction = createCancellationTransaction(before, sqlStatements, sqlValues);
+    const client = Object.assign(vi.fn(), {
+      begin: vi.fn(async (work: (value: TransactionSql) => Promise<unknown>) => work(transaction)),
+    });
+    const outbox = {
+      enqueue: vi.fn().mockResolvedValue({ event_id: EVENT_ID }),
+    } as unknown as OutboxWriter;
+    const audit = {
+      record: vi.fn().mockResolvedValue(undefined),
+    } as unknown as RequiredAuditWriter;
+    const service = new PublishJobService(client as never, outbox, audit);
+
+    const result = await service.cancel(SCOPE, JOB_ID, 1, '人工修改已排期内容并重新质检。');
+
+    expect(result).toMatchObject({ status: 'cancelled', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE official_site_automation_runs') && sql.includes("status='disabled'"),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(sqlValues)).toContain('PUBLISH_CANCELLED_BY_USER');
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE official_site_daily_batch_items') &&
+          sql.includes("status='retired'") &&
+          sql.includes('publish_job_id=NULL') &&
+          sql.includes('scheduled_at=NULL') &&
+          sql.includes('qualified_at=NULL') &&
+          sql.includes('PUBLISH_CANCELLED_BY_USER'),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(sqlValues)).toContain(JOB_ID);
+    expect(outbox.enqueue).not.toHaveBeenCalled();
+    expect(audit.record).toHaveBeenCalledWith(
+      transaction,
+      expect.objectContaining({ action: 'publish_job.cancelled' }),
+    );
+  });
+
   it('reschedules the same scheduled job and supersedes its pending execution event', async () => {
     const sqlStatements: string[] = [];
     const before = jobRow({ origin: 'manual', status: 'scheduled', variantStatus: 'scheduled' });
@@ -459,6 +508,29 @@ function createTransaction(
     if (sql.includes('UPDATE official_site_daily_batch_items')) {
       return [{ batchId: DAILY_BATCH_ID }];
     }
+    return [];
+  }) as unknown as TransactionSql;
+}
+
+function createCancellationTransaction(
+  before: ReturnType<typeof jobRow>,
+  sqlStatements: string[],
+  sqlValues: unknown[],
+) {
+  return vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const sql = strings.join('?');
+    sqlStatements.push(sql);
+    sqlValues.push(...values);
+    if (sql.includes('FROM publish_jobs AS job')) return [before];
+    if (sql.includes('UPDATE publish_jobs SET')) {
+      return [{ ...before, status: 'cancelled', version: before.version + 1 }];
+    }
+    if (sql.includes('UPDATE content_variants')) return [{ id: VARIANT_ID }];
+    if (sql.includes('UPDATE official_site_automation_runs')) return [{ id: AUTOMATION_ID }];
+    if (sql.includes('FROM content_variants') && sql.includes('is_required')) {
+      return [{ isRequired: true, status: 'quality_passed' }];
+    }
+    if (sql.includes('UPDATE content_packages')) return [{ id: PACKAGE_ID }];
     return [];
   }) as unknown as TransactionSql;
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { ContentDocumentSchema } from '../cont-05/content-editor.schema';
 import { PublishJobSchema } from '../pub-02/publishing-calendar.schema';
 
 export const PublishAttemptSchema = z
@@ -57,6 +58,13 @@ export const PublishJobDetailResponseSchema = z
         export_artifact: ExportArtifactSchema.nullable(),
         job: PublishJobSchema,
         media: PublishMediaStateSchema,
+        content_snapshot: z
+          .object({
+            content: ContentDocumentSchema,
+            content_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+            content_version_id: z.string().uuid(),
+          })
+          .strict(),
         unknown_resolution: z
           .object({
             blocked_reason: z

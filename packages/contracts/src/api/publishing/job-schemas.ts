@@ -10,6 +10,7 @@ import {
   createDataResponseSchema,
 } from '../common.js';
 import { PLATFORM_CODES } from '../../platforms.js';
+import { ContentDocumentSchema } from '../content/schemas.js';
 
 export const PublishJobParamsSchema = z.object({ id: UuidSchema }).strict();
 export const GeneratePublishMediaRequestSchema = z.object({}).strict();
@@ -153,6 +154,13 @@ export const PublishJobDetailSchema = z
     export_artifact: ExportArtifactViewSchema.nullable(),
     job: PublishJobViewSchema,
     media: PublishMediaStateSchema,
+    content_snapshot: z
+      .object({
+        content: ContentDocumentSchema,
+        content_hash: z.string().regex(/^[0-9a-f]{64}$/u),
+        content_version_id: UuidSchema,
+      })
+      .strict(),
     unknown_resolution: z
       .object({
         blocked_reason: z

@@ -99,11 +99,14 @@ interface RecoverableMediaRun {
   readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
   readonly projectId: string;
   readonly qualityReportId: string;
+  readonly sourcePublishJobId: string | null;
   readonly tenantId: string;
+  readonly validationMode: string | null;
   readonly variantId: string;
   readonly workspaceId: string;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const AI_DISCLOSURE_LABEL = 'AI示意图';
 const AI_DISCLOSURE_STORAGE_VALUE = 'ai_generated';
 
@@ -126,7 +129,9 @@ export class ContentMediaWorker {
           run.project_id AS "projectId",run.package_id AS "packageId",
           run.variant_id AS "variantId",run.content_version_id AS "contentVersionId",
           run.quality_report_id AS "qualityReportId",run.platform_code AS "platformCode",
-          run.created_by AS "createdBy",version.content_hash AS "contentHash"
+          run.created_by AS "createdBy",version.content_hash AS "contentHash",
+          run.diagnostics_json->'handoff'->>'source_publish_job_id' AS "sourcePublishJobId",
+          run.diagnostics_json->'handoff'->>'validation_mode' AS "validationMode"
         FROM content_media_runs AS run
         JOIN content_versions AS version
           ON version.id=run.content_version_id AND version.tenant_id=run.tenant_id
@@ -166,6 +171,10 @@ export class ContentMediaWorker {
         FOR UPDATE OF run SKIP LOCKED
       `;
       for (const row of rows) {
+        const manualEdit =
+          row.validationMode === 'manual_edit' &&
+          typeof row.sourcePublishJobId === 'string' &&
+          UUID_PATTERN.test(row.sourcePublishJobId);
         const recovered = await transaction<{ id: string }[]>`
           UPDATE content_media_runs SET status='queued',started_at=NULL,finished_at=NULL,
             last_error_json='{"code":"STALE_MEDIA_RUN_RECOVERED","schema_version":"content-media-error@1"}'::jsonb,
@@ -186,6 +195,12 @@ export class ContentMediaWorker {
             project_id: row.projectId,
             quality_report_id: row.qualityReportId,
             request_id: `media-recovery-${row.id}`.slice(0, 80),
+            ...(manualEdit
+              ? {
+                  source_publish_job_id: row.sourcePublishJobId,
+                  validation_mode: 'manual_edit',
+                }
+              : {}),
             variant_id: row.variantId,
             workspace_id: row.workspaceId,
           },
@@ -728,6 +743,8 @@ export class ContentMediaWorker {
           packageId: event.data.packageId,
           projectId: event.data.projectId,
           requestId: event.data.requestId,
+          sourcePublishJobId: event.data.sourcePublishJobId ?? null,
+          validationMode: event.data.validationMode ?? 'full',
           variantId: event.data.variantId,
           workspaceId: event.data.workspaceId,
         }),
