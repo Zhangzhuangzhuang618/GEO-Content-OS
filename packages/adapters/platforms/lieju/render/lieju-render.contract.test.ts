@@ -75,6 +75,17 @@ describe('Lieju render contract', () => {
       expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
     },
   );
+
+  it('continues to block a prohibited term inside a quoted negative example', async () => {
+    const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
+    input.content.blocks[0]!.text += '不要轻信“百分百满意”等绝对化承诺。';
+
+    const result = validateLiejuContent(input);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
+  });
 });
 
 async function fixture(): Promise<unknown> {

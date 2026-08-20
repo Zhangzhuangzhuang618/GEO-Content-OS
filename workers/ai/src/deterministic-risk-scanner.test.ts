@@ -542,6 +542,38 @@ describe('deterministic pre-publish risk scanner', () => {
       ]),
     );
   });
+
+  it('blocks a Lieju promotional term before publishing even in a quoted warning', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'risk-warning',
+            '不要轻信“百分百满意”等绝对化承诺，服务方案应以实际需求和书面约定为准。',
+          ),
+        ],
+        platform_code: 'lieju',
+        platform_meta: { content_type: 'logistics_freight' },
+        title: '广州搬家前如何核对承诺',
+      }),
+      platformCode: 'lieju',
+    });
+
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'compliance',
+          location: 'blocks.risk-warning',
+          message: '列举网待发布内容包含发布层禁止的宣传词“百分百”。',
+          rule_id: 'deterministic.lieju.prohibited_promotional_term',
+          severity: 'BLOCK',
+          suggestion: '删除“百分百”原词；即使是否定、引用或举例，也必须改为不含该词的中性表达。',
+        }),
+      ]),
+    );
+  });
 });
 
 function assessment(): QualityCheckerData {

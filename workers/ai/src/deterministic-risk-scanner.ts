@@ -1,5 +1,6 @@
 import {
   findDisallowedCompanyNames,
+  findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
   type PlatformCode,
 } from '@geo-content-os/contracts';
@@ -156,9 +157,8 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
 
 function addLiejuPlatformIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
   if (input.platformCode !== 'lieju') return;
-  const publishText = contentSections(input.content)
-    .map((section) => section.text)
-    .join('\n');
+  const sections = contentSections(input.content);
+  const publishText = sections.map((section) => section.text).join('\n');
   const prohibitedPatterns: readonly [RegExp, string, string][] = [
     [/(?:https?:\/\/|www\.)\S+/iu, 'external_url', '网址'],
     [
@@ -180,6 +180,23 @@ function addLiejuPlatformIssues(issues: QualityIssue[], input: DeterministicRisk
       ),
     );
   }
+  for (const section of sections.filter(isLiejuPublishedSection)) {
+    for (const term of findLiejuProhibitedPromotionalTerms(section.text)) {
+      issues.push(
+        issue(
+          'deterministic.lieju.prohibited_promotional_term',
+          'compliance',
+          section.location,
+          `列举网待发布内容包含发布层禁止的宣传词“${term}”。`,
+          `删除“${term}”原词；即使是否定、引用或举例，也必须改为不含该词的中性表达。`,
+        ),
+      );
+    }
+  }
+}
+
+function isLiejuPublishedSection(section: LocatedText): boolean {
+  return section.location === 'title' || section.location.startsWith('blocks.');
 }
 
 function addBaijiahaoPlatformIssues(

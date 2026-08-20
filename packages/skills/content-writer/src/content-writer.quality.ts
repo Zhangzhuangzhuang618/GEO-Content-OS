@@ -1,3 +1,4 @@
+import { findLiejuProhibitedPromotionalTerms } from '@geo-content-os/contracts';
 import type {
   ContentWriterContent,
   ContentWriterData,
@@ -129,6 +130,16 @@ function assessContent(
         ...new Set(unsupportedAuthorityTerms),
       ].join('、')}），必须删除或改为有事实边界的客观表达`,
     );
+  }
+  if (content.platform_code === 'lieju') {
+    const prohibitedTerms = findLiejuProhibitedPromotionalTerms(`${content.title}\n${text}`);
+    if (prohibitedTerms.length > 0) {
+      issues.push(
+        `lieju:包含发布层禁止的宣传词（${prohibitedTerms.join(
+          '、',
+        )}），即使是否定、引用或举例也必须删除原词并改为中性表达`,
+      );
+    }
   }
   if (content.summary.trim() === content.blocks[0]?.text.trim()) {
     issues.push(`${content.platform_code}:摘要与正文首段完全重复`);

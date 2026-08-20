@@ -141,6 +141,43 @@ describe('AI Worker runtime wiring', () => {
     expect(variant.summary).toBe(rewritten.variants[0]!.summary);
   });
 
+  it('passes Lieju lexical blockers into the browser-platform rewrite prompt', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const repaired = multiPlatformContentData(['lieju'], new Set());
+    const original = {
+      ...repaired.variants[0]!,
+      blocks: repaired.variants[0]!.blocks.map((block, index) =>
+        index === repaired.variants[0]!.blocks.length - 1
+          ? { ...block, text: `${block.text}不要轻信“百分百满意”等绝对化承诺。` }
+          : block,
+      ),
+      schema_version: 'content-writer-data@1' as const,
+    } as unknown as GeneratedContent;
+    const adapter = new LooseMockAdapter([{ text: JSON.stringify(repaired) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const issue =
+      'deterministic.lieju.prohibited_promotional_term | blocks.risk-warning | 列举网待发布内容包含发布层禁止的宣传词“百分百”。 | 删除原词并改为中性表达。';
+
+    const rewritten = await writer.rewriteBrowserPlatformVariant({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+      currentContent: original,
+      issues: [issue],
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-lexical-rewrite-0061',
+      writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
+    });
+
+    const prompt = adapter.requests[0]?.messages.map((message) => message.content).join('\n');
+    expect(prompt).toContain(issue);
+    expect(prompt).toContain('即使这些词出现在否定、引用或举例中');
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('百分百');
+  });
+
   it('fails before persistence when a quality-guided rewrite remains unchanged', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const original = multiPlatformContentData(['baijiahao'], new Set());

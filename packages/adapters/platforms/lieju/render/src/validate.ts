@@ -1,3 +1,5 @@
+import { findLiejuProhibitedPromotionalTerms } from '@geo-content-os/contracts';
+
 import { LIEJU_RENDER_RULES_V1 } from './rules.js';
 import { LiejuRenderInputSchema } from './schema.js';
 import type {
@@ -6,9 +8,6 @@ import type {
   LiejuValidationIssue,
   LiejuValidationResult,
 } from './types.js';
-
-const PROHIBITED_PROMOTIONAL_TERM_PATTERN =
-  /(?:最好|最佳|首选|权威|国家级|百分百|100%保证|(?:行业|业内|全网|全国|全市|本地|当地|同城|市场|区域|广州|华南|排名)第一|第一(?:名|家|品牌|选择|梯队|服务商|搬家公司)|(?:是|为|称为|号称|自称|公认|位居|稳居|做到|成为)第一(?=$|[\s，。！？；：]))/u;
 
 export function validateLiejuContent(input: unknown): LiejuValidationResult {
   const parsed = LiejuRenderInputSchema.safeParse(input);
@@ -45,7 +44,7 @@ export function validateLiejuContent(input: unknown): LiejuValidationResult {
   ) {
     issues.push(blocker('CONTACT_INFO_FORBIDDEN', '标题和描述不得包含联系方式或网址。', 'content'));
   }
-  if (PROHIBITED_PROMOTIONAL_TERM_PATTERN.test(publishText)) {
+  if (findLiejuProhibitedPromotionalTerms(publishText).length > 0) {
     issues.push(blocker('PROHIBITED_TERM', '内容包含列举网禁止或高风险宣传词。', 'content'));
   }
   const bodySegments = value.content.blocks.filter(

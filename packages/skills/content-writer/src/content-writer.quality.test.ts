@@ -64,6 +64,22 @@ describe('Content Writer semantic quality gate', () => {
     ]);
   });
 
+  it('rejects a Lieju publish-blocked term even when it appears in a warning', () => {
+    const lieju = complete('lieju', 75);
+    const unsafe: ContentWriterContent = {
+      ...lieju,
+      blocks: lieju.blocks.map((block, index) =>
+        index === lieju.blocks.length - 1
+          ? { ...block, text: `${block.text}不要轻信“百分百满意”等绝对化承诺。` }
+          : block,
+      ),
+    };
+
+    expect(assessContentWriterContents([unsafe], 'quality').issues).toEqual([
+      'lieju:包含发布层禁止的宣传词（百分百），即使是否定、引用或举例也必须删除原词并改为中性表达',
+    ]);
+  });
+
   it('rejects an official-site title outside the publish contract', () => {
     const official = complete('official_site', 190);
 
