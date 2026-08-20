@@ -274,6 +274,133 @@ describe('AI Worker runtime wiring', () => {
     expect(adapter.requests[1]!.tools).toBeUndefined();
   });
 
+  it('uses one final browser rewrite to delete credential claims without frozen certificate evidence', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['lieju'], new Set());
+    const credentialText = '公司持有营业执照、道路运输经营许可证。';
+    const unsupported = {
+      master_content: {
+        ...clean.master_content,
+        blocks: clean.master_content.blocks.map((block, index) =>
+          index === clean.master_content.blocks.length - 1
+            ? { ...block, text: `${block.text}${credentialText}` }
+            : block,
+        ),
+      },
+      variants: [
+        {
+          ...clean.variants[0]!,
+          blocks: clean.variants[0]!.blocks.map((block, index) =>
+            index === clean.variants[0]!.blocks.length - 1
+              ? { ...block, text: `${block.text}${credentialText}` }
+              : block,
+          ),
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(clean) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const currentContent = {
+      ...unsupported.variants[0]!,
+      schema_version: 'content-writer-data@1' as const,
+    } as unknown as GeneratedContent;
+
+    const rewritten = await writer.rewriteBrowserPlatformVariant({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+      currentContent,
+      issues: [
+        'deterministic.fact.external_credential_requires_evidence | blocks.section-7 | 资质声明缺少证据 | 删除该声明或补齐引用',
+      ],
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-final-credential-repair-0164',
+      writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
+    });
+
+    expect(adapter.requests).toHaveLength(3);
+    const finalPrompt = adapter.requests[2]!.messages.map((message) => message.content).join('\n');
+    expect(finalPrompt).toContain('当前候选冻结输入没有已授权的结构化企业证照引用');
+    expect(finalPrompt).toContain('彻底删除');
+    expect(adapter.requests.every((request) => !request.tools?.length)).toBe(true);
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('营业执照');
+    expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain(
+      '道路运输经营许可证',
+    );
+  });
+
+  it('stops after the bounded final browser credential rewrite remains unsupported', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['lieju'], new Set());
+    const credentialText = '公司持有营业执照、道路运输经营许可证。';
+    const unsupported = {
+      master_content: {
+        ...clean.master_content,
+        blocks: clean.master_content.blocks.map((block, index) =>
+          index === clean.master_content.blocks.length - 1
+            ? { ...block, text: `${block.text}${credentialText}` }
+            : block,
+        ),
+      },
+      variants: [
+        {
+          ...clean.variants[0]!,
+          blocks: clean.variants[0]!.blocks.map((block, index) =>
+            index === clean.variants[0]!.blocks.length - 1
+              ? { ...block, text: `${block.text}${credentialText}` }
+              : block,
+          ),
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(unsupported) },
+        { text: JSON.stringify(unsupported) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const currentContent = {
+      ...unsupported.variants[0]!,
+      schema_version: 'content-writer-data@1' as const,
+    } as unknown as GeneratedContent;
+
+    await expect(
+      writer.rewriteBrowserPlatformVariant({
+        context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+        currentContent,
+        issues: [
+          'deterministic.fact.external_credential_requires_evidence | blocks.section-7 | 资质声明缺少证据 | 删除该声明或补齐引用',
+        ],
+        platformCode: 'lieju',
+        requestId: 'runtime-lieju-final-credential-failure-0165',
+        writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONTENT_QUALITY_INSUFFICIENT',
+      message: expect.stringContaining('必须通过 citation_map 关联'),
+    });
+
+    expect(adapter.requests).toHaveLength(3);
+  });
+
   it('does not accept a structured certificate citation from an unauthorized source', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const base = multiPlatformContentData(['lieju'], new Set());

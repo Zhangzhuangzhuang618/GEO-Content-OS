@@ -120,6 +120,46 @@ describe('RuntimeQualityChecker', () => {
     expect(repairPrompt).not.toContain('测试任务提示词');
   });
 
+  it('does not add a final repair for repeated non-brand semantic failures', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const wrongScores = {
+      ...clean.output.data,
+      geo_scores: { ...clean.output.data.geo_scores, total: 1 },
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(wrongScores),
+      JSON.stringify(wrongScores),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000091',
+          projectId: '20000000-0000-4000-8000-000000000091',
+          promptVersionId: '70000000-0000-4000-8000-000000000078',
+          requestId: 'runtime-quality-checker-0091',
+          runId: '60000000-0000-4000-8000-000000000078',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000078',
+          variantId: '20000000-0000-4000-8000-000000000078',
+          workspaceId: '30000000-0000-4000-8000-000000000091',
+        },
+        qualityInput: clean.input,
+      }),
+    ).rejects.toMatchObject({ code: 'SKILL_OUTPUT_INVALID' });
+
+    expect(adapter.requests).toHaveLength(2);
+  });
+
   it('binds Lieju title, contact, brand, and high-risk semantics before the first check', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const qualityInput = {
@@ -491,6 +531,119 @@ describe('RuntimeQualityChecker', () => {
     ).resolves.toMatchObject({ decision: 'pass', issues: [] });
 
     expect(adapter.requests).toHaveLength(2);
+  });
+
+  it('uses one final repair when the first semantic repair returns only malformed brand findings', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const malformedBrandBlock = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '内容中出现了其他企业名称。',
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '删除其他企业名称。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(malformedBrandBlock),
+      JSON.stringify(malformedBrandBlock),
+      JSON.stringify(clean.output.data),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000089',
+          projectId: '20000000-0000-4000-8000-000000000089',
+          promptVersionId: '70000000-0000-4000-8000-000000000076',
+          requestId: 'runtime-quality-checker-0089',
+          runId: '60000000-0000-4000-8000-000000000076',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000076',
+          variantId: '20000000-0000-4000-8000-000000000076',
+          workspaceId: '30000000-0000-4000-8000-000000000089',
+        },
+        qualityInput: clean.input,
+      }),
+    ).resolves.toEqual(clean.output.data);
+
+    expect(adapter.requests).toHaveLength(3);
+    const finalRepairPrompt = adapter.requests[2]!.messages.map((message) => message.content).join(
+      '\n',
+    );
+    expect(finalRepairPrompt).toContain('exact_name_is_not_quoted');
+    expect(finalRepairPrompt).toContain('omit the finding unless its message quotes one exact');
+  });
+
+  it('stops after the bounded final brand repair remains invalid', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const malformedBrandBlock = {
+      ...clean.output.data,
+      decision: 'block' as const,
+      issues: [
+        {
+          category: 'brand' as const,
+          citation_ids: [],
+          location: 'blocks[0].text',
+          message: '内容中出现了其他企业名称。',
+          rule_id: 'brand.other_company_name',
+          severity: 'BLOCK' as const,
+          suggestion: '删除其他企业名称。',
+        },
+      ],
+      score: 35,
+    };
+    const adapter = new QualityMockAdapter([
+      JSON.stringify(malformedBrandBlock),
+      JSON.stringify(malformedBrandBlock),
+      JSON.stringify(malformedBrandBlock),
+    ]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000090',
+          projectId: '20000000-0000-4000-8000-000000000090',
+          promptVersionId: '70000000-0000-4000-8000-000000000077',
+          requestId: 'runtime-quality-checker-0090',
+          runId: '60000000-0000-4000-8000-000000000077',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000077',
+          variantId: '20000000-0000-4000-8000-000000000077',
+          workspaceId: '30000000-0000-4000-8000-000000000090',
+        },
+        qualityInput: clean.input,
+      }),
+    ).rejects.toMatchObject({
+      code: 'SKILL_OUTPUT_INVALID',
+    });
+
+    expect(adapter.requests).toHaveLength(3);
   });
 
   it('uses the current tenant owner in both initial policy and semantic repair', async () => {

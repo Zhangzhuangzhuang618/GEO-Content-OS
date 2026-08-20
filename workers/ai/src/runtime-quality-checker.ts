@@ -104,10 +104,18 @@ export class RuntimeQualityChecker {
       if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') {
         throw error;
       }
-      result = await run(
-        qualitySemanticRepairPrompt(prompt, input.qualityInput, error.message),
-        true,
-      );
+      try {
+        result = await run(
+          qualitySemanticRepairPrompt(prompt, input.qualityInput, error.message),
+          true,
+        );
+      } catch (repairError) {
+        if (!isBrandOnlySemanticRejection(repairError)) throw repairError;
+        result = await run(
+          qualitySemanticRepairPrompt(prompt, input.qualityInput, repairError.message),
+          true,
+        );
+      }
     }
     if (result.output.status === 'failed') {
       throw new Error(
@@ -381,6 +389,25 @@ function containsLiejuContactDetail(value: string): boolean {
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isBrandOnlySemanticRejection(error: unknown): error is SkillRuntimeError {
+  if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') return false;
+  const prefix = 'Quality Checker issues are unverifiable: ';
+  if (!error.message.startsWith(prefix)) return false;
+  try {
+    const parsed: unknown = JSON.parse(error.message.slice(prefix.length));
+    const rejections = record(parsed) ? parsed['rejections'] : null;
+    return (
+      Array.isArray(rejections) &&
+      rejections.length > 0 &&
+      rejections.every(
+        (rejection) => record(rejection) && rejection['rule_id'] === 'brand.other_company_name',
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 function passthrough(definition: SkillToolDefinitionContract): SkillTool {

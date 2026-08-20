@@ -679,6 +679,30 @@ export class RuntimeContentWriter implements ContentWriterPort {
     output = result.output;
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    if (
+      revision &&
+      assessment.passed &&
+      hasBrowserPlatformVariant(output.data) &&
+      onlyCredentialOrUnchangedRewriteIssues(deterministicIssues)
+    ) {
+      result = await runWithStructuredOutputRetry(skill, {
+        ...invocation,
+        revision: {
+          candidate: output.data,
+          issues: Object.freeze([
+            ...new Set([
+              ...revision.issues,
+              ...deterministicIssues,
+              finalCredentialRepairInstruction(input.writerInput),
+            ]),
+          ]),
+        },
+        toolNames: [],
+      });
+      output = result.output;
+      assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    }
     shortfalls = contentLengthShortfalls(assessment.issues);
     if (
       shortfalls &&
@@ -1207,6 +1231,36 @@ function onlyUnchangedRewriteIssues(issues: readonly string[]): boolean {
     issues.length > 0 &&
     issues.every((issue) => issue.includes('质量报告驱动重写结果与待修改版本完全相同'))
   );
+}
+
+function hasBrowserPlatformVariant(data: ContentWriterData): boolean {
+  return data.variants.some(
+    (content) => content.platform_code === 'lieju' || content.platform_code === 'sohu',
+  );
+}
+
+function onlyCredentialOrUnchangedRewriteIssues(issues: readonly string[]): boolean {
+  let hasCredentialIssue = false;
+  if (issues.length === 0) return false;
+  for (const issue of issues) {
+    if (issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照')) {
+      hasCredentialIssue = true;
+      continue;
+    }
+    if (issue.includes('质量报告驱动重写结果与待修改版本完全相同')) continue;
+    return false;
+  }
+  return hasCredentialIssue;
+}
+
+function finalCredentialRepairInstruction(writerInput: JsonObject): string {
+  const authorizedSourceIds = authorizedCertificateSourceIds(writerInput);
+  const authorizedCitationCount = [...suppliedCitations(writerInput).values()].filter((citation) =>
+    authorizedSourceIds.has(citation.sourceId),
+  ).length;
+  return authorizedCitationCount === 0
+    ? '这是最后一次证照修复：当前候选冻结输入没有已授权的结构化企业证照引用。必须从母稿和全部平台稿彻底删除营业执照、道路运输证、道路运输经营许可证、认证、荣誉、许可或证照齐全等资质声明；不得换词保留、重新添加或伪造 citation_map。'
+    : `这是最后一次证照修复：当前候选冻结输入含 ${authorizedCitationCount} 条已授权结构化企业证照引用。每项资质声明必须在 citation_map 中逐项关联能直接证明该资质且主体匹配的输入 citation_id；无法完整证明的声明必须从母稿和全部平台稿彻底删除，不得换词保留或编造引用。`;
 }
 
 function officialSiteBodyCharacterCount(article: OfficialSiteArticleDraft): number {
