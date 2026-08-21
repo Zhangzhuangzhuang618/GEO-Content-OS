@@ -57,6 +57,7 @@ function renderPublishBodyHtml(
 ): string {
   return [
     renderContentBlocks(content, mediaAssets),
+    renderCtaHtml(content.cta),
     renderFaqHtml(content.platform_meta.faq),
     renderReferencesHtml(citations),
   ]
@@ -73,12 +74,17 @@ function renderHtml(
     '<article data-platform="official_site">',
     `<h1>${escapeHtml(content.title)}</h1>`,
     renderContentBlocks(content, mediaAssets),
+    renderCtaHtml(content.cta),
     renderFaqHtml(content.platform_meta.faq),
     renderReferencesHtml(citations),
     `<script type="application/ld+json">${safeJson(content.platform_meta.schema_org)}</script>`,
     '</article>',
   ];
   return parts.filter(Boolean).join('\n');
+}
+
+function renderCtaHtml(cta: string | null): string {
+  return cta ? `<aside class="cta">${escapeHtml(cta.trim())}</aside>` : '';
 }
 
 function renderContentBlocks(
@@ -213,6 +219,7 @@ function renderMarkdown(
     `# ${content.title}`,
     ...(cover ? [renderImageMarkdown(cover)] : []),
     ...blocks,
+    ...(content.cta ? [`**行动建议：** ${content.cta.trim()}`] : []),
     '## 常见问题',
     ...faq,
   ];

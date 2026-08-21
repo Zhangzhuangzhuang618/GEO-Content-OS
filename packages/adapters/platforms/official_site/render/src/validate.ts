@@ -1,4 +1,7 @@
-import { findDisallowedCompanyNames } from '@geo-content-os/contracts';
+import {
+  findDisallowedCompanyNames,
+  hasExactOfficialSiteServicePhone,
+} from '@geo-content-os/contracts';
 
 import { OfficialSiteRenderInputSchema } from './schema.js';
 import { OFFICIAL_SITE_RENDER_RULES_V1 } from './rules.js';
@@ -86,6 +89,16 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
         'SCHEMA_ORG_REQUIRED',
         'schema_org 必须包含 @context 和 @type。',
         'content.platform_meta.schema_org',
+      ),
+    );
+  }
+
+  if (!hasExactOfficialSiteServicePhone(value.content, value.service_phone)) {
+    issues.push(
+      blocker(
+        'SERVICE_PHONE_REQUIRED',
+        '官网行动引导必须且只能包含一次企业资料中的当前服务电话。',
+        'content.cta',
       ),
     );
   }

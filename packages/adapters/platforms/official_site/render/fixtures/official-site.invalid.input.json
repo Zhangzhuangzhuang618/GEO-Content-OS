@@ -1,6 +1,7 @@
 {
-  "rule_version": "official-site-render-rules@1.2.0",
+  "rule_version": "official-site-render-rules@1.3.0",
   "owner_company_names": [],
+  "service_phone": null,
   "content": {
     "platform_code": "official_site",
     "title": "标题太短",

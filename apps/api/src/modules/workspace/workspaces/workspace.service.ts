@@ -1,9 +1,10 @@
-import type {
-  CreateWorkspaceRequest,
-  UpdateWorkspaceRequest,
-  WorkspaceListQuery,
-  WorkspaceSettings,
-  WorkspaceView,
+import {
+  readOfficialSiteServicePhone,
+  type CreateWorkspaceRequest,
+  type UpdateWorkspaceRequest,
+  type WorkspaceListQuery,
+  type WorkspaceSettings,
+  type WorkspaceView,
 } from '@geo-content-os/contracts';
 import { Inject, Injectable } from '@nestjs/common';
 import { Buffer } from 'node:buffer';
@@ -283,6 +284,25 @@ export class WorkspaceService {
     if (!before) throw new WorkspaceNotFoundError();
     if (before.version !== expectedVersion) throw new WorkspaceVersionConflictError();
     if (before.status !== 'active') throw new WorkspaceStateError();
+    if (
+      input.settings &&
+      readOfficialSiteServicePhone(before.settings) &&
+      !readOfficialSiteServicePhone(input.settings)
+    ) {
+      const enabledPolicies = await transaction<{ id: string }[]>`
+        SELECT id
+        FROM official_site_automation_policies
+        WHERE tenant_id=${tenantId}::uuid
+          AND workspace_id=${workspaceId}::uuid
+          AND enabled
+        LIMIT 1
+      `;
+      if (enabledPolicies.length > 0) {
+        throw new WorkspaceStateError(
+          'Disable official-site automation before removing the official-site service phone',
+        );
+      }
+    }
 
     const rows = await transaction<WorkspaceRow[]>`
       UPDATE workspaces

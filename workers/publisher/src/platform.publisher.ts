@@ -162,6 +162,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           media_assets: prepared.assets,
           owner_company_names: claim.ownerCompanyNames,
           rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
+          service_phone: claim.officialSiteServicePhone,
         });
         if (claim.publishMode !== 'api') {
           return execute(

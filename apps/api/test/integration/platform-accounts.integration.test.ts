@@ -22,6 +22,7 @@ import {
   type PlatformAccountScope,
 } from '../../src/modules/publishing/accounts/index.js';
 import { PlatformDeliveryAccountConnector } from '../../src/modules/publishing/accounts/platform-account.connector.js';
+import { WorkspaceService } from '../../src/modules/workspace/workspaces/index.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000123';
 const OTHER_USER_ID = '12000000-0000-4000-8000-000000000123';
@@ -851,6 +852,20 @@ describe('platform accounts', () => {
       { requestId: 'req-automation-account' },
     );
 
+    await expect(
+      policies.update(
+        SCOPE,
+        account.id,
+        { daily_enabled: true, enabled: true, project_id: PROJECT_ID },
+        { requestId: 'req-automation-missing-phone' },
+      ),
+    ).rejects.toThrow(/service phone/u);
+    await database`
+      UPDATE workspaces SET settings_json=
+        '{"schema_version":"workspace-settings@1","official_site_service_phone":"02085627757"}'::jsonb
+      WHERE id=${WORKSPACE_ID}::uuid AND tenant_id=${TENANT_ID}::uuid
+    `;
+
     const created = await policies.update(
       SCOPE,
       account.id,
@@ -889,6 +904,24 @@ describe('platform accounts', () => {
       today_batch: null,
       version: 1,
     });
+    await database`
+      UPDATE memberships SET role_code='tenant_admin'
+      WHERE tenant_id=${TENANT_ID}::uuid AND user_id=${USER_ID}::uuid
+    `;
+    const workspaces = new WorkspaceService({ client: database } as IdentityAuthDatabase);
+    await expect(
+      database.begin((transaction) =>
+        workspaces.update(
+          transaction,
+          TENANT_ID,
+          USER_ID,
+          WORKSPACE_ID,
+          1,
+          { settings: { schema_version: 'workspace-settings@1' } },
+          { requestId: 'req-remove-enabled-automation-phone' },
+        ),
+      ),
+    ).rejects.toThrow(/Disable official-site automation/u);
     await expect(policies.list(SCOPE, account.id)).resolves.toEqual([created]);
     await database`
       INSERT INTO official_site_daily_batches(

@@ -1,4 +1,5 @@
 import {
+  applyOfficialSiteServicePhone,
   ContentDocumentSchema,
   type ContentDocument as ApiContentDocument,
   type ContentPackageQuery,
@@ -11,6 +12,7 @@ import {
   type RegenerateVariantRequest,
   type ReopenVariantsRequest,
   qualityEvaluationFingerprintSource,
+  readOfficialSiteServicePhone,
 } from '@geo-content-os/contracts';
 import {
   createEmbeddingAdapter,
@@ -613,14 +615,33 @@ export class ContentApiService {
     const variant = await this.variants.find(scope, variantId);
     if (!variant) throw contentNotFound();
     assertManualEditStatus(variant.status);
+    let preparedContent = content;
+    if (variant.platformCode === 'official_site') {
+      const workspaces = await transaction<{ settings: Readonly<Record<string, unknown>> }[]>`
+        SELECT settings_json AS settings
+        FROM workspaces
+        WHERE id=${scope.workspaceId}::uuid
+          AND tenant_id=${scope.tenantId}::uuid
+          AND status='active'
+          AND deleted_at IS NULL
+        LIMIT 1
+      `;
+      const phone = readOfficialSiteServicePhone(workspaces[0]?.settings);
+      if (!phone) {
+        throw contentStateInvalid(
+          'Configure the official-site service phone in enterprise data before saving official-site content',
+        );
+      }
+      preparedContent = ContentDocumentSchema.parse(applyOfficialSiteServicePhone(content, phone));
+    }
     await this.versions.create(
       transaction,
       scope,
       {
-        contentJson: content as DatabaseContentDocument,
+        contentJson: preparedContent as DatabaseContentDocument,
         expectedVersion,
         packageId: variant.packageId,
-        schemaVersion: content.schema_version,
+        schemaVersion: preparedContent.schema_version,
         variantId,
       },
       audit,

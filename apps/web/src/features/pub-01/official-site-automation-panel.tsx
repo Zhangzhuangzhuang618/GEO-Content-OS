@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 
 import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
+import type { Workspace } from '../set-02/workspace-settings.schema';
 import {
   cancelOfficialSiteDailyBatch,
   listOfficialSiteAutomationPolicies,
@@ -15,9 +16,11 @@ import type { OfficialSiteAutomationPolicy, PlatformAccount } from './platform-a
 export function OfficialSiteAutomationPanel({
   account,
   onClose,
+  workspace,
 }: {
   readonly account: PlatformAccount;
   readonly onClose: () => void;
+  readonly workspace: Workspace | null;
 }) {
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
   const [policies, setPolicies] = useState<readonly OfficialSiteAutomationPolicy[]>([]);
@@ -35,6 +38,7 @@ export function OfficialSiteAutomationPanel({
     () => policies.find((policy) => policy.project_id === projectId),
     [policies, projectId],
   );
+  const servicePhone = workspace?.settings.official_site_service_phone ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -102,6 +106,10 @@ export function OfficialSiteAutomationPanel({
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (enabled && !servicePhone) {
+      setMessage('请先在企业资料中配置官网服务电话。');
+      return;
+    }
     const csrf = readCookie('geo_csrf');
     if (!csrf || !projectId) {
       setMessage('缺少项目或安全令牌，请刷新页面后重试。');
@@ -255,6 +263,30 @@ export function OfficialSiteAutomationPanel({
       ) : null}
       {state !== 'loading' && state !== 'retrying' && state !== 'error' ? (
         <>
+          <div
+            className={`mt-5 rounded-xl border px-4 py-4 text-sm leading-6 ${
+              servicePhone
+                ? 'border-brand-200 bg-brand-50 text-ink-800'
+                : 'border-red-200 bg-red-50 text-red-800'
+            }`}
+          >
+            <p className="font-semibold">
+              {servicePhone
+                ? `继承企业资料中的官网服务电话：${servicePhone}`
+                : '尚未配置官网服务电话'}
+            </p>
+            <p className="mt-1">
+              {servicePhone
+                ? '系统会在官网内容保存、版本校验和质检前自动写入该号码。'
+                : '官网自动化必须先有结构化服务电话；发布管理不单独保存或覆盖号码。'}
+            </p>
+            <a
+              className="mt-2 inline-block font-semibold underline"
+              href={`/know-01?workspace_id=${account.workspace_id}`}
+            >
+              前往企业资料维护
+            </a>
+          </div>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">
             <label className="text-sm text-ink-700">
               应用项目
@@ -275,9 +307,17 @@ export function OfficialSiteAutomationPanel({
             <label className="flex items-center gap-3 self-end rounded-xl border border-line px-4 py-3 text-sm text-ink-900">
               <input
                 checked={enabled}
-                disabled={account.status !== 'active' || account.publish_mode !== 'api'}
+                disabled={
+                  account.status !== 'active' ||
+                  account.publish_mode !== 'api' ||
+                  (!servicePhone && !enabled)
+                }
                 onChange={(event) => {
                   const checked = event.currentTarget.checked;
+                  if (checked && !servicePhone) {
+                    setMessage('请先在企业资料中配置官网服务电话。');
+                    return;
+                  }
                   setEnabled(checked);
                   if (!checked) setDailyEnabled(false);
                 }}
@@ -290,9 +330,17 @@ export function OfficialSiteAutomationPanel({
             <input
               checked={dailyEnabled}
               className="mt-1"
-              disabled={account.status !== 'active' || account.publish_mode !== 'api'}
+              disabled={
+                account.status !== 'active' ||
+                account.publish_mode !== 'api' ||
+                (!servicePhone && !dailyEnabled)
+              }
               onChange={(event) => {
                 const checked = event.currentTarget.checked;
+                if (checked && !servicePhone) {
+                  setMessage('请先在企业资料中配置官网服务电话。');
+                  return;
+                }
                 setDailyEnabled(checked);
                 if (checked) setEnabled(true);
               }}
@@ -336,7 +384,7 @@ export function OfficialSiteAutomationPanel({
           <div className="mt-3 flex justify-end">
             <button
               className={primaryButton}
-              disabled={state === 'saving' || !projectId}
+              disabled={state === 'saving' || !projectId || (enabled && !servicePhone)}
               type="submit"
             >
               {state === 'saving' ? '正在保存…' : '保存自动发布设置'}

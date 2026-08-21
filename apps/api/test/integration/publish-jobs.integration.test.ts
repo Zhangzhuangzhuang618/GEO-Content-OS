@@ -744,7 +744,7 @@ describe('publish jobs', () => {
       sourcePublishJobId: null,
       status: 'scheduled',
     });
-    expect((await officialDailyItemState(database)).qualifiedAt).toBeInstanceOf(Date);
+    expect((await officialDailyItemState(database))?.qualifiedAt).toBeInstanceOf(Date);
   });
 
   it('retries a conclusive website automation failure and enforces the three-attempt limit', async () => {

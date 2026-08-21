@@ -1,4 +1,9 @@
-import type { ContentVariantStatus, PlatformCode } from '@geo-content-os/contracts';
+import {
+  applyOfficialSiteServicePhone,
+  readOfficialSiteServicePhone,
+  type ContentVariantStatus,
+  type PlatformCode,
+} from '@geo-content-os/contracts';
 import type postgres from 'postgres';
 
 import {
@@ -266,8 +271,9 @@ export class PostgresGenerationStore implements GenerationStorePort {
     claim: VariantClaim,
     rawContent: GeneratedContent,
   ): Promise<void> {
-    const content = validateGeneratedContent(rawContent, claim.run.platformCode);
+    const generatedContent = validateGeneratedContent(rawContent, claim.run.platformCode);
     await this.client.begin(async (transaction) => {
+      const content = await prepareOfficialSiteContent(transaction, event, generatedContent);
       await requireRunLease(transaction, event, claim.run.runId, claim.leaseVersion);
       const rows = await selectVariantRun(transaction, event, claim.run, true);
       const row = rows[0];
@@ -418,6 +424,31 @@ export class PostgresGenerationStore implements GenerationStorePort {
       return status;
     });
   }
+}
+
+export async function prepareOfficialSiteContent(
+  transaction: postgres.TransactionSql,
+  event: ValidatedGenerationEvent,
+  content: GeneratedContent,
+): Promise<GeneratedContent> {
+  if (content.platform_code !== 'official_site') return content;
+  const rows = await transaction<{ settings: Readonly<Record<string, unknown>> }[]>`
+    SELECT settings_json AS settings
+    FROM workspaces
+    WHERE id=${event.data.workspaceId}::uuid
+      AND tenant_id=${event.tenantId}::uuid
+      AND status='active'
+      AND deleted_at IS NULL
+    LIMIT 1
+  `;
+  const phone = readOfficialSiteServicePhone(rows[0]?.settings);
+  if (!phone) {
+    throw new GenerationWorkerError(
+      'OFFICIAL_SITE_SERVICE_PHONE_REQUIRED',
+      'Configure the official-site service phone in enterprise data before generating official-site content',
+    );
+  }
+  return validateGeneratedContent(applyOfficialSiteServicePhone(content, phone), 'official_site');
 }
 
 async function lockVariantRuns(

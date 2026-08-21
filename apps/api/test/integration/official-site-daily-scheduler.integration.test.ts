@@ -386,10 +386,11 @@ async function seed(database: Sql): Promise<void> {
     VALUES(${TENANT_ID}::uuid,${USER_ID}::uuid,'publisher','active')
   `;
   await database`
-    INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status)
+    INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status,settings_json)
     VALUES(
       ${WORKSPACE_ID}::uuid,${TENANT_ID}::uuid,'Daily Website','daily-139',
-      'Asia/Shanghai','active'
+      'Asia/Shanghai','active',
+      '{"schema_version":"workspace-settings@1","official_site_service_phone":"02085627757"}'::jsonb
     )
   `;
   await database`

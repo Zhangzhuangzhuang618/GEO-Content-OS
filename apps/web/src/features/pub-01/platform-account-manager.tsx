@@ -373,6 +373,10 @@ export function PlatformAccountManager() {
           <OfficialSiteAutomationPanel
             account={automationAccount}
             onClose={() => setAutomationAccount(null)}
+            workspace={
+              workspaces.find((workspace) => workspace.id === automationAccount.workspace_id) ??
+              null
+            }
           />
         )
       ) : null}

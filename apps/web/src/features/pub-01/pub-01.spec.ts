@@ -350,12 +350,56 @@ test('enables single-item publishing and the daily ten-article plan for one proj
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '官网自动发布' }).click();
   await expect(page.getByRole('heading', { name: '官网自动发布' })).toBeVisible();
+  await expect(page.getByText('继承企业资料中的官网服务电话：02085627757')).toBeVisible();
   await expect(page.getByText('GEO 总分 ≥85', { exact: false })).toBeVisible();
   await page.getByLabel('每天自动生产并排期发布 10 篇').check();
   await page.getByRole('button', { name: '保存自动发布设置' }).click();
 
   await expect(page.getByText('已开启每日计划：系统每天准备 10 篇合格内容')).toBeVisible();
   expect(savedBody).toEqual({ daily_enabled: true, enabled: true, project_id: PROJECT_ID });
+});
+
+test('requires enterprise data phone before enabling official-site automation', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/workspaces?*', (route) =>
+    json(route, {
+      data: [
+        {
+          ...workspace(),
+          settings: {
+            default_platform_codes: ['official_site'],
+            schema_version: 'workspace-settings@1',
+          },
+        },
+      ],
+      meta: { next_cursor: null, request_id: 'workspace-without-phone' },
+    }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [{ id: PROJECT_ID, name: '官网内容项目', status: 'active' }],
+      meta: { request_id: 'project-list' },
+    }),
+  );
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/official-site-automation')) {
+      await json(route, { data: [], meta: { request_id: 'automation-list' } });
+      return;
+    }
+    await json(route, { data: [account({ version: 1 })], meta: { request_id: 'account-list' } });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '官网自动发布' }).click();
+
+  await expect(page.getByText('尚未配置官网服务电话')).toBeVisible();
+  await expect(page.getByLabel('单篇内容质检通过后立即发布')).toBeDisabled();
+  await expect(page.getByRole('link', { name: '前往企业资料维护' })).toHaveAttribute(
+    'href',
+    `/know-01?workspace_id=${WORKSPACE_ID}`,
+  );
 });
 
 test('recovers when the automation service is briefly unavailable during deployment', async ({
@@ -1214,7 +1258,11 @@ function workspace() {
     created_at: '2026-07-16T00:00:00.000Z',
     id: WORKSPACE_ID,
     name: '发布工作区',
-    settings: { default_platform_codes: ['official_site'], schema_version: 'workspace-settings@1' },
+    settings: {
+      default_platform_codes: ['official_site'],
+      official_site_service_phone: '02085627757',
+      schema_version: 'workspace-settings@1',
+    },
     slug: 'publishing',
     status: 'active',
     tenant_id: TENANT_ID,

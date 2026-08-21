@@ -97,6 +97,7 @@ describe('publisher worker', () => {
 
     expect(platform.claims).toHaveLength(1);
     expect(platform.claims[0]?.idempotencyKey).toBe('publish-job-125-stable');
+    expect(platform.claims[0]?.officialSiteServicePhone).toBe('02085627757');
     expect(platform.claims[0]?.ownerCompanyNames).toEqual([OWNER_COMPANY_NAME]);
     expect(platform.credentials[0]).toEqual({ access_token: ACCESS_TOKEN });
     await expect(state(database)).resolves.toMatchObject({
@@ -1320,8 +1321,12 @@ async function seed(database: Sql, credentials: CredentialEnvelopeService): Prom
     VALUES(${TENANT_ID}::uuid,${USER_ID}::uuid,'publisher','active')
   `;
   await database`
-    INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status)
-    VALUES(${WORKSPACE_ID}::uuid,${TENANT_ID}::uuid,'Publishing','publishing-125','Asia/Shanghai','active')
+    INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status,settings_json)
+    VALUES(
+      ${WORKSPACE_ID}::uuid,${TENANT_ID}::uuid,'Publishing','publishing-125',
+      'Asia/Shanghai','active',
+      '{"schema_version":"workspace-settings@1","official_site_service_phone":"02085627757"}'::jsonb
+    )
   `;
   await database`
     INSERT INTO workspace_memberships(workspace_id,user_id,scope_json)

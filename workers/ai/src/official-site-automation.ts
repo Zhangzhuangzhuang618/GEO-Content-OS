@@ -14,7 +14,7 @@ import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
 import { contentHash, validateGeneratedContent } from './generation.content.js';
-import { insertGeneratedVersion } from './generation.store.js';
+import { insertGeneratedVersion, prepareOfficialSiteContent } from './generation.store.js';
 import type {
   ContentWriterRunContext,
   GeneratedContent,
@@ -771,14 +771,15 @@ export class OfficialSiteAutomation {
   ): Promise<void> {
     await this.client.begin(async (transaction) => {
       const synthetic = generationEventForRewrite(event, claim);
+      const prepared = await prepareOfficialSiteContent(transaction, synthetic, rewritten);
       const versionId = await insertGeneratedVersion(
         transaction,
         synthetic,
         event.data.variantId,
         event.data.generationRunId,
-        rewritten,
+        prepared,
       );
-      const rewrittenHash = contentHash(rewritten);
+      const rewrittenHash = contentHash(prepared);
       const variants = await transaction<{ id: string }[]>`
         UPDATE content_variants SET current_content_version_id=${versionId}::uuid,
           status='generated', quality_score=NULL, version=version+1

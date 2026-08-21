@@ -215,17 +215,35 @@ describe('workspaces API', () => {
     const first = await server.inject({
       headers,
       method: 'PATCH',
-      payload: { name: 'Alpha Updated', timezone: 'America/New_York' },
+      payload: {
+        name: 'Alpha Updated',
+        settings: {
+          official_site_service_phone: '02085627757',
+          schema_version: 'workspace-settings@1',
+        },
+        timezone: 'America/New_York',
+      },
       url: `${API_PATH}/${WORKSPACE_A}`,
     });
     const replay = await server.inject({
       headers,
       method: 'PATCH',
-      payload: { name: 'Alpha Updated', timezone: 'America/New_York' },
+      payload: {
+        name: 'Alpha Updated',
+        settings: {
+          official_site_service_phone: '02085627757',
+          schema_version: 'workspace-settings@1',
+        },
+        timezone: 'America/New_York',
+      },
       url: `${API_PATH}/${WORKSPACE_A}`,
     });
     expect(first.statusCode).toBe(200);
-    expect(first.json().data).toMatchObject({ name: 'Alpha Updated', version: 2 });
+    expect(first.json().data).toMatchObject({
+      name: 'Alpha Updated',
+      settings: { official_site_service_phone: '02085627757' },
+      version: 2,
+    });
     expect(first.headers.etag).toBe('"2"');
     expect(replay.statusCode).toBe(200);
     expect(replay.json().data.version).toBe(2);

@@ -2,6 +2,7 @@ import {
   findDisallowedCompanyNames,
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
+  hasExactOfficialSiteServicePhone,
   isAllowedCompanyReference,
   isDisallowedCompanyReferenceAtLocation,
   type PlatformCode,
@@ -627,6 +628,34 @@ function addOfficialSiteTechnicalIssues(
         location,
         message,
         '重新生成官网平台数据，补齐 slug、搜索摘要、FAQ 和 Schema.org。',
+      ),
+    );
+  }
+  const contact = record(input.brandProfile['contact']);
+  const servicePhone =
+    contact && typeof contact['official_site_service_phone'] === 'string'
+      ? contact['official_site_service_phone'].trim()
+      : '';
+  if (!servicePhone) {
+    issues.push(
+      issue(
+        'deterministic.official_site.service_phone_profile_required',
+        'fact',
+        'brand_profile.contact.official_site_service_phone',
+        '当前工作区未配置官网服务电话。',
+        '先在企业资料中配置官网服务电话，再生成或质检官网内容。',
+      ),
+    );
+    return;
+  }
+  if (!hasExactOfficialSiteServicePhone(input.content, servicePhone)) {
+    issues.push(
+      issue(
+        'deterministic.official_site.service_phone_required',
+        'fact',
+        'cta',
+        '官网行动引导必须且只能出现一次当前工作区配置的服务电话。',
+        '使用企业资料中的官网服务电话生成唯一行动引导，不要在标题、摘要或正文重复号码。',
       ),
     );
   }

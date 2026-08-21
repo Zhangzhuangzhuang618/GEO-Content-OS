@@ -22,6 +22,52 @@ describe('deterministic pre-publish risk scanner', () => {
     expect(issues).toEqual([]);
   });
 
+  it('blocks official-site content when the workspace service phone is not configured', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand({ contact: {} }),
+      citations: [],
+      content: content({ cta: null }),
+      platformCode: 'official_site',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toContain(
+      'deterministic.official_site.service_phone_profile_required',
+    );
+  });
+
+  it('requires the configured service phone exactly once in the official-site CTA', () => {
+    const missing = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({ cta: '欢迎咨询。' }),
+      platformCode: 'official_site',
+    });
+    const repeated = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [block('intro', '本文说明广州企业搬家前的准备方法，电话02085627757。')],
+      }),
+      platformCode: 'official_site',
+    });
+    const wrongExtraPhone = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({ cta: '请致电 02085627757 或 4007654321。' }),
+      platformCode: 'official_site',
+    });
+
+    expect(missing.map((item) => item.rule_id)).toContain(
+      'deterministic.official_site.service_phone_required',
+    );
+    expect(repeated.map((item) => item.rule_id)).toContain(
+      'deterministic.official_site.service_phone_required',
+    );
+    expect(wrongExtraPhone.map((item) => item.rule_id)).toContain(
+      'deterministic.official_site.service_phone_required',
+    );
+  });
+
   it('checks each sensitive claim instead of requiring every number in the surrounding block', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand({
@@ -259,6 +305,7 @@ describe('deterministic pre-publish risk scanner', () => {
         'deterministic.fact.unsupported_phone',
         'deterministic.fact.unsupported_price',
         'deterministic.fact.unsupported_scale',
+        'deterministic.official_site.service_phone_required',
         'deterministic.security.secret_leakage',
       ]),
     );
@@ -801,6 +848,7 @@ function brand(
     audience: readonly string[];
     banned: readonly string[];
     compliance: readonly string[];
+    contact: Readonly<Record<string, unknown>>;
     cta: string | null;
     differentiators: readonly string[];
     positioning: string;
@@ -811,6 +859,7 @@ function brand(
     audience: ['需要搬家服务的企业和家庭'],
     banned: [],
     compliance: [],
+    contact: { official_site_service_phone: '02085627757' },
     cta: null,
     differentiators: [],
     positioning: '广州志远搬家服务有限公司是广州本地搬家服务企业',
@@ -822,13 +871,14 @@ function brand(
 function content(
   overrides: Partial<Record<string, unknown>> = {},
 ): Readonly<Record<string, unknown>> {
+  const platformCode = overrides['platform_code'] ?? 'official_site';
   return {
     blocks: [
       block('intro', '本文说明广州企业搬家前的准备方法与执行步骤。'),
       block('checklist', '先确认物品范围，再安排车辆和人员。'),
     ],
     citation_map: [],
-    cta: null,
+    cta: platformCode === 'official_site' ? '如需咨询服务，请致电 02085627757。' : null,
     hashtags: ['广州搬家'],
     platform_code: 'official_site',
     platform_meta: {

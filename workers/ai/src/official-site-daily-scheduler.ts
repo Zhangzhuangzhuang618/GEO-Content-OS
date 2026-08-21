@@ -1,4 +1,4 @@
-import { DomainEventEnvelopeSchema } from '@geo-content-os/contracts';
+import { DomainEventEnvelopeSchema, readOfficialSiteServicePhone } from '@geo-content-os/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
@@ -32,6 +32,7 @@ const SCHEDULE_TIMES = Object.freeze([
 ] as const);
 const RECOVERABLE_PREREQUISITE_CODES = Object.freeze([
   'OFFICIAL_ACCOUNT_REQUIRED',
+  'OFFICIAL_SITE_SERVICE_PHONE_REQUIRED',
   'OFFICIAL_KEYWORD_REQUIRED',
   'PARSED_KNOWLEDGE_REQUIRED',
   'PUBLISHED_BRAND_PROFILE_REQUIRED',
@@ -480,7 +481,7 @@ async function loadCandidateSeed(
   transaction: postgres.TransactionSql,
   batch: BatchRow,
 ): Promise<CandidateSeed> {
-  const [brands, rules, keywords, knowledge, accounts] = await Promise.all([
+  const [brands, rules, keywords, knowledge, accounts, workspaces] = await Promise.all([
     transaction<{ id: string; profile: JsonObject; version: number }[]>`
       SELECT id,profile_json AS profile,version
       FROM brand_profiles
@@ -546,6 +547,15 @@ async function loadCandidateSeed(
         AND deleted_at IS NULL
       LIMIT 1
     `,
+    transaction<{ settings: Readonly<Record<string, unknown>> }[]>`
+      SELECT settings_json AS settings
+      FROM workspaces
+      WHERE id=${batch.workspaceId}::uuid
+        AND tenant_id=${batch.tenantId}::uuid
+        AND status='active'
+        AND deleted_at IS NULL
+      LIMIT 1
+    `,
   ]);
   const brand = brands[0];
   const rule = rules[0];
@@ -553,6 +563,12 @@ async function loadCandidateSeed(
   if (!brand) throw prerequisite('PUBLISHED_BRAND_PROFILE_REQUIRED', '请先发布企业品牌资料。');
   if (!rule) throw prerequisite('PUBLISHED_OFFICIAL_RULE_REQUIRED', '官网内容规则尚未发布。');
   if (!account) throw prerequisite('OFFICIAL_ACCOUNT_REQUIRED', '官网 API 账号不可用。');
+  if (!readOfficialSiteServicePhone(workspaces[0]?.settings)) {
+    throw prerequisite(
+      'OFFICIAL_SITE_SERVICE_PHONE_REQUIRED',
+      '请先在企业资料中配置官网服务电话。',
+    );
+  }
   if (keywords.length === 0) {
     throw prerequisite('OFFICIAL_KEYWORD_REQUIRED', '请先为项目维护至少一个适用于官网的关键词。');
   }

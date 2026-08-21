@@ -2,11 +2,14 @@ import { expect, test } from '@playwright/test';
 const ACTIVE_ID = '10000000-0000-4000-8000-000000000078';
 const EXPIRED_ID = '10000000-0000-4000-8000-000000000178';
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ context, page }) => {
+  await context.addCookies([
+    { name: 'geo_csrf', url: 'http://127.0.0.1:34108', value: 'x'.repeat(43) },
+  ]);
   await page.route('**/api/v1/workspaces?*', async (route) =>
     route.fulfill({
       body: JSON.stringify({
-        data: [{ id: workspaceId, name: '知识工作空间', status: 'active' }],
+        data: [workspace()],
         meta: { next_cursor: null, request_id: 'workspaces' },
       }),
       contentType: 'application/json',
@@ -131,7 +134,64 @@ test('writes filters to the URL and hides write actions from viewers on mobile',
   await expect(page).toHaveURL(/status=expired/u);
   await expect(page.getByRole('link', { name: '上传资料' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '重建索引' })).toHaveCount(0);
+  await expect(page.getByLabel('官网服务电话')).toBeDisabled();
+  await expect(page.getByRole('button', { name: '保存电话' })).toHaveCount(0);
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
+});
+
+test('lets an enterprise owner maintain the inherited official-site service phone', async ({
+  page,
+}) => {
+  let updateBody: Record<string, unknown> | undefined;
+  await page.route('**/api/v1/auth/tenants', async (route) =>
+    route.fulfill({
+      body: JSON.stringify({
+        data: [
+          {
+            id: '20000000-0000-4000-8000-000000000078',
+            is_active: true,
+            last_used_at: null,
+            name: '知识企业',
+            role_code: 'tenant_owner',
+            slug: 'knowledge',
+          },
+        ],
+        meta: { request_id: 'owner' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    }),
+  );
+  await page.route(`**/api/v1/workspaces/${workspaceId}`, async (route) => {
+    updateBody = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      body: JSON.stringify({
+        data: {
+          ...workspace(),
+          settings: {
+            official_site_service_phone: '02085627757',
+            schema_version: 'workspace-settings@1',
+          },
+          version: 2,
+        },
+        meta: { request_id: 'phone-update' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+
+  await page.goto(scopeUrl);
+  await page.getByLabel('官网服务电话').fill('02085627757');
+  await page.getByRole('button', { name: '保存电话' }).click();
+
+  await expect(page.getByText('官网服务电话已保存')).toBeVisible();
+  expect(updateBody).toMatchObject({
+    settings: {
+      official_site_service_phone: '02085627757',
+      schema_version: 'workspace-settings@1',
+    },
+  });
 });
 
 function source(
@@ -158,6 +218,21 @@ function source(
     trust_level: 'verified',
     updated_at: '2026-07-15T01:00:00.000Z',
     workspace_id: '40000000-0000-4000-8000-000000000078',
+  };
+}
+
+function workspace() {
+  return {
+    created_at: '2026-07-15T00:00:00.000Z',
+    id: workspaceId,
+    name: '知识工作空间',
+    settings: { schema_version: 'workspace-settings@1' },
+    slug: 'knowledge',
+    status: 'active',
+    tenant_id: '20000000-0000-4000-8000-000000000078',
+    timezone: 'Asia/Shanghai',
+    updated_at: '2026-07-15T01:00:00.000Z',
+    version: 1,
   };
 }
 

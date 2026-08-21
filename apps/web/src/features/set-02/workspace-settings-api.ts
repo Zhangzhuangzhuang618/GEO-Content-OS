@@ -35,6 +35,9 @@ export async function updateWorkspace(
           monthly_limit_cny: form.monthly_limit_cny ? Number(form.monthly_limit_cny) : null,
         },
         default_platform_codes: form.default_platform_codes,
+        ...(workspace.settings.official_site_service_phone
+          ? { official_site_service_phone: workspace.settings.official_site_service_phone }
+          : {}),
         review_policy: {
           minimum_approvals: Number(form.minimum_approvals),
           require_high_risk_signoff: form.require_high_risk_signoff,
@@ -46,6 +49,23 @@ export async function updateWorkspace(
     }),
     credentials: 'include',
     headers: writeHeaders(csrf, workspace.version, 'workspace-update'),
+    method: 'PATCH',
+  });
+  return parseResponse(response);
+}
+
+export async function updateWorkspaceOfficialSiteServicePhone(
+  workspace: Workspace,
+  phone: string,
+  csrf: string,
+): Promise<Workspace> {
+  const settings = { ...workspace.settings };
+  if (phone) settings.official_site_service_phone = phone;
+  else delete settings.official_site_service_phone;
+  const response = await fetch(`${API_ORIGIN}/api/v1/workspaces/${workspace.id}`, {
+    body: JSON.stringify({ settings }),
+    credentials: 'include',
+    headers: writeHeaders(csrf, workspace.version, 'workspace-service-phone-update'),
     method: 'PATCH',
   });
   return parseResponse(response);

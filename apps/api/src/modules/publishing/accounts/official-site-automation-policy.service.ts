@@ -1,8 +1,9 @@
-import type {
-  OfficialSiteAutomationPolicyRequest,
-  OfficialSiteAutomationPolicyView,
-  OfficialSiteDailyBatchCancelRequest,
-  OfficialSiteDailyBatchRestartRequest,
+import {
+  readOfficialSiteServicePhone,
+  type OfficialSiteAutomationPolicyRequest,
+  type OfficialSiteAutomationPolicyView,
+  type OfficialSiteDailyBatchCancelRequest,
+  type OfficialSiteDailyBatchRestartRequest,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
@@ -248,6 +249,23 @@ export class OfficialSiteAutomationPolicyService {
       if (projects.length !== 1) throw notFound();
       if (input.enabled && (account.status !== 'active' || account.publishMode !== 'api')) {
         throw stateInvalid('Only an active official-site API account can enable automation');
+      }
+      if (input.enabled) {
+        const workspaces = await transaction<{ settings: Readonly<Record<string, unknown>> }[]>`
+          SELECT settings_json AS settings
+          FROM workspaces
+          WHERE id=${account.workspaceId}::uuid
+            AND tenant_id=${scope.tenantId}::uuid
+            AND status='active'
+            AND deleted_at IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `;
+        if (!readOfficialSiteServicePhone(workspaces[0]?.settings)) {
+          throw stateInvalid(
+            'Configure the official-site service phone in enterprise data before enabling automation',
+          );
+        }
       }
       if (input.daily_enabled && !input.enabled) {
         throw stateInvalid('Daily publishing requires official-site automation to be enabled');

@@ -925,8 +925,12 @@ async function seed(database: Sql): Promise<void> {
     VALUES(${TENANT_ID}::uuid,${USER_ID}::uuid,'publisher','active')
   `;
   await database`
-    INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status)
-    VALUES(${WORKSPACE_ID}::uuid,${TENANT_ID}::uuid,'Automation','automation-126','Asia/Shanghai','active')
+    INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status,settings_json)
+    VALUES(
+      ${WORKSPACE_ID}::uuid,${TENANT_ID}::uuid,'Automation','automation-126',
+      'Asia/Shanghai','active',
+      '{"schema_version":"workspace-settings@1","official_site_service_phone":"02085627757"}'::jsonb
+    )
   `;
   await database`
     INSERT INTO workspace_memberships(workspace_id,user_id,scope_json)
@@ -1068,7 +1072,7 @@ function content(title: string): GeneratedContent {
       Object.freeze({ block_key: 'body', block_type: 'paragraph', text: `${title} body` }),
     ]),
     citation_map: Object.freeze([]),
-    cta: null,
+    cta: '如需咨询服务，请致电 02085627757。',
     hashtags: Object.freeze([]),
     platform_code: 'official_site',
     platform_meta: Object.freeze({}),

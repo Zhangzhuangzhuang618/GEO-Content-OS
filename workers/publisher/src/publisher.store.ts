@@ -1,5 +1,6 @@
 import {
   findPublishedOwnerCompanyNames,
+  readOfficialSiteServicePhone,
   type ContentPackageStatus,
   type ContentVariantStatus,
   type PlatformCode,
@@ -58,6 +59,7 @@ interface JobRow {
   readonly variantStatus: ContentVariantStatus;
   readonly variantVersion: number;
   readonly version: number;
+  readonly workspaceSettings: Readonly<Record<string, unknown>>;
 }
 
 interface CompletionRow {
@@ -138,7 +140,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
           account.token_expires_at AS "accountTokenExpiresAt",
           account.deleted_at AS "accountDeletedAt",
-          brand.profile_json AS "brandProfile"
+          brand.profile_json AS "brandProfile", workspace.settings_json AS "workspaceSettings"
         FROM publish_jobs AS job
         JOIN content_variants AS variant
           ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
@@ -151,6 +153,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
           ON account.id=job.account_id AND account.tenant_id=job.tenant_id
           AND account.workspace_id=package.workspace_id
           AND account.platform_code=variant.platform_code
+        JOIN workspaces AS workspace
+          ON workspace.id=package.workspace_id AND workspace.tenant_id=job.tenant_id
         LEFT JOIN brand_profiles AS brand
           ON brand.tenant_id=job.tenant_id AND brand.workspace_id=package.workspace_id
           AND brand.status='published'
@@ -278,6 +282,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
               Object.freeze({ ...asset, sizeBytes: Number(asset.sizeBytes) }),
             ),
           ),
+          officialSiteServicePhone: readOfficialSiteServicePhone(row.workspaceSettings),
           ownerCompanyNames: findPublishedOwnerCompanyNames(row.brandProfile),
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,

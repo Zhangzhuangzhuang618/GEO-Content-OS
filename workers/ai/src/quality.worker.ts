@@ -162,7 +162,17 @@ export class QualityCheckWorker {
       >`
         SELECT
           brand.id AS "brandProfileId",
-          brand.profile_json AS "brandProfile",
+          CASE WHEN variant.platform_code='official_site' THEN
+            jsonb_set(
+              brand.profile_json,
+              '{contact}',
+              COALESCE(brand.profile_json->'contact', '{}'::jsonb) || jsonb_build_object(
+                'official_site_service_phone',
+                workspace.settings_json->>'official_site_service_phone'
+              ),
+              true
+            )
+          ELSE brand.profile_json END AS "brandProfile",
           brand.version AS "brandVersion",
           version.content_json AS content,
           version.content_hash AS "contentHash",
@@ -206,6 +216,9 @@ export class QualityCheckWorker {
           ON brand.tenant_id = run.tenant_id
           AND brand.workspace_id = run.workspace_id
           AND brand.status = 'published'
+        JOIN workspaces AS workspace
+          ON workspace.id=run.workspace_id
+          AND workspace.tenant_id=run.tenant_id
         JOIN LATERAL (
           SELECT id, content_hash, rules_json
           FROM platform_rule_versions

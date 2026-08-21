@@ -17,7 +17,7 @@ const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.u
 
 describe('official_site render contract', () => {
   it('publishes immutable versioned rules and Draft 2020-12 payload schemas', async () => {
-    expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.2.0');
+    expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.3.0');
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1)).toBe(true);
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1.title)).toBe(true);
     expect(OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA.$schema).toBe(
@@ -63,6 +63,7 @@ describe('official_site render contract', () => {
     expect(result.payload.citation_links).toHaveLength(golden.citation_link_count);
     expect(result.payload.body_html).not.toContain('<h1>');
     expect(result.payload.body_html).not.toContain('<script');
+    expect(result.payload.body_html).toContain('联系电话：02085627757');
     expect(result.payload.summary).toBe(
       (input as { content: { summary: string } }).content.summary,
     );
@@ -278,6 +279,32 @@ describe('official_site render contract', () => {
           message: expect.stringContaining('未声明法定名称'),
         }),
       ]),
+    );
+  });
+
+  it('requires the current enterprise service phone exactly once', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      service_phone: string;
+      content: { cta: string };
+    };
+    input.service_phone = '4001234567';
+
+    const wrongPhone = renderOfficialSite(input);
+
+    expect(wrongPhone.ok).toBe(false);
+    if (wrongPhone.ok) return;
+    expect(wrongPhone.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'SERVICE_PHONE_REQUIRED' })]),
+    );
+
+    input.service_phone = '02085627757';
+    input.content.cta = '请致电 02085627757 或 4007654321。';
+    const extraPhone = renderOfficialSite(input);
+
+    expect(extraPhone.ok).toBe(false);
+    if (extraPhone.ok) return;
+    expect(extraPhone.issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'SERVICE_PHONE_REQUIRED' })]),
     );
   });
 });

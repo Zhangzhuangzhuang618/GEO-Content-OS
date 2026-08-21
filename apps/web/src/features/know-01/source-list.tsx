@@ -5,7 +5,11 @@ import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
 import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
-import { listActiveWorkspaces } from '../str-02/brand-profile-api';
+import {
+  listWorkspaces,
+  updateWorkspaceOfficialSiteServicePhone,
+} from '../set-02/workspace-settings-api';
+import type { Workspace } from '../set-02/workspace-settings.schema';
 import {
   expireSource,
   listSources,
@@ -21,13 +25,14 @@ const MANAGER_ROLES = new Set<TenantRole>([
   'strategy_editor',
   'content_editor',
 ]);
+const CONTACT_MANAGER_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin']);
 
 export function SourceList() {
   const initial = readFilters();
   const [filters, setFilters] = useState<SourceFilters>(initial);
   const [items, setItems] = useState<SourceListItem[]>([]);
   const [projects, setProjects] = useState<ProjectChoice[]>([]);
-  const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>([]);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [role, setRole] = useState<TenantRole | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error' | 'permission' | 'rate_limited'>(
@@ -73,8 +78,8 @@ export function SourceList() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void listActiveWorkspaces(controller.signal)
-      .then(setWorkspaces)
+    void listWorkspaces(controller.signal)
+      .then((items) => setWorkspaces(items.filter((item) => item.status === 'active')))
       .catch(() => {
         if (!controller.signal.aborted) setState('error');
       });
@@ -162,6 +167,7 @@ export function SourceList() {
   if (state === 'error') return <StatePanel title="无法加载资料" text="请检查网络后刷新页面。" />;
 
   const canManage = role !== null && MANAGER_ROLES.has(role);
+  const selectedWorkspace = workspaces.find((workspace) => workspace.id === filters.workspaceId);
   return (
     <section className="mt-8">
       <div className="rounded-2xl border border-line bg-white p-4 shadow-panel">
@@ -252,6 +258,18 @@ export function SourceList() {
         ) : null}
       </div>
 
+      {selectedWorkspace ? (
+        <OfficialSiteContactCard
+          canManage={role !== null && CONTACT_MANAGER_ROLES.has(role)}
+          onSaved={(workspace) =>
+            setWorkspaces((current) =>
+              current.map((item) => (item.id === workspace.id ? workspace : item)),
+            )
+          }
+          workspace={selectedWorkspace}
+        />
+      ) : null}
+
       {state === 'loading' && items.length === 0 ? (
         <ListSkeleton />
       ) : !filters.workspaceId || !filters.projectId ? (
@@ -291,6 +309,97 @@ export function SourceList() {
           加载更多
         </button>
       ) : null}
+    </section>
+  );
+}
+
+function OfficialSiteContactCard({
+  canManage,
+  onSaved,
+  workspace,
+}: {
+  canManage: boolean;
+  onSaved: (workspace: Workspace) => void;
+  workspace: Workspace;
+}) {
+  const [phone, setPhone] = useState(workspace.settings.official_site_service_phone ?? '');
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPhone(workspace.settings.official_site_service_phone ?? '');
+  }, [workspace.id, workspace.settings.official_site_service_phone]);
+
+  useEffect(() => setMessage(null), [workspace.id]);
+
+  async function save() {
+    const value = phone.trim();
+    if (value && !/^(?:1[3-9]\d{9}|0\d{9,11}|(?:400|800)\d{7})$/u.test(value)) {
+      setMessage('请输入不含空格和连字符的大陆手机号、座机、400 或 800 电话。');
+      return;
+    }
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setSaving(true);
+    setMessage(null);
+    try {
+      const updated = await updateWorkspaceOfficialSiteServicePhone(workspace, value, csrf);
+      onSaved(updated);
+      setMessage(
+        value ? '官网服务电话已保存；新的官网内容会在质检前自动继承。' : '官网服务电话已清除。',
+      );
+    } catch {
+      setMessage('保存失败。若官网自动化仍在启用，请先关闭自动化后再清除电话。');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 className="font-semibold text-ink-950">官网联系信息</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-ink-500">
+            官网服务电话属于当前工作区的结构化企业资料。官网文章保存时会自动合并到行动引导，其他平台不会继承。
+          </p>
+        </div>
+        <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+          工作区版本 v{workspace.version}
+        </span>
+      </div>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="flex-1 text-sm text-ink-700">
+          官网服务电话
+          <input
+            className={controlClass}
+            disabled={!canManage || saving}
+            inputMode="tel"
+            onChange={(event) => setPhone(event.currentTarget.value)}
+            placeholder="例如：02085627757"
+            value={phone}
+          />
+        </label>
+        {canManage ? (
+          <button
+            className="h-11 rounded-control bg-brand-600 px-5 text-sm font-semibold text-white disabled:opacity-60"
+            disabled={saving}
+            onClick={() => void save()}
+            type="button"
+          >
+            {saving ? '正在保存…' : '保存电话'}
+          </button>
+        ) : null}
+      </div>
+      {!canManage ? (
+        <p className="mt-3 text-xs text-ink-500">仅企业所有者和企业管理员可以修改。</p>
+      ) : null}
+      <div aria-live="polite" className="mt-3 min-h-6 text-sm text-ink-700">
+        {message}
+      </div>
     </section>
   );
 }

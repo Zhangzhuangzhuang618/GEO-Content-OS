@@ -1,7 +1,7 @@
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
 
 export const OFFICIAL_SITE_PLATFORM_CODE = 'official_site' as const;
-export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.2.0' as const;
+export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.3.0' as const;
 export const OFFICIAL_SITE_PAYLOAD_SCHEMA_VERSION = 'official-site-payload@2' as const;
 
 export interface OfficialSiteFaqItem {
@@ -44,6 +44,7 @@ export interface OfficialSiteRenderInput {
   readonly media_assets?: readonly OfficialSiteMediaAsset[];
   readonly owner_company_names: readonly string[];
   readonly rule_version: typeof OFFICIAL_SITE_RENDER_RULE_VERSION;
+  readonly service_phone: string | null;
 }
 
 export interface OfficialSitePayload {
@@ -72,6 +73,7 @@ export type OfficialSiteValidationCode =
   | 'OTHER_COMPANY_NAME_FORBIDDEN'
   | 'PAYLOAD_SCHEMA_INVALID'
   | 'SCHEMA_ORG_REQUIRED'
+  | 'SERVICE_PHONE_REQUIRED'
   | 'TITLE_LENGTH_OUT_OF_RANGE';
 
 export interface OfficialSiteValidationIssue {

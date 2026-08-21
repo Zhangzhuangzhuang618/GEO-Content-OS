@@ -751,12 +751,21 @@ function EditorForm({
             <p className="mt-2 text-xs leading-5 text-ink-500">可用逗号或换行分隔多个标签。</p>
             <TextArea
               disabled={!editable}
-              label="行动引导（可选）"
+              label={
+                detail.variant.platform_code === 'official_site'
+                  ? '行动引导（官网服务电话自动保留）'
+                  : '行动引导（可选）'
+              }
               minHeight="min-h-24"
               placeholder="例如：联系我们获取专属方案"
               value={draft.cta ?? ''}
               onChange={(value) => patch({ cta: value || null })}
             />
+            {detail.variant.platform_code === 'official_site' ? (
+              <p className="mt-2 text-xs leading-5 text-ink-500">
+                服务电话来自企业资料，保存时由服务端合并；人工修改不能删除或替换该号码。
+              </p>
+            ) : null}
           </section>
 
           <section className="border-t border-line pt-5">

@@ -461,8 +461,11 @@ async function seed(database: Sql): Promise<void> {
     VALUES (${TENANT_ID}, ${USER_ID}, 'content_editor', 'active')
   `;
   await database`
-    INSERT INTO workspaces (id, tenant_id, name, slug, timezone)
-    VALUES (${WORKSPACE_ID}, ${TENANT_ID}, 'Generation Workspace', 'generation-workspace', 'UTC')
+    INSERT INTO workspaces (id, tenant_id, name, slug, timezone, settings_json)
+    VALUES (
+      ${WORKSPACE_ID}, ${TENANT_ID}, 'Generation Workspace', 'generation-workspace', 'UTC',
+      '{"schema_version":"workspace-settings@1","official_site_service_phone":"02085627757"}'::jsonb
+    )
   `;
   await database`
     INSERT INTO projects (id, tenant_id, workspace_id, name, owner_id)

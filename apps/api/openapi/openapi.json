@@ -48053,6 +48053,10 @@
                                 "type": "string",
                                 "const": "workspace-settings@1"
                               },
+                              "official_site_service_phone": {
+                                "type": "string",
+                                "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                              },
                               "default_platform_codes": {
                                 "minItems": 1,
                                 "maxItems": 9,
@@ -48268,6 +48272,10 @@
                     "type": "object",
                     "properties": {
                       "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                      "official_site_service_phone": {
+                        "type": "string",
+                        "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                      },
                       "default_platform_codes": {
                         "minItems": 1,
                         "maxItems": 9,
@@ -48354,6 +48362,10 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "official_site_service_phone": {
+                              "type": "string",
+                              "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                            },
                             "default_platform_codes": {
                               "minItems": 1,
                               "maxItems": 9,
@@ -48581,6 +48593,10 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "official_site_service_phone": {
+                              "type": "string",
+                              "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                            },
                             "default_platform_codes": {
                               "minItems": 1,
                               "maxItems": 9,
@@ -48804,6 +48820,10 @@
                     "type": "object",
                     "properties": {
                       "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                      "official_site_service_phone": {
+                        "type": "string",
+                        "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                      },
                       "default_platform_codes": {
                         "minItems": 1,
                         "maxItems": 9,
@@ -48889,6 +48909,10 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "official_site_service_phone": {
+                              "type": "string",
+                              "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                            },
                             "default_platform_codes": {
                               "minItems": 1,
                               "maxItems": 9,
@@ -49135,6 +49159,10 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "official_site_service_phone": {
+                              "type": "string",
+                              "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
+                            },
                             "default_platform_codes": {
                               "minItems": 1,
                               "maxItems": 9,

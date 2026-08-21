@@ -408,6 +408,12 @@ HOTFIX-20260821-03 根据 ADR-0065 为 STR-04 增加当前筛选结果的跨页�
 任一历史 Brief 引用时仍整批拒绝。无数据库迁移或新增端点，不改变日批取词、质量门槛、旧内容或
 旧质量报告。
 
+HOTFIX-20260821-04 根据 ADR-0066 将官网服务电话统一收口为工作区级结构化企业资料。KNOW-01
+只允许企业所有者和管理员维护，PUB-01 只读继承且在缺号时拒绝启用官网自动化。首次生成、质检重写和人工
+保存均在最终内容版本与 hash 落库前合并唯一 CTA 电话；官网质检和 Publisher 按当前工作区号码做精确一致性校验，
+官网 Render 契约升级为 `official-site-render-rules@1.3.0`。其他平台不获得该电话证据，现有禁止规则不变。无数据库迁移或新增端点；
+旧内容、旧质量报告和旧发布任务不自动修改，缺号、错号或重复号任务在发布前失败关闭。
+
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
 ## 7. API 约定
@@ -626,7 +632,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
 | STR-03 | 主题规划 | strategy_editor_or_admin | 无证据主题标记风险，不自动进入生产 |
 | STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选；支持当前筛选结果跨页全选、批量修改、禁用、安全删除、平台过滤、优先级排序和页码跳转 |
-| KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索 |
+| KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索；企业管理员维护工作区级官网服务电话 |
 | KNOW-02 | 上传资料 | strategy_or_content_editor_or_admin | 类型、大小、病毒扫描和 SSRF 校验 |
 | KNOW-03 | 资料详情 | tenant_member | 原文和 chunk 可回溯 |
 | KNOW-04 | 事实裁决 | reviewer_or_admin | 裁决写审计且不覆盖历史 |
@@ -634,12 +640,12 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | CONT-02 | Brief 编辑 | strategy_or_content_editor_or_admin | 至少一平台、一关键词；事实型内容至少一来源 |
 | CONT-03 | 内容包列表 | tenant_member | 包状态仅作摘要 |
 | CONT-04 | 内容包详情 | tenant_member | 动作以变体状态守卫；生成、质量检查、审核顺序和进度对用户可见 |
-| CONT-05 | 内容编辑器 | content_editor_or_admin | version 必填；冲突返回 409 |
+| CONT-05 | 内容编辑器 | content_editor_or_admin | version 必填；冲突返回 409；官网保存时服务端保留当前企业电话 |
 | CONT-06 | 生成运行 | content_editor_or_admin | 取消恢复前一稳定状态 |
 | QUAL-01 | 质量报告 | tenant_member | 无报告时可发起首次检查；block/revise 不可提交审核 |
 | REV-01 | 审核列表 | reviewer_or_admin | 只展示授权工作区 |
 | REV-02 | 审核快照 | reviewer_or_admin | 任何内容 hash 不匹配即拒绝动作 |
-| PUB-01 | 平台账号 | publisher_or_admin | 凭证永不回显 |
+| PUB-01 | 平台账号 | publisher_or_admin | 凭证永不回显；官网自动化只读继承企业服务电话，缺少时不能启用 |
 | PUB-02 | 发布日历 | publisher_or_admin | 仅 approved 变体可操作 |
 | PUB-03 | 发布任务 | publisher_or_admin | 幂等且尝试 append-only |
 | ANL-01 | 数据总览 | analyst_or_admin | 口径版本和数据更新时间可见 |

@@ -55,6 +55,7 @@ export interface PublishClaim {
   readonly liejuDeliveryMethod?: 'browser_gateway' | 'official_api';
   readonly jobId: string;
   readonly mediaAssets?: readonly PublishMediaAsset[];
+  readonly officialSiteServicePhone: string | null;
   readonly ownerCompanyNames: readonly string[];
   readonly payloadHash: string;
   readonly platformCode: PlatformCode;

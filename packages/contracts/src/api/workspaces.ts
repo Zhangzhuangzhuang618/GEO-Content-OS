@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { OfficialSiteServicePhoneSchema } from '../official-site-service-contact.js';
 import { PLATFORM_CODES } from '../platforms.js';
 import {
   CursorPageMetaSchema,
@@ -13,6 +14,7 @@ import {
 export const WorkspaceSettingsSchema = z
   .object({
     schema_version: z.literal('workspace-settings@1'),
+    official_site_service_phone: OfficialSiteServicePhoneSchema.optional(),
     default_platform_codes: z
       .array(z.enum(PLATFORM_CODES))
       .min(1)

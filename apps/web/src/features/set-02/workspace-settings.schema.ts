@@ -22,6 +22,10 @@ const WorkspaceSettingsSchema = z
       .strict()
       .optional(),
     default_platform_codes: z.array(PlatformCodeSchema).min(1).max(9).optional(),
+    official_site_service_phone: z
+      .string()
+      .regex(/^(?:1[3-9]\d{9}|0\d{9,11}|(?:400|800)\d{7})$/u)
+      .optional(),
     review_policy: z
       .object({
         minimum_approvals: z.number().int().min(1).max(5),

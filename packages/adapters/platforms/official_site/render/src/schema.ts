@@ -1,3 +1,4 @@
+import { OfficialSiteServicePhoneSchema } from '@geo-content-os/contracts';
 import { z } from 'zod';
 
 import {
@@ -87,6 +88,7 @@ export const OfficialSiteRenderInputSchema = z
       .optional(),
     owner_company_names: z.array(z.string().trim().min(1).max(80)).max(8).refine(unique),
     rule_version: z.literal(OFFICIAL_SITE_RENDER_RULE_VERSION),
+    service_phone: OfficialSiteServicePhoneSchema.nullable(),
   })
   .strict();
 
@@ -137,8 +139,12 @@ export const OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
       uniqueItems: true,
     },
     rule_version: { const: OFFICIAL_SITE_RENDER_RULE_VERSION },
+    service_phone: {
+      type: ['string', 'null'],
+      pattern: '^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$',
+    },
   },
-  required: ['rule_version', 'content', 'citations', 'owner_company_names'],
+  required: ['rule_version', 'content', 'citations', 'owner_company_names', 'service_phone'],
   type: 'object',
   $defs: schemaDefinitions(),
 });

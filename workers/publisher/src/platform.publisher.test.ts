@@ -274,6 +274,7 @@ function createClaim(
     idempotencyKey: `official-site:${randomUUID()}`,
     jobId: randomUUID(),
     mediaAssets,
+    officialSiteServicePhone: '02085627757',
     ownerCompanyNames: [],
     payloadHash: 'a'.repeat(64),
     platformCode: 'official_site',
