@@ -124,15 +124,16 @@ export class DailyCitationRetriever implements DailyCitationPort {
         ...(sourceDocumentIds ?? []),
       ].join(':'),
     );
+    const requestKey = requestHash.slice(0, 32);
     const embedded = await this.embedding.embedBatch({
       inputs: [
         {
-          id: `daily-${purpose}-${requestHash.slice(0, 32)}`,
+          id: `daily-${purpose}-${requestKey}`,
           text: query,
           textHash: sha256(query),
         },
       ],
-      requestId: `daily-${purpose}-embed-${requestHash}`,
+      requestId: `daily-${purpose}-embed-${requestKey}`,
     });
     const vector = embedded.embeddings[0];
     if (!vector) throw new Error('Daily evidence query embedding was not generated');
@@ -141,7 +142,7 @@ export class DailyCitationRetriever implements DailyCitationPort {
       embeddingModelKey: this.embedding.modelKey,
       query,
       queryEmbedding: vector.vector,
-      requestId: `daily-${purpose}-search-${requestHash}`,
+      requestId: `daily-${purpose}-search-${requestKey}`,
       scope: {
         projectId: input.projectId,
         tenantId: input.tenantId,

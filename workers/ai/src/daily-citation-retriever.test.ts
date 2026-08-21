@@ -66,6 +66,41 @@ describe('DailyCitationRetriever', () => {
     ).toBe('广州搬家 怎么选择 风险 避坑 trust 目标 用户');
   });
 
+  it('keeps topic and authority adapter request IDs valid and distinct', async () => {
+    const embedding = new FakeEmbedding();
+    const search = new FakeCitationSearch();
+
+    await new DailyCitationRetriever(embedding, search).retrieve({
+      ...REQUEST,
+      authoritySourceIds: ['source-license'],
+    });
+
+    const requestIds = [
+      ...embedding.inputs.map((input) => input.requestId),
+      ...search.inputs.map((input) => input.requestId),
+    ];
+    expect(requestIds).toEqual([
+      expect.stringMatching(/^daily-topic-embed-[a-f0-9]{32}$/u),
+      expect.stringMatching(/^daily-authority-embed-[a-f0-9]{32}$/u),
+      expect.stringMatching(/^daily-topic-search-[a-f0-9]{32}$/u),
+      expect.stringMatching(/^daily-authority-search-[a-f0-9]{32}$/u),
+    ]);
+    expect(new Set(requestIds).size).toBe(requestIds.length);
+    for (const requestId of requestIds) {
+      expect(requestId.length).toBeGreaterThanOrEqual(16);
+      expect(requestId.length).toBeLessThanOrEqual(80);
+    }
+
+    await new DailyCitationRetriever(embedding, search).retrieve({
+      ...REQUEST,
+      authoritySourceIds: ['source-license'],
+    });
+    expect([
+      ...embedding.inputs.slice(2).map((input) => input.requestId),
+      ...search.inputs.slice(2).map((input) => input.requestId),
+    ]).toEqual(requestIds);
+  });
+
   it('keeps at most five chunks and at most two from one source', async () => {
     const search = new FakeCitationSearch([
       citationHit('chunk-a1', 'source-a'),
@@ -159,12 +194,14 @@ describe('DailyCitationRetriever', () => {
 });
 
 class FakeEmbedding implements EmbeddingAdapter {
+  public readonly inputs: EmbedBatchInput[] = [];
   public lastInput: EmbedBatchInput | undefined;
   public readonly maxBatchSize = 1;
   public readonly modelKey = 'embedding-test-v1';
 
   public embedBatch(input: EmbedBatchInput): Promise<EmbedBatchResult> {
     this.lastInput = input;
+    this.inputs.push(input);
     return Promise.resolve({
       adapterVersion: 'embedding-adapter/1.0.0',
       dimension: 1_536,
