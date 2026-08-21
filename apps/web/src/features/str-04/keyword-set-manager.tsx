@@ -9,6 +9,7 @@ import { listProjects } from '../know-02/source-upload-api';
 import type { ProjectChoice } from '../know-02/source-upload.schema';
 import { listActiveWorkspaces } from '../str-02/brand-profile-api';
 import {
+  batchKeywords,
   commitKeywordImport,
   createKeywordSet,
   getKeywordImport,
@@ -26,6 +27,7 @@ import {
   type KeywordIntent,
   type KeywordSourceIntent,
   type KeywordSet,
+  type KeywordSort,
   type KeywordStatus,
   type KeywordSuggestedPageType,
   type PlatformCode,
@@ -392,32 +394,52 @@ function KeywordWorkspace({
   const [busy, setBusy] = useState(false);
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [keywords, setKeywords] = useState<readonly Keyword[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [cursorHistory, setCursorHistory] = useState<readonly (string | null)[]>([null]);
-  const [pageIndex, setPageIndex] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pageInput, setPageInput] = useState('1');
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [keywordState, setKeywordState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<KeywordStatus | ''>('');
+  const [platformFilter, setPlatformFilter] = useState<PlatformCode | ''>('');
+  const [sort, setSort] = useState<KeywordSort>('priority_desc');
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkEditing, setBulkEditing] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
-  const cursor = cursorHistory[pageIndex] ?? null;
 
   useEffect(() => {
-    setCursorHistory([null]);
-    setPageIndex(0);
+    setPage(1);
+    setPageInput('1');
+    setTotalCount(0);
+    setTotalPages(1);
     setEditing(null);
+    setBulkEditing(false);
+    setSelectedIds(new Set());
     setSearch('');
     setStatusFilter('');
+    setPlatformFilter('');
+    setSort('priority_desc');
   }, [detail.id]);
+
+  useEffect(() => setPageInput(String(page)), [page]);
+
+  useEffect(() => {
+    if (selectedIds.size === 0) setBulkEditing(false);
+  }, [selectedIds]);
 
   useEffect(() => {
     const controller = new AbortController();
     setKeywordState('loading');
+    setSelectedIds(new Set());
+    setBulkEditing(false);
     void listKeywords(
       detail.id,
       {
-        ...(cursor ? { cursor } : {}),
         limit: KEYWORDS_PER_PAGE,
+        page,
+        ...(platformFilter ? { platformCode: platformFilter } : {}),
         ...(search ? { search } : {}),
+        sort,
         ...(statusFilter ? { status: statusFilter } : {}),
       },
       controller.signal,
@@ -425,24 +447,32 @@ function KeywordWorkspace({
       .then((page) => {
         if (controller.signal.aborted) return;
         setKeywords(page.data);
-        setNextCursor(page.meta.next_cursor);
+        const resolvedPage = page.meta.page ?? 1;
+        setPage(resolvedPage);
+        setTotalCount(page.meta.total_count ?? page.data.length);
+        setTotalPages(page.meta.total_pages ?? 1);
         setKeywordState('ready');
       })
       .catch(() => {
         if (!controller.signal.aborted) setKeywordState('error');
       });
     return () => controller.abort();
-  }, [cursor, detail.id, reloadToken, search, statusFilter]);
+  }, [detail.id, page, platformFilter, reloadToken, search, sort, statusFilter]);
 
   function applyKeywordFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const nextSearch = String(data.get('keyword_search') ?? '').trim();
     const rawStatus = String(data.get('keyword_status') ?? '');
+    const rawPlatform = String(data.get('keyword_platform') ?? '');
+    const rawSort = String(data.get('keyword_sort') ?? 'priority_desc');
     setSearch(nextSearch);
     setStatusFilter(rawStatus === 'active' || rawStatus === 'disabled' ? rawStatus : '');
-    setCursorHistory([null]);
-    setPageIndex(0);
+    setPlatformFilter(
+      PLATFORM_OPTIONS.some(([code]) => code === rawPlatform) ? (rawPlatform as PlatformCode) : '',
+    );
+    setSort(rawSort === 'priority_asc' ? 'priority_asc' : 'priority_desc');
+    setPage(1);
   }
 
   async function submitBatch(event: FormEvent<HTMLFormElement>) {
@@ -507,12 +537,131 @@ function KeywordWorkspace({
     await save([toInput(keyword, 'disabled')], `关键词“${keyword.term}”已禁用。`);
   }
 
+  async function runBatch(
+    input: Parameters<typeof batchKeywords>[1],
+    success: string,
+  ): Promise<void> {
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setLocalMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy(true);
+    setLocalMessage(null);
+    try {
+      await batchKeywords(detail.id, input, csrf);
+      setSelectedIds(new Set());
+      setBulkEditing(false);
+      setReloadToken((current) => current + 1);
+      onMessage(success);
+    } catch (error) {
+      if (error instanceof KeywordSetRequestError && error.status === 409) {
+        setLocalMessage(
+          input.action === 'delete'
+            ? '所选关键词中有已用于历史内容的项目，不能删除；请改为批量禁用。'
+            : '当前关键词集状态不允许这次批量操作，请刷新后重试。',
+        );
+      } else if (error instanceof KeywordSetRequestError && error.status === 422) {
+        setLocalMessage('批量修改内容不符合字段约束，请检查后重试。');
+      } else {
+        setLocalMessage('批量操作失败，请稍后重试。');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function submitBulkEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedIds.size === 0) {
+      setLocalMessage('请先选择需要修改的关键词。');
+      return;
+    }
+    const data = new FormData(event.currentTarget);
+    const applyIntents = data.has('apply_intents');
+    const applyPriority = data.has('apply_priority');
+    const applyPlatforms = data.has('apply_platforms');
+    const applyStatus = data.has('apply_status');
+    if (!applyIntents && !applyPriority && !applyPlatforms && !applyStatus) {
+      setLocalMessage('请至少勾选一个需要批量修改的字段。');
+      return;
+    }
+    const intents = data.getAll('bulk_intents').map(String).filter(isKeywordIntent);
+    const platforms = data.getAll('bulk_platforms').map(String).filter(isPlatformCode);
+    const priority = Number(data.get('bulk_priority'));
+    const status = String(data.get('bulk_status'));
+    if (applyIntents && intents.length === 0) {
+      setLocalMessage('批量修改搜索意图时，至少选择一项。');
+      return;
+    }
+    if (applyPlatforms && platforms.length === 0) {
+      setLocalMessage('批量修改适用平台时，至少选择一个平台。');
+      return;
+    }
+    if (applyPriority && (!Number.isInteger(priority) || priority < 0 || priority > 100)) {
+      setLocalMessage('批量优先级必须是 0–100 的整数。');
+      return;
+    }
+    if (applyStatus && status !== 'active' && status !== 'disabled') {
+      setLocalMessage('批量状态不符合约束。');
+      return;
+    }
+    const changes = {
+      ...(applyIntents ? { intents } : {}),
+      ...(applyPlatforms ? { platform_scope: platforms } : {}),
+      ...(applyPriority ? { priority } : {}),
+      ...(applyStatus ? { status: status as KeywordStatus } : {}),
+    };
+    void runBatch(
+      { action: 'update', changes, keywordIds: [...selectedIds] },
+      `${selectedIds.size} 个关键词已批量更新。`,
+    );
+  }
+
+  function submitPageJump(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const target = Number(pageInput);
+    if (!Number.isInteger(target) || target < 1 || target > totalPages) {
+      setLocalMessage(`请输入 1–${totalPages} 之间的页码。`);
+      return;
+    }
+    setLocalMessage(null);
+    setPage(target);
+  }
+
+  function toggleKeywordSelection(keywordId: string, selected: boolean) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (selected) next.add(keywordId);
+      else next.delete(keywordId);
+      return next;
+    });
+  }
+
+  function toggleCurrentPage(selected: boolean) {
+    setSelectedIds(selected ? new Set(keywords.map((keyword) => keyword.id)) : new Set());
+    if (!selected) setBulkEditing(false);
+  }
+
+  function deleteSelected() {
+    if (selectedIds.size === 0) return;
+    if (!window.confirm(`确定删除所选的 ${selectedIds.size} 个关键词吗？此操作不可撤销。`)) {
+      return;
+    }
+    void runBatch(
+      { action: 'delete', keywordIds: [...selectedIds] },
+      `${selectedIds.size} 个未被引用的关键词已删除。`,
+    );
+  }
+
   const handleImportComplete = useCallback(() => {
-    setCursorHistory([null]);
-    setPageIndex(0);
+    setPage(1);
     setReloadToken((current) => current + 1);
     onMessage('关键词表格导入完成。');
   }, [onMessage]);
+
+  const allCurrentPageSelected =
+    keywords.length > 0 && keywords.every((keyword) => selectedIds.has(keyword.id));
 
   return (
     <>
@@ -528,6 +677,7 @@ function KeywordWorkspace({
         >
           <form
             className="flex flex-wrap items-end gap-3 border-b border-line p-4"
+            key={detail.id}
             onSubmit={applyKeywordFilters}
           >
             <label className="min-w-56 flex-1 text-sm text-ink-700">
@@ -542,10 +692,66 @@ function KeywordWorkspace({
                 <option value="disabled">禁用</option>
               </select>
             </label>
+            <label className="w-40 text-sm text-ink-700">
+              适用平台
+              <select className={controlClass} name="keyword_platform">
+                <option value="">全部平台</option>
+                {PLATFORM_OPTIONS.map(([code, label]) => (
+                  <option key={code} value={code}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="w-40 text-sm text-ink-700">
+              优先级排序
+              <select className={controlClass} defaultValue="priority_desc" name="keyword_sort">
+                <option value="priority_desc">从高到低</option>
+                <option value="priority_asc">从低到高</option>
+              </select>
+            </label>
             <button className={secondaryButton} type="submit">
               筛选
             </button>
           </form>
+          {canWrite ? (
+            <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-subtle px-4 py-3 text-sm">
+              <span className="text-ink-700">已选 {selectedIds.size} 个</span>
+              <button
+                className={secondaryButton}
+                disabled={busy || selectedIds.size === 0}
+                onClick={() => {
+                  setEditing(null);
+                  setBulkEditing(true);
+                }}
+                type="button"
+              >
+                批量编辑
+              </button>
+              <button
+                className={secondaryButton}
+                disabled={busy || selectedIds.size === 0}
+                onClick={() =>
+                  void runBatch(
+                    { action: 'disable', keywordIds: [...selectedIds] },
+                    `${selectedIds.size} 个关键词已批量禁用。`,
+                  )
+                }
+                type="button"
+              >
+                批量禁用
+              </button>
+              <button
+                className="rounded-control border border-red-300 px-3 py-2 font-medium text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={busy || selectedIds.size === 0}
+                onClick={deleteSelected}
+                type="button"
+              >
+                批量删除
+              </button>
+              <span className="text-xs text-ink-500">仅操作当前页勾选项</span>
+            </div>
+          ) : null}
           {keywordState === 'loading' ? (
             <StatePanel title="正在加载关键词" text="正在读取当前页数据。" />
           ) : keywordState === 'error' ? (
@@ -563,6 +769,15 @@ function KeywordWorkspace({
                 <table className="w-full min-w-[980px] text-left text-sm">
                   <thead className="bg-surface-subtle text-ink-500">
                     <tr>
+                      <th className="w-12 p-4">
+                        <input
+                          aria-label="选择当前页全部关键词"
+                          checked={allCurrentPageSelected}
+                          disabled={!canWrite}
+                          onChange={(event) => toggleCurrentPage(event.currentTarget.checked)}
+                          type="checkbox"
+                        />
+                      </th>
                       <th className="p-4">关键词</th>
                       <th className="p-4">搜索意图</th>
                       <th className="p-4">优先级</th>
@@ -575,6 +790,17 @@ function KeywordWorkspace({
                   <tbody>
                     {keywords.map((keyword) => (
                       <tr className="border-t border-line" key={keyword.id}>
+                        <td className="p-4">
+                          <input
+                            aria-label={`选择关键词 ${keyword.term}`}
+                            checked={selectedIds.has(keyword.id)}
+                            disabled={!canWrite}
+                            onChange={(event) =>
+                              toggleKeywordSelection(keyword.id, event.currentTarget.checked)
+                            }
+                            type="checkbox"
+                          />
+                        </td>
                         <td className="p-4 font-medium text-ink-950">{keyword.term}</td>
                         <td className="p-4">{keyword.intents.map(intentLabel).join('、')}</td>
                         <td className="p-4">{keyword.priority}</td>
@@ -588,7 +814,10 @@ function KeywordWorkspace({
                             <div className="flex gap-3">
                               <button
                                 className="text-brand-700"
-                                onClick={() => setEditing(keyword)}
+                                onClick={() => {
+                                  setBulkEditing(false);
+                                  setEditing(keyword);
+                                }}
                                 type="button"
                               >
                                 编辑
@@ -618,28 +847,42 @@ function KeywordWorkspace({
                 className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm"
               >
                 <span className="text-ink-500">
-                  第 {pageIndex + 1} 页 · 每页最多 {KEYWORDS_PER_PAGE} 个
+                  共 {totalCount} 个 · 第 {page}/{totalPages} 页 · 每页 {KEYWORDS_PER_PAGE} 个
                 </span>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={pageIndex === 0}
-                    onClick={() => setPageIndex((current) => Math.max(0, current - 1))}
+                    disabled={page <= 1}
+                    onClick={() => setPage((current) => Math.max(1, current - 1))}
                     type="button"
                   >
                     上一页
                   </button>
+                  <form className="flex items-center gap-2" onSubmit={submitPageJump}>
+                    <label className="flex items-center gap-2 text-ink-700">
+                      跳至
+                      <input
+                        aria-label="跳转页码"
+                        className="w-20 rounded-control border border-line px-2 py-1.5"
+                        max={totalPages}
+                        min="1"
+                        onChange={(event) => setPageInput(event.currentTarget.value)}
+                        type="number"
+                        value={pageInput}
+                      />
+                      页
+                    </label>
+                    <button
+                      className="rounded-control border border-line px-3 py-1.5"
+                      type="submit"
+                    >
+                      跳转
+                    </button>
+                  </form>
                   <button
                     className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!nextCursor}
-                    onClick={() => {
-                      if (!nextCursor) return;
-                      setCursorHistory((current) => [
-                        ...current.slice(0, pageIndex + 1),
-                        nextCursor,
-                      ]);
-                      setPageIndex((current) => current + 1);
-                    }}
+                    disabled={page >= totalPages}
+                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
                     type="button"
                   >
                     下一页
@@ -719,6 +962,14 @@ function KeywordWorkspace({
               导入关键词
             </button>
           </form>
+          {bulkEditing && selectedIds.size > 0 ? (
+            <BulkEditKeywordForm
+              busy={busy}
+              count={selectedIds.size}
+              onCancel={() => setBulkEditing(false)}
+              onSubmit={submitBulkEdit}
+            />
+          ) : null}
           {editing ? (
             <EditKeywordForm
               busy={busy}
@@ -1040,6 +1291,95 @@ function importStatusLabel(status: KeywordImportJob['status']): string {
   )[status];
 }
 
+function BulkEditKeywordForm({
+  busy,
+  count,
+  onCancel,
+  onSubmit,
+}: {
+  readonly busy: boolean;
+  readonly count: number;
+  readonly onCancel: () => void;
+  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <form
+      className="rounded-2xl border border-brand-200 bg-white p-5 shadow-panel"
+      onSubmit={onSubmit}
+    >
+      <h2 className="font-semibold text-ink-950">批量编辑 {count} 个关键词</h2>
+      <p className="mt-1 text-xs leading-5 text-ink-500">
+        只会修改已勾选的字段；关键词名称和同义词仍需逐条编辑。
+      </p>
+      <fieldset className="mt-4">
+        <legend className="text-sm font-medium text-ink-700">
+          <label className="flex items-center gap-2">
+            <input name="apply_intents" type="checkbox" />
+            修改搜索意图
+          </label>
+        </legend>
+        <div className="mt-2 grid gap-2 pl-6">
+          {INTENT_OPTIONS.map(([intent, label]) => (
+            <label className="flex items-center gap-2 text-sm" key={intent}>
+              <input name="bulk_intents" type="checkbox" value={intent} />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="mt-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-ink-700">
+          <input name="apply_priority" type="checkbox" />
+          修改优先级
+        </label>
+        <input
+          aria-label="批量优先级"
+          className={controlClass}
+          defaultValue="80"
+          max="100"
+          min="0"
+          name="bulk_priority"
+          type="number"
+        />
+      </div>
+      <fieldset className="mt-4">
+        <legend className="text-sm font-medium text-ink-700">
+          <label className="flex items-center gap-2">
+            <input name="apply_platforms" type="checkbox" />
+            修改适用平台
+          </label>
+        </legend>
+        <div className="mt-2 grid grid-cols-2 gap-2 pl-6">
+          {PLATFORM_OPTIONS.map(([code, label]) => (
+            <label className="flex items-center gap-2 text-sm" key={code}>
+              <input name="bulk_platforms" type="checkbox" value={code} />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="mt-4">
+        <label className="flex items-center gap-2 text-sm font-medium text-ink-700">
+          <input name="apply_status" type="checkbox" />
+          修改状态
+        </label>
+        <select aria-label="批量状态" className={controlClass} name="bulk_status">
+          <option value="active">启用</option>
+          <option value="disabled">禁用</option>
+        </select>
+      </div>
+      <div className="mt-4 flex gap-3">
+        <button className={primaryButton} disabled={busy} type="submit">
+          保存批量修改
+        </button>
+        <button className={secondaryButton} onClick={onCancel} type="button">
+          取消
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function EditKeywordForm({
   busy,
   keyword,
@@ -1178,6 +1518,12 @@ function platformLabel(code: PlatformCode) {
 }
 function intentLabel(intent: KeywordIntent) {
   return INTENT_OPTIONS.find(([value]) => value === intent)?.[1] ?? intent;
+}
+function isKeywordIntent(value: string): value is KeywordIntent {
+  return INTENT_OPTIONS.some(([intent]) => intent === value);
+}
+function isPlatformCode(value: string): value is PlatformCode {
+  return PLATFORM_OPTIONS.some(([code]) => code === value);
 }
 function IntentCheckboxes({
   defaultValues,

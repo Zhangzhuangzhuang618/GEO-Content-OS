@@ -18,6 +18,7 @@ export const KeywordIntentSchema = z.enum([
   'navigational',
 ]);
 export const KeywordStatusSchema = z.enum(['active', 'disabled']);
+export const KeywordSortSchema = z.enum(['priority_desc', 'priority_asc']);
 export const KeywordSourceIntentSchema = z.enum([
   '价格咨询',
   '信任筛选',
@@ -112,10 +113,29 @@ export const KeywordListResponseSchema = z
   .object({ data: z.array(KeywordSchema), meta: RequestMetaSchema })
   .strict();
 
+export const BatchKeywordOperationResponseSchema = z
+  .object({
+    data: z
+      .object({
+        action: z.enum(['disable', 'delete', 'update']),
+        affected_count: z.number().int().nonnegative(),
+        keyword_ids: z.array(z.string().uuid()).min(1).max(500),
+      })
+      .strict(),
+    meta: RequestMetaSchema,
+  })
+  .strict();
+
 export const KeywordPageSchema = z
   .object({
     data: z.array(KeywordSchema),
-    meta: RequestMetaSchema.extend({ next_cursor: z.string().nullable() }),
+    meta: RequestMetaSchema.extend({
+      next_cursor: z.string().nullable(),
+      page: z.number().int().positive().nullable(),
+      page_size: z.number().int().positive(),
+      total_count: z.number().int().nonnegative(),
+      total_pages: z.number().int().positive(),
+    }),
   })
   .strict();
 
@@ -183,4 +203,5 @@ export type KeywordSuggestedPageType = z.infer<typeof KeywordSuggestedPageTypeSc
 export type KeywordSet = z.infer<typeof KeywordSetSchema>;
 export type KeywordSetDetail = z.infer<typeof KeywordSetDetailResponseSchema>['data'];
 export type KeywordStatus = z.infer<typeof KeywordStatusSchema>;
+export type KeywordSort = z.infer<typeof KeywordSortSchema>;
 export type PlatformCode = z.infer<typeof PlatformCodeSchema>;

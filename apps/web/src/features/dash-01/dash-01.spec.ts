@@ -36,7 +36,14 @@ test.beforeEach(async ({ context, page }) => {
     route.fulfill({
       body: JSON.stringify({
         data: [keyword()],
-        meta: { next_cursor: null, request_id: 'keywords' },
+        meta: {
+          next_cursor: null,
+          page: null,
+          page_size: 100,
+          request_id: 'keywords',
+          total_count: 1,
+          total_pages: 1,
+        },
       }),
       contentType: 'application/json',
       status: 200,
@@ -96,13 +103,13 @@ test('exposes account, enterprise switching and logout actions in the global hea
 });
 
 test('persists time, workspace and project filters in the URL', async ({ page }) => {
-  await page.goto(`/dash-01?from=2026-07-01&to=2026-07-31&workspace_id=${WORKSPACE_ID}`);
+  await page.goto(`/dash-01?from=2026-08-01&to=2026-08-31&workspace_id=${WORKSPACE_ID}`);
   await expect(page.getByRole('heading', { name: '开始创作' })).toBeVisible();
   await page.getByText('工作概览与筛选').click();
   await page.getByLabel('项目', { exact: true }).selectOption(PROJECT_ID);
   await expect(page).toHaveURL(
     new RegExp(
-      `from=2026-07-01.*to=2026-07-31.*workspace_id=${WORKSPACE_ID}.*project_id=${PROJECT_ID}$`,
+      `from=2026-08-01.*to=2026-08-31.*workspace_id=${WORKSPACE_ID}.*project_id=${PROJECT_ID}$`,
       'u',
     ),
   );

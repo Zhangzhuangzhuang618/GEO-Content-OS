@@ -80,6 +80,50 @@ export const UpsertKeywordsRequestSchema = z
     });
   });
 
+const KeywordIdBatchSchema = z
+  .array(UuidSchema)
+  .min(1)
+  .max(500)
+  .refine((values) => new Set(values).size === values.length, {
+    message: 'Keyword ids must be unique',
+  });
+
+const BatchKeywordChangesSchema = z
+  .object({
+    intents: KeywordIntentsSchema.optional(),
+    platform_scope: KeywordPlatformScopeSchema.optional(),
+    priority: z.number().int().min(0).max(100).optional(),
+    status: z.enum(['active', 'disabled']).optional(),
+  })
+  .strict()
+  .refine((changes) => Object.keys(changes).length > 0, {
+    message: 'At least one keyword field must be changed',
+  });
+
+export const BatchKeywordOperationRequestSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('disable'), keyword_ids: KeywordIdBatchSchema }).strict(),
+  z.object({ action: z.literal('delete'), keyword_ids: KeywordIdBatchSchema }).strict(),
+  z
+    .object({
+      action: z.literal('update'),
+      changes: BatchKeywordChangesSchema,
+      keyword_ids: KeywordIdBatchSchema,
+    })
+    .strict(),
+]);
+
+export const BatchKeywordOperationSchema = z
+  .object({
+    action: z.enum(['disable', 'delete', 'update']),
+    affected_count: z.number().int().nonnegative(),
+    keyword_ids: KeywordIdBatchSchema,
+  })
+  .strict();
+
+export const BatchKeywordOperationResponseSchema = z
+  .object({ data: BatchKeywordOperationSchema, meta: RequestMetaSchema })
+  .strict();
+
 export const SyncProjectKeywordPlatformScopeRequestSchema = z
   .object({
     platform_codes: KeywordPlatformScopeSchema,
@@ -148,10 +192,16 @@ export const KeywordListQuerySchema = z
   .object({
     cursor: CursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    page: z.coerce.number().int().min(1).max(100_000).optional(),
+    platform_code: z.enum(PLATFORM_CODES).optional(),
     search: z.string().trim().min(1).max(240).optional(),
+    sort: z.enum(['priority_desc', 'priority_asc']).default('priority_desc'),
     status: z.enum(['active', 'disabled']).optional(),
   })
-  .strict();
+  .strict()
+  .refine((query) => !(query.cursor && query.page), {
+    message: 'Cursor and page pagination cannot be combined',
+  });
 
 export const KeywordImportPreflightRequestSchema = z
   .object({
@@ -239,7 +289,15 @@ export const ProjectKeywordPlatformScopeSyncResponseSchema = z
   .strict();
 
 export const KeywordPageSchema = z
-  .object({ data: z.array(KeywordSchema), meta: CursorPageMetaSchema })
+  .object({
+    data: z.array(KeywordSchema),
+    meta: CursorPageMetaSchema.extend({
+      page: z.number().int().positive().nullable(),
+      page_size: z.number().int().positive(),
+      total_count: z.number().int().nonnegative(),
+      total_pages: z.number().int().positive(),
+    }),
+  })
   .strict();
 
 const KeywordImportCountSchema = z
@@ -298,6 +356,8 @@ export const KeywordImportJobResponseSchema = z
   .strict();
 
 export type CreateKeywordSetRequest = z.infer<typeof CreateKeywordSetRequestSchema>;
+export type BatchKeywordOperation = z.infer<typeof BatchKeywordOperationSchema>;
+export type BatchKeywordOperationRequest = z.infer<typeof BatchKeywordOperationRequestSchema>;
 export type CommitKeywordImportRequest = z.infer<typeof CommitKeywordImportRequestSchema>;
 export type KeywordInput = z.infer<typeof KeywordInputSchema>;
 export type KeywordListQuery = z.infer<typeof KeywordListQuerySchema>;

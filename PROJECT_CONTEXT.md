@@ -396,13 +396,19 @@ HOTFIX-20260821-01 根据 ADR-0063 修复共享日批证据检索请求 ID 超�
 发生在候选写入前，同一业务日仍为 `running` 的批次在 AI Worker 部署后继续处理，旧批次、旧内容
 和旧质量报告不会自动重评。
 
+HOTFIX-20260821-02 根据 ADR-0064 为 STR-04 增加关键词批量修改公共字段、批量禁用和批量删除，
+并增加适用平台过滤、优先级升降序、总数、上一页、下一页和页码跳转。批量操作按租户、项目与
+关键词集隔离并在单事务内执行；只要删除项中存在已被历史 Brief 引用的关键词，整批删除即拒绝并
+提示改为禁用，不移除历史关系。旧游标查询继续兼容；无数据库迁移，不改变日批取词、质量门槛、
+旧内容或旧质量报告。
+
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
 ## 7. API 约定
 
 Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码生成；写操作 CSRF+Idempotency-Key；所有可变资源返回 version。
 
-冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，后续 Hotfix 补充配图恢复等既有流程端点，并以 HOTFIX-20260805-11 增加百家号未知发布结果人工处置端点、HOTFIX-20260808-01 增加百家号终态重新对账端点，ADR-0033 增加平台企业所有者邀请重发端点，ADR-0034 增加搜狐号浏览器会话 3 个端点，ADR-0035 增加列举网浏览器会话 3 个端点，ADR-0037 增加搜狐号与列举网自动化策略读写 2 个端点，HOTFIX-20260817-01 增加项目关键词平台范围同步端点，HOTFIX-20260817-03 增加浏览器平台零候选日批重试端点，ADR-0039 增加百家号和浏览器平台保留历史日批重发 2 个端点，当前可执行端点数为 159。ADR-0036 只扩展既有登录请求体，不增加端点。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
+冻结基线原为 114 个端点；ADR-0002 为 REV-01 领取闭环新增 1 个端点，ADR-0003 为 ANL-02 批次回滚新增 1 个端点，ADR-0004 为 ANL-03 批量导入和趋势查询新增 2 个端点，ADR-0005 为 ANL-04 预算查看和供应商账单对账新增 2 个端点，ADR-0006 为 SET-01 邀请记录补充 1 个只读端点，ADR-0016 为 KNOW-02 URL 表格预检新增 1 个端点，ADR-0019 为 PUB-01 平台账号编辑、恢复和删除新增 3 个端点，ADR-0021 为官网项目自动发布策略新增 2 个端点，ADR-0022 为 AI 可见度问题集和实验运行新增 5 个端点，ADR-0024 为官网当日批次重发新增 1 个端点，ADR-0026 为官网当日批次人工终止新增 1 个端点，ADR-0028 增加百家号自动化公开端点，ADR-0029 增加 4 个关键词分页与表格导入端点，后续 Hotfix 补充配图恢复等既有流程端点，并以 HOTFIX-20260805-11 增加百家号未知发布结果人工处置端点、HOTFIX-20260808-01 增加百家号终态重新对账端点，ADR-0033 增加平台企业所有者邀请重发端点，ADR-0034 增加搜狐号浏览器会话 3 个端点，ADR-0035 增加列举网浏览器会话 3 个端点，ADR-0037 增加搜狐号与列举网自动化策略读写 2 个端点，HOTFIX-20260817-01 增加项目关键词平台范围同步端点，HOTFIX-20260817-03 增加浏览器平台零候选日批重试端点，ADR-0039 增加百家号和浏览器平台保留历史日批重发 2 个端点，ADR-0064 增加关键词批量操作端点，当前可执行端点数为 160。ADR-0036 只扩展既有登录请求体，不增加端点。ADR-0007、ADR-0008 与 ADR-0009 分别补齐既有 SET-03、SET-04 和 PLAT-01 端点的可执行契约，不增加端点；ADR-0009 同时以 `tenants.version` 修正暂停/恢复的乐观锁缺口。ADR-0010 接通 AI Worker 和账号定向生成，ADR-0020 增加发布后台跳转地址与页面入口，ADR-0023 扩展既有官网自动发布策略并增加后台批次调度，均不增加公开端点。
 
 | 组 | 方法 | 路径 | 权限 | 请求 | 返回 | 幂等 |
 |---|---|---|---|---|---|---|
@@ -457,6 +463,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | 策略 | GET | `/keyword-sets/{id}` | tenant_member | - | KeywordSetDetail | - |
 | 策略 | POST | `/keyword-sets/{id}/keywords` | strategy_editor_or_admin | UpsertKeywordsRequest | Keyword[] | key+body_hash |
 | 策略 | GET | `/keyword-sets/{id}/keywords` | tenant_member | KeywordListQuery | KeywordPage | - |
+| 策略 | POST | `/keyword-sets/{id}/keywords/batch` | strategy_editor_or_admin | BatchKeywordOperationRequest | BatchKeywordOperation | key+body_hash |
 | 策略 | POST | `/keyword-sets/{id}/imports/preflight` | strategy_editor_or_admin | multipart KeywordImportPreflight | KeywordImportJobView | key+body_hash |
 | 策略 | POST | `/keyword-sets/{id}/imports/{importId}/commit` | strategy_editor_or_admin | CommitKeywordImportRequest | KeywordImportJobView | key+body_hash |
 | 策略 | GET | `/keyword-sets/{id}/imports/{importId}` | tenant_member | - | KeywordImportJobView | - |
@@ -612,7 +619,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | STR-01 | 品牌策略列表 | tenant_member | 写操作仅 strategy_editor_or_admin |
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
 | STR-03 | 主题规划 | strategy_editor_or_admin | 无证据主题标记风险，不自动进入生产 |
-| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选并显示中文标签；关键词集列表完整分页且按数量自适应 |
+| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选；支持批量修改、禁用、安全删除、平台过滤、优先级排序和页码跳转 |
 | KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索 |
 | KNOW-02 | 上传资料 | strategy_or_content_editor_or_admin | 类型、大小、病毒扫描和 SSRF 校验 |
 | KNOW-03 | 资料详情 | tenant_member | 原文和 chunk 可回溯 |

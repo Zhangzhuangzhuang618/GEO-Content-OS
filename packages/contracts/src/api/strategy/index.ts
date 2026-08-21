@@ -11,6 +11,8 @@ import {
 } from '../brand-profiles.js';
 import { ReasonRequestSchema } from '../common.js';
 import {
+  BatchKeywordOperationRequestSchema,
+  BatchKeywordOperationResponseSchema,
   CommitKeywordImportRequestSchema,
   CreateKeywordSetRequestSchema,
   KeywordImportIdSchema,
@@ -214,6 +216,21 @@ const contracts = [
     requestName: 'UpsertKeywordsRequest',
     responseName: 'Keyword[]',
     responseSchema: KeywordListResponseSchema,
+    successStatus: 200,
+  },
+  {
+    bodySchema: BatchKeywordOperationRequestSchema,
+    idempotency: 'key+body_hash',
+    key: 'keyword-set.batch-keywords',
+    method: 'POST',
+    paramsSchema: KeywordSetParamsSchema,
+    path: '/keyword-sets/{id}/keywords/batch',
+    permission: 'strategy.manage',
+    policy: 'strategy_editor_or_admin',
+    querySchema: null,
+    requestName: 'BatchKeywordOperationRequest',
+    responseName: 'BatchKeywordOperation',
+    responseSchema: BatchKeywordOperationResponseSchema,
     successStatus: 200,
   },
   {

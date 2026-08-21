@@ -23,7 +23,14 @@ test.beforeEach(async ({ context, page }) => {
     json(route, [keywordSet()], { next_cursor: null, request_id: 'sets' }),
   );
   await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) =>
-    json(route, [keyword()], { next_cursor: null, request_id: 'keywords' }),
+    json(route, [keyword()], {
+      next_cursor: null,
+      page: 1,
+      page_size: 20,
+      request_id: 'keywords',
+      total_count: 1,
+      total_pages: 1,
+    }),
   );
 });
 
@@ -59,14 +66,14 @@ test('imports, edits and disables keywords through the frozen upsert endpoint', 
   await page.getByRole('button', { name: '导入关键词' }).click();
   await expect(page.getByText('1 个关键词已导入或更新。')).toBeVisible();
 
-  await page.getByRole('button', { name: '编辑' }).click();
+  await page.getByRole('button', { name: '编辑', exact: true }).click();
   const editForm = page.getByRole('heading', { name: '编辑关键词' }).locator('..');
   await editForm.getByLabel('比较或选择服务').check();
   await editForm.getByLabel('优先级', { exact: true }).fill('90');
   await editForm.getByRole('button', { name: '保存' }).click();
   await expect(page.getByText('关键词“GEO 内容”已更新。')).toBeVisible();
 
-  await page.getByRole('button', { name: '禁用' }).click();
+  await page.getByRole('button', { name: '禁用', exact: true }).click();
   await expect(page.getByText('关键词“GEO 内容”已禁用。')).toBeVisible();
   expect(bodies).toHaveLength(3);
   expect(bodies[0]).toEqual({
@@ -91,6 +98,54 @@ test('imports, edits and disables keywords through the frozen upsert endpoint', 
     ],
   });
   expect(bodies[2]).toMatchObject({ keywords: [{ status: 'disabled', term: 'GEO 内容' }] });
+});
+
+test('batch edits, disables, and deletes selected keywords', async ({ page }) => {
+  const bodies: unknown[] = [];
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/keywords/batch`, async (route) => {
+    const body = route.request().postDataJSON();
+    bodies.push(body);
+    await json(
+      route,
+      {
+        action: body.action,
+        affected_count: body.keyword_ids.length,
+        keyword_ids: body.keyword_ids,
+      },
+      { request_id: `batch-${bodies.length}` },
+    );
+  });
+  await page.goto('/str-04');
+
+  await page.getByLabel('选择关键词 GEO 内容').check();
+  await page.getByRole('button', { name: '批量编辑' }).click();
+  const bulkForm = page.getByRole('heading', { name: '批量编辑 1 个关键词' }).locator('..');
+  await bulkForm.getByLabel('修改优先级').check();
+  await bulkForm.getByLabel('批量优先级').fill('95');
+  await bulkForm.getByLabel('修改适用平台').check();
+  await bulkForm.getByLabel('官网').check();
+  await bulkForm.getByLabel('列举网').check();
+  await bulkForm.getByRole('button', { name: '保存批量修改' }).click();
+  await expect(page.getByText('1 个关键词已批量更新。')).toBeVisible();
+
+  await page.getByLabel('选择关键词 GEO 内容').check();
+  await page.getByRole('button', { name: '批量禁用' }).click();
+  await expect(page.getByText('1 个关键词已批量禁用。')).toBeVisible();
+
+  await page.getByLabel('选择关键词 GEO 内容').check();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '批量删除' }).click();
+  await expect(page.getByText('1 个未被引用的关键词已删除。')).toBeVisible();
+
+  expect(bodies).toEqual([
+    {
+      action: 'update',
+      changes: { platform_scope: ['official_site', 'lieju'], priority: 95 },
+      keyword_ids: [KEYWORD_ID],
+    },
+    { action: 'disable', keyword_ids: [KEYWORD_ID] },
+    { action: 'delete', keyword_ids: [KEYWORD_ID] },
+  ]);
 });
 
 test('exposes keyword management and supports a simple single-keyword form', async ({ page }) => {
@@ -154,28 +209,59 @@ test('sizes the keyword table to its rows and paginates long lists on the server
     term: `关键词 ${index + 1}`,
   }));
   await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) => {
-    const cursor = new URL(route.request().url()).searchParams.get('cursor');
-    return cursor
-      ? json(route, keywords.slice(20), { next_cursor: null, request_id: 'keywords-2' })
-      : json(route, keywords.slice(0, 20), {
-          next_cursor: 'page-2',
-          request_id: 'keywords-1',
-        });
+    const requestedPage = Number(new URL(route.request().url()).searchParams.get('page') ?? '1');
+    return json(route, requestedPage === 2 ? keywords.slice(20) : keywords.slice(0, 20), {
+      next_cursor: null,
+      page: requestedPage,
+      page_size: 20,
+      request_id: `keywords-${requestedPage}`,
+      total_count: 22,
+      total_pages: 2,
+    });
   });
 
   await page.goto('/str-04');
   const list = page.getByRole('region', { name: '关键词列表' });
   const pagination = page.getByRole('navigation', { name: '关键词分页' });
   await expect(list).toHaveCSS('align-self', 'flex-start');
-  await expect(pagination.getByText('第 1 页 · 每页最多 20 个')).toBeVisible();
+  await expect(pagination.getByText('共 22 个 · 第 1/2 页 · 每页 20 个')).toBeVisible();
   await expect(list.getByText('关键词 1', { exact: true })).toBeVisible();
   await expect(list.getByText('关键词 21', { exact: true })).toHaveCount(0);
 
   await pagination.getByRole('button', { name: '下一页' }).click();
-  await expect(pagination.getByText('第 2 页 · 每页最多 20 个')).toBeVisible();
+  await expect(pagination.getByText('共 22 个 · 第 2/2 页 · 每页 20 个')).toBeVisible();
   await expect(list.getByText('关键词 1', { exact: true })).toHaveCount(0);
   await expect(list.getByText('关键词 21', { exact: true })).toBeVisible();
   await expect(pagination.getByRole('button', { name: '下一页' })).toBeDisabled();
+
+  await pagination.getByRole('button', { name: '上一页' }).click();
+  await expect(list.getByText('关键词 1', { exact: true })).toBeVisible();
+  await pagination.getByLabel('跳转页码').fill('2');
+  await pagination.getByRole('button', { name: '跳转' }).click();
+  await expect(list.getByText('关键词 21', { exact: true })).toBeVisible();
+});
+
+test('filters by platform and sorts by priority', async ({ page }) => {
+  let latestQuery = new URLSearchParams();
+  await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) => {
+    latestQuery = new URL(route.request().url()).searchParams;
+    return json(route, [keyword()], {
+      next_cursor: null,
+      page: 1,
+      page_size: 20,
+      request_id: 'filtered-keywords',
+      total_count: 1,
+      total_pages: 1,
+    });
+  });
+  await page.goto('/str-04');
+  const keywordList = page.getByRole('region', { name: '关键词列表' });
+  await keywordList.getByRole('combobox', { name: '适用平台' }).selectOption('lieju');
+  await keywordList.getByRole('combobox', { name: '优先级排序' }).selectOption('priority_asc');
+  await keywordList.getByRole('button', { name: '筛选', exact: true }).click();
+  await expect.poll(() => latestQuery.get('platform_code')).toBe('lieju');
+  expect(latestQuery.get('sort')).toBe('priority_asc');
+  expect(latestQuery.get('page')).toBe('1');
 });
 
 test('preflights a structured workbook and defaults the async import to disabled', async ({

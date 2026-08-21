@@ -29,7 +29,21 @@ const bindings: readonly ControllerBinding[] = [
   bind('keyword-set.create', KeywordController, KeywordController.prototype.createSet),
   bind('keyword-set.list', KeywordController, KeywordController.prototype.list),
   bind('keyword-set.get', KeywordController, KeywordController.prototype.find),
+  bind('keyword-set.list-keywords', KeywordController, KeywordController.prototype.listKeywords),
   bind('keyword-set.upsert-keywords', KeywordController, KeywordController.prototype.upsert),
+  bind('keyword-set.batch-keywords', KeywordController, KeywordController.prototype.batch),
+  bind(
+    'keyword-set.sync-project-platform-scope',
+    KeywordController,
+    KeywordController.prototype.syncProjectPlatformScope,
+  ),
+  bind(
+    'keyword-set.import.preflight',
+    KeywordController,
+    KeywordController.prototype.preflightImport,
+  ),
+  bind('keyword-set.import.commit', KeywordController, KeywordController.prototype.commitImport),
+  bind('keyword-set.import.get', KeywordController, KeywordController.prototype.getImport),
   bind('topic-plan.generate', TopicPlanController, TopicPlanController.prototype.generate),
   bind('topic-candidate.list', TopicCandidateController, TopicCandidateController.prototype.list),
   bind('topic-candidate.adopt', TopicCandidateController, TopicCandidateController.prototype.adopt),
@@ -37,8 +51,8 @@ const bindings: readonly ControllerBinding[] = [
 
 describe('strategy controller contract bindings', () => {
   it('binds every frozen strategy contract exactly once', () => {
-    expect(bindings.map((binding) => binding.key)).toHaveLength(12);
-    expect(new Set(bindings.map((binding) => binding.key)).size).toBe(12);
+    expect(bindings.map((binding) => binding.key)).toHaveLength(18);
+    expect(new Set(bindings.map((binding) => binding.key)).size).toBe(18);
   });
 
   it.each(bindings)('$key matches its method, route, and permission', (binding) => {

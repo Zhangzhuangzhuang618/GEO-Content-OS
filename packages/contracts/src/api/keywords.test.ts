@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BatchKeywordOperationRequestSchema,
+  BatchKeywordOperationResponseSchema,
   CommitKeywordImportRequestSchema,
   CreateKeywordSetRequestSchema,
   KeywordImportJobResponseSchema,
@@ -115,10 +117,22 @@ describe('keyword API contracts', () => {
   });
 
   it('validates paginated keyword queries and safe import selections', () => {
-    expect(KeywordListQuerySchema.parse({ limit: '20', status: 'disabled' })).toEqual({
+    expect(
+      KeywordListQuerySchema.parse({
+        limit: '20',
+        page: '3',
+        platform_code: 'lieju',
+        sort: 'priority_asc',
+        status: 'disabled',
+      }),
+    ).toEqual({
       limit: 20,
+      page: 3,
+      platform_code: 'lieju',
+      sort: 'priority_asc',
       status: 'disabled',
     });
+    expect(KeywordListQuerySchema.safeParse({ cursor: 'cursor', page: 2 }).success).toBe(false);
     expect(
       CommitKeywordImportRequestSchema.parse({
         platform_scope: ['official_site'],
@@ -133,6 +147,41 @@ describe('keyword API contracts', () => {
         selected_source_intents: ['本地搜索'],
       }).success,
     ).toBe(false);
+  });
+
+  it('validates atomic keyword batch operations', () => {
+    const firstId = '11000000-0000-4000-8000-000000000001';
+    const secondId = '11000000-0000-4000-8000-000000000002';
+    expect(
+      BatchKeywordOperationRequestSchema.parse({
+        action: 'update',
+        changes: {
+          platform_scope: ['official_site', 'lieju'],
+          priority: 90,
+          status: 'active',
+        },
+        keyword_ids: [firstId, secondId],
+      }),
+    ).toMatchObject({ action: 'update', keyword_ids: [firstId, secondId] });
+    expect(
+      BatchKeywordOperationRequestSchema.safeParse({
+        action: 'update',
+        changes: {},
+        keyword_ids: [firstId],
+      }).success,
+    ).toBe(false);
+    expect(
+      BatchKeywordOperationRequestSchema.safeParse({
+        action: 'disable',
+        keyword_ids: [firstId, firstId],
+      }).success,
+    ).toBe(false);
+    expect(
+      BatchKeywordOperationResponseSchema.safeParse({
+        data: { action: 'delete', affected_count: 1, keyword_ids: [firstId] },
+        meta: { request_id: 'keyword-batch-request' },
+      }).success,
+    ).toBe(true);
   });
 
   it('validates project platform-scope synchronization without changing keyword state', () => {

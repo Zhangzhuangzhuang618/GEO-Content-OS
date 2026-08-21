@@ -1,4 +1,6 @@
 import type {
+  BatchKeywordOperation,
+  BatchKeywordOperationRequest,
   CreateKeywordSetRequest,
   Keyword,
   KeywordInput,
@@ -45,6 +47,10 @@ export interface KeywordSetPageResult {
 export interface KeywordPageResult {
   readonly items: readonly Keyword[];
   readonly nextCursor: string | null;
+  readonly page: number | null;
+  readonly pageSize: number;
+  readonly totalCount: number;
+  readonly totalPages: number;
 }
 
 interface KeywordCursor {
@@ -177,6 +183,27 @@ export class KeywordService {
     const cursor = query.cursor ? decodeKeywordCursor(query.cursor) : undefined;
     return this.database.client.begin(async (transaction) => {
       await findKeywordSet(transaction, tenantId, userId, keywordSetId);
+      const counts = await transaction<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM keywords AS keyword
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+          AND (${query.status ?? null}::text IS NULL OR keyword.status = ${query.status ?? null})
+          AND (
+            ${query.search ?? null}::text IS NULL
+            OR position(lower(${query.search ?? null}) in lower(keyword.term::text)) > 0
+          )
+          AND (
+            ${query.platform_code ?? null}::text IS NULL
+            OR ${query.platform_code ?? null} = ANY(keyword.platform_scope)
+          )
+      `;
+      const totalCount = counts[0]?.count ?? 0;
+      const totalPages = Math.max(1, Math.ceil(totalCount / query.limit));
+      const page = query.page === undefined ? null : Math.min(query.page, totalPages);
+      const offset = page === null ? 0 : (page - 1) * query.limit;
+      const rowLimit = page === null ? query.limit + 1 : query.limit;
       const rows = await transaction<KeywordRow[]>`
         SELECT
           keyword.id,
@@ -200,17 +227,37 @@ export class KeywordService {
             OR position(lower(${query.search ?? null}) in lower(keyword.term::text)) > 0
           )
           AND (
-            ${cursor?.priority ?? null}::smallint IS NULL
-            OR (keyword.priority, keyword.id) < (
-              ${cursor?.priority ?? null}::smallint,
-              ${cursor?.id ?? null}::uuid
+            ${query.platform_code ?? null}::text IS NULL
+            OR ${query.platform_code ?? null} = ANY(keyword.platform_scope)
+          )
+          AND (
+            ${page !== null}
+            OR ${cursor?.priority ?? null}::smallint IS NULL
+            OR (
+              ${query.sort} = 'priority_desc'
+              AND (keyword.priority, keyword.id) < (
+                ${cursor?.priority ?? null}::smallint,
+                ${cursor?.id ?? null}::uuid
+              )
+            )
+            OR (
+              ${query.sort} = 'priority_asc'
+              AND (keyword.priority, keyword.id) > (
+                ${cursor?.priority ?? null}::smallint,
+                ${cursor?.id ?? null}::uuid
+              )
             )
           )
-        ORDER BY keyword.priority DESC, keyword.id DESC
-        LIMIT ${query.limit + 1}
+        ORDER BY
+          CASE WHEN ${query.sort} = 'priority_desc' THEN keyword.priority END DESC,
+          CASE WHEN ${query.sort} = 'priority_asc' THEN keyword.priority END ASC,
+          CASE WHEN ${query.sort} = 'priority_desc' THEN keyword.id END DESC,
+          CASE WHEN ${query.sort} = 'priority_asc' THEN keyword.id END ASC
+        LIMIT ${rowLimit}
+        OFFSET ${offset}
       `;
-      const hasMore = rows.length > query.limit;
-      const pageRows = hasMore ? rows.slice(0, query.limit) : rows;
+      const hasMore = page === null ? rows.length > query.limit : page * query.limit < totalCount;
+      const pageRows = page === null && hasMore ? rows.slice(0, query.limit) : rows;
       const last = pageRows.at(-1);
       return {
         items: pageRows.map(toKeywordView),
@@ -221,6 +268,10 @@ export class KeywordService {
                 'utf8',
               ).toString('base64url')
             : null,
+        page,
+        pageSize: query.limit,
+        totalCount,
+        totalPages,
       };
     });
   }
@@ -384,6 +435,133 @@ export class KeywordService {
       tenantId,
     });
     return after;
+  }
+
+  public async batch(
+    transaction: TransactionSql,
+    tenantId: string,
+    actorUserId: string,
+    keywordSetId: string,
+    input: BatchKeywordOperationRequest,
+    audit: KeywordAuditContext,
+  ): Promise<BatchKeywordOperation> {
+    await assertKeywordManager(transaction, tenantId, actorUserId);
+    const keywordSet = await lockKeywordSet(transaction, tenantId, actorUserId, keywordSetId);
+    if (
+      keywordSet.status !== 'active' ||
+      keywordSet.projectStatus !== 'active' ||
+      keywordSet.workspaceStatus !== 'active'
+    ) {
+      throw new KeywordStateError();
+    }
+
+    const keywordIds = transaction.array([...input.keyword_ids], 2950);
+    const beforeRows = await transaction<KeywordRow[]>`
+      SELECT
+        keyword.id,
+        keyword.tenant_id AS "tenantId",
+        keyword.keyword_set_id AS "keywordSetId",
+        keyword.term::text AS term,
+        keyword.intents,
+        keyword.priority,
+        keyword.synonyms,
+        keyword.platform_scope AS "platformScope",
+        keyword.status,
+        keyword.created_at AS "createdAt",
+        keyword.updated_at AS "updatedAt"
+      FROM keywords AS keyword
+      WHERE
+        keyword.tenant_id = ${tenantId}
+        AND keyword.keyword_set_id = ${keywordSetId}
+        AND keyword.id = ANY(${keywordIds}::uuid[])
+      ORDER BY array_position(${keywordIds}::uuid[], keyword.id)
+      FOR UPDATE
+    `;
+    if (beforeRows.length !== input.keyword_ids.length) throw new KeywordNotFoundError();
+
+    let afterRows: readonly KeywordRow[] = [];
+    if (input.action === 'delete') {
+      const references = await transaction<{ id: string }[]>`
+        SELECT brief_keyword.keyword_id AS id
+        FROM brief_keywords AS brief_keyword
+        WHERE
+          brief_keyword.tenant_id = ${tenantId}
+          AND brief_keyword.keyword_id = ANY(${keywordIds}::uuid[])
+        LIMIT 1
+      `;
+      if (references.length > 0) {
+        throw new KeywordStateError('A referenced keyword must be disabled instead of deleted');
+      }
+      const deleted = await transaction<{ id: string }[]>`
+        DELETE FROM keywords AS keyword
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+          AND keyword.id = ANY(${keywordIds}::uuid[])
+        RETURNING keyword.id
+      `;
+      if (deleted.length !== input.keyword_ids.length) {
+        throw new Error('Keyword delete returned an incomplete batch');
+      }
+    } else {
+      const changes = input.action === 'update' ? input.changes : undefined;
+      const intents = changes?.intents ? transaction.array([...changes.intents], 1043) : null;
+      const platformScope = changes?.platform_scope
+        ? transaction.array([...changes.platform_scope], 1043)
+        : null;
+      afterRows = await transaction<KeywordRow[]>`
+        UPDATE keywords AS keyword
+        SET
+          intent = COALESCE(${changes?.intents?.[0] ?? null}::varchar(32), keyword.intent),
+          intents = COALESCE(${intents}::varchar(32)[], keyword.intents),
+          priority = COALESCE(${changes?.priority ?? null}::smallint, keyword.priority),
+          platform_scope = COALESCE(
+            ${platformScope}::varchar(24)[],
+            keyword.platform_scope
+          ),
+          status = COALESCE(
+            ${input.action === 'disable' ? 'disabled' : (changes?.status ?? null)}::varchar(16),
+            keyword.status
+          )
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+          AND keyword.id = ANY(${keywordIds}::uuid[])
+        RETURNING
+          keyword.id,
+          keyword.tenant_id AS "tenantId",
+          keyword.keyword_set_id AS "keywordSetId",
+          keyword.term::text AS term,
+          keyword.intents,
+          keyword.priority,
+          keyword.synonyms,
+          keyword.platform_scope AS "platformScope",
+          keyword.status,
+          keyword.created_at AS "createdAt",
+          keyword.updated_at AS "updatedAt"
+      `;
+      if (afterRows.length !== input.keyword_ids.length) {
+        throw new Error('Keyword update returned an incomplete batch');
+      }
+    }
+
+    const result: BatchKeywordOperation = {
+      action: input.action,
+      affected_count: input.keyword_ids.length,
+      keyword_ids: input.keyword_ids,
+    };
+    await insertKeywordAudit(transaction, {
+      action: `keywords.batch.${input.action}`,
+      actorUserId,
+      after:
+        input.action === 'delete' ? result : { keywords: afterRows.map(toKeywordView), result },
+      audit,
+      before: beforeRows.map(toKeywordView),
+      resourceId: keywordSetId,
+      resourceType: 'keyword_set',
+      tenantId,
+    });
+    return result;
   }
 
   public async syncProjectPlatformScope(

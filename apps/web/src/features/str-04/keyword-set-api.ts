@@ -1,6 +1,7 @@
 import { createRequestUuid } from '@/lib/request-uuid';
 
 import {
+  BatchKeywordOperationResponseSchema,
   KeywordListResponseSchema,
   KeywordImportJobResponseSchema,
   KeywordPageSchema,
@@ -9,6 +10,8 @@ import {
   KeywordSetResponseSchema,
   type KeywordInput,
   type KeywordImportJob,
+  type KeywordIntent,
+  type KeywordSort,
   type KeywordSourceIntent,
   type KeywordStatus,
   type KeywordSuggestedPageType,
@@ -105,14 +108,20 @@ export async function listKeywords(
   input: {
     readonly cursor?: string;
     readonly limit?: number;
+    readonly page?: number;
+    readonly platformCode?: PlatformCode;
     readonly search?: string;
+    readonly sort?: KeywordSort;
     readonly status?: KeywordStatus;
   },
   signal?: AbortSignal,
 ) {
   const query = new URLSearchParams({ limit: String(input.limit ?? 20) });
   if (input.cursor) query.set('cursor', input.cursor);
+  if (input.page) query.set('page', String(input.page));
+  if (input.platformCode) query.set('platform_code', input.platformCode);
   if (input.search) query.set('search', input.search);
+  if (input.sort) query.set('sort', input.sort);
   if (input.status) query.set('status', input.status);
   const response = await fetch(
     `${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/keywords?${query}`,
@@ -126,6 +135,42 @@ export async function listKeywords(
   const parsed = KeywordPageSchema.safeParse(await response.json());
   if (!parsed.success) throw new KeywordSetRequestError(502);
   return parsed.data;
+}
+
+export async function batchKeywords(
+  keywordSetId: string,
+  input:
+    | { readonly action: 'delete' | 'disable'; readonly keywordIds: readonly string[] }
+    | {
+        readonly action: 'update';
+        readonly changes: {
+          readonly intents?: readonly KeywordIntent[];
+          readonly platform_scope?: readonly PlatformCode[];
+          readonly priority?: number;
+          readonly status?: KeywordStatus;
+        };
+        readonly keywordIds: readonly string[];
+      },
+  csrf: string,
+) {
+  const response = await fetch(`${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/keywords/batch`, {
+    body: JSON.stringify({
+      action: input.action,
+      ...(input.action === 'update' ? { changes: input.changes } : {}),
+      keyword_ids: input.keywordIds,
+    }),
+    credentials: 'include',
+    headers: {
+      'content-type': 'application/json',
+      'idempotency-key': `keyword-batch-${createRequestUuid()}`,
+      'x-csrf-token': csrf,
+    },
+    method: 'POST',
+  });
+  if (!response.ok) throw new KeywordSetRequestError(response.status);
+  const parsed = BatchKeywordOperationResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new KeywordSetRequestError(502);
+  return parsed.data.data;
 }
 
 export async function preflightKeywordImport(

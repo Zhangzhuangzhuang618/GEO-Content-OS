@@ -1,4 +1,5 @@
 import {
+  BatchKeywordOperationRequestSchema,
   CommitKeywordImportRequestSchema,
   CreateKeywordSetRequestSchema,
   ERROR_DEFINITIONS,
@@ -214,6 +215,62 @@ export class KeywordController {
     }
   }
 
+  @Post(':id/keywords/batch')
+  @RequirePermissions('strategy.manage')
+  public async batch(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedId = KeywordSetIdSchema.safeParse(id);
+    const parsedBody = BatchKeywordOperationRequestSchema.safeParse(body);
+    if (!parsedId.success || !parsedBody.success) {
+      await sendSchemaError(reply, request.id, [
+        ...(parsedId.success ? [] : parsedId.error.issues),
+        ...(parsedBody.success ? [] : parsedBody.error.issues),
+      ]);
+      return;
+    }
+    const policy = requireTenantPolicy(request);
+    const route = `/keyword-sets/${parsedId.data}/keywords/batch`;
+    try {
+      const result = await this.idempotencyService.execute(
+        {
+          fingerprint: {
+            body: parsedBody.data as JsonValue,
+            method: request.method,
+            path: route,
+          },
+          idempotencyKey: parseIdempotencyKey(request.headers['idempotency-key']),
+          scopeKey: buildIdempotencyScope({
+            actorId: policy.userId,
+            method: request.method,
+            route,
+          }),
+          tenantId: policy.tenantId,
+        },
+        async (transaction) => {
+          const data = await this.keywordService.batch(
+            transaction,
+            policy.tenantId,
+            policy.userId,
+            parsedId.data,
+            parsedBody.data,
+            auditContext(request),
+          );
+          return {
+            body: toJson({ data, meta: { request_id: request.id } }),
+            statusCode: HttpStatus.OK,
+          };
+        },
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      await sendKeywordError(reply, request.id, error);
+    }
+  }
+
   @Post('sync-platform-scope')
   @RequirePermissions('strategy.manage')
   public async syncProjectPlatformScope(
@@ -291,7 +348,14 @@ export class KeywordController {
       );
       await reply.status(HttpStatus.OK).send({
         data: page.items,
-        meta: { next_cursor: page.nextCursor, request_id: request.id },
+        meta: {
+          next_cursor: page.nextCursor,
+          page: page.page,
+          page_size: page.pageSize,
+          request_id: request.id,
+          total_count: page.totalCount,
+          total_pages: page.totalPages,
+        },
       });
     } catch (error) {
       await sendKeywordError(reply, request.id, error);

@@ -1,4 +1,5 @@
 import {
+  BatchKeywordOperationResponseSchema,
   KeywordImportJobResponseSchema,
   KeywordListResponseSchema,
   KeywordPageSchema,
@@ -246,6 +247,132 @@ describe('keyword API', () => {
     ).toEqual([{ count: 2 }]);
   });
 
+  it('batch updates, disables, and safely deletes only unreferenced keywords', async () => {
+    const database = requireClient(client);
+    const keywordSetId = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Batch actions');
+    const inserted = await database<{ id: string; term: string }[]>`
+      INSERT INTO keywords (
+        tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope, status
+      ) VALUES
+        (${TENANT_ID}, ${keywordSetId}, '批量关键词 A', 'commercial', ARRAY['commercial'], 30, '{}', ARRAY['official_site'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '批量关键词 B', 'commercial', ARRAY['commercial'], 40, '{}', ARRAY['official_site'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '批量关键词 C', 'commercial', ARRAY['commercial'], 50, '{}', ARRAY['official_site'], 'active')
+      RETURNING id, term::text AS term
+    `;
+    const [first, second, third] = inserted;
+    if (!first || !second || !third) throw new Error('Expected three keyword fixtures');
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const updateRequest = {
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-batch-update-001' },
+      method: 'POST' as const,
+      payload: {
+        action: 'update',
+        changes: {
+          intents: ['informational', 'commercial'],
+          platform_scope: ['lieju', 'sohu'],
+          priority: 91,
+        },
+        keyword_ids: [first.id, second.id],
+      },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    };
+    const updated = await requireServer(application).inject(updateRequest);
+    const replay = await requireServer(application).inject(updateRequest);
+    expect(updated.statusCode).toBe(200);
+    expect(BatchKeywordOperationResponseSchema.safeParse(updated.json()).success).toBe(true);
+    expect(updated.json().data).toEqual({
+      action: 'update',
+      affected_count: 2,
+      keyword_ids: [first.id, second.id],
+    });
+    expect(replay.json()).toEqual(updated.json());
+    expect(
+      await database<
+        { intents: string[]; platformScope: string[]; priority: number; term: string }[]
+      >`
+        SELECT term::text AS term, intents, priority, platform_scope AS "platformScope"
+        FROM keywords
+        WHERE id = ANY(${[first.id, second.id]}::uuid[])
+        ORDER BY term
+      `,
+    ).toEqual([
+      {
+        intents: ['informational', 'commercial'],
+        platformScope: ['lieju', 'sohu'],
+        priority: 91,
+        term: '批量关键词 A',
+      },
+      {
+        intents: ['informational', 'commercial'],
+        platformScope: ['lieju', 'sohu'],
+        priority: 91,
+        term: '批量关键词 B',
+      },
+    ]);
+
+    const disabled = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-batch-disable-001' },
+      method: 'POST',
+      payload: { action: 'disable', keyword_ids: [second.id] },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(
+      await database<{ status: string }[]>`SELECT status FROM keywords WHERE id=${second.id}`,
+    ).toEqual([{ status: 'disabled' }]);
+
+    const briefs = await database<{ id: string }[]>`
+      INSERT INTO briefs (
+        tenant_id, workspace_id, project_id, title, objective, audience,
+        platform_codes, constraints_json, created_by
+      ) VALUES (
+        ${TENANT_ID}, ${WORKSPACE_A}, ${PROJECT_A}, '已使用关键词的内容', 'education',
+        '面向需要搬家服务的企业客户', ARRAY['official_site'],
+        ${JSON.stringify({ schema_version: 'brief-constraints@1' })}::text::jsonb, ${OWNER_ID}
+      )
+      RETURNING id
+    `;
+    const brief = briefs[0];
+    if (!brief) throw new Error('Expected brief fixture');
+    await database`
+      INSERT INTO brief_keywords (tenant_id, brief_id, keyword_id, is_primary)
+      VALUES (${TENANT_ID}, ${brief.id}, ${first.id}, true)
+    `;
+    const protectedDelete = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-batch-delete-001' },
+      method: 'POST',
+      payload: { action: 'delete', keyword_ids: [first.id, third.id] },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(protectedDelete.statusCode).toBe(409);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM keywords WHERE id=${third.id}
+      `,
+    ).toEqual([{ count: 1 }]);
+
+    const deleted = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-batch-delete-002' },
+      method: 'POST',
+      payload: { action: 'delete', keyword_ids: [third.id] },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(deleted.statusCode).toBe(200);
+    expect(deleted.json().data).toMatchObject({ action: 'delete', affected_count: 1 });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM keywords WHERE id=${third.id}
+      `,
+    ).toEqual([{ count: 0 }]);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM audit_events
+        WHERE action IN ('keywords.batch.update', 'keywords.batch.disable', 'keywords.batch.delete')
+      `,
+    ).toEqual([{ count: 3 }]);
+  });
+
   it('adds platform scope to every project keyword without activating disabled or archived data', async () => {
     const database = requireClient(client);
     const activeSet = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Automation terms');
@@ -394,7 +521,7 @@ describe('keyword API', () => {
     ).toBe(404);
   });
 
-  it('paginates keywords on the server and filters by status', async () => {
+  it('supports cursor compatibility plus page, platform, and priority filtering', async () => {
     const database = requireClient(client);
     const keywordSetId = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Paged set');
     await database`
@@ -402,8 +529,9 @@ describe('keyword API', () => {
         tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope, status
       ) VALUES
         (${TENANT_ID}, ${keywordSetId}, '关键词 A', 'commercial', ARRAY['commercial'], 90, '{}', ARRAY['official_site'], 'active'),
-        (${TENANT_ID}, ${keywordSetId}, '关键词 B', 'commercial', ARRAY['commercial'], 80, '{}', ARRAY['official_site'], 'active'),
-        (${TENANT_ID}, ${keywordSetId}, '关键词 C', 'informational', ARRAY['informational'], 70, '{}', ARRAY['official_site'], 'disabled')
+        (${TENANT_ID}, ${keywordSetId}, '关键词 B', 'commercial', ARRAY['commercial'], 80, '{}', ARRAY['official_site','lieju'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '关键词 C', 'informational', ARRAY['informational'], 70, '{}', ARRAY['lieju'], 'disabled'),
+        (${TENANT_ID}, ${keywordSetId}, '关键词 D', 'informational', ARRAY['informational'], 60, '{}', ARRAY['lieju'], 'active')
     `;
     const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
     const server = requireServer(application);
@@ -421,7 +549,22 @@ describe('keyword API', () => {
       url: `${API_PATH}/${keywordSetId}/keywords?limit=1&status=active&cursor=${encodeURIComponent(first.json().meta.next_cursor)}`,
     });
     expect(second.json().data.map((item: { term: string }) => item.term)).toEqual(['关键词 B']);
-    expect(second.json().meta.next_cursor).toBeNull();
+    expect(second.json().meta.next_cursor).not.toBeNull();
+
+    const paged = await server.inject({
+      headers: writeHeaders(strategy),
+      method: 'GET',
+      url: `${API_PATH}/${keywordSetId}/keywords?limit=1&page=2&status=active&platform_code=lieju&sort=priority_asc`,
+    });
+    expect(paged.statusCode).toBe(200);
+    expect(KeywordPageSchema.safeParse(paged.json()).success).toBe(true);
+    expect(paged.json().data.map((item: { term: string }) => item.term)).toEqual(['关键词 B']);
+    expect(paged.json().meta).toMatchObject({
+      page: 2,
+      page_size: 1,
+      total_count: 2,
+      total_pages: 2,
+    });
   });
 
   it('preflights an XLSX upload idempotently and stages clustered candidates', async () => {
