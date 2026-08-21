@@ -241,6 +241,67 @@ test('sizes the keyword table to its rows and paginates long lists on the server
   await expect(list.getByText('关键词 21', { exact: true })).toBeVisible();
 });
 
+test('selects every filtered keyword across pages in one atomic batch request', async ({
+  page,
+}) => {
+  const keywords = Array.from({ length: 22 }, (_, index) => ({
+    ...keyword(),
+    id: `40000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+    term: `筛选关键词 ${index + 1}`,
+  }));
+  let batchBody: unknown;
+  await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) => {
+    const requestedPage = Number(new URL(route.request().url()).searchParams.get('page') ?? '1');
+    return json(route, requestedPage === 2 ? keywords.slice(20) : keywords.slice(0, 20), {
+      next_cursor: null,
+      page: requestedPage,
+      page_size: 20,
+      request_id: `filtered-selection-${requestedPage}`,
+      total_count: 22,
+      total_pages: 2,
+    });
+  });
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/keywords/batch`, async (route) => {
+    batchBody = route.request().postDataJSON();
+    await json(
+      route,
+      { action: 'disable', affected_count: 22, keyword_ids: null },
+      { request_id: 'filtered-selection-batch' },
+    );
+  });
+
+  await page.goto('/str-04');
+  const list = page.getByRole('region', { name: '关键词列表' });
+  await list.getByLabel('搜索关键词').fill('筛选关键词');
+  await list.getByRole('combobox', { name: '状态' }).selectOption('active');
+  await list.getByRole('combobox', { name: '适用平台' }).selectOption('lieju');
+  await list.getByRole('button', { name: '筛选', exact: true }).click();
+
+  await list.getByLabel('选择当前页全部关键词').check();
+  await expect(list.getByText('已选 20 个', { exact: true })).toBeVisible();
+  await list.getByRole('button', { name: '选择全部 22 个筛选结果' }).click();
+  await expect(list.getByText('已选择全部 22 个筛选结果')).toBeVisible();
+  await list
+    .getByRole('navigation', { name: '关键词分页' })
+    .getByRole('button', {
+      name: '下一页',
+    })
+    .click();
+  await expect(list.getByLabel('选择关键词 筛选关键词 21')).toBeChecked();
+  await list.getByRole('button', { name: '批量禁用' }).click();
+
+  await expect(page.getByText('22 个关键词已批量禁用。')).toBeVisible();
+  expect(batchBody).toEqual({
+    action: 'disable',
+    selection: {
+      mode: 'all_filtered',
+      platform_code: 'lieju',
+      search: '筛选关键词',
+      status: 'active',
+    },
+  });
+});
+
 test('filters by platform and sorts by priority', async ({ page }) => {
   let latestQuery = new URLSearchParams();
   await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) => {

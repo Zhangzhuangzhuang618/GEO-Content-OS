@@ -373,6 +373,166 @@ describe('keyword API', () => {
     ).toEqual([{ count: 3 }]);
   });
 
+  it('atomically applies a batch action to every keyword matching the submitted filters', async () => {
+    const database = requireClient(client);
+    const keywordSetId = await insertKeywordSet(
+      database,
+      TENANT_ID,
+      PROJECT_A,
+      'Filtered batch actions',
+    );
+    const inserted = await database<{ id: string; term: string }[]>`
+      INSERT INTO keywords (
+        tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope, status
+      ) VALUES
+        (${TENANT_ID}, ${keywordSetId}, '筛选列举关键词 A', 'commercial', ARRAY['commercial'], 30, '{}', ARRAY['lieju'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '筛选列举关键词 B', 'commercial', ARRAY['commercial'], 40, '{}', ARRAY['lieju','sohu'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '筛选搜狐关键词 C', 'commercial', ARRAY['commercial'], 50, '{}', ARRAY['sohu'], 'active'),
+        (${TENANT_ID}, ${keywordSetId}, '筛选列举关键词 D', 'commercial', ARRAY['commercial'], 60, '{}', ARRAY['lieju'], 'disabled')
+      RETURNING id, term::text AS term
+    `;
+    const [first] = inserted;
+    if (!first) throw new Error('Expected filtered keyword fixtures');
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const selection = {
+      mode: 'all_filtered',
+      platform_code: 'lieju',
+      search: '筛选列举',
+      status: 'active',
+    };
+
+    const updated = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-filtered-update-001' },
+      method: 'POST',
+      payload: { action: 'update', changes: { priority: 88 }, selection },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().data).toEqual({
+      action: 'update',
+      affected_count: 2,
+      keyword_ids: null,
+    });
+    expect(
+      await database<{ priority: number; term: string }[]>`
+        SELECT priority, term::text AS term
+        FROM keywords
+        WHERE keyword_set_id=${keywordSetId}
+        ORDER BY term
+      `,
+    ).toEqual([
+      { priority: 88, term: '筛选列举关键词 A' },
+      { priority: 88, term: '筛选列举关键词 B' },
+      { priority: 60, term: '筛选列举关键词 D' },
+      { priority: 50, term: '筛选搜狐关键词 C' },
+    ]);
+
+    const briefs = await database<{ id: string }[]>`
+      INSERT INTO briefs (
+        tenant_id, workspace_id, project_id, title, objective, audience,
+        platform_codes, constraints_json, created_by
+      ) VALUES (
+        ${TENANT_ID}, ${WORKSPACE_A}, ${PROJECT_A}, '筛选全选保护', 'education',
+        '面向需要搬家服务的企业客户', ARRAY['lieju'],
+        ${JSON.stringify({ schema_version: 'brief-constraints@1' })}::text::jsonb, ${OWNER_ID}
+      )
+      RETURNING id
+    `;
+    const brief = briefs[0];
+    if (!brief) throw new Error('Expected filtered batch brief fixture');
+    await database`
+      INSERT INTO brief_keywords (tenant_id, brief_id, keyword_id, is_primary)
+      VALUES (${TENANT_ID}, ${brief.id}, ${first.id}, true)
+    `;
+    const protectedDelete = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-filtered-delete-001' },
+      method: 'POST',
+      payload: { action: 'delete', selection },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(protectedDelete.statusCode).toBe(409);
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM keywords WHERE keyword_set_id=${keywordSetId}
+      `,
+    ).toEqual([{ count: 4 }]);
+
+    const disabled = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-filtered-disable-001' },
+      method: 'POST',
+      payload: { action: 'disable', selection },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().data).toEqual({
+      action: 'disable',
+      affected_count: 2,
+      keyword_ids: null,
+    });
+    expect(
+      await database<{ status: string; term: string }[]>`
+        SELECT status, term::text AS term
+        FROM keywords
+        WHERE keyword_set_id=${keywordSetId}
+        ORDER BY term
+      `,
+    ).toEqual([
+      { status: 'disabled', term: '筛选列举关键词 A' },
+      { status: 'disabled', term: '筛选列举关键词 B' },
+      { status: 'disabled', term: '筛选列举关键词 D' },
+      { status: 'active', term: '筛选搜狐关键词 C' },
+    ]);
+  });
+
+  it('does not apply the 500 explicit-id limit to a server-resolved filtered selection', async () => {
+    const database = requireClient(client);
+    const keywordSetId = await insertKeywordSet(
+      database,
+      TENANT_ID,
+      PROJECT_A,
+      'Large filtered batch',
+    );
+    await database`
+      INSERT INTO keywords (
+        tenant_id, keyword_set_id, term, intent, intents, priority, synonyms, platform_scope, status
+      )
+      SELECT
+        ${TENANT_ID},
+        ${keywordSetId},
+        '跨页全选关键词 ' || series.value,
+        'commercial',
+        ARRAY['commercial'],
+        50,
+        '{}',
+        ARRAY['official_site'],
+        'active'
+      FROM generate_series(1, 501) AS series(value)
+    `;
+    const strategy = await createSession(database, STRATEGY_ID, TENANT_ID);
+    const disabled = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-filtered-large-001' },
+      method: 'POST',
+      payload: {
+        action: 'disable',
+        selection: { mode: 'all_filtered', search: '跨页全选关键词', status: 'active' },
+      },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(disabled.statusCode).toBe(200);
+    expect(disabled.json().data).toEqual({
+      action: 'disable',
+      affected_count: 501,
+      keyword_ids: null,
+    });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM keywords
+        WHERE keyword_set_id=${keywordSetId} AND status='disabled'
+      `,
+    ).toEqual([{ count: 501 }]);
+  });
+
   it('adds platform scope to every project keyword without activating disabled or archived data', async () => {
     const database = requireClient(client);
     const activeSet = await insertKeywordSet(database, TENANT_ID, PROJECT_A, 'Automation terms');

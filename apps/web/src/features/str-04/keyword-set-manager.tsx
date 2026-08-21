@@ -404,8 +404,10 @@ function KeywordWorkspace({
   const [platformFilter, setPlatformFilter] = useState<PlatformCode | ''>('');
   const [sort, setSort] = useState<KeywordSort>('priority_desc');
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [allFilteredSelected, setAllFilteredSelected] = useState(false);
   const [bulkEditing, setBulkEditing] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  const selectedCount = allFilteredSelected ? totalCount : selectedIds.size;
 
   useEffect(() => {
     setPage(1);
@@ -415,6 +417,7 @@ function KeywordWorkspace({
     setEditing(null);
     setBulkEditing(false);
     setSelectedIds(new Set());
+    setAllFilteredSelected(false);
     setSearch('');
     setStatusFilter('');
     setPlatformFilter('');
@@ -424,14 +427,12 @@ function KeywordWorkspace({
   useEffect(() => setPageInput(String(page)), [page]);
 
   useEffect(() => {
-    if (selectedIds.size === 0) setBulkEditing(false);
-  }, [selectedIds]);
+    if (selectedCount === 0) setBulkEditing(false);
+  }, [selectedCount]);
 
   useEffect(() => {
     const controller = new AbortController();
     setKeywordState('loading');
-    setSelectedIds(new Set());
-    setBulkEditing(false);
     void listKeywords(
       detail.id,
       {
@@ -473,6 +474,9 @@ function KeywordWorkspace({
     );
     setSort(rawSort === 'priority_asc' ? 'priority_asc' : 'priority_desc');
     setPage(1);
+    setSelectedIds(new Set());
+    setAllFilteredSelected(false);
+    setBulkEditing(false);
   }
 
   async function submitBatch(event: FormEvent<HTMLFormElement>) {
@@ -520,6 +524,9 @@ function KeywordWorkspace({
     try {
       await upsertKeywords(detail.id, keywords, csrf);
       setEditing(null);
+      setSelectedIds(new Set());
+      setAllFilteredSelected(false);
+      setBulkEditing(false);
       setReloadToken((current) => current + 1);
       onMessage(success);
     } catch (error) {
@@ -539,7 +546,7 @@ function KeywordWorkspace({
 
   async function runBatch(
     input: Parameters<typeof batchKeywords>[1],
-    success: string,
+    success: (affectedCount: number) => string,
   ): Promise<void> {
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
@@ -549,11 +556,12 @@ function KeywordWorkspace({
     setBusy(true);
     setLocalMessage(null);
     try {
-      await batchKeywords(detail.id, input, csrf);
+      const result = await batchKeywords(detail.id, input, csrf);
       setSelectedIds(new Set());
+      setAllFilteredSelected(false);
       setBulkEditing(false);
       setReloadToken((current) => current + 1);
-      onMessage(success);
+      onMessage(success(result.affected_count));
     } catch (error) {
       if (error instanceof KeywordSetRequestError && error.status === 409) {
         setLocalMessage(
@@ -573,7 +581,7 @@ function KeywordWorkspace({
 
   function submitBulkEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (selectedIds.size === 0) {
+    if (selectedCount === 0) {
       setLocalMessage('请先选择需要修改的关键词。');
       return;
     }
@@ -613,8 +621,8 @@ function KeywordWorkspace({
       ...(applyStatus ? { status: status as KeywordStatus } : {}),
     };
     void runBatch(
-      { action: 'update', changes, keywordIds: [...selectedIds] },
-      `${selectedIds.size} 个关键词已批量更新。`,
+      { action: 'update', changes, ...selectedBatchTarget() },
+      (affectedCount) => `${affectedCount} 个关键词已批量更新。`,
     );
   }
 
@@ -626,10 +634,30 @@ function KeywordWorkspace({
       return;
     }
     setLocalMessage(null);
+    moveToPage(target);
+  }
+
+  function moveToPage(target: number) {
+    if (!allFilteredSelected) {
+      setSelectedIds(new Set());
+      setBulkEditing(false);
+    }
     setPage(target);
   }
 
   function toggleKeywordSelection(keywordId: string, selected: boolean) {
+    if (allFilteredSelected) {
+      if (!selected) {
+        setAllFilteredSelected(false);
+        setSelectedIds(
+          new Set(
+            keywords.filter((keyword) => keyword.id !== keywordId).map((keyword) => keyword.id),
+          ),
+        );
+        setLocalMessage('已取消全部结果选择，当前仅保留本页勾选项。');
+      }
+      return;
+    }
     setSelectedIds((current) => {
       const next = new Set(current);
       if (selected) next.add(keywordId);
@@ -639,29 +667,59 @@ function KeywordWorkspace({
   }
 
   function toggleCurrentPage(selected: boolean) {
+    if (allFilteredSelected) {
+      if (!selected) {
+        setAllFilteredSelected(false);
+        setSelectedIds(new Set());
+        setBulkEditing(false);
+      }
+      return;
+    }
     setSelectedIds(selected ? new Set(keywords.map((keyword) => keyword.id)) : new Set());
-    if (!selected) setBulkEditing(false);
   }
 
   function deleteSelected() {
-    if (selectedIds.size === 0) return;
-    if (!window.confirm(`确定删除所选的 ${selectedIds.size} 个关键词吗？此操作不可撤销。`)) {
+    if (selectedCount === 0) return;
+    if (!window.confirm(`确定删除所选的 ${selectedCount} 个关键词吗？此操作不可撤销。`)) {
       return;
     }
     void runBatch(
-      { action: 'delete', keywordIds: [...selectedIds] },
-      `${selectedIds.size} 个未被引用的关键词已删除。`,
+      { action: 'delete', ...selectedBatchTarget() },
+      (affectedCount) => `${affectedCount} 个未被引用的关键词已删除。`,
     );
+  }
+
+  function selectedBatchTarget() {
+    if (!allFilteredSelected) return { keywordIds: [...selectedIds] };
+    return {
+      selection: {
+        mode: 'all_filtered' as const,
+        ...(platformFilter ? { platform_code: platformFilter } : {}),
+        ...(search ? { search } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
+      },
+    };
+  }
+
+  function toggleAllFilteredSelection(selected: boolean) {
+    setAllFilteredSelected(selected);
+    setSelectedIds(new Set());
+    if (!selected) setBulkEditing(false);
+    setLocalMessage(null);
   }
 
   const handleImportComplete = useCallback(() => {
     setPage(1);
+    setSelectedIds(new Set());
+    setAllFilteredSelected(false);
+    setBulkEditing(false);
     setReloadToken((current) => current + 1);
     onMessage('关键词表格导入完成。');
   }, [onMessage]);
 
   const allCurrentPageSelected =
-    keywords.length > 0 && keywords.every((keyword) => selectedIds.has(keyword.id));
+    allFilteredSelected ||
+    (keywords.length > 0 && keywords.every((keyword) => selectedIds.has(keyword.id)));
 
   return (
     <>
@@ -716,10 +774,25 @@ function KeywordWorkspace({
           </form>
           {canWrite ? (
             <div className="flex flex-wrap items-center gap-3 border-b border-line bg-surface-subtle px-4 py-3 text-sm">
-              <span className="text-ink-700">已选 {selectedIds.size} 个</span>
+              <span className="text-ink-700">
+                {allFilteredSelected
+                  ? `已选择全部 ${selectedCount} 个筛选结果`
+                  : `已选 ${selectedCount} 个`}
+              </span>
+              {totalCount > 0 ? (
+                <button
+                  aria-pressed={allFilteredSelected}
+                  className={allFilteredSelected ? primaryButton : secondaryButton}
+                  disabled={busy}
+                  onClick={() => toggleAllFilteredSelection(!allFilteredSelected)}
+                  type="button"
+                >
+                  {allFilteredSelected ? '取消全部选择' : `选择全部 ${totalCount} 个筛选结果`}
+                </button>
+              ) : null}
               <button
                 className={secondaryButton}
-                disabled={busy || selectedIds.size === 0}
+                disabled={busy || selectedCount === 0}
                 onClick={() => {
                   setEditing(null);
                   setBulkEditing(true);
@@ -730,11 +803,11 @@ function KeywordWorkspace({
               </button>
               <button
                 className={secondaryButton}
-                disabled={busy || selectedIds.size === 0}
+                disabled={busy || selectedCount === 0}
                 onClick={() =>
                   void runBatch(
-                    { action: 'disable', keywordIds: [...selectedIds] },
-                    `${selectedIds.size} 个关键词已批量禁用。`,
+                    { action: 'disable', ...selectedBatchTarget() },
+                    (affectedCount) => `${affectedCount} 个关键词已批量禁用。`,
                   )
                 }
                 type="button"
@@ -743,13 +816,15 @@ function KeywordWorkspace({
               </button>
               <button
                 className="rounded-control border border-red-300 px-3 py-2 font-medium text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={busy || selectedIds.size === 0}
+                disabled={busy || selectedCount === 0}
                 onClick={deleteSelected}
                 type="button"
               >
                 批量删除
               </button>
-              <span className="text-xs text-ink-500">仅操作当前页勾选项</span>
+              <span className="text-xs text-ink-500">
+                表头仅选择当前页；“选择全部”覆盖当前筛选结果
+              </span>
             </div>
           ) : null}
           {keywordState === 'loading' ? (
@@ -793,7 +868,7 @@ function KeywordWorkspace({
                         <td className="p-4">
                           <input
                             aria-label={`选择关键词 ${keyword.term}`}
-                            checked={selectedIds.has(keyword.id)}
+                            checked={allFilteredSelected || selectedIds.has(keyword.id)}
                             disabled={!canWrite}
                             onChange={(event) =>
                               toggleKeywordSelection(keyword.id, event.currentTarget.checked)
@@ -853,7 +928,7 @@ function KeywordWorkspace({
                   <button
                     className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={page <= 1}
-                    onClick={() => setPage((current) => Math.max(1, current - 1))}
+                    onClick={() => moveToPage(Math.max(1, page - 1))}
                     type="button"
                   >
                     上一页
@@ -882,7 +957,7 @@ function KeywordWorkspace({
                   <button
                     className="rounded-control border border-line px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={page >= totalPages}
-                    onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                    onClick={() => moveToPage(Math.min(totalPages, page + 1))}
                     type="button"
                   >
                     下一页
@@ -962,10 +1037,10 @@ function KeywordWorkspace({
               导入关键词
             </button>
           </form>
-          {bulkEditing && selectedIds.size > 0 ? (
+          {bulkEditing && selectedCount > 0 ? (
             <BulkEditKeywordForm
               busy={busy}
-              count={selectedIds.size}
+              count={selectedCount}
               onCancel={() => setBulkEditing(false)}
               onSubmit={submitBulkEdit}
             />

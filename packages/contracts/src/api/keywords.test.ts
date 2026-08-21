@@ -177,9 +177,42 @@ describe('keyword API contracts', () => {
       }).success,
     ).toBe(false);
     expect(
+      BatchKeywordOperationRequestSchema.parse({
+        action: 'disable',
+        selection: {
+          mode: 'all_filtered',
+          platform_code: 'lieju',
+          search: '广州搬家',
+          status: 'active',
+        },
+      }),
+    ).toMatchObject({
+      action: 'disable',
+      selection: { mode: 'all_filtered', platform_code: 'lieju', status: 'active' },
+    });
+    expect(
+      BatchKeywordOperationRequestSchema.safeParse({
+        action: 'delete',
+        keyword_ids: [firstId],
+        selection: { mode: 'all_filtered' },
+      }).success,
+    ).toBe(false);
+    expect(
+      BatchKeywordOperationRequestSchema.safeParse({
+        action: 'delete',
+        selection: { mode: 'all_filtered', page: 2 },
+      }).success,
+    ).toBe(false);
+    expect(
       BatchKeywordOperationResponseSchema.safeParse({
         data: { action: 'delete', affected_count: 1, keyword_ids: [firstId] },
         meta: { request_id: 'keyword-batch-request' },
+      }).success,
+    ).toBe(true);
+    expect(
+      BatchKeywordOperationResponseSchema.safeParse({
+        data: { action: 'disable', affected_count: 501, keyword_ids: null },
+        meta: { request_id: 'keyword-filtered-batch-request' },
       }).success,
     ).toBe(true);
   });

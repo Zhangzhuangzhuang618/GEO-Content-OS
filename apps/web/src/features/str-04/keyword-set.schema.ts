@@ -119,7 +119,7 @@ export const BatchKeywordOperationResponseSchema = z
       .object({
         action: z.enum(['disable', 'delete', 'update']),
         affected_count: z.number().int().nonnegative(),
-        keyword_ids: z.array(z.string().uuid()).min(1).max(500),
+        keyword_ids: z.array(z.string().uuid()).min(1).max(500).nullable(),
       })
       .strict(),
     meta: RequestMetaSchema,

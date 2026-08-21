@@ -402,6 +402,12 @@ HOTFIX-20260821-02 根据 ADR-0064 为 STR-04 增加关键词批量修改公共�
 提示改为禁用，不移除历史关系。旧游标查询继续兼容；无数据库迁移，不改变日批取词、质量门槛、
 旧内容或旧质量报告。
 
+HOTFIX-20260821-03 根据 ADR-0065 为 STR-04 增加当前筛选结果的跨页全选。逐项和当前页勾选继续
+保留；真正全选由既有批量端点接收搜索词、状态和适用平台条件，服务端在同一事务中重新解析、锁定
+并处理全部匹配关键词，不按页或按 500 条拆分。筛选全选返回服务端实际处理数量；全选删除中存在
+任一历史 Brief 引用时仍整批拒绝。无数据库迁移或新增端点，不改变日批取词、质量门槛、旧内容或
+旧质量报告。
+
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
 ## 7. API 约定
@@ -619,7 +625,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | STR-01 | 品牌策略列表 | tenant_member | 写操作仅 strategy_editor_or_admin |
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
 | STR-03 | 主题规划 | strategy_editor_or_admin | 无证据主题标记风险，不自动进入生产 |
-| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选；支持批量修改、禁用、安全删除、平台过滤、优先级排序和页码跳转 |
+| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选；支持当前筛选结果跨页全选、批量修改、禁用、安全删除、平台过滤、优先级排序和页码跳转 |
 | KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索 |
 | KNOW-02 | 上传资料 | strategy_or_content_editor_or_admin | 类型、大小、病毒扫描和 SSRF 校验 |
 | KNOW-03 | 资料详情 | tenant_member | 原文和 chunk 可回溯 |

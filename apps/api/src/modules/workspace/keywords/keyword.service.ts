@@ -455,29 +455,70 @@ export class KeywordService {
       throw new KeywordStateError();
     }
 
-    const keywordIds = transaction.array([...input.keyword_ids], 2950);
-    const beforeRows = await transaction<KeywordRow[]>`
-      SELECT
-        keyword.id,
-        keyword.tenant_id AS "tenantId",
-        keyword.keyword_set_id AS "keywordSetId",
-        keyword.term::text AS term,
-        keyword.intents,
-        keyword.priority,
-        keyword.synonyms,
-        keyword.platform_scope AS "platformScope",
-        keyword.status,
-        keyword.created_at AS "createdAt",
-        keyword.updated_at AS "updatedAt"
-      FROM keywords AS keyword
-      WHERE
-        keyword.tenant_id = ${tenantId}
-        AND keyword.keyword_set_id = ${keywordSetId}
-        AND keyword.id = ANY(${keywordIds}::uuid[])
-      ORDER BY array_position(${keywordIds}::uuid[], keyword.id)
-      FOR UPDATE
-    `;
-    if (beforeRows.length !== input.keyword_ids.length) throw new KeywordNotFoundError();
+    const filteredSelection = 'selection' in input;
+    let beforeRows: readonly KeywordRow[];
+    if (filteredSelection) {
+      const selection = input.selection;
+      beforeRows = await transaction<KeywordRow[]>`
+        SELECT
+          keyword.id,
+          keyword.tenant_id AS "tenantId",
+          keyword.keyword_set_id AS "keywordSetId",
+          keyword.term::text AS term,
+          keyword.intents,
+          keyword.priority,
+          keyword.synonyms,
+          keyword.platform_scope AS "platformScope",
+          keyword.status,
+          keyword.created_at AS "createdAt",
+          keyword.updated_at AS "updatedAt"
+        FROM keywords AS keyword
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+          AND (${selection.status ?? null}::text IS NULL OR keyword.status = ${selection.status ?? null})
+          AND (
+            ${selection.search ?? null}::text IS NULL
+            OR position(lower(${selection.search ?? null}) in lower(keyword.term::text)) > 0
+          )
+          AND (
+            ${selection.platform_code ?? null}::text IS NULL
+            OR ${selection.platform_code ?? null} = ANY(keyword.platform_scope)
+          )
+        ORDER BY keyword.id
+        FOR UPDATE
+      `;
+      if (beforeRows.length === 0) {
+        throw new KeywordStateError('No keywords match the selected filters');
+      }
+    } else {
+      const requestedKeywordIds = transaction.array([...input.keyword_ids], 2950);
+      beforeRows = await transaction<KeywordRow[]>`
+        SELECT
+          keyword.id,
+          keyword.tenant_id AS "tenantId",
+          keyword.keyword_set_id AS "keywordSetId",
+          keyword.term::text AS term,
+          keyword.intents,
+          keyword.priority,
+          keyword.synonyms,
+          keyword.platform_scope AS "platformScope",
+          keyword.status,
+          keyword.created_at AS "createdAt",
+          keyword.updated_at AS "updatedAt"
+        FROM keywords AS keyword
+        WHERE
+          keyword.tenant_id = ${tenantId}
+          AND keyword.keyword_set_id = ${keywordSetId}
+          AND keyword.id = ANY(${requestedKeywordIds}::uuid[])
+        ORDER BY array_position(${requestedKeywordIds}::uuid[], keyword.id)
+        FOR UPDATE
+      `;
+      if (beforeRows.length !== input.keyword_ids.length) throw new KeywordNotFoundError();
+    }
+
+    const resolvedKeywordIds = beforeRows.map((keyword) => keyword.id);
+    const keywordIds = transaction.array(resolvedKeywordIds, 2950);
 
     let afterRows: readonly KeywordRow[] = [];
     if (input.action === 'delete') {
@@ -500,7 +541,7 @@ export class KeywordService {
           AND keyword.id = ANY(${keywordIds}::uuid[])
         RETURNING keyword.id
       `;
-      if (deleted.length !== input.keyword_ids.length) {
+      if (deleted.length !== resolvedKeywordIds.length) {
         throw new Error('Keyword delete returned an incomplete batch');
       }
     } else {
@@ -540,23 +581,36 @@ export class KeywordService {
           keyword.created_at AS "createdAt",
           keyword.updated_at AS "updatedAt"
       `;
-      if (afterRows.length !== input.keyword_ids.length) {
+      if (afterRows.length !== resolvedKeywordIds.length) {
         throw new Error('Keyword update returned an incomplete batch');
       }
     }
 
     const result: BatchKeywordOperation = {
       action: input.action,
-      affected_count: input.keyword_ids.length,
-      keyword_ids: input.keyword_ids,
+      affected_count: resolvedKeywordIds.length,
+      keyword_ids: filteredSelection ? null : input.keyword_ids,
     };
     await insertKeywordAudit(transaction, {
       action: `keywords.batch.${input.action}`,
       actorUserId,
       after:
-        input.action === 'delete' ? result : { keywords: afterRows.map(toKeywordView), result },
+        input.action === 'delete'
+          ? result
+          : filteredSelection
+            ? {
+                changes:
+                  input.action === 'update' ? input.changes : { status: 'disabled' as const },
+                result,
+              }
+            : { keywords: afterRows.map(toKeywordView), result },
       audit,
-      before: beforeRows.map(toKeywordView),
+      before: filteredSelection
+        ? {
+            affected_count: resolvedKeywordIds.length,
+            selection: input.selection,
+          }
+        : beforeRows.map(toKeywordView),
       resourceId: keywordSetId,
       resourceType: 'keyword_set',
       tenantId,

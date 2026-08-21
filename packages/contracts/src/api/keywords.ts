@@ -88,6 +88,15 @@ const KeywordIdBatchSchema = z
     message: 'Keyword ids must be unique',
   });
 
+export const BatchKeywordFilterSelectionSchema = z
+  .object({
+    mode: z.literal('all_filtered'),
+    platform_code: z.enum(PLATFORM_CODES).optional(),
+    search: z.string().trim().min(1).max(240).optional(),
+    status: z.enum(['active', 'disabled']).optional(),
+  })
+  .strict();
+
 const BatchKeywordChangesSchema = z
   .object({
     intents: KeywordIntentsSchema.optional(),
@@ -100,14 +109,23 @@ const BatchKeywordChangesSchema = z
     message: 'At least one keyword field must be changed',
   });
 
-export const BatchKeywordOperationRequestSchema = z.discriminatedUnion('action', [
+export const BatchKeywordOperationRequestSchema = z.union([
   z.object({ action: z.literal('disable'), keyword_ids: KeywordIdBatchSchema }).strict(),
+  z.object({ action: z.literal('disable'), selection: BatchKeywordFilterSelectionSchema }).strict(),
   z.object({ action: z.literal('delete'), keyword_ids: KeywordIdBatchSchema }).strict(),
+  z.object({ action: z.literal('delete'), selection: BatchKeywordFilterSelectionSchema }).strict(),
   z
     .object({
       action: z.literal('update'),
       changes: BatchKeywordChangesSchema,
       keyword_ids: KeywordIdBatchSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('update'),
+      changes: BatchKeywordChangesSchema,
+      selection: BatchKeywordFilterSelectionSchema,
     })
     .strict(),
 ]);
@@ -116,7 +134,7 @@ export const BatchKeywordOperationSchema = z
   .object({
     action: z.enum(['disable', 'delete', 'update']),
     affected_count: z.number().int().nonnegative(),
-    keyword_ids: KeywordIdBatchSchema,
+    keyword_ids: KeywordIdBatchSchema.nullable(),
   })
   .strict();
 

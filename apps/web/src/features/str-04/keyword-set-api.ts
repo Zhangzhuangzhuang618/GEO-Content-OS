@@ -139,8 +139,8 @@ export async function listKeywords(
 
 export async function batchKeywords(
   keywordSetId: string,
-  input:
-    | { readonly action: 'delete' | 'disable'; readonly keywordIds: readonly string[] }
+  input: (
+    | { readonly action: 'delete' | 'disable' }
     | {
         readonly action: 'update';
         readonly changes: {
@@ -149,15 +149,28 @@ export async function batchKeywords(
           readonly priority?: number;
           readonly status?: KeywordStatus;
         };
-        readonly keywordIds: readonly string[];
-      },
+      }
+  ) &
+    (
+      | { readonly keywordIds: readonly string[] }
+      | {
+          readonly selection: {
+            readonly mode: 'all_filtered';
+            readonly platform_code?: PlatformCode;
+            readonly search?: string;
+            readonly status?: KeywordStatus;
+          };
+        }
+    ),
   csrf: string,
 ) {
+  const target =
+    'selection' in input ? { selection: input.selection } : { keyword_ids: input.keywordIds };
   const response = await fetch(`${API_ORIGIN}/api/v1/keyword-sets/${keywordSetId}/keywords/batch`, {
     body: JSON.stringify({
       action: input.action,
       ...(input.action === 'update' ? { changes: input.changes } : {}),
-      keyword_ids: input.keywordIds,
+      ...target,
     }),
     credentials: 'include',
     headers: {

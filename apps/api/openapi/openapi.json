@@ -21719,7 +21719,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "oneOf": [
+                "anyOf": [
                   {
                     "type": "object",
                     "properties": {
@@ -21741,6 +21741,38 @@
                   {
                     "type": "object",
                     "properties": {
+                      "action": { "type": "string", "const": "disable" },
+                      "selection": {
+                        "type": "object",
+                        "properties": {
+                          "mode": { "type": "string", "const": "all_filtered" },
+                          "platform_code": {
+                            "type": "string",
+                            "enum": [
+                              "official_site",
+                              "baijiahao",
+                              "sohu",
+                              "lieju",
+                              "toutiao",
+                              "zhihu",
+                              "xiaohongshu",
+                              "wechat_mp",
+                              "douyin"
+                            ]
+                          },
+                          "search": { "type": "string", "minLength": 1, "maxLength": 240 },
+                          "status": { "type": "string", "enum": ["active", "disabled"] }
+                        },
+                        "required": ["mode"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["action", "selection"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
                       "action": { "type": "string", "const": "delete" },
                       "keyword_ids": {
                         "minItems": 1,
@@ -21754,6 +21786,38 @@
                       }
                     },
                     "required": ["action", "keyword_ids"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "delete" },
+                      "selection": {
+                        "type": "object",
+                        "properties": {
+                          "mode": { "type": "string", "const": "all_filtered" },
+                          "platform_code": {
+                            "type": "string",
+                            "enum": [
+                              "official_site",
+                              "baijiahao",
+                              "sohu",
+                              "lieju",
+                              "toutiao",
+                              "zhihu",
+                              "xiaohongshu",
+                              "wechat_mp",
+                              "douyin"
+                            ]
+                          },
+                          "search": { "type": "string", "minLength": 1, "maxLength": 240 },
+                          "status": { "type": "string", "enum": ["active", "disabled"] }
+                        },
+                        "required": ["mode"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["action", "selection"],
                     "additionalProperties": false
                   },
                   {
@@ -21814,6 +21878,79 @@
                     },
                     "required": ["action", "changes", "keyword_ids"],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "action": { "type": "string", "const": "update" },
+                      "changes": {
+                        "type": "object",
+                        "properties": {
+                          "intents": {
+                            "minItems": 1,
+                            "maxItems": 4,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "informational",
+                                "commercial",
+                                "transactional",
+                                "navigational"
+                              ]
+                            }
+                          },
+                          "platform_scope": {
+                            "minItems": 1,
+                            "maxItems": 9,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "official_site",
+                                "baijiahao",
+                                "sohu",
+                                "lieju",
+                                "toutiao",
+                                "zhihu",
+                                "xiaohongshu",
+                                "wechat_mp",
+                                "douyin"
+                              ]
+                            }
+                          },
+                          "priority": { "type": "integer", "minimum": 0, "maximum": 100 },
+                          "status": { "type": "string", "enum": ["active", "disabled"] }
+                        },
+                        "additionalProperties": false
+                      },
+                      "selection": {
+                        "type": "object",
+                        "properties": {
+                          "mode": { "type": "string", "const": "all_filtered" },
+                          "platform_code": {
+                            "type": "string",
+                            "enum": [
+                              "official_site",
+                              "baijiahao",
+                              "sohu",
+                              "lieju",
+                              "toutiao",
+                              "zhihu",
+                              "xiaohongshu",
+                              "wechat_mp",
+                              "douyin"
+                            ]
+                          },
+                          "search": { "type": "string", "minLength": 1, "maxLength": 240 },
+                          "status": { "type": "string", "enum": ["active", "disabled"] }
+                        },
+                        "required": ["mode"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["action", "changes", "selection"],
+                    "additionalProperties": false
                   }
                 ]
               }
@@ -21838,14 +21975,19 @@
                           "maximum": 9007199254740991
                         },
                         "keyword_ids": {
-                          "minItems": 1,
-                          "maxItems": 500,
-                          "type": "array",
-                          "items": {
-                            "type": "string",
-                            "format": "uuid",
-                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                          }
+                          "anyOf": [
+                            {
+                              "minItems": 1,
+                              "maxItems": 500,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              }
+                            },
+                            { "type": "null" }
+                          ]
                         }
                       },
                       "required": ["action", "affected_count", "keyword_ids"],
