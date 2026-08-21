@@ -205,13 +205,29 @@ describe('keyword API contracts', () => {
     ).toBe(false);
     expect(
       BatchKeywordOperationResponseSchema.safeParse({
-        data: { action: 'delete', affected_count: 1, keyword_ids: [firstId] },
+        data: {
+          action: 'delete',
+          affected_count: 1,
+          keyword_ids: [firstId],
+          skipped_referenced_count: 2,
+        },
         meta: { request_id: 'keyword-batch-request' },
       }).success,
     ).toBe(true);
     expect(
       BatchKeywordOperationResponseSchema.safeParse({
-        data: { action: 'disable', affected_count: 501, keyword_ids: null },
+        data: { action: 'delete', affected_count: 1, keyword_ids: [firstId] },
+        meta: { request_id: 'missing-skip-count' },
+      }).success,
+    ).toBe(false);
+    expect(
+      BatchKeywordOperationResponseSchema.safeParse({
+        data: {
+          action: 'disable',
+          affected_count: 501,
+          keyword_ids: null,
+          skipped_referenced_count: 0,
+        },
         meta: { request_id: 'keyword-filtered-batch-request' },
       }).success,
     ).toBe(true);

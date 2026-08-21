@@ -21,6 +21,7 @@ import {
 } from './keyword-set-api';
 import {
   KeywordInputSchema,
+  type BatchKeywordOperation,
   type Keyword,
   type KeywordInput,
   type KeywordImportJob,
@@ -546,7 +547,7 @@ function KeywordWorkspace({
 
   async function runBatch(
     input: Parameters<typeof batchKeywords>[1],
-    success: (affectedCount: number) => string,
+    success: (result: BatchKeywordOperation) => string,
   ): Promise<void> {
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
@@ -561,14 +562,10 @@ function KeywordWorkspace({
       setAllFilteredSelected(false);
       setBulkEditing(false);
       setReloadToken((current) => current + 1);
-      onMessage(success(result.affected_count));
+      onMessage(success(result));
     } catch (error) {
       if (error instanceof KeywordSetRequestError && error.status === 409) {
-        setLocalMessage(
-          input.action === 'delete'
-            ? '所选关键词中有已用于历史内容的项目，不能删除；请改为批量禁用。'
-            : '当前关键词集状态不允许这次批量操作，请刷新后重试。',
-        );
+        setLocalMessage('当前关键词集状态不允许这次批量操作，请刷新后重试。');
       } else if (error instanceof KeywordSetRequestError && error.status === 422) {
         setLocalMessage('批量修改内容不符合字段约束，请检查后重试。');
       } else {
@@ -622,7 +619,7 @@ function KeywordWorkspace({
     };
     void runBatch(
       { action: 'update', changes, ...selectedBatchTarget() },
-      (affectedCount) => `${affectedCount} 个关键词已批量更新。`,
+      (result) => `${result.affected_count} 个关键词已批量更新。`,
     );
   }
 
@@ -680,13 +677,22 @@ function KeywordWorkspace({
 
   function deleteSelected() {
     if (selectedCount === 0) return;
-    if (!window.confirm(`确定删除所选的 ${selectedCount} 个关键词吗？此操作不可撤销。`)) {
+    if (
+      !window.confirm(
+        `确定删除所选的 ${selectedCount} 个关键词吗？已被历史内容引用的关键词会保留，并提示改为禁用；其他删除不可撤销。`,
+      )
+    ) {
       return;
     }
-    void runBatch(
-      { action: 'delete', ...selectedBatchTarget() },
-      (affectedCount) => `${affectedCount} 个未被引用的关键词已删除。`,
-    );
+    void runBatch({ action: 'delete', ...selectedBatchTarget() }, (result) => {
+      if (result.skipped_referenced_count === 0) {
+        return `${result.affected_count} 个未被引用的关键词已删除。`;
+      }
+      if (result.affected_count === 0) {
+        return `没有可删除的关键词；${result.skipped_referenced_count} 个关键词已被历史内容引用，请改为批量禁用。`;
+      }
+      return `${result.affected_count} 个未被引用的关键词已删除；另有 ${result.skipped_referenced_count} 个已被历史内容引用，未删除，请改为批量禁用。`;
+    });
   }
 
   function selectedBatchTarget() {
@@ -807,7 +813,7 @@ function KeywordWorkspace({
                 onClick={() =>
                   void runBatch(
                     { action: 'disable', ...selectedBatchTarget() },
-                    (affectedCount) => `${affectedCount} 个关键词已批量禁用。`,
+                    (result) => `${result.affected_count} 个关键词已批量禁用。`,
                   )
                 }
                 type="button"

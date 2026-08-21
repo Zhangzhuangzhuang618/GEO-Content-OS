@@ -223,7 +223,12 @@ describe('frozen strategy API contract', () => {
     expect(KeywordListResponseSchema.safeParse(response([keyword()])).success).toBe(true);
     expect(
       BatchKeywordOperationResponseSchema.safeParse(
-        response({ action: 'disable', affected_count: 1, keyword_ids: [id('14')] }),
+        response({
+          action: 'disable',
+          affected_count: 1,
+          keyword_ids: [id('14')],
+          skipped_referenced_count: 0,
+        }),
       ).success,
     ).toBe(true);
     expect(

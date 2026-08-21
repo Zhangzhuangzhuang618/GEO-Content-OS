@@ -111,6 +111,7 @@ test('batch edits, disables, and deletes selected keywords', async ({ page }) =>
         action: body.action,
         affected_count: body.keyword_ids.length,
         keyword_ids: body.keyword_ids,
+        skipped_referenced_count: 0,
       },
       { request_id: `batch-${bodies.length}` },
     );
@@ -146,6 +147,54 @@ test('batch edits, disables, and deletes selected keywords', async ({ page }) =>
     { action: 'disable', keyword_ids: [KEYWORD_ID] },
     { action: 'delete', keyword_ids: [KEYWORD_ID] },
   ]);
+});
+
+test('deletes unreferenced keywords and explains that referenced ones must be disabled', async ({
+  page,
+}) => {
+  const referencedKeyword = keyword();
+  const deletableKeyword = {
+    ...keyword(),
+    id: '40000000-0000-4000-8000-000000000078',
+    term: 'GEO 发布',
+  };
+  await page.route('**/api/v1/keyword-sets/*/keywords?*', (route) =>
+    json(route, [referencedKeyword, deletableKeyword], {
+      next_cursor: null,
+      page: 1,
+      page_size: 20,
+      request_id: 'mixed-delete-keywords',
+      total_count: 2,
+      total_pages: 1,
+    }),
+  );
+  await page.route(`**/api/v1/keyword-sets/${KEYWORD_SET_ID}/keywords/batch`, async (route) => {
+    const body = route.request().postDataJSON();
+    await json(
+      route,
+      {
+        action: body.action,
+        affected_count: 1,
+        keyword_ids: body.keyword_ids,
+        skipped_referenced_count: 1,
+      },
+      { request_id: 'batch-referenced-keyword' },
+    );
+  });
+  await page.goto('/str-04');
+
+  await page.getByLabel('选择当前页全部关键词').check();
+  page.once('dialog', async (dialog) => {
+    expect(dialog.message()).toContain('已被历史内容引用的关键词会保留');
+    await dialog.accept();
+  });
+  await page.getByRole('button', { name: '批量删除' }).click();
+
+  await expect(
+    page.getByText(
+      '1 个未被引用的关键词已删除；另有 1 个已被历史内容引用，未删除，请改为批量禁用。',
+    ),
+  ).toBeVisible();
 });
 
 test('exposes keyword management and supports a simple single-keyword form', async ({ page }) => {
@@ -265,7 +314,12 @@ test('selects every filtered keyword across pages in one atomic batch request', 
     batchBody = route.request().postDataJSON();
     await json(
       route,
-      { action: 'disable', affected_count: 22, keyword_ids: null },
+      {
+        action: 'disable',
+        affected_count: 22,
+        keyword_ids: null,
+        skipped_referenced_count: 0,
+      },
       { request_id: 'filtered-selection-batch' },
     );
   });

@@ -414,6 +414,11 @@ HOTFIX-20260821-04 根据 ADR-0066 将官网服务电话统一收口为工作区
 官网 Render 契约升级为 `official-site-render-rules@1.3.0`。其他平台不获得该电话证据，现有禁止规则不变。无数据库迁移或新增端点；
 旧内容、旧质量报告和旧发布任务不自动修改，缺号、错号或重复号任务在发布前失败关闭。
 
+HOTFIX-20260821-05 根据 ADR-0067 将关键词批量删除改为历史引用安全分流。同一事务内先锁定并
+校验完整选择集，再删除未引用项、保留已被历史 Brief 引用的项；响应分别返回实际删除数和跳过数，
+前端明确提示被引用关键词需要改为禁用。租户、权限、状态和无效 ID 错误仍整批失败；不删除历史
+关系，不修改日批取词、质量门槛、旧内容或旧质量报告。无数据库迁移或新增端点。
+
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
 ## 7. API 约定
@@ -631,7 +636,7 @@ ADR-0025 后，只含官网的平台任务使用 `official-site-article-draft@1`
 | STR-01 | 品牌策略列表 | tenant_member | 写操作仅 strategy_editor_or_admin |
 | STR-02 | 品牌策略编辑 | strategy_editor_or_admin | 已发布版本只读 |
 | STR-03 | 主题规划 | strategy_editor_or_admin | 无证据主题标记风险，不自动进入生产 |
-| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选；支持当前筛选结果跨页全选、批量修改、禁用、安全删除、平台过滤、优先级排序和页码跳转 |
+| STR-04 | 关键词集 | strategy_editor_or_admin | 关键词集内规范化 term 唯一；搜索意图可复选；支持当前筛选结果跨页全选、批量修改、禁用、跳过历史引用项的安全删除、平台过滤、优先级排序和页码跳转 |
 | KNOW-01 | 资料列表 | tenant_member | 失效资料不进入新检索；企业管理员维护工作区级官网服务电话 |
 | KNOW-02 | 上传资料 | strategy_or_content_editor_or_admin | 类型、大小、病毒扫描和 SSRF 校验 |
 | KNOW-03 | 资料详情 | tenant_member | 原文和 chunk 可回溯 |

@@ -521,28 +521,35 @@ export class KeywordService {
     const keywordIds = transaction.array(resolvedKeywordIds, 2950);
 
     let afterRows: readonly KeywordRow[] = [];
+    let affectedCount = resolvedKeywordIds.length;
+    let skippedReferencedCount = 0;
     if (input.action === 'delete') {
       const references = await transaction<{ id: string }[]>`
-        SELECT brief_keyword.keyword_id AS id
+        SELECT DISTINCT brief_keyword.keyword_id AS id
         FROM brief_keywords AS brief_keyword
         WHERE
           brief_keyword.tenant_id = ${tenantId}
           AND brief_keyword.keyword_id = ANY(${keywordIds}::uuid[])
-        LIMIT 1
       `;
-      if (references.length > 0) {
-        throw new KeywordStateError('A referenced keyword must be disabled instead of deleted');
-      }
-      const deleted = await transaction<{ id: string }[]>`
-        DELETE FROM keywords AS keyword
-        WHERE
-          keyword.tenant_id = ${tenantId}
-          AND keyword.keyword_set_id = ${keywordSetId}
-          AND keyword.id = ANY(${keywordIds}::uuid[])
-        RETURNING keyword.id
-      `;
-      if (deleted.length !== resolvedKeywordIds.length) {
-        throw new Error('Keyword delete returned an incomplete batch');
+      const referencedKeywordIds = new Set(references.map((reference) => reference.id));
+      const deletableKeywordIds = resolvedKeywordIds.filter(
+        (keywordId) => !referencedKeywordIds.has(keywordId),
+      );
+      affectedCount = deletableKeywordIds.length;
+      skippedReferencedCount = referencedKeywordIds.size;
+      if (deletableKeywordIds.length > 0) {
+        const deletableIds = transaction.array(deletableKeywordIds, 2950);
+        const deleted = await transaction<{ id: string }[]>`
+          DELETE FROM keywords AS keyword
+          WHERE
+            keyword.tenant_id = ${tenantId}
+            AND keyword.keyword_set_id = ${keywordSetId}
+            AND keyword.id = ANY(${deletableIds}::uuid[])
+          RETURNING keyword.id
+        `;
+        if (deleted.length !== deletableKeywordIds.length) {
+          throw new Error('Keyword delete returned an incomplete batch');
+        }
       }
     } else {
       const changes = input.action === 'update' ? input.changes : undefined;
@@ -588,8 +595,9 @@ export class KeywordService {
 
     const result: BatchKeywordOperation = {
       action: input.action,
-      affected_count: resolvedKeywordIds.length,
+      affected_count: affectedCount,
       keyword_ids: filteredSelection ? null : input.keyword_ids,
+      skipped_referenced_count: skippedReferencedCount,
     };
     await insertKeywordAudit(transaction, {
       action: `keywords.batch.${input.action}`,

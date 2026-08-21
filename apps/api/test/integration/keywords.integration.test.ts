@@ -284,6 +284,7 @@ describe('keyword API', () => {
       action: 'update',
       affected_count: 2,
       keyword_ids: [first.id, second.id],
+      skipped_referenced_count: 0,
     });
     expect(replay.json()).toEqual(updated.json());
     expect(
@@ -344,36 +345,47 @@ describe('keyword API', () => {
       payload: { action: 'delete', keyword_ids: [first.id, third.id] },
       url: `${API_PATH}/${keywordSetId}/keywords/batch`,
     });
-    expect(protectedDelete.statusCode).toBe(409);
-    expect(
-      await database<{ count: number }[]>`
-        SELECT count(*)::integer AS count FROM keywords WHERE id=${third.id}
-      `,
-    ).toEqual([{ count: 1 }]);
-
-    const deleted = await requireServer(application).inject({
-      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-batch-delete-002' },
-      method: 'POST',
-      payload: { action: 'delete', keyword_ids: [third.id] },
-      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    expect(protectedDelete.statusCode).toBe(200);
+    expect(protectedDelete.json().data).toEqual({
+      action: 'delete',
+      affected_count: 1,
+      keyword_ids: [first.id, third.id],
+      skipped_referenced_count: 1,
     });
-    expect(deleted.statusCode).toBe(200);
-    expect(deleted.json().data).toMatchObject({ action: 'delete', affected_count: 1 });
     expect(
       await database<{ count: number }[]>`
         SELECT count(*)::integer AS count FROM keywords WHERE id=${third.id}
       `,
     ).toEqual([{ count: 0 }]);
+
+    const referencedOnlyDelete = await requireServer(application).inject({
+      headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-batch-delete-002' },
+      method: 'POST',
+      payload: { action: 'delete', keyword_ids: [first.id] },
+      url: `${API_PATH}/${keywordSetId}/keywords/batch`,
+    });
+    expect(referencedOnlyDelete.statusCode).toBe(200);
+    expect(referencedOnlyDelete.json().data).toEqual({
+      action: 'delete',
+      affected_count: 0,
+      keyword_ids: [first.id],
+      skipped_referenced_count: 1,
+    });
+    expect(
+      await database<{ count: number }[]>`
+        SELECT count(*)::integer AS count FROM keywords WHERE id=${first.id}
+      `,
+    ).toEqual([{ count: 1 }]);
     expect(
       await database<{ count: number }[]>`
         SELECT count(*)::integer AS count
         FROM audit_events
         WHERE action IN ('keywords.batch.update', 'keywords.batch.disable', 'keywords.batch.delete')
       `,
-    ).toEqual([{ count: 3 }]);
+    ).toEqual([{ count: 4 }]);
   });
 
-  it('atomically applies a batch action to every keyword matching the submitted filters', async () => {
+  it('applies filtered batch actions and skips only historically referenced deletes', async () => {
     const database = requireClient(client);
     const keywordSetId = await insertKeywordSet(
       database,
@@ -412,6 +424,7 @@ describe('keyword API', () => {
       action: 'update',
       affected_count: 2,
       keyword_ids: null,
+      skipped_referenced_count: 0,
     });
     expect(
       await database<{ priority: number; term: string }[]>`
@@ -450,12 +463,18 @@ describe('keyword API', () => {
       payload: { action: 'delete', selection },
       url: `${API_PATH}/${keywordSetId}/keywords/batch`,
     });
-    expect(protectedDelete.statusCode).toBe(409);
+    expect(protectedDelete.statusCode).toBe(200);
+    expect(protectedDelete.json().data).toEqual({
+      action: 'delete',
+      affected_count: 1,
+      keyword_ids: null,
+      skipped_referenced_count: 1,
+    });
     expect(
       await database<{ count: number }[]>`
         SELECT count(*)::integer AS count FROM keywords WHERE keyword_set_id=${keywordSetId}
       `,
-    ).toEqual([{ count: 4 }]);
+    ).toEqual([{ count: 3 }]);
 
     const disabled = await requireServer(application).inject({
       headers: { ...writeHeaders(strategy), 'idempotency-key': 'keyword-filtered-disable-001' },
@@ -466,8 +485,9 @@ describe('keyword API', () => {
     expect(disabled.statusCode).toBe(200);
     expect(disabled.json().data).toEqual({
       action: 'disable',
-      affected_count: 2,
+      affected_count: 1,
       keyword_ids: null,
+      skipped_referenced_count: 0,
     });
     expect(
       await database<{ status: string; term: string }[]>`
@@ -478,7 +498,6 @@ describe('keyword API', () => {
       `,
     ).toEqual([
       { status: 'disabled', term: '筛选列举关键词 A' },
-      { status: 'disabled', term: '筛选列举关键词 B' },
       { status: 'disabled', term: '筛选列举关键词 D' },
       { status: 'active', term: '筛选搜狐关键词 C' },
     ]);
@@ -523,6 +542,7 @@ describe('keyword API', () => {
       action: 'disable',
       affected_count: 501,
       keyword_ids: null,
+      skipped_referenced_count: 0,
     });
     expect(
       await database<{ count: number }[]>`

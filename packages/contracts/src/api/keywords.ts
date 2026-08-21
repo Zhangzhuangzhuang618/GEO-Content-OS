@@ -135,6 +135,7 @@ export const BatchKeywordOperationSchema = z
     action: z.enum(['disable', 'delete', 'update']),
     affected_count: z.number().int().nonnegative(),
     keyword_ids: KeywordIdBatchSchema.nullable(),
+    skipped_referenced_count: z.number().int().nonnegative(),
   })
   .strict();
 

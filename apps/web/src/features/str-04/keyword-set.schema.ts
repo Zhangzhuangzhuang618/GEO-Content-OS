@@ -120,6 +120,7 @@ export const BatchKeywordOperationResponseSchema = z
         action: z.enum(['disable', 'delete', 'update']),
         affected_count: z.number().int().nonnegative(),
         keyword_ids: z.array(z.string().uuid()).min(1).max(500).nullable(),
+        skipped_referenced_count: z.number().int().nonnegative(),
       })
       .strict(),
     meta: RequestMetaSchema,
@@ -195,6 +196,7 @@ export const KeywordImportJobResponseSchema = z
   .strict();
 
 export type Keyword = z.infer<typeof KeywordSchema>;
+export type BatchKeywordOperation = z.infer<typeof BatchKeywordOperationResponseSchema>['data'];
 export type KeywordInput = z.infer<typeof KeywordInputSchema>;
 export type KeywordIntent = z.infer<typeof KeywordIntentSchema>;
 export type KeywordImportJob = z.infer<typeof KeywordImportJobSchema>;
