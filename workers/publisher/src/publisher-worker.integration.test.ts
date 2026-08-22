@@ -456,6 +456,8 @@ describe('publisher worker', () => {
       undefined,
       [
         { externalId: 'baijiahao-t145', status: 'processing', url: null },
+        { externalId: 'baijiahao-t145', status: 'processing', url: null },
+        { externalId: 'baijiahao-t145', status: 'processing', url: null },
         {
           externalId: 'baijiahao-t145',
           status: 'published',
@@ -466,9 +468,33 @@ describe('publisher worker', () => {
     const worker = createWorker(database, requireCredentials(credentials), platform);
 
     await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(reconcileSchedules(database, 'baijiahao')).resolves.toEqual([
+      { delaySeconds: 60, reconcileAttempt: 1 },
+    ]);
     await expect(
       worker.reconcileBaijiahao(await latestReconcileEvent(database)),
     ).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(reconcileSchedules(database, 'baijiahao')).resolves.toEqual([
+      { delaySeconds: 60, reconcileAttempt: 1 },
+      { delaySeconds: 120, reconcileAttempt: 2 },
+    ]);
+    await expect(
+      worker.reconcileBaijiahao(await latestReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(reconcileSchedules(database, 'baijiahao')).resolves.toEqual([
+      { delaySeconds: 60, reconcileAttempt: 1 },
+      { delaySeconds: 120, reconcileAttempt: 2 },
+      { delaySeconds: 120, reconcileAttempt: 3 },
+    ]);
+    await expect(
+      worker.reconcileBaijiahao(await latestReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(reconcileSchedules(database, 'baijiahao')).resolves.toEqual([
+      { delaySeconds: 60, reconcileAttempt: 1 },
+      { delaySeconds: 120, reconcileAttempt: 2 },
+      { delaySeconds: 120, reconcileAttempt: 3 },
+      { delaySeconds: 300, reconcileAttempt: 4 },
+    ]);
     await database`
       UPDATE baijiahao_browser_publications SET
         status='published',external_url='https://baijiahao.baidu.com/s?id=t145',
@@ -479,7 +505,7 @@ describe('publisher worker', () => {
       worker.reconcileBaijiahao(await latestReconcileEvent(database)),
     ).resolves.toMatchObject({ disposition: 'completed' });
 
-    expect(platform.statusClaims).toHaveLength(2);
+    expect(platform.statusClaims).toHaveLength(4);
     expect(
       await database<
         {
@@ -668,6 +694,9 @@ describe('publisher worker', () => {
     const worker = createWorker(database, requireCredentials(credentials), platform);
 
     await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await expect(reconcileSchedules(database, 'sohu')).resolves.toEqual([
+      { delaySeconds: 300, reconcileAttempt: 1 },
+    ]);
     await expect(
       worker.reconcileBaijiahao(await latestSohuReconcileEvent(database)),
     ).resolves.toMatchObject({ disposition: 'completed' });
@@ -934,6 +963,17 @@ async function latestSohuReconcileEvent(database: Sql): Promise<unknown> {
   const payload = events[0]?.payload;
   if (!payload) throw new Error('Sohu reconciliation event was not queued');
   return payload;
+}
+
+async function reconcileSchedules(database: Sql, platformCode: 'baijiahao' | 'sohu') {
+  return database<{ delaySeconds: number; reconcileAttempt: number }[]>`
+    SELECT
+      EXTRACT(EPOCH FROM (next_attempt_at-created_at))::integer AS "delaySeconds",
+      (payload_json->'data'->>'reconcile_attempt')::integer AS "reconcileAttempt"
+    FROM outbox_events
+    WHERE event_type=${`${platformCode}.publication.reconcile_requested.v1`}
+    ORDER BY (payload_json->'data'->>'reconcile_attempt')::integer,id
+  `;
 }
 
 async function state(database: Sql) {

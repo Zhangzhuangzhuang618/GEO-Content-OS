@@ -406,7 +406,6 @@ export class PostgresPublisherStore implements PublisherStorePort {
             claim,
             row,
             job.version,
-            5,
             1,
             claim.platformCode,
           );
@@ -880,7 +879,6 @@ export class PostgresPublisherStore implements PublisherStorePort {
           claim,
           row,
           job.version,
-          5,
           event.reconcileAttempt + 1,
           claim.platformCode,
         );
@@ -1645,12 +1643,12 @@ async function insertBrowserReconcileEvent(
   claim: Pick<PublishClaim, 'jobId' | 'tenantId'>,
   row: CompletionRow,
   jobVersion: number,
-  delayMinutes: number,
   reconcileAttempt = 1,
   platformCode: 'baijiahao' | 'lieju' | 'sohu' = 'baijiahao',
 ): Promise<void> {
   const eventId = randomUUID();
   const occurredAt = new Date().toISOString();
+  const delayMinutes = browserReconcileDelayMinutes(platformCode, reconcileAttempt);
   const envelope = {
     aggregate: { id: claim.jobId, type: 'publish_job' },
     data: {
@@ -1677,6 +1675,16 @@ async function insertBrowserReconcileEvent(
       now() + (${delayMinutes} * interval '1 minute')
     )
   `;
+}
+
+function browserReconcileDelayMinutes(
+  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  reconcileAttempt: number,
+): number {
+  if (platformCode !== 'baijiahao') return 5;
+  if (reconcileAttempt === 1) return 1;
+  if (reconcileAttempt <= 3) return 2;
+  return 5;
 }
 
 async function completeDailyBatchItem(
