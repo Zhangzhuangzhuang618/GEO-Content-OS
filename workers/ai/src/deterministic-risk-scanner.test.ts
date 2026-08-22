@@ -791,6 +791,43 @@ describe('deterministic pre-publish risk scanner', () => {
         'deterministic.lieju.phone_forbidden',
       ]),
     );
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        location: 'blocks.contact',
+        rule_id: 'deterministic.lieju.external_url_forbidden',
+      }),
+    );
+  });
+
+  it('blocks bare official-platform domains in Lieju verification guidance', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [
+          block(
+            'verify-list',
+            '营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。',
+          ),
+        ],
+        platform_code: 'lieju',
+        platform_meta: { content_type: 'logistics_freight' },
+        title: '广州搬家服务资质核验方法',
+      }),
+      platformCode: 'lieju',
+    });
+
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          location: 'blocks.verify-list',
+          rule_id: 'deterministic.lieju.external_url_forbidden',
+        }),
+      ]),
+    );
+    expect(
+      issues.filter((issue) => issue.rule_id === 'deterministic.lieju.external_url_forbidden'),
+    ).toHaveLength(1);
   });
 
   it('blocks a Lieju promotional term before publishing even in a quoted warning', () => {

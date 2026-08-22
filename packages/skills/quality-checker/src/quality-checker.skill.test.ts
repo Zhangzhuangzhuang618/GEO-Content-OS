@@ -358,6 +358,37 @@ describe('QualityCheckerSkill', () => {
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
   });
 
+  it('accepts a Lieju contact block that points to a bare domain', async () => {
+    const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
+      {
+        block_key: 'verify',
+        text: '道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。',
+      },
+    ]);
+    const output = blockedOutput({
+      category: 'compliance',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文包含网址“ysfw.mot.gov.cn”。',
+      rule_id: 'lieju.contact_in_content_forbidden',
+      severity: 'BLOCK',
+      suggestion: '删除具体网址，只保留官方核验渠道名称。',
+    });
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(output) }],
+    });
+
+    await expect(
+      skill(adapter).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+  });
+
   it('does not recover a malformed Lieju contact finding', async () => {
     const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
       { block_key: 'contact', text: '通过页面联系方式说明需求。' },

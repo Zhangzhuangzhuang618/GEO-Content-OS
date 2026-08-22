@@ -1,4 +1,7 @@
-import { findLiejuProhibitedPromotionalTerms } from '@geo-content-os/contracts';
+import {
+  findLiejuForbiddenContactDetails,
+  findLiejuProhibitedPromotionalTerms,
+} from '@geo-content-os/contracts';
 import type {
   ContentWriterContent,
   ContentWriterData,
@@ -132,6 +135,28 @@ function assessContent(
     );
   }
   if (content.platform_code === 'lieju') {
+    const liejuPublishText = [content.title, content.summary, content.cta, text]
+      .filter((value): value is string => typeof value === 'string')
+      .join('\n');
+    const prohibitedContactDetails = findLiejuForbiddenContactDetails(liejuPublishText);
+    if (prohibitedContactDetails.length > 0) {
+      const labels = [
+        ...new Set(
+          prohibitedContactDetails.map((finding) =>
+            finding.kind === 'external_url'
+              ? '网址'
+              : finding.kind === 'phone'
+                ? '电话号码'
+                : '微信或 QQ 账号',
+          ),
+        ),
+      ];
+      issues.push(
+        `lieju:包含发布层禁止的具体联系方式或网址（${labels.join(
+          '、',
+        )}），必须删除具体值；核验说明只保留官方渠道名称和核验方法`,
+      );
+    }
     const prohibitedTerms = findLiejuProhibitedPromotionalTerms(`${content.title}\n${text}`);
     if (prohibitedTerms.length > 0) {
       issues.push(

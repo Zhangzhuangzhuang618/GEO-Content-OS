@@ -1,5 +1,6 @@
 import {
   findDisallowedCompanyNames,
+  findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
   hasExactOfficialSiteServicePhone,
@@ -258,27 +259,27 @@ function claimTextMatches(claim: string, mappedClaim: string): boolean {
 function addLiejuPlatformIssues(issues: QualityIssue[], input: DeterministicRiskScanInput): void {
   if (input.platformCode !== 'lieju') return;
   const sections = contentSections(input.content);
-  const publishText = sections.map((section) => section.text).join('\n');
-  const prohibitedPatterns: readonly [RegExp, string, string][] = [
-    [/(?:https?:\/\/|www\.)\S+/iu, 'external_url', '网址'],
-    [
-      /(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)/u,
-      'phone',
-      '电话号码',
-    ],
-    [/(?:微信|QQ)(?:号|账号|ID)?[：:\s]+[A-Za-z0-9_-]{4,}/iu, 'external_account', '微信或 QQ 账号'],
-  ];
-  for (const [pattern, code, label] of prohibitedPatterns) {
-    if (!pattern.test(publishText)) continue;
-    issues.push(
-      issue(
-        `deterministic.lieju.${code}_forbidden`,
-        'compliance',
-        'content',
-        `列举网标题或正文包含禁止的${label}。`,
-        `删除${label}；联系方式只由发布账号配置写入平台表单。`,
-      ),
+  for (const section of sections) {
+    const findingKinds = new Set(
+      findLiejuForbiddenContactDetails(section.text).map((finding) => finding.kind),
     );
+    for (const findingKind of findingKinds) {
+      const label =
+        findingKind === 'external_url'
+          ? '网址'
+          : findingKind === 'phone'
+            ? '电话号码'
+            : '微信或 QQ 账号';
+      issues.push(
+        issue(
+          `deterministic.lieju.${findingKind}_forbidden`,
+          'compliance',
+          section.location,
+          `列举网待发布内容包含禁止的${label}。`,
+          `删除${label}；联系方式只由发布账号配置写入平台表单。`,
+        ),
+      );
+    }
   }
   for (const section of sections.filter(isLiejuPublishedSection)) {
     for (const term of findLiejuProhibitedPromotionalTerms(section.text)) {

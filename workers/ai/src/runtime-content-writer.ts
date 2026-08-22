@@ -2,8 +2,10 @@ import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/ada
 import {
   companyNamePolicyInstruction,
   findDisallowedCompanyNames,
+  findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
+  type LiejuForbiddenContactDetail,
 } from '@geo-content-os/contracts';
 import {
   CONTENT_WRITER_INPUT_SCHEMA,
@@ -75,6 +77,7 @@ interface TargetedTextRepairTarget {
   readonly content: ContentWriterContent;
   readonly id: string;
   readonly originalText: string;
+  readonly prohibitedContactDetails: readonly LiejuForbiddenContactDetail[];
   readonly prohibitedPromotionalTerms: readonly string[];
   readonly unsupportedClaims: readonly string[];
 }
@@ -1354,6 +1357,7 @@ function onlyTargetedTextRepairIssues(
   for (const issue of issues) {
     if (
       issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照') ||
+      issue.includes('包含发布层禁止的具体联系方式或网址') ||
       issue.includes('包含发布层禁止的宣传词')
     ) {
       hasRepairableIssue = true;
@@ -1392,12 +1396,21 @@ function targetedTextRepairTargets(
         content.platform_code === 'lieju' && scanPromotionalTerms
           ? findLiejuProhibitedPromotionalTerms(text)
           : [];
-      if (unsupportedClaims.length === 0 && prohibitedPromotionalTerms.length === 0) return;
+      const prohibitedContactDetails =
+        content.platform_code === 'lieju' ? findLiejuForbiddenContactDetails(text) : [];
+      if (
+        unsupportedClaims.length === 0 &&
+        prohibitedPromotionalTerms.length === 0 &&
+        prohibitedContactDetails.length === 0
+      ) {
+        return;
+      }
       targets.push(
         Object.freeze({
           content,
           id,
           originalText: text,
+          prohibitedContactDetails,
           prohibitedPromotionalTerms,
           unsupportedClaims,
         }),
@@ -1434,7 +1447,7 @@ This is a bounded targeted repair stage. Rewrite only the supplied text targets.
     {
       content: `${prompt.taskTemplate}
 
-For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
+For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Remove every listed literal contact detail or URL. When a URL appears in verification guidance, preserve the official channel name and verification action but remove the domain. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.
 ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify(rejectionReason)}. Correct that exact problem.` : ''}`,
@@ -1444,6 +1457,7 @@ ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify
       content: JSON.stringify({
         targeted_text_repair_targets: targets.map((target) => ({
           original_text: target.originalText,
+          prohibited_contact_details: target.prohibitedContactDetails,
           prohibited_promotional_terms: target.prohibitedPromotionalTerms,
           target_id: target.id,
           unsupported_credential_claims: target.unsupportedClaims,
@@ -1480,6 +1494,12 @@ function invalidTargetedTextRepairReason(
         .length > 0
     ) {
       return `replacement_still_contains_unsupported_credential:${target.id}`;
+    }
+    if (
+      target.prohibitedContactDetails.length > 0 &&
+      findLiejuForbiddenContactDetails(replacement.replacement_text).length > 0
+    ) {
+      return `replacement_still_contains_prohibited_contact_detail:${target.id}`;
     }
     if (
       target.prohibitedPromotionalTerms.length > 0 &&

@@ -1,3 +1,48 @@
+export type LiejuForbiddenContactKind = 'external_account' | 'external_url' | 'phone';
+
+export interface LiejuForbiddenContactDetail {
+  readonly kind: LiejuForbiddenContactKind;
+  readonly value: string;
+}
+
+const LIEJU_FORBIDDEN_CONTACT_PATTERNS: readonly Readonly<{
+  kind: LiejuForbiddenContactKind;
+  pattern: RegExp;
+}>[] = Object.freeze([
+  Object.freeze({
+    kind: 'external_url',
+    pattern:
+      /(?:https?:\/\/[^\s,，、。！？；：“”‘’（）()<>[\]{}]+|www\.[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?:\/[^\s,，、。！？；：“”‘’（）()<>[\]{}]*)?|(?<![@\w.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|cn|net|org|gov|edu|mil|int|info|biz|top|vip|site|online|xyz|shop|wang|cc|io|me)(?=$|[^\w-])(?:\/[^\s,，、。！？；：“”‘’（）()<>[\]{}]*)?)/giu,
+  }),
+  Object.freeze({
+    kind: 'phone',
+    pattern:
+      /(?:电话|手机)(?:号码|号)?[：:\s]*[A-Za-z0-9+_-]{4,}|(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)/giu,
+  }),
+  Object.freeze({
+    kind: 'external_account',
+    pattern:
+      /(?:微信|QQ)(?:号|账号|ID)?[：:\s]*[A-Za-z0-9_-]{4,}|联系(?:人|方式)?[：:\s]*[A-Za-z0-9+_-]{4,}/giu,
+  }),
+]);
+
+export function findLiejuForbiddenContactDetails(
+  value: string,
+): readonly LiejuForbiddenContactDetail[] {
+  const findings: LiejuForbiddenContactDetail[] = [];
+  const seen = new Set<string>();
+  for (const { kind, pattern } of LIEJU_FORBIDDEN_CONTACT_PATTERNS) {
+    for (const match of value.matchAll(new RegExp(pattern.source, pattern.flags))) {
+      const matchedValue = match[0].trim();
+      const key = `${kind}:${matchedValue.toLocaleLowerCase('zh-CN')}`;
+      if (!matchedValue || seen.has(key)) continue;
+      seen.add(key);
+      findings.push(Object.freeze({ kind, value: matchedValue }));
+    }
+  }
+  return Object.freeze(findings);
+}
+
 export function findLiejuProhibitedPromotionalTerms(value: string): readonly string[] {
   const matches =
     value.match(

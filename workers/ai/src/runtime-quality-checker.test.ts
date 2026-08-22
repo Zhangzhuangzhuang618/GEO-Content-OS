@@ -172,6 +172,10 @@ describe('RuntimeQualityChecker', () => {
               block_key: 'contact',
               text: '如需进一步确认，可通过页面联系方式说明搬运需求。',
             },
+            {
+              block_key: 'verify',
+              text: '道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。',
+            },
           ],
           platform_code: 'lieju',
           title: '广州搬家服务指南',
@@ -213,8 +217,11 @@ describe('RuntimeQualityChecker', () => {
 
     const firstPrompt = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
     expect(firstPrompt).toContain('within the hard maximum 30');
-    expect(firstPrompt).toContain('no exact content location contains a literal phone number');
-    expect(firstPrompt).toContain('“通过页面联系方式咨询” is allowed');
+    expect(firstPrompt).toContain('Contact findings are allowed only at these exact locations');
+    expect(firstPrompt).toContain('blocks.verify.text');
+    expect(firstPrompt).toContain(
+      '“通过页面联系方式咨询” contains no contact detail and is allowed',
+    );
     expect(firstPrompt).toContain('Valid immutable content locations are limited to');
     expect(firstPrompt).toContain('Never use brand_policy.*');
     expect(firstPrompt).toContain('“电话公司” are not identifiable company names');

@@ -80,6 +80,38 @@ describe('Content Writer semantic quality gate', () => {
     ]);
   });
 
+  it('rejects bare domains while allowing neutral verification-channel wording', () => {
+    const lieju = complete('lieju', 75);
+    const unsafe: ContentWriterContent = {
+      ...lieju,
+      blocks: lieju.blocks.map((block, index) =>
+        index === lieju.blocks.length - 1
+          ? {
+              ...block,
+              text: `${block.text}营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。`,
+            }
+          : block,
+      ),
+    };
+
+    expect(assessContentWriterContents([unsafe], 'quality').issues).toEqual([
+      'lieju:包含发布层禁止的具体联系方式或网址（网址），必须删除具体值；核验说明只保留官方渠道名称和核验方法',
+    ]);
+
+    const safe: ContentWriterContent = {
+      ...unsafe,
+      blocks: unsafe.blocks.map((block, index) =>
+        index === unsafe.blocks.length - 1
+          ? {
+              ...block,
+              text: `${lieju.blocks[index]!.text}营业执照可在国家企业信用信息公示系统核验，道路运输许可可通过交通运输主管部门官方查询渠道核验。`,
+            }
+          : block,
+      ),
+    };
+    expect(assessContentWriterContents([safe], 'quality')).toEqual({ issues: [], passed: true });
+  });
+
   it('rejects an official-site title outside the publish contract', () => {
     const official = complete('official_site', 190);
 

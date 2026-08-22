@@ -179,6 +179,84 @@ describe('AI Worker runtime wiring', () => {
     expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('百分百');
   });
 
+  it('uses a targeted repair to remove bare domains from Lieju verification guidance', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['lieju'], new Set());
+    const variantBlockIndex = clean.variants[0]!.blocks.length - 1;
+    const verificationGuidance =
+      '营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。';
+    const unresolved = {
+      ...clean,
+      variants: [
+        {
+          ...clean.variants[0]!,
+          blocks: clean.variants[0]!.blocks.map((block, index) =>
+            index === variantBlockIndex
+              ? { ...block, text: `${block.text}${verificationGuidance}` }
+              : block,
+          ),
+        },
+      ],
+    };
+    const targetedRepair = {
+      replacements: [
+        {
+          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}营业执照可在国家企业信用信息公示系统核验，道路运输许可可通过交通运输主管部门官方查询渠道核验。`,
+          target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
+        },
+      ],
+    };
+    const partiallyRepaired = {
+      replacements: [
+        {
+          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}营业执照可在国家企业信用信息公示系统核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。`,
+          target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(unresolved) },
+        { text: JSON.stringify(unresolved) },
+        { text: JSON.stringify(partiallyRepaired) },
+        { text: JSON.stringify(targetedRepair) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const rewritten = await writer.rewriteBrowserPlatformVariant({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+      currentContent: {
+        ...unresolved.variants[0]!,
+        schema_version: 'content-writer-data@1' as const,
+      } as unknown as GeneratedContent,
+      issues: [
+        'deterministic.lieju.external_url_forbidden | blocks.verify-list | 列举网待发布内容包含禁止的网址。 | 删除网址',
+      ],
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-url-targeted-repair-0068',
+      writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
+    });
+
+    expect(adapter.requests).toHaveLength(4);
+    const finalPrompt = adapter.requests[3]!.messages.map((message) => message.content).join('\n');
+    expect(finalPrompt).toContain('prohibited_contact_details');
+    expect(finalPrompt).toContain('www.gsxt.gov.cn');
+    expect(finalPrompt).toContain('ysfw.mot.gov.cn');
+    expect(finalPrompt).toContain('replacement_still_contains_prohibited_contact_detail');
+    const rewrittenText = rewritten.blocks.map((block) => block.text).join('\n');
+    expect(rewrittenText).toContain('国家企业信用信息公示系统核验');
+    expect(rewrittenText).toContain('交通运输主管部门官方查询渠道核验');
+    expect(rewrittenText).not.toContain('www.gsxt.gov.cn');
+    expect(rewrittenText).not.toContain('ysfw.mot.gov.cn');
+  });
+
   it('repairs a Lieju credential claim until it cites the supplied structured certificate', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const base = multiPlatformContentData(['lieju'], new Set());

@@ -1,4 +1,7 @@
-import { findLiejuProhibitedPromotionalTerms } from '@geo-content-os/contracts';
+import {
+  findLiejuForbiddenContactDetails,
+  findLiejuProhibitedPromotionalTerms,
+} from '@geo-content-os/contracts';
 
 import { LIEJU_RENDER_RULES_V1 } from './rules.js';
 import { LiejuRenderInputSchema } from './schema.js';
@@ -37,11 +40,7 @@ export function validateLiejuContent(input: unknown): LiejuValidationResult {
     issues.push(blocker('BODY_LENGTH_OUT_OF_RANGE', '描述必须为 600-8000 字。', 'content.blocks'));
   }
   const publishText = `${value.content.title}\n${bodyText}`;
-  if (
-    /(?:https?:\/\/|www\.|(?:电话|手机|微信|QQ|联系)[：:\s]*[A-Za-z0-9+_-]{4,}|1[3-9]\d{9})/iu.test(
-      publishText,
-    )
-  ) {
+  if (findLiejuForbiddenContactDetails(publishText).length > 0) {
     issues.push(blocker('CONTACT_INFO_FORBIDDEN', '标题和描述不得包含联系方式或网址。', 'content'));
   }
   if (findLiejuProhibitedPromotionalTerms(publishText).length > 0) {

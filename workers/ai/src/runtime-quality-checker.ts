@@ -1,6 +1,7 @@
 import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   companyNamePolicyInstruction,
+  findLiejuForbiddenContactDetails,
   findPublishedOwnerCompanyNames,
 } from '@geo-content-os/contracts';
 import {
@@ -380,11 +381,7 @@ function textAtContentLocation(
 }
 
 function containsLiejuContactDetail(value: string): boolean {
-  return (
-    /(?:https?:\/\/|www\.)\S+/iu.test(value) ||
-    /(?<!\d)(?:\+?86[-\s]?)?1[3-9]\d{9}(?!\d)|(?<!\d)0\d{2,3}[-\s]?\d{7,8}(?!\d)/u.test(value) ||
-    /(?:电话|手机|微信|QQ|联系)[：:\s]*[A-Za-z0-9+_-]{4,}/iu.test(value)
-  );
+  return findLiejuForbiddenContactDetails(value).length > 0;
 }
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {

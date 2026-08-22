@@ -86,6 +86,18 @@ describe('Lieju render contract', () => {
     if (result.ok) return;
     expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
   });
+
+  it('blocks bare domains in verification guidance', async () => {
+    const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
+    input.content.blocks[0]!.text +=
+      '营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。';
+
+    const result = validateLiejuContent(input);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.code)).toContain('CONTACT_INFO_FORBIDDEN');
+  });
 });
 
 async function fixture(): Promise<unknown> {
