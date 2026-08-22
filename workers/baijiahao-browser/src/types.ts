@@ -84,6 +84,7 @@ export interface BaijiahaoPageDriver {
   capture(accountId: string): Promise<Uint8Array>;
   close(): Promise<void>;
   exportStorageState(accountId: string): Promise<string>;
+  release(accountId: string): Promise<void>;
   reconcile(
     accountId: string,
     profilePath: string,
@@ -101,6 +102,11 @@ export interface BaijiahaoPageDriver {
     beforeSubmit: (png: Uint8Array) => Promise<void>,
   ): Promise<RemotePublication>;
   verifyAuthenticated(
+    accountId: string,
+    profilePath: string,
+    storageStateJson: string | null,
+  ): Promise<boolean>;
+  verifyPublishReady(
     accountId: string,
     profilePath: string,
     storageStateJson: string | null,

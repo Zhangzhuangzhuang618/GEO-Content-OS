@@ -60,6 +60,51 @@ describe('Baijiahao browser service', () => {
     });
   });
 
+  it('does not report recovery from attention until the article editor is publish-ready', async () => {
+    const session = browserSession('attention_required');
+    const markSession = vi.fn(async () => ({ ...session, version: 2 }));
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const release = vi.fn(async () => undefined);
+    const driver = {
+      release,
+      startLogin: vi.fn(async () => ({
+        expiresAt: new Date('2026-08-22T10:00:00.000Z'),
+        qrPng: Buffer.alloc(0),
+      })),
+      verifyPublishReady: vi.fn(async () => {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Baijiahao session is active but the article editor is not available',
+        );
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.startLogin(ACCOUNT_ID)).rejects.toMatchObject({
+      code: 'PAGE_SIGNATURE_CHANGED',
+      statusCode: 423,
+    });
+    expect(driver.verifyPublishReady).toHaveBeenCalledOnce();
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'baijiahao-browser-error@1',
+      },
+      qrExpiresAt: null,
+      status: 'attention_required',
+    });
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
+  });
+
   it('contains asynchronous login verification failures without crashing the worker', async () => {
     const session = browserSession('login_required');
     const expiresAt = new Date('2026-08-05T14:00:00.000Z');
@@ -81,7 +126,9 @@ describe('Baijiahao browser service', () => {
       getSession: vi.fn(async () => pending),
       markSession,
     } as unknown as PostgresBaijiahaoBrowserStore;
+    const release = vi.fn(async () => undefined);
     const driver = {
+      release,
       startLogin: vi.fn(async () => ({ expiresAt, qrPng: Buffer.from('qr') })),
       waitForAuthentication: vi.fn(async () => {
         throw new Error('page.goto: net::ERR_ABORTED token=login-secret');
@@ -114,6 +161,7 @@ describe('Baijiahao browser service', () => {
         error_code: 'LOGIN_VERIFICATION_FAILED',
       }),
     );
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
     errorLog.mockRestore();
   });
 
@@ -168,7 +216,9 @@ describe('Baijiahao browser service', () => {
       getSession: vi.fn(async () => session),
       markSession,
     } as unknown as PostgresBaijiahaoBrowserStore;
+    const release = vi.fn(async () => undefined);
     const driver = {
+      release,
       verifyAuthenticated: vi.fn(async () => {
         throw new Error('Chromium failed token=browser-secret');
       }),
@@ -200,6 +250,7 @@ describe('Baijiahao browser service', () => {
         error_code: 'BROWSER_RUNTIME_FAILED',
       }),
     );
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
     errorLog.mockRestore();
   });
 
@@ -260,7 +311,7 @@ describe('Baijiahao browser service', () => {
     expect(verifyAuthenticated).not.toHaveBeenCalled();
   });
 
-  it('re-verifies an attention session and clears the browser safety pause', async () => {
+  it('requires a publish-ready editor before clearing the browser safety pause', async () => {
     const attention = browserSession('attention_required');
     const authenticated = {
       ...attention,
@@ -274,7 +325,9 @@ describe('Baijiahao browser service', () => {
       markSession,
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
+      release: vi.fn(async () => undefined),
       verifyAuthenticated: vi.fn(async () => true),
+      verifyPublishReady: vi.fn(async () => true),
     } as unknown as BaijiahaoPageDriver;
     const credentials = {
       decrypt: vi.fn(async () => '{}'),
@@ -291,12 +344,61 @@ describe('Baijiahao browser service', () => {
       status: 'authenticated',
       version: 2,
     });
-    expect(driver.verifyAuthenticated).toHaveBeenCalledOnce();
+    expect(driver.verifyPublishReady).toHaveBeenCalledOnce();
+    expect(driver.verifyAuthenticated).not.toHaveBeenCalled();
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
     expect(markSession).toHaveBeenCalledWith(attention, {
       error: null,
       lastVerifiedAt: expect.any(Date),
       status: 'authenticated',
     });
+  });
+
+  it('does not clear browser attention when login is valid but the editor is unavailable', async () => {
+    const attention = browserSession('attention_required');
+    const markSession = vi.fn(async () => ({
+      ...attention,
+      status: 'attention_required' as const,
+      version: 2,
+    }));
+    const store = {
+      getSession: vi.fn(async () => attention),
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      release: vi.fn(async () => undefined),
+      verifyPublishReady: vi.fn(async () => {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Baijiahao session is active but the article editor is not available',
+        );
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+      version: 2,
+    });
+    expect(markSession).toHaveBeenCalledWith(attention, {
+      error: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'baijiahao-browser-error@1',
+      },
+      status: 'attention_required',
+    });
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
+    errorLog.mockRestore();
   });
 
   it('keeps browser attention separate from login expiry before publishing', async () => {
@@ -368,6 +470,7 @@ describe('Baijiahao browser service', () => {
       updatePublication,
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
+      release: vi.fn(async () => undefined),
       reconcile: vi.fn(async () => {
         throw new PageDriverError(
           'PAGE_SIGNATURE_CHANGED',
@@ -399,6 +502,51 @@ describe('Baijiahao browser service', () => {
       expect.objectContaining({ externalId: publication.externalId }),
       '{}',
     );
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
+  });
+
+  it('does not interrupt an active QR login to reconcile an older publication', async () => {
+    const session = browserSession('qr_ready');
+    const publication = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentFingerprint: 'f'.repeat(64),
+      contentVersionId: CONTENT_VERSION_ID,
+      externalId: 'pending-qr-login',
+      externalUrl: null,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'baijiahao-qr-login-status',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      reviewReason: null,
+      sessionId: SESSION_ID,
+      status: 'processing' as const,
+      submittedAt: new Date('2026-08-22T00:00:00.000Z'),
+      tenantId: TENANT_ID,
+      title: '百家号扫码期间状态查询测试',
+      version: 2,
+    });
+    const store = {
+      findPublication: vi.fn(async () => publication),
+      getSession: vi.fn(async () => session),
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      reconcile: vi.fn(),
+      release: vi.fn(async () => undefined),
+    } as unknown as BaijiahaoPageDriver;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.status(ACCOUNT_ID, publication.externalId)).resolves.toEqual({
+      external_id: publication.externalId,
+      status: 'unknown',
+      url: null,
+    });
+    expect(driver.reconcile).not.toHaveBeenCalled();
+    expect(driver.release).not.toHaveBeenCalled();
   });
 
   it('never resubmits an acknowledged publication when reconciliation remains unavailable', async () => {
@@ -426,6 +574,7 @@ describe('Baijiahao browser service', () => {
       preparePublication: vi.fn(async () => publication),
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
+      release: vi.fn(async () => undefined),
       reconcile: vi.fn(async () => null),
       submit,
       verifyAuthenticated: vi.fn(async () => true),
@@ -464,6 +613,7 @@ describe('Baijiahao browser service', () => {
       }),
     ).rejects.toMatchObject({ code: 'PUBLISH_STATE_UNKNOWN', statusCode: 503 });
     expect(submit).not.toHaveBeenCalled();
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
   it('records pre-submit browser operation failures as manual attention, not unknown', async () => {
@@ -619,6 +769,7 @@ describe('Baijiahao browser service', () => {
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('post-submit')),
+      release: vi.fn(async () => undefined),
       submit: vi.fn(async () => ({
         externalId: 'rejected-145',
         reviewReason: '内容未通过审核',
@@ -661,6 +812,7 @@ describe('Baijiahao browser service', () => {
       expect.objectContaining({ status: 'submitting' }),
       expect.objectContaining({ status: 'failed' }),
     );
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 });
 

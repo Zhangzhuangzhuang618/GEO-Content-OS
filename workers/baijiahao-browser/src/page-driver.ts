@@ -98,6 +98,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   private readonly contexts = new Map<string, BrowserContext>();
   private readonly loginPageUrls = new Map<string, string>();
   private readonly pages = new Map<string, Page>();
+  private readonly restoredStorageStateProfiles = new Set<string>();
 
   public constructor(private readonly config: BaijiahaoBrowserConfig) {}
 
@@ -197,6 +198,23 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
     if (await this.isAuthenticatedEditor(page)) return true;
     if (await this.isAuthenticatedAccountPage(page)) return true;
     return this.verifyViaLoginPage(page);
+  }
+
+  public async verifyPublishReady(
+    accountId: string,
+    profilePath: string,
+    storageStateJson: string | null,
+  ): Promise<boolean> {
+    const page = await this.page(accountId, profilePath, storageStateJson);
+    await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
+    await this.rejectCaptcha(page);
+    try {
+      await this.requireEditor(page);
+      return true;
+    } catch (error) {
+      if (error instanceof PageDriverError && error.code === 'AUTH_REQUIRED') return false;
+      throw error;
+    }
   }
 
   public async exportStorageState(accountId: string): Promise<string> {
@@ -385,11 +403,20 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   }
 
   public async close(): Promise<void> {
-    const contexts = [...this.contexts.values()];
-    this.contexts.clear();
-    this.loginPageUrls.clear();
-    this.pages.clear();
-    await Promise.all(contexts.map((context) => context.close()));
+    const accountIds = new Set([
+      ...this.contexts.keys(),
+      ...this.loginPageUrls.keys(),
+      ...this.pages.keys(),
+    ]);
+    await Promise.all([...accountIds].map((accountId) => this.release(accountId)));
+  }
+
+  public async release(accountId: string): Promise<void> {
+    const context = this.contexts.get(accountId);
+    this.contexts.delete(accountId);
+    this.loginPageUrls.delete(accountId);
+    this.pages.delete(accountId);
+    if (context) await context.close();
   }
 
   private async page(
@@ -399,17 +426,29 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   ): Promise<Page> {
     const existing = this.pages.get(accountId);
     if (existing && !existing.isClosed()) return existing;
+    if (existing || this.contexts.has(accountId)) await this.release(accountId);
     await mkdir(dirname(profilePath), { recursive: true });
     const context = await chromium.launchPersistentContext(profilePath, {
       headless: this.config.headless,
       viewport: { height: 900, width: 1440 },
     });
-    context.setDefaultTimeout(this.config.navigationTimeoutMs);
-    if (storageStateJson) await restoreStorageState(context, storageStateJson);
-    const page = context.pages()[0] ?? (await context.newPage());
-    this.contexts.set(accountId, context);
-    this.pages.set(accountId, page);
-    return page;
+    try {
+      context.setDefaultTimeout(this.config.navigationTimeoutMs);
+      const storageStateProfileKey = `${accountId}\u0000${profilePath}`;
+      const shouldRestoreStorageState =
+        storageStateJson !== null && !this.restoredStorageStateProfiles.has(storageStateProfileKey);
+      if (shouldRestoreStorageState) await restoreStorageState(context, storageStateJson);
+      const page = context.pages()[0] ?? (await context.newPage());
+      this.contexts.set(accountId, context);
+      this.pages.set(accountId, page);
+      if (shouldRestoreStorageState) {
+        this.restoredStorageStateProfiles.add(storageStateProfileKey);
+      }
+      return page;
+    } catch (error) {
+      await context.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   private async rejectCaptcha(page: Page): Promise<void> {

@@ -64,9 +64,39 @@ export class BaijiahaoBrowserService {
   public async startLogin(accountId: string): Promise<Readonly<Record<string, unknown>>> {
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
-      let result: Awaited<ReturnType<BaijiahaoPageDriver['startLogin']>>;
+      let handedOffToLoginWaiter = false;
       try {
-        result = await this.driver.startLogin(accountId, this.profilePath(session));
+        const result = await this.driver.startLogin(accountId, this.profilePath(session));
+        if (result.qrPng.byteLength === 0) {
+          if (session.status === 'attention_required') {
+            const publishReady = await this.driver.verifyPublishReady(
+              accountId,
+              this.profilePath(session),
+              null,
+            );
+            if (!publishReady) {
+              await this.requireReauth(session, 'LOGIN_EXPIRED');
+              throw new BrowserGatewayError(
+                409,
+                'AUTH_REQUIRED',
+                'Baijiahao browser login has expired',
+              );
+            }
+          }
+          const authenticated = await this.persistAuthenticatedSession(session);
+          return sessionView(authenticated);
+        }
+        const pending = await this.store.markSession(session, {
+          error: null,
+          qrExpiresAt: result.expiresAt,
+          status: 'qr_ready',
+        });
+        handedOffToLoginWaiter = true;
+        void this.finishLogin(pending, result.expiresAt, session.status === 'attention_required');
+        return Object.freeze({
+          ...sessionView(pending),
+          qr_image_data_url: `data:image/png;base64,${Buffer.from(result.qrPng).toString('base64')}`,
+        });
       } catch (error) {
         if (
           error instanceof PageDriverError &&
@@ -80,21 +110,9 @@ export class BaijiahaoBrowserService {
           throw new BrowserGatewayError(423, error.code, error.message);
         }
         throw error;
+      } finally {
+        if (!handedOffToLoginWaiter) await this.releaseBrowserAccount(accountId);
       }
-      if (result.qrPng.byteLength === 0) {
-        const authenticated = await this.persistAuthenticatedSession(session);
-        return sessionView(authenticated);
-      }
-      const pending = await this.store.markSession(session, {
-        error: null,
-        qrExpiresAt: result.expiresAt,
-        status: 'qr_ready',
-      });
-      void this.finishLogin(pending, result.expiresAt);
-      return Object.freeze({
-        ...sessionView(pending),
-        qr_image_data_url: `data:image/png;base64,${Buffer.from(result.qrPng).toString('base64')}`,
-      });
     });
   }
 
@@ -109,13 +127,22 @@ export class BaijiahaoBrowserService {
       ) {
         return sessionView(current);
       }
+      let browserUsed = false;
       try {
         const storageState = await this.decryptState(current);
-        const authenticated = await this.driver.verifyAuthenticated(
-          accountId,
-          this.profilePath(current),
-          storageState,
-        );
+        browserUsed = true;
+        const authenticated =
+          current.status === 'attention_required'
+            ? await this.driver.verifyPublishReady(
+                accountId,
+                this.profilePath(current),
+                storageState,
+              )
+            : await this.driver.verifyAuthenticated(
+                accountId,
+                this.profilePath(current),
+                storageState,
+              );
         if (!authenticated) return sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
         const verified = await this.store.markSession(current, {
           error: null,
@@ -141,6 +168,8 @@ export class BaijiahaoBrowserService {
           status: 'attention_required',
         });
         return sessionView(attention);
+      } finally {
+        if (browserUsed) await this.releaseBrowserAccount(accountId);
       }
     });
   }
@@ -197,11 +226,16 @@ export class BaijiahaoBrowserService {
         return responseStatus(publication, publication.status);
       }
       const session = await this.store.getSession(accountId);
-      const remote = await this.reconcile(session, publication);
-      if (!remote) return responseStatus(publication, 'unknown');
-      const status = publicationStatus(remote.status);
-      const updated = await this.store.updatePublication(publication, { remote, status });
-      return responseStatus(updated, remote.status);
+      if (session.status === 'qr_ready') return responseStatus(publication, 'unknown');
+      try {
+        const remote = await this.reconcile(session, publication);
+        if (!remote) return responseStatus(publication, 'unknown');
+        const status = publicationStatus(remote.status);
+        const updated = await this.store.updatePublication(publication, { remote, status });
+        return responseStatus(updated, remote.status);
+      } finally {
+        await this.releaseBrowserAccount(accountId);
+      }
     });
   }
 
@@ -229,104 +263,117 @@ export class BaijiahaoBrowserService {
     readonly status: 'processing' | 'published';
     readonly url: string | null;
   }> {
-    let session = await this.store.getOrCreateSession(accountId);
-    if (session.status === 'attention_required') {
-      throw new BrowserGatewayError(
-        423,
-        'SESSION_ATTENTION_REQUIRED',
-        'Baijiahao browser automation is paused for manual attention; login has not been marked expired',
+    let browserUsed = false;
+    try {
+      let session = await this.store.getOrCreateSession(accountId);
+      if (session.status === 'attention_required') {
+        throw new BrowserGatewayError(
+          423,
+          'SESSION_ATTENTION_REQUIRED',
+          'Baijiahao browser automation is paused for manual attention; login has not been marked expired',
+        );
+      }
+      if (session.status !== 'authenticated') {
+        throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login is required');
+      }
+      const storageStateJson = await this.decryptState(session);
+      browserUsed = true;
+      const authenticated = await this.driver.verifyAuthenticated(
+        accountId,
+        this.profilePath(session),
+        storageStateJson,
       );
-    }
-    if (session.status !== 'authenticated') {
-      throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login is required');
-    }
-    const storageStateJson = await this.decryptState(session);
-    const authenticated = await this.driver.verifyAuthenticated(
-      accountId,
-      this.profilePath(session),
-      storageStateJson,
-    );
-    if (!authenticated) {
-      session = await this.requireReauth(session, 'LOGIN_EXPIRED');
-      void session;
-      throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login has expired');
-    }
-    const contentFingerprint = sha256(
-      `${input.payload.title}\n${normalizeText(input.payload.body_text)}`,
-    );
-    let publication = await this.store.preparePublication(accountId, input, contentFingerprint);
-    if (publication.status === 'published') return publishResponse(publication, 'published');
-    if (publication.status === 'failed' || publication.status === 'manual_required') {
-      throw new BrowserGatewayError(
-        409,
-        'PUBLICATION_TERMINAL',
-        'Publication requires manual handling',
+      if (!authenticated) {
+        session = await this.requireReauth(session, 'LOGIN_EXPIRED');
+        void session;
+        throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login has expired');
+      }
+      const contentFingerprint = sha256(
+        `${input.payload.title}\n${normalizeText(input.payload.body_text)}`,
       );
-    }
-    if (publication.status !== 'prepared') {
-      const remote = await this.reconcile(session, publication);
-      if (remote) {
+      let publication = await this.store.preparePublication(accountId, input, contentFingerprint);
+      if (publication.status === 'published') return publishResponse(publication, 'published');
+      if (publication.status === 'failed' || publication.status === 'manual_required') {
+        throw new BrowserGatewayError(
+          409,
+          'PUBLICATION_TERMINAL',
+          'Publication requires manual handling',
+        );
+      }
+      if (publication.status !== 'prepared') {
+        const remote = await this.reconcile(session, publication);
+        if (remote) {
+          const updated = await this.store.updatePublication(publication, {
+            remote,
+            status: publicationStatus(remote.status),
+          });
+          if (remote.status === 'failed') {
+            throw new BrowserGatewayError(
+              409,
+              'PUBLISH_REJECTED',
+              'Baijiahao rejected publication',
+            );
+          }
+          return publishResponse(
+            updated,
+            remote.status === 'published' ? 'published' : 'processing',
+          );
+        }
+        const externalId = 'externalId' in publication ? publication.externalId : null;
+        if (externalId) {
+          throw new BrowserGatewayError(
+            503,
+            'PUBLISH_STATE_UNKNOWN',
+            'Acknowledged publication is not yet visible in the content list; retry reconciliation only',
+          );
+        }
+        const submittedAt = 'submittedAt' in publication ? publication.submittedAt : null;
+        if (!submittedAt || Date.now() - submittedAt.getTime() < RESUBMIT_GRACE_MS) {
+          throw new BrowserGatewayError(
+            503,
+            'PUBLISH_STATE_UNKNOWN',
+            'Publication is not yet visible in the content list; retry only after reconciliation',
+          );
+        }
+        publication = await this.store.updatePublication(publication, { status: 'prepared' });
+      }
+      publication = await this.store.updatePublication(publication, {
+        status: 'submitting',
+        submittedAt: new Date(),
+      });
+      try {
+        const images = await this.loadImages(publication, input);
+        const remote = await this.driver.submit(
+          {
+            accountId,
+            contentFingerprint,
+            images,
+            payload: input.payload,
+            profilePath: this.profilePath(session),
+            storageStateJson,
+          },
+          (png) => this.saveArtifact(publication, 'pre_submit', png),
+        );
         const updated = await this.store.updatePublication(publication, {
           remote,
           status: publicationStatus(remote.status),
         });
+        await this.saveArtifact(updated, 'post_submit', await this.driver.capture(accountId));
         if (remote.status === 'failed') {
           throw new BrowserGatewayError(409, 'PUBLISH_REJECTED', 'Baijiahao rejected publication');
         }
         return publishResponse(updated, remote.status === 'published' ? 'published' : 'processing');
+      } catch (error) {
+        if (error instanceof PageDriverError) {
+          throw await this.handlePageDriverFailure(session, publication, error);
+        }
+        if (error instanceof PageDriverOperationError) {
+          throw await this.handlePageDriverOperationFailure(session, publication, error);
+        }
+        throw error;
       }
-      const externalId = 'externalId' in publication ? publication.externalId : null;
-      if (externalId) {
-        throw new BrowserGatewayError(
-          503,
-          'PUBLISH_STATE_UNKNOWN',
-          'Acknowledged publication is not yet visible in the content list; retry reconciliation only',
-        );
-      }
-      const submittedAt = 'submittedAt' in publication ? publication.submittedAt : null;
-      if (!submittedAt || Date.now() - submittedAt.getTime() < RESUBMIT_GRACE_MS) {
-        throw new BrowserGatewayError(
-          503,
-          'PUBLISH_STATE_UNKNOWN',
-          'Publication is not yet visible in the content list; retry only after reconciliation',
-        );
-      }
-      publication = await this.store.updatePublication(publication, { status: 'prepared' });
-    }
-    publication = await this.store.updatePublication(publication, {
-      status: 'submitting',
-      submittedAt: new Date(),
-    });
-    try {
-      const images = await this.loadImages(publication, input);
-      const remote = await this.driver.submit(
-        {
-          accountId,
-          contentFingerprint,
-          images,
-          payload: input.payload,
-          profilePath: this.profilePath(session),
-          storageStateJson,
-        },
-        (png) => this.saveArtifact(publication, 'pre_submit', png),
-      );
-      const updated = await this.store.updatePublication(publication, {
-        remote,
-        status: publicationStatus(remote.status),
-      });
-      await this.saveArtifact(updated, 'post_submit', await this.driver.capture(accountId));
-      if (remote.status === 'failed') {
-        throw new BrowserGatewayError(409, 'PUBLISH_REJECTED', 'Baijiahao rejected publication');
-      }
-      return publishResponse(updated, remote.status === 'published' ? 'published' : 'processing');
-    } catch (error) {
-      if (error instanceof PageDriverError) {
-        throw await this.handlePageDriverFailure(session, publication, error);
-      }
-      if (error instanceof PageDriverOperationError) {
-        throw await this.handlePageDriverOperationFailure(session, publication, error);
-      }
-      throw error;
+    } finally {
+      if (browserUsed) await this.releaseBrowserAccount(accountId);
     }
   }
 
@@ -478,9 +525,20 @@ export class BaijiahaoBrowserService {
     );
   }
 
-  private async finishLogin(session: BrowserSession, expiresAt: Date): Promise<void> {
+  private async finishLogin(
+    session: BrowserSession,
+    expiresAt: Date,
+    requirePublishReady: boolean,
+  ): Promise<void> {
     try {
-      const authenticated = await this.driver.waitForAuthentication(session.accountId, expiresAt);
+      let authenticated = await this.driver.waitForAuthentication(session.accountId, expiresAt);
+      if (authenticated && requirePublishReady) {
+        authenticated = await this.driver.verifyPublishReady(
+          session.accountId,
+          this.profilePath(session),
+          null,
+        );
+      }
       await this.locks.run(session.accountId, async () => {
         const current = await this.store.getSession(session.accountId);
         if (!authenticated) {
@@ -514,6 +572,21 @@ export class BaijiahaoBrowserService {
       } catch {
         // A later status request can recover if persistence is temporarily unavailable.
       }
+    } finally {
+      await this.releaseBrowserAccount(session.accountId);
+    }
+  }
+
+  private async releaseBrowserAccount(accountId: string): Promise<void> {
+    const release = this.driver.release;
+    if (typeof release !== 'function') return;
+    try {
+      await release.call(this.driver, accountId);
+    } catch (error) {
+      console.error('Baijiahao browser context release failed', {
+        account_id: accountId,
+        error: safeBrowserError(error),
+      });
     }
   }
 

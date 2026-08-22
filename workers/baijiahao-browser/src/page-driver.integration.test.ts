@@ -281,7 +281,7 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
-  it('keeps an authenticated session when the editor signature is temporarily unavailable', async () => {
+  it('keeps login validity separate from strict publish readiness', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';
     const profilePath = join(profileRoot, accountId);
@@ -297,6 +297,55 @@ describe('Baijiahao local browser simulator', () => {
           await driver.exportStorageState(accountId),
         ),
       ).resolves.toBe(true);
+      await expect(
+        driver.verifyPublishReady(
+          accountId,
+          profilePath,
+          await driver.exportStorageState(accountId),
+        ),
+      ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED' });
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('verifies publish readiness through the authenticated home-page fallback', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      editorStartsAtHome = true;
+
+      await expect(
+        driver.verifyPublishReady(
+          accountId,
+          profilePath,
+          await driver.exportStorageState(accountId),
+        ),
+      ).resolves.toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('releases an account context and restores a fresh one from encrypted state', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      const storageState = await driver.exportStorageState(accountId);
+
+      await driver.release(accountId);
+      await expect(driver.capture(accountId)).rejects.toMatchObject({
+        code: 'PAGE_SIGNATURE_CHANGED',
+      });
+      await expect(driver.verifyPublishReady(accountId, profilePath, storageState)).resolves.toBe(
+        true,
+      );
     } finally {
       await driver.close();
     }
