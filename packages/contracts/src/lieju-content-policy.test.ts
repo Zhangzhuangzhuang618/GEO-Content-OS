@@ -22,19 +22,24 @@ describe('Lieju content policy', () => {
     ).toEqual([]);
   });
 
-  it('finds explicit URLs, bare domains, phones and external accounts', () => {
+  it('allows URLs while still finding phones and external accounts', () => {
     expect(
       findLiejuForbiddenContactDetails(
         '可访问 https://example.test/path、www.gsxt.gov.cn 或 ysfw.mot.gov.cn，联系电话 02085627757，微信 zybj2026，联系 GZzy123456。',
       ),
     ).toEqual([
-      { kind: 'external_url', value: 'https://example.test/path' },
-      { kind: 'external_url', value: 'www.gsxt.gov.cn' },
-      { kind: 'external_url', value: 'ysfw.mot.gov.cn' },
       { kind: 'phone', value: '电话 02085627757' },
       { kind: 'external_account', value: '微信 zybj2026' },
       { kind: 'external_account', value: '联系 GZzy123456' },
     ]);
+  });
+
+  it('does not treat authority or qualification wording as a platform lexical ban', () => {
+    expect(
+      findLiejuProhibitedPromotionalTerms(
+        '企业资质可通过权威机构公开渠道核验，国家级资质声明必须有对应证据。',
+      ),
+    ).toEqual([]);
   });
 
   it('allows neutral verification-channel and page-contact guidance', () => {

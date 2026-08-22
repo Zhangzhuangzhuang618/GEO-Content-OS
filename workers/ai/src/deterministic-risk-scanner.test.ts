@@ -763,7 +763,7 @@ describe('deterministic pre-publish risk scanner', () => {
     expect(issues.filter((item) => item.category === 'compliance')).toEqual([]);
   });
 
-  it('blocks contact details in Lieju content even when they exist in the brand profile', () => {
+  it('blocks phone and account details in Lieju content while allowing URLs', () => {
     const issues = scanDeterministicRisks({
       brandProfile: {
         ...brand(),
@@ -787,19 +787,15 @@ describe('deterministic pre-publish risk scanner', () => {
     expect(issues.map((item) => item.rule_id)).toEqual(
       expect.arrayContaining([
         'deterministic.lieju.external_account_forbidden',
-        'deterministic.lieju.external_url_forbidden',
         'deterministic.lieju.phone_forbidden',
       ]),
     );
-    expect(issues).toContainEqual(
-      expect.objectContaining({
-        location: 'blocks.contact',
-        rule_id: 'deterministic.lieju.external_url_forbidden',
-      }),
+    expect(issues.map((item) => item.rule_id)).not.toContain(
+      'deterministic.lieju.external_url_forbidden',
     );
   });
 
-  it('blocks bare official-platform domains in Lieju verification guidance', () => {
+  it('allows bare official-platform domains in Lieju verification guidance', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),
       citations: [],
@@ -817,17 +813,7 @@ describe('deterministic pre-publish risk scanner', () => {
       platformCode: 'lieju',
     });
 
-    expect(issues).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          location: 'blocks.verify-list',
-          rule_id: 'deterministic.lieju.external_url_forbidden',
-        }),
-      ]),
-    );
-    expect(
-      issues.filter((issue) => issue.rule_id === 'deterministic.lieju.external_url_forbidden'),
-    ).toHaveLength(1);
+    expect(issues).toEqual([]);
   });
 
   it('blocks a Lieju promotional term before publishing even in a quoted warning', () => {

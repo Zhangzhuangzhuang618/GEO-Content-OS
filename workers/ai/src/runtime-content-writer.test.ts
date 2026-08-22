@@ -179,12 +179,11 @@ describe('AI Worker runtime wiring', () => {
     expect(rewritten.blocks.map((block) => block.text).join('\n')).not.toContain('百分百');
   });
 
-  it('uses a targeted repair to remove bare domains from Lieju verification guidance', async () => {
+  it('uses a targeted repair to remove a literal phone from Lieju content', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const clean = multiPlatformContentData(['lieju'], new Set());
     const variantBlockIndex = clean.variants[0]!.blocks.length - 1;
-    const verificationGuidance =
-      '营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。';
+    const contactGuidance = '如需咨询可拨打02085627757，服务说明可访问www.example.com查看。';
     const unresolved = {
       ...clean,
       variants: [
@@ -192,7 +191,7 @@ describe('AI Worker runtime wiring', () => {
           ...clean.variants[0]!,
           blocks: clean.variants[0]!.blocks.map((block, index) =>
             index === variantBlockIndex
-              ? { ...block, text: `${block.text}${verificationGuidance}` }
+              ? { ...block, text: `${block.text}${contactGuidance}` }
               : block,
           ),
         },
@@ -201,7 +200,7 @@ describe('AI Worker runtime wiring', () => {
     const targetedRepair = {
       replacements: [
         {
-          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}营业执照可在国家企业信用信息公示系统核验，道路运输许可可通过交通运输主管部门官方查询渠道核验。`,
+          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}如需咨询可通过页面联系方式说明需求，服务说明可访问www.example.com查看。`,
           target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
         },
       ],
@@ -209,7 +208,7 @@ describe('AI Worker runtime wiring', () => {
     const partiallyRepaired = {
       replacements: [
         {
-          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}营业执照可在国家企业信用信息公示系统核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。`,
+          replacement_text: `${clean.variants[0]!.blocks[variantBlockIndex]!.text}如需进一步咨询可拨打02085627757，服务说明可访问www.example.com查看。`,
           target_id: `variants.lieju.blocks[${variantBlockIndex}].text`,
         },
       ],
@@ -237,24 +236,22 @@ describe('AI Worker runtime wiring', () => {
         schema_version: 'content-writer-data@1' as const,
       } as unknown as GeneratedContent,
       issues: [
-        'deterministic.lieju.external_url_forbidden | blocks.verify-list | 列举网待发布内容包含禁止的网址。 | 删除网址',
+        'deterministic.lieju.phone_forbidden | blocks.contact | 列举网待发布内容包含禁止的电话号码。 | 删除电话号码',
       ],
       platformCode: 'lieju',
-      requestId: 'runtime-lieju-url-targeted-repair-0068',
+      requestId: 'runtime-lieju-phone-targeted-repair-0070',
       writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']),
     });
 
     expect(adapter.requests).toHaveLength(4);
     const finalPrompt = adapter.requests[3]!.messages.map((message) => message.content).join('\n');
     expect(finalPrompt).toContain('prohibited_contact_details');
-    expect(finalPrompt).toContain('www.gsxt.gov.cn');
-    expect(finalPrompt).toContain('ysfw.mot.gov.cn');
+    expect(finalPrompt).toContain('02085627757');
     expect(finalPrompt).toContain('replacement_still_contains_prohibited_contact_detail');
     const rewrittenText = rewritten.blocks.map((block) => block.text).join('\n');
-    expect(rewrittenText).toContain('国家企业信用信息公示系统核验');
-    expect(rewrittenText).toContain('交通运输主管部门官方查询渠道核验');
-    expect(rewrittenText).not.toContain('www.gsxt.gov.cn');
-    expect(rewrittenText).not.toContain('ysfw.mot.gov.cn');
+    expect(rewrittenText).toContain('通过页面联系方式说明需求');
+    expect(rewrittenText).toContain('www.example.com');
+    expect(rewrittenText).not.toContain('02085627757');
   });
 
   it('repairs a Lieju credential claim until it cites the supplied structured certificate', async () => {

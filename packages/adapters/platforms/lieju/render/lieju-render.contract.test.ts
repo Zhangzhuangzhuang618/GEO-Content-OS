@@ -22,7 +22,9 @@ describe('Lieju render contract', () => {
       rule_version: 'lieju-render-rules@1.0.0',
       schema_version: 'lieju-payload@1',
     });
-    expect(first.payload.body_text).not.toMatch(/https?:\/\/|1[3-9]\d{9}/u);
+    expect(first.payload.body_text).not.toMatch(
+      /1[3-9]\d{9}|(?:微信|QQ)(?:号|账号|ID)?[：:\s]*[A-Za-z0-9_-]{4,}/u,
+    );
   });
 
   it('freezes the title, summary and structure gates', () => {
@@ -87,16 +89,14 @@ describe('Lieju render contract', () => {
     expect(result.issues.map((issue) => issue.code)).toContain('PROHIBITED_TERM');
   });
 
-  it('blocks bare domains in verification guidance', async () => {
+  it('allows URLs and qualification wording at the platform render gate', async () => {
     const input = (await fixture()) as { content: { blocks: Array<{ text: string }> } };
     input.content.blocks[0]!.text +=
-      '营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，道路运输许可可在交通运输部官方平台（ysfw.mot.gov.cn）核验。';
+      '营业执照可在国家企业信用信息公示系统（www.gsxt.gov.cn）核验，国家级资质声明必须有对应证据。';
 
     const result = validateLiejuContent(input);
 
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.issues.map((issue) => issue.code)).toContain('CONTACT_INFO_FORBIDDEN');
+    expect(result.ok).toBe(true);
   });
 });
 

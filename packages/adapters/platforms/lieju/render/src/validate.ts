@@ -41,7 +41,9 @@ export function validateLiejuContent(input: unknown): LiejuValidationResult {
   }
   const publishText = `${value.content.title}\n${bodyText}`;
   if (findLiejuForbiddenContactDetails(publishText).length > 0) {
-    issues.push(blocker('CONTACT_INFO_FORBIDDEN', '标题和描述不得包含联系方式或网址。', 'content'));
+    issues.push(
+      blocker('CONTACT_INFO_FORBIDDEN', '标题和描述不得包含电话、微信或 QQ 账号。', 'content'),
+    );
   }
   if (findLiejuProhibitedPromotionalTerms(publishText).length > 0) {
     issues.push(blocker('PROHIBITED_TERM', '内容包含列举网禁止或高风险宣传词。', 'content'));

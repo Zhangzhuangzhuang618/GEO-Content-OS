@@ -143,18 +143,14 @@ function assessContent(
       const labels = [
         ...new Set(
           prohibitedContactDetails.map((finding) =>
-            finding.kind === 'external_url'
-              ? '网址'
-              : finding.kind === 'phone'
-                ? '电话号码'
-                : '微信或 QQ 账号',
+            finding.kind === 'phone' ? '电话号码' : '微信或 QQ 账号',
           ),
         ),
       ];
       issues.push(
-        `lieju:包含发布层禁止的具体联系方式或网址（${labels.join(
+        `lieju:包含发布层禁止的具体联系方式（${labels.join(
           '、',
-        )}），必须删除具体值；核验说明只保留官方渠道名称和核验方法`,
+        )}），必须删除具体值；网址不属于此联系方式禁令`,
       );
     }
     const prohibitedTerms = findLiejuProhibitedPromotionalTerms(`${content.title}\n${text}`);

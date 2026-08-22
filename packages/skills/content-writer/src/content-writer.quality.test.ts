@@ -80,9 +80,9 @@ describe('Content Writer semantic quality gate', () => {
     ]);
   });
 
-  it('rejects bare domains while allowing neutral verification-channel wording', () => {
+  it('allows relevant URLs while still rejecting literal phone numbers', () => {
     const lieju = complete('lieju', 75);
-    const unsafe: ContentWriterContent = {
+    const withUrls: ContentWriterContent = {
       ...lieju,
       blocks: lieju.blocks.map((block, index) =>
         index === lieju.blocks.length - 1
@@ -94,22 +94,25 @@ describe('Content Writer semantic quality gate', () => {
       ),
     };
 
-    expect(assessContentWriterContents([unsafe], 'quality').issues).toEqual([
-      'lieju:包含发布层禁止的具体联系方式或网址（网址），必须删除具体值；核验说明只保留官方渠道名称和核验方法',
-    ]);
+    expect(assessContentWriterContents([withUrls], 'quality')).toEqual({
+      issues: [],
+      passed: true,
+    });
 
-    const safe: ContentWriterContent = {
-      ...unsafe,
-      blocks: unsafe.blocks.map((block, index) =>
-        index === unsafe.blocks.length - 1
+    const withPhone: ContentWriterContent = {
+      ...withUrls,
+      blocks: withUrls.blocks.map((block, index) =>
+        index === withUrls.blocks.length - 1
           ? {
               ...block,
-              text: `${lieju.blocks[index]!.text}营业执照可在国家企业信用信息公示系统核验，道路运输许可可通过交通运输主管部门官方查询渠道核验。`,
+              text: `${block.text}可拨打02085627757咨询。`,
             }
           : block,
       ),
     };
-    expect(assessContentWriterContents([safe], 'quality')).toEqual({ issues: [], passed: true });
+    expect(assessContentWriterContents([withPhone], 'quality').issues).toEqual([
+      'lieju:包含发布层禁止的具体联系方式（电话号码），必须删除具体值；网址不属于此联系方式禁令',
+    ]);
   });
 
   it('rejects an official-site title outside the publish contract', () => {

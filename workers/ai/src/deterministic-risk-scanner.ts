@@ -264,12 +264,7 @@ function addLiejuPlatformIssues(issues: QualityIssue[], input: DeterministicRisk
       findLiejuForbiddenContactDetails(section.text).map((finding) => finding.kind),
     );
     for (const findingKind of findingKinds) {
-      const label =
-        findingKind === 'external_url'
-          ? '网址'
-          : findingKind === 'phone'
-            ? '电话号码'
-            : '微信或 QQ 账号';
+      const label = findingKind === 'phone' ? '电话号码' : '微信或 QQ 账号';
       issues.push(
         issue(
           `deterministic.lieju.${findingKind}_forbidden`,

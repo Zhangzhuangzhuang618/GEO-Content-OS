@@ -315,7 +315,7 @@ ${inputSemanticPolicy(input)}
 9. If the validation error contains a Lieju contact rejection reason, correct it exactly:
    - category_must_be_compliance or severity_must_be_block: use compliance/BLOCK only for a real prohibited contact detail.
    - location_is_required or location_does_not_resolve_to_content: omit the finding unless an exact valid content location exists.
-   - prohibited_contact_detail_is_not_present_at_location: omit the finding unless that location contains a literal phone number, URL, WeChat ID, or QQ ID. “通过页面联系方式咨询” is allowed.
+   - prohibited_contact_detail_is_not_present_at_location: omit the finding unless that location contains a literal phone number, WeChat ID, or QQ ID. URLs are allowed for Lieju, and “通过页面联系方式咨询” is also allowed.
 10. If the validation error contains a high-risk fact rejection reason, use only the server-supplied eligible claim locations in invariant 7; otherwise omit that finding.
 Mandatory server-required issues: ${JSON.stringify(mandatoryIssues)}.
 Return one complete quality data JSON object only.`,
@@ -354,8 +354,8 @@ function liejuContactPolicy(
       })
     : [];
   return contactLocations.length > 0
-    ? `For Lieju, contact_in_content_forbidden means literal phone numbers, URLs, WeChat IDs, or QQ IDs in the title or body. A neutral phrase such as “通过页面联系方式咨询” contains no contact detail and is allowed. Contact findings are allowed only at these exact locations: ${JSON.stringify(contactLocations)}.`
-    : 'For Lieju, no exact content location contains a literal phone number, URL, WeChat ID, or QQ ID. Do not emit contact_in_content_forbidden. A neutral phrase such as “通过页面联系方式咨询” is allowed.';
+    ? `For Lieju, contact_in_content_forbidden means literal phone numbers, WeChat IDs, or QQ IDs in the title or body. URLs are allowed. A neutral phrase such as “通过页面联系方式咨询” contains no prohibited contact detail and is allowed. Contact findings are allowed only at these exact locations: ${JSON.stringify(contactLocations)}.`
+    : 'For Lieju, no exact content location contains a literal phone number, WeChat ID, or QQ ID. Do not emit contact_in_content_forbidden. URLs and a neutral phrase such as “通过页面联系方式咨询” are allowed.';
 }
 
 function textAtContentLocation(

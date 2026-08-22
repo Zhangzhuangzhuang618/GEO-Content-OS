@@ -240,7 +240,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       </p>
       {account.platform_code === 'lieju' ? (
         <p className="mt-2 rounded-lg bg-brand-50 px-3 py-2 text-sm text-ink-700">
-          列举网允许真实、具体的服务推广和自然咨询引导；联系方式、极限词、排名、虚假价格、资质、案例与承诺仍会被阻断。普通会员遇到验证码时转人工。
+          列举网允许相关网址、本企业品牌事实、可核验资质和有边界的服务推广；电话、微信、QQ、极限词、排名、虚假或无证据声明仍会被阻断。普通会员遇到验证码时转人工。
         </p>
       ) : null}
       <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={save}>

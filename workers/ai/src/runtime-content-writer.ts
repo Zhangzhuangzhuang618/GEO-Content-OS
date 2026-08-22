@@ -324,8 +324,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
         `这是 ${input.platformCode} 独立内容的质量重写：保留原选题，只修复当前质量报告列出的问题，不得增加输入材料之外的事实。`,
         ...(input.platformCode === 'lieju'
           ? [
-              '标题保持 5-30 字，并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许介绍本企业服务并使用“通过页面联系方式咨询”等中性引导，但不得在正文写具体电话或手机号、微信/QQ 账号或网址，不得添加极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。',
-              '列举网发布层按字面拦截最好、最佳、首选、权威、国家级、任何含“百分百”的表达、100%保证和明确排名宣传。即使这些词出现在否定、引用或举例中，也必须删除原词并改写为不含该词的中性表达。',
+              '标题保持 5-30 字，并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许介绍本企业服务、使用“通过页面联系方式咨询”等中性引导，以及保留与正文相关的外部网址和官方核验链接；品牌、事实和资质表述不是列举网平台默认禁区，但必须与当前企业资料及引用证据一致。不得在正文写具体电话或手机号、微信/QQ 账号，不得添加极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。',
+              '列举网发布层按字面拦截最好、最佳、首选、任何含“百分百”的表达、100%保证和明确排名宣传。即使这些词出现在否定、引用或举例中，也必须删除原词并改写为不含该词的中性表达。',
             ]
           : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),
         ...input.issues,
@@ -1357,7 +1357,7 @@ function onlyTargetedTextRepairIssues(
   for (const issue of issues) {
     if (
       issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照') ||
-      issue.includes('包含发布层禁止的具体联系方式或网址') ||
+      issue.includes('包含发布层禁止的具体联系方式') ||
       issue.includes('包含发布层禁止的宣传词')
     ) {
       hasRepairableIssue = true;
@@ -1441,13 +1441,13 @@ function targetedTextRepairMessages(
 Published content policy:
 ${prompt.systemPrompt}
 
-This is a bounded targeted repair stage. Rewrite only the supplied text targets. Do not add facts, credentials, citations, contact details, guarantees, rankings, or commentary.`,
+This is a bounded targeted repair stage. Rewrite only the supplied text targets. Do not add facts, credentials, citations, phone numbers, external account IDs, guarantees, rankings, or commentary.`,
       role: 'system',
     },
     {
       content: `${prompt.taskTemplate}
 
-For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Remove every listed literal contact detail or URL. When a URL appears in verification guidance, preserve the official channel name and verification action but remove the domain. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
+For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Remove every listed literal phone number, WeChat ID, or QQ ID. Do not remove a URL unless another listed issue independently requires changing it. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.
 ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify(rejectionReason)}. Correct that exact problem.` : ''}`,

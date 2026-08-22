@@ -160,7 +160,7 @@ describe('RuntimeQualityChecker', () => {
     expect(adapter.requests).toHaveLength(2);
   });
 
-  it('binds Lieju title, contact, brand, and high-risk semantics before the first check', async () => {
+  it('binds Lieju title, URL allowance, brand, and high-risk semantics before the first check', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const qualityInput = {
       ...clean.input,
@@ -217,10 +217,10 @@ describe('RuntimeQualityChecker', () => {
 
     const firstPrompt = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
     expect(firstPrompt).toContain('within the hard maximum 30');
-    expect(firstPrompt).toContain('Contact findings are allowed only at these exact locations');
-    expect(firstPrompt).toContain('blocks.verify.text');
+    expect(firstPrompt).toContain('URLs and a neutral phrase');
+    expect(firstPrompt).toContain('are allowed');
     expect(firstPrompt).toContain(
-      '“通过页面联系方式咨询” contains no contact detail and is allowed',
+      'no exact content location contains a literal phone number, WeChat ID, or QQ ID',
     );
     expect(firstPrompt).toContain('Valid immutable content locations are limited to');
     expect(firstPrompt).toContain('Never use brand_policy.*');

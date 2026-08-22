@@ -358,7 +358,7 @@ describe('QualityCheckerSkill', () => {
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
   });
 
-  it('accepts a Lieju contact block that points to a bare domain', async () => {
+  it('recovers a Lieju contact block that only points to an allowed bare domain', async () => {
     const input = qualityInputWithTitleRule('广州搬家服务指南', 30, [
       {
         block_key: 'verify',
@@ -386,7 +386,7 @@ describe('QualityCheckerSkill', () => {
         recordUsage: () => undefined,
         recoverDeterministicFalsePositiveIssues: true,
       }),
-    ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
+    ).resolves.toMatchObject({ output: { data: { decision: 'pass', issues: [] } } });
   });
 
   it('does not recover a malformed Lieju contact finding', async () => {
