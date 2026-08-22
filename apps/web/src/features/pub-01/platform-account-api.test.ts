@@ -58,6 +58,34 @@ describe('Baijiahao browser login API', () => {
       }),
     );
   });
+
+  it('retains a temporary browser gateway outage as HTTP 503', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: {
+                code: 'BROWSER_GATEWAY_UNAVAILABLE',
+                details: { reason: 'BROWSER_GATEWAY_UNAVAILABLE', upstream_status: 503 },
+                message: '托管浏览器服务暂时不可用',
+                request_id: '00000000-0000-4000-8000-000000000146',
+              },
+            }),
+            { status: 503 },
+          ),
+      ),
+    );
+
+    await expect(startBaijiahaoBrowserLogin(ACCOUNT, 'csrf-token')).rejects.toEqual(
+      expect.objectContaining<Partial<PlatformAccountRequestError>>({
+        code: 'BROWSER_GATEWAY_UNAVAILABLE',
+        details: { reason: 'BROWSER_GATEWAY_UNAVAILABLE', upstream_status: 503 },
+        status: 503,
+      }),
+    );
+  });
 });
 
 describe('Lieju account updates', () => {

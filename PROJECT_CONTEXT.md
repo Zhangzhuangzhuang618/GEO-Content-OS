@@ -431,6 +431,12 @@ HOTFIX-20260822-02 修复百家号托管浏览器长期复用崩溃页面、导�
 还必须实际进入可验证的图文编辑器。扫码中的会话不会被旧任务状态查询打断。无数据库迁移、公开 API、
 Web、质量门槛、发布状态机或未知态规则变更；旧失败任务不会自动重投，部署后仍需人工确认并按原路径恢复。
 
+HOTFIX-20260822-03 修复百家号扫码登录偶发 409/500：Worker 不再使用会等待页面字体和元素稳定的
+Locator 截图读取二维码，而是校验二维码资源并直接取得 PNG，同源非 PNG 仿真资源才使用画布转换；首次
+遇到 Playwright 页面或上下文崩溃时先回收账号上下文并自动重试一次。浏览器网关最终仍不可用时，API
+新增公开 `BROWSER_GATEWAY_UNAVAILABLE`（HTTP 503）错误码，不再误报状态冲突，Web 显示可重试提示。
+无数据库迁移，不改变登录凭据存储、质量门槛、发布状态机、未知态防重复或旧任务状态。
+
 真实 provider_model_id、能力和费率由配置/model_rate_cards 提供；文档中的 flash/pro 是逻辑 model_key。
 
 ## 7. API 约定
@@ -611,6 +617,7 @@ Base `/api/v1`；JSON；UTC；cents；cursor 分页；Zod DTO；OpenAPI 代码�
 | `SCHEMA_VALIDATION_FAILED` | 422 | DTO 或 Skill JSON Schema 校验失败 |
 | `ADAPTER_CAPABILITY_UNAVAILABLE` | 422 | 账号或平台不支持所请求能力 |
 | `ADAPTER_AUTH_EXPIRED` | 424 | 平台凭证失效 |
+| `BROWSER_GATEWAY_UNAVAILABLE` | 503 | 托管浏览器服务暂时不可用 |
 | `RATE_LIMITED` | 429 | 限流；返回 Retry-After |
 | `AI_PROVIDER_TIMEOUT` | 504 | 模型调用超时 |
 

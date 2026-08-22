@@ -619,6 +619,32 @@ describe('publishing API mock E2E', () => {
       },
     });
   });
+
+  it('returns 503 when the Baijiahao browser worker is temporarily unavailable', async () => {
+    baijiahaoAutomation.startLogin.mockRejectedValueOnce(
+      new PlatformAccountError(
+        'PLATFORM_ACCOUNT_STATE_INVALID',
+        'Baijiahao browser gateway rejected the operation',
+        { reason: 'BROWSER_GATEWAY_UNAVAILABLE', upstream_status: 503 },
+      ),
+    );
+
+    const response = await application.inject({
+      headers: { 'if-match': '"4"' },
+      method: 'POST',
+      url: `/platform-accounts/${ACCOUNT_ID}/baijiahao-browser-session/login`,
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({
+      error: {
+        code: 'BROWSER_GATEWAY_UNAVAILABLE',
+        details: { reason: 'BROWSER_GATEWAY_UNAVAILABLE', upstream_status: 503 },
+        message: '托管浏览器服务暂时不可用',
+        request_id: REQUEST_ID,
+      },
+    });
+  });
 });
 
 class MockPublishingGuard implements CanActivate {

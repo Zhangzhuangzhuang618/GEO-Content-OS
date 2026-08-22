@@ -12,6 +12,7 @@ export const ERROR_CODES = Object.freeze([
   'SCHEMA_VALIDATION_FAILED',
   'ADAPTER_CAPABILITY_UNAVAILABLE',
   'ADAPTER_AUTH_EXPIRED',
+  'BROWSER_GATEWAY_UNAVAILABLE',
   'RATE_LIMITED',
   'AI_PROVIDER_TIMEOUT',
 ] as const);
@@ -38,6 +39,7 @@ export const ERROR_DEFINITIONS = {
     message: '账号或平台不支持所请求能力',
   },
   ADAPTER_AUTH_EXPIRED: { httpStatus: 424, message: '平台凭证失效' },
+  BROWSER_GATEWAY_UNAVAILABLE: { httpStatus: 503, message: '托管浏览器服务暂时不可用' },
   RATE_LIMITED: { httpStatus: 429, message: '限流；返回 Retry-After' },
   AI_PROVIDER_TIMEOUT: { httpStatus: 504, message: '模型调用超时' },
 } as const satisfies Record<ErrorCode, { httpStatus: number; message: string }>;

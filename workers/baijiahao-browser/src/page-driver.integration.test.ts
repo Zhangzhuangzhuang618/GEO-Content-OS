@@ -73,6 +73,7 @@ describe('Baijiahao local browser simulator', () => {
     try {
       const login = await driver.startLogin(accountId, profilePath);
       expect(login.qrPng.byteLength).toBeGreaterThan(0);
+      expect(Buffer.from(login.qrPng.subarray(0, 8)).toString('hex')).toBe('89504e470d0a1a0a');
       expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
       const storageState = await driver.exportStorageState(accountId);
       await driver.close();

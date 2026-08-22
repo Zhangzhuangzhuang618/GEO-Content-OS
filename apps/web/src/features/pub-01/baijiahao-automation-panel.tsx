@@ -21,6 +21,7 @@ import type {
   PlatformAccount,
 } from './platform-account.schema';
 import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
+import { baijiahaoLoginErrorMessage } from './baijiahao-login-error';
 
 export function BaijiahaoAutomationPanel({
   account,
@@ -130,7 +131,7 @@ export function BaijiahaoAutomationPanel({
           : '请使用百度 App 扫码。二维码仅在本页显示，不会写入日志或数据库。',
       );
     } catch (error) {
-      setMessage(loginErrorMessage(error));
+      setMessage(baijiahaoLoginErrorMessage(error));
     } finally {
       loginInFlight.current = false;
       setLoginPending(false);
@@ -685,29 +686,6 @@ function sessionLabel(status: BaijiahaoBrowserSession['status']) {
       reauth: '登录已失效',
     } as const
   )[status];
-}
-
-function loginErrorMessage(error: unknown): string {
-  if (!(error instanceof PlatformAccountRequestError)) {
-    return '无法启动扫码登录。请检查浏览器 Worker 和内部网关配置。';
-  }
-  if (error.code === 'VERSION_CONFLICT') {
-    return '账号信息已经变化，请关闭百家号自动化面板并重新打开后再试。';
-  }
-  const reason = error.details?.['reason'];
-  if (reason === 'CAPTCHA_REQUIRED') {
-    return '百度要求额外人工验证，自动化已停止。请在受控浏览器中完成人工处理后重试。';
-  }
-  if (reason === 'PAGE_SIGNATURE_CHANGED') {
-    return '百度登录页面结构已经变化，当前自动化已安全停止，需要更新页面适配。';
-  }
-  if (reason === 'GATEWAY_AUTH_FAILED') {
-    return 'API 与浏览器 Worker 的内部令牌不一致，请检查部署环境配置。';
-  }
-  if (reason === 'CONFLICT') {
-    return '浏览器登录会话发生并发变化，请等待当前操作结束后重试。';
-  }
-  return '托管浏览器无法完成登录启动，请检查浏览器 Worker 日志中的安全错误码。';
 }
 
 function readCookie(name: string): string | null {

@@ -66,7 +66,10 @@ export class BaijiahaoBrowserService {
       const session = await this.store.getOrCreateSession(accountId);
       let handedOffToLoginWaiter = false;
       try {
-        const result = await this.driver.startLogin(accountId, this.profilePath(session));
+        const result = await this.startLoginWithRuntimeRecovery(
+          accountId,
+          this.profilePath(session),
+        );
         if (result.qrPng.byteLength === 0) {
           if (session.status === 'attention_required') {
             const publishReady = await this.driver.verifyPublishReady(
@@ -590,6 +593,19 @@ export class BaijiahaoBrowserService {
     }
   }
 
+  private async startLoginWithRuntimeRecovery(
+    accountId: string,
+    profilePath: string,
+  ): Promise<Awaited<ReturnType<BaijiahaoPageDriver['startLogin']>>> {
+    try {
+      return await this.driver.startLogin(accountId, profilePath);
+    } catch (error) {
+      if (!isRecoverableLoginRuntimeFailure(error)) throw error;
+      await this.releaseBrowserAccount(accountId);
+      return this.driver.startLogin(accountId, profilePath);
+    }
+  }
+
   private async persistAuthenticatedSession(session: BrowserSession): Promise<BrowserSession> {
     const encrypted = await this.credentials.encrypt(
       await this.driver.exportStorageState(session.accountId),
@@ -779,4 +795,10 @@ function redactBrowserError(value: string): string {
       /((?:api[_-]?key|credential|password|secret|session|storage[_-]?state|token)\s*[:=]\s*)[^&\s,;)]+/giu,
       '$1[REDACTED]',
     );
+}
+
+function isRecoverableLoginRuntimeFailure(error: unknown): boolean {
+  return /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
+    safeBrowserError(error),
+  );
 }

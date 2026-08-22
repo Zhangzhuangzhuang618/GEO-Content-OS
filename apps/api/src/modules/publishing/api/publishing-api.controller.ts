@@ -70,6 +70,7 @@ import { PublishingApiService, type PublishingApiScope } from './publishing-api.
 type PublishingErrorCode =
   | 'ADAPTER_AUTH_EXPIRED'
   | 'ADAPTER_CAPABILITY_UNAVAILABLE'
+  | 'BROWSER_GATEWAY_UNAVAILABLE'
   | 'IDEMPOTENCY_CONFLICT'
   | 'RESOURCE_NOT_FOUND'
   | 'SCHEMA_VALIDATION_FAILED'
@@ -1221,6 +1222,8 @@ async function sendPublishingError(
     return sendError(reply, requestId, 'STATE_TRANSITION_INVALID');
   }
   if (error instanceof PlatformAccountError) {
+    if (error.details?.['reason'] === 'BROWSER_GATEWAY_UNAVAILABLE')
+      return sendError(reply, requestId, 'BROWSER_GATEWAY_UNAVAILABLE', error.details);
     if (error.code === 'PLATFORM_ACCOUNT_NOT_FOUND')
       return sendError(reply, requestId, 'RESOURCE_NOT_FOUND');
     if (error.code === 'PLATFORM_ACCOUNT_VERSION_CONFLICT')

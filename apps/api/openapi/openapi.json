@@ -249,6 +249,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -593,6 +594,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -1121,6 +1123,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -1643,6 +1646,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -2435,6 +2439,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -2733,6 +2738,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -3063,6 +3069,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -3237,6 +3244,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -3482,6 +3490,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -3770,6 +3779,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -4012,6 +4022,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -4296,6 +4307,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -4593,6 +4605,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -4765,6 +4778,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -4838,6 +4852,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -4935,6 +4950,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -5028,6 +5044,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -5117,6 +5134,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -5267,6 +5285,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -5444,6 +5463,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -5601,6 +5621,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -5857,6 +5878,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -6144,6 +6166,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -6369,6 +6392,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -6619,6 +6643,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -6863,6 +6888,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -7219,6 +7245,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -7618,6 +7645,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -7899,6 +7927,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -8293,6 +8322,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -8704,6 +8734,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -8941,6 +8972,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -9671,6 +9703,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -9904,6 +9937,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -10137,6 +10171,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -10454,6 +10489,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -11221,6 +11257,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -11683,6 +11720,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -12837,6 +12875,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -14102,6 +14141,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -14206,6 +14246,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -14417,6 +14458,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -15590,6 +15632,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -15894,6 +15937,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -16196,6 +16240,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -16547,6 +16592,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -16793,6 +16839,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -17176,6 +17223,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -17484,6 +17532,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -17751,6 +17800,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -18018,6 +18068,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -18304,6 +18355,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -18548,6 +18600,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -18773,6 +18826,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -19011,6 +19065,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -19102,6 +19157,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -19276,6 +19332,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -19466,6 +19523,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -19643,6 +19701,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -19895,6 +19954,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -20248,6 +20308,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -20695,6 +20756,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -21060,6 +21122,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -21366,6 +21429,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -21651,6 +21715,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -22059,6 +22124,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -22266,6 +22332,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -22523,6 +22590,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -22773,6 +22841,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -22989,6 +23058,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -23192,6 +23262,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -23393,6 +23464,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -23578,6 +23650,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -23782,6 +23855,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -24061,6 +24135,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -24290,6 +24365,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -24550,6 +24626,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -24774,6 +24851,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -25024,6 +25102,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -25599,6 +25678,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -26225,6 +26305,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -26828,6 +26909,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -27014,6 +27096,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -27218,6 +27301,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -27422,6 +27506,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -27819,6 +27904,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -28265,6 +28351,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -28694,6 +28781,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -29123,6 +29211,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -29360,6 +29449,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -29546,6 +29636,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -29778,6 +29869,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -30010,6 +30102,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -30310,6 +30403,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -30636,6 +30730,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -30968,6 +31063,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -31300,6 +31396,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -31542,6 +31639,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -31766,6 +31864,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -31952,6 +32051,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -32216,6 +32316,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -32480,6 +32581,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -32643,6 +32745,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -32913,6 +33016,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -33164,6 +33268,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -33395,6 +33500,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -33620,6 +33726,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -33914,6 +34021,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -34204,6 +34312,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -34457,6 +34566,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -34704,6 +34814,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -35032,6 +35143,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -35301,6 +35413,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -35567,6 +35680,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -35789,6 +35903,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -36011,6 +36126,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -36246,6 +36362,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -36485,6 +36602,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -36718,6 +36836,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -36914,6 +37033,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -37158,6 +37278,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -37502,6 +37623,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -37771,6 +37893,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -38391,6 +38514,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -38593,6 +38717,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -38858,6 +38983,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -39009,6 +39135,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -39166,6 +39293,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -39432,6 +39560,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -39725,6 +39854,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -40001,6 +40131,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -40358,6 +40489,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -41036,6 +41168,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -41198,6 +41331,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -41919,6 +42053,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -42115,6 +42250,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -42836,6 +42972,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -43114,6 +43251,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -43404,6 +43542,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -43815,6 +43954,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -43919,6 +44059,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -44586,6 +44727,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -44826,6 +44968,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -45041,6 +45184,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -45192,6 +45336,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -45370,6 +45515,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -45571,6 +45717,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -45768,6 +45915,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -46155,6 +46303,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -46517,6 +46666,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -46841,6 +46991,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -47171,6 +47322,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -47451,6 +47603,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -47732,6 +47885,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -47961,6 +48115,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -48218,6 +48373,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -48520,6 +48676,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -48751,6 +48908,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -49067,6 +49225,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]
@@ -49317,6 +49476,7 @@
                             "SCHEMA_VALIDATION_FAILED",
                             "ADAPTER_CAPABILITY_UNAVAILABLE",
                             "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
                             "AI_PROVIDER_TIMEOUT"
                           ]

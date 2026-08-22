@@ -60,6 +60,60 @@ describe('Baijiahao browser service', () => {
     });
   });
 
+  it('releases a crashed login context and retries once with a fresh browser context', async () => {
+    const session = browserSession('login_required');
+    const authenticated = {
+      ...session,
+      authenticatedAt: new Date('2026-08-22T10:00:00.000Z'),
+      lastVerifiedAt: new Date('2026-08-22T10:00:00.000Z'),
+      status: 'authenticated' as const,
+      storageStateCiphertext: 'encrypted-state',
+      storageStateKeyVersion: 'test-v1',
+      version: 2,
+    };
+    const markSession = vi.fn(async () => authenticated);
+    const markAccountActive = vi.fn(async () => undefined);
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      markAccountActive,
+      markSession,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const release = vi.fn(async () => undefined);
+    const startLogin = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('page.goto: Page crashed'))
+      .mockResolvedValueOnce({
+        expiresAt: new Date('2026-08-22T10:02:00.000Z'),
+        qrPng: Buffer.alloc(0),
+      });
+    const driver = {
+      exportStorageState: vi.fn(async () => '{}'),
+      release,
+      startLogin,
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'encrypted-state',
+        credentialKeyVersion: 'test-v1',
+      })),
+    } as unknown as CredentialEnvelopeService;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.startLogin(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'authenticated',
+      version: 2,
+    });
+    expect(startLogin).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(markAccountActive).toHaveBeenCalledWith(ACCOUNT_ID, TENANT_ID);
+  });
+
   it('does not report recovery from attention until the article editor is publish-ready', async () => {
     const session = browserSession('attention_required');
     const markSession = vi.fn(async () => ({ ...session, version: 2 }));

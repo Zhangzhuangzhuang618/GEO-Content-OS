@@ -109,12 +109,14 @@ describe('error contracts', () => {
       'SCHEMA_VALIDATION_FAILED',
       'ADAPTER_CAPABILITY_UNAVAILABLE',
       'ADAPTER_AUTH_EXPIRED',
+      'BROWSER_GATEWAY_UNAVAILABLE',
       'RATE_LIMITED',
       'AI_PROVIDER_TIMEOUT',
     ]);
     expect(Object.keys(ERROR_DEFINITIONS)).toEqual(ERROR_CODES);
     expect(ERROR_DEFINITIONS.RESOURCE_NOT_FOUND.httpStatus).toBe(404);
     expect(ERROR_DEFINITIONS.PERMISSION_DENIED.httpStatus).toBe(403);
+    expect(ERROR_DEFINITIONS.BROWSER_GATEWAY_UNAVAILABLE.httpStatus).toBe(503);
     expect(ERROR_DEFINITIONS.AI_PROVIDER_TIMEOUT.httpStatus).toBe(504);
     expect(isErrorCode('VERSION_CONFLICT')).toBe(true);
     expect(isErrorCode('UNKNOWN')).toBe(false);

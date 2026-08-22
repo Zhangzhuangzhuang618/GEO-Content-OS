@@ -151,7 +151,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
         'Baijiahao login QR code did not finish loading',
       );
     }
-    return Object.freeze({ expiresAt, qrPng: await qr.screenshot({ type: 'png' }) });
+    return Object.freeze({ expiresAt, qrPng: await this.captureLoginQrPng(page, qr) });
   }
 
   public async waitForAuthentication(accountId: string, expiresAt: Date): Promise<boolean> {
@@ -449,6 +449,63 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       await context.close().catch(() => undefined);
       throw error;
     }
+  }
+
+  private async captureLoginQrPng(page: Page, qr: Locator): Promise<Buffer> {
+    const source = await qr.getAttribute('src').catch(() => null);
+    if (source) {
+      try {
+        const response = await page.request.get(new URL(source, page.url()).toString(), {
+          timeout: this.config.navigationTimeoutMs,
+        });
+        try {
+          const body = await response.body();
+          if (response.ok() && isPng(body)) return body;
+        } finally {
+          await response.dispose();
+        }
+      } catch {
+        // Same-origin SVG simulators and cross-origin restrictions use the canvas fallback below.
+      }
+    }
+
+    try {
+      const dataUrl = await qr.evaluate((element) => {
+        type BrowserCanvas = {
+          height: number;
+          width: number;
+          getContext(kind: '2d'): { drawImage(image: unknown, x: number, y: number): void } | null;
+          toDataURL(type: 'image/png'): string;
+        };
+        const image = element as unknown as {
+          readonly naturalHeight?: number;
+          readonly naturalWidth?: number;
+        };
+        if (!image.naturalWidth || !image.naturalHeight) return null;
+        const browserDocument = Reflect.get(globalThis, 'document') as {
+          createElement(name: 'canvas'): BrowserCanvas;
+        };
+        const canvas = browserDocument.createElement('canvas');
+        canvas.width = image.naturalWidth;
+        canvas.height = image.naturalHeight;
+        const context = canvas.getContext('2d');
+        if (!context) return null;
+        context.drawImage(element, 0, 0);
+        return canvas.toDataURL('image/png');
+      });
+      const prefix = 'data:image/png;base64,';
+      if (typeof dataUrl === 'string' && dataUrl.startsWith(prefix)) {
+        const png = Buffer.from(dataUrl.slice(prefix.length), 'base64');
+        if (isPng(png)) return png;
+      }
+    } catch {
+      // The QR image may be cross-origin; the direct PNG response path above handles production.
+    }
+
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Baijiahao login QR code could not be captured',
+    );
   }
 
   private async rejectCaptcha(page: Page): Promise<void> {
@@ -1187,6 +1244,11 @@ function firstString(
 
 function normalizeText(value: string): string {
   return value.normalize('NFKC').replace(/\s+/gu, ' ').trim();
+}
+
+function isPng(value: Uint8Array): boolean {
+  const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  return signature.every((byte, index) => value[index] === byte);
 }
 
 function remoteStatus(value: string): RemotePublication['status'] {
