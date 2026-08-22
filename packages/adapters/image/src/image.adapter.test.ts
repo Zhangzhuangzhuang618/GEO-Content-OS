@@ -148,8 +148,13 @@ describe('image adapter', () => {
         image?: string;
         messages?: { content?: string }[];
         prompt?: string;
+        seed?: unknown;
+        steps?: number;
       };
-      if (!payload.prompt) {
+      if (payload.prompt) {
+        expect(payload.seed).toBeUndefined();
+        expect(payload.steps).toBe(4);
+      } else {
         expect(payload.messages?.[1]?.content).toContain('article_relevance is at least 80');
       }
       const result = payload.prompt

@@ -21,7 +21,6 @@ export class CloudflareWorkersAiImageAdapter implements ImageProvider {
       this.configuration.generationModel,
       {
         prompt: input.prompt,
-        seed: input.seed,
         steps: input.steps,
       },
       input.requestId,
