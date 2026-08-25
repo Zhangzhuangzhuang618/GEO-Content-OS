@@ -208,7 +208,10 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
         .locator(SELECTORS.smsCode)
         .fill('')
         .catch(() => undefined);
-      throw new PageDriverError('AUTH_REQUIRED', 'Sohu rejected the SMS verification code');
+      throw new PageDriverError(
+        'AUTH_REQUIRED',
+        'Sohu SMS login did not establish an authenticated editor session',
+      );
     }
     return Object.freeze({ expiresAt, qrPng: Buffer.alloc(0) });
   }
@@ -218,18 +221,13 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     if (!page) return false;
     const timeout = Math.max(1, expiresAt.getTime() - Date.now());
     const loginUrl = new URL(this.config.loginUrl);
-    const observed = await page
+    await page
       .waitForFunction(
         `(() => location.hostname !== ${JSON.stringify(loginUrl.hostname)} || location.pathname !== ${JSON.stringify(loginUrl.pathname)})()`,
         undefined,
         { timeout },
       )
-      .then(() => true)
-      .catch(() => false);
-    if (!observed) {
-      await this.rejectOAuthFailure(page);
-      return false;
-    }
+      .catch(() => undefined);
     await this.rejectOAuthFailure(page);
     await this.openEditor(page);
     await this.rejectCaptcha(page);

@@ -20,6 +20,7 @@ describe('Sohu local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
   let articlePermission = true;
+  let smsRedirect = true;
   let profileRoot = '';
   let server: ReturnType<typeof createServer>;
   let submitted: SubmittedPublication | null = null;
@@ -27,6 +28,7 @@ describe('Sohu local browser simulator', () => {
   beforeEach(async () => {
     duplicateRows = false;
     articlePermission = true;
+    smsRedirect = true;
     submitted = null;
     profileRoot = await mkdtemp(join(tmpdir(), 'geo-sohu-e2e-'));
     server = createServer((request, response) =>
@@ -36,6 +38,7 @@ describe('Sohu local browser simulator', () => {
         () => submitted,
         () => duplicateRows,
         () => articlePermission,
+        () => smsRedirect,
         (value) => {
           submitted = value;
         },
@@ -149,6 +152,41 @@ describe('Sohu local browser simulator', () => {
     }
   });
 
+  it('accepts an SMS login that establishes a session without redirecting', async () => {
+    smsRedirect = false;
+    const driver = new PlaywrightSohuPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000155';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      await driver.startLogin(accountId, profilePath, {
+        method: 'sms_prepare',
+        mobile: '13800138000',
+      });
+      await driver.startLogin(accountId, profilePath, {
+        accepted_terms: true,
+        image_captcha: 'ABCD',
+        method: 'sms_send',
+        mobile: '13800138000',
+      });
+      const verified = await driver.startLogin(accountId, profilePath, {
+        accepted_terms: true,
+        method: 'sms_verify',
+        mobile: '13800138000',
+        sms_code: '123456',
+      });
+      expect(verified.qrPng.byteLength).toBe(0);
+      expect(
+        await driver.verifyAuthenticated(
+          accountId,
+          profilePath,
+          await driver.exportStorageState(accountId),
+        ),
+      ).toBe(true);
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('stops when the content list contains multiple matching publications', async () => {
     const driver = new PlaywrightSohuPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000150';
@@ -238,6 +276,7 @@ function route(
   readSubmitted: () => SubmittedPublication | null,
   readDuplicateRows: () => boolean,
   readArticlePermission: () => boolean,
+  readSmsRedirect: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
   if (request.url === '/qr.svg') {
@@ -256,6 +295,9 @@ function route(
   }
   if (request.url === '/signin') {
     const alternateLandingUrl = `http://localhost:${request.headers.host?.split(':').at(-1)}/authenticated`;
+    const smsSuccess = readSmsRedirect()
+      ? `location.href=${JSON.stringify(alternateLandingUrl)}`
+      : '';
     return html(
       response,
       `<div data-role="login-btn">登录</div>
@@ -275,7 +317,7 @@ function route(
          document.querySelector('[data-role="radio-protocol"]').onclick=(event)=>event.target.classList.toggle('radio-icon-sel');
          document.querySelector('[data-role="submit-user"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
          document.querySelector('[data-role="dynamic-get"]').onclick=(event)=>{event.target.textContent='59秒后重试'};
-         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href=${JSON.stringify(alternateLandingUrl)}};
+         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';${smsSuccess}};
          document.querySelector('[data-login="weChat"]').onclick=()=>{document.querySelector('.qrcode').style.display='block';setTimeout(()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'},1500)};
        </script>`,
     );
