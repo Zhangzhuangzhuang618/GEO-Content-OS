@@ -154,7 +154,9 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
   private async acceptProtocol(page: Page): Promise<void> {
     const protocol = page.locator('[data-role="radio-protocol"]').first();
     const className = (await protocol.getAttribute('class')) ?? '';
-    if (!/(?:active|checked|selected)/u.test(className)) await protocol.click();
+    if (!/(?:^|\s)(?:active|checked|selected|radio-icon-sel)(?=\s|$)/u.test(className)) {
+      await protocol.click();
+    }
   }
 
   private async sendSmsCode(

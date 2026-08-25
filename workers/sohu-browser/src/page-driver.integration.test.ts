@@ -271,10 +271,10 @@ function route(
        <img class="qrcode" src="/qr.svg" style="display:none">
        <script>
          document.querySelector('[data-role="login-btn"]').onclick=()=>{document.querySelector('.login-modal').style.display='block'};
-         document.querySelector('[data-role="radio-protocol"]').onclick=(event)=>event.target.classList.add('checked');
-         document.querySelector('[data-role="submit-user"]').onclick=()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
+         document.querySelector('[data-role="radio-protocol"]').onclick=(event)=>event.target.classList.toggle('radio-icon-sel');
+         document.querySelector('[data-role="submit-user"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
          document.querySelector('[data-role="dynamic-get"]').onclick=(event)=>{event.target.textContent='59秒后重试'};
-         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
+         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
          document.querySelector('[data-login="weChat"]').onclick=()=>{document.querySelector('.qrcode').style.display='block';setTimeout(()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'},1500)};
        </script>`,
     );

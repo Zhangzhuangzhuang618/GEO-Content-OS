@@ -3,11 +3,7 @@
 import Image from 'next/image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  getSohuBrowserSession,
-  PlatformAccountRequestError,
-  startSohuBrowserLogin,
-} from './platform-account-api';
+import { getSohuBrowserSession, startSohuBrowserLogin } from './platform-account-api';
 import type {
   BaijiahaoBrowserLogin,
   BaijiahaoBrowserSession,
@@ -15,6 +11,7 @@ import type {
   SohuBrowserLoginInput,
 } from './platform-account.schema';
 import { BrowserPlatformAutomationPanel } from './browser-platform-automation-panel';
+import { sohuLoginErrorMessage } from './sohu-login-error';
 
 type LoginMode = 'wechat' | 'password' | 'sms';
 
@@ -71,11 +68,7 @@ export function SohuBrowserPanel({
           setMessage('请使用微信扫描二维码。二维码不会写入日志或数据库。');
         }
       } catch (error) {
-        setMessage(
-          error instanceof PlatformAccountRequestError && error.status === 423
-            ? '搜狐拒绝了本次登录信息，或要求额外人工安全验证。请核对输入后重试。'
-            : '启动搜狐号登录失败，请检查 API 与搜狐浏览器 Worker 日志。',
-        );
+        setMessage(sohuLoginErrorMessage(error));
       } finally {
         if (input.method === 'password') setPassword('');
         inFlight.current = false;
