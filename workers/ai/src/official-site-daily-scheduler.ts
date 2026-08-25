@@ -1,4 +1,8 @@
-import { DomainEventEnvelopeSchema, readOfficialSiteServicePhone } from '@geo-content-os/contracts';
+import {
+  DomainEventEnvelopeSchema,
+  findPublishedOwnerCompanyNames,
+  readOfficialSiteServicePhone,
+} from '@geo-content-os/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
@@ -81,6 +85,7 @@ interface CandidateSeed {
     readonly providerAccountId: string | null;
     readonly timezone: string;
   };
+  readonly authoritySourceIds: readonly string[];
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
   readonly keywords: readonly {
     readonly id: string;
@@ -481,7 +486,7 @@ async function loadCandidateSeed(
   transaction: postgres.TransactionSql,
   batch: BatchRow,
 ): Promise<CandidateSeed> {
-  const [brands, rules, keywords, knowledge, accounts, workspaces] = await Promise.all([
+  const [brands, rules, keywords, knowledge, accounts, workspaces, certs] = await Promise.all([
     transaction<{ id: string; profile: JsonObject; version: number }[]>`
       SELECT id,profile_json AS profile,version
       FROM brand_profiles
@@ -556,6 +561,19 @@ async function loadCandidateSeed(
         AND deleted_at IS NULL
       LIMIT 1
     `,
+    transaction<{ holderName: string; id: string }[]>`
+      SELECT id,metadata_json->>'holder_name' AS "holderName"
+      FROM source_documents
+      WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
+        AND (project_id=${batch.projectId}::uuid OR project_id IS NULL)
+        AND source_type='image' AND status='active' AND deleted_at IS NULL
+        AND trust_level IN ('verified','normal')
+        AND metadata_json->>'schema_version'='source-certificate@1'
+        AND metadata_json @> '{"article_use_allowed":true,"public_display_confirmed":true}'::jsonb
+        AND (effective_from IS NULL OR effective_from<=${batch.businessDate}::date)
+        AND (effective_to IS NULL OR effective_to>=${batch.businessDate}::date)
+      ORDER BY created_at DESC,id
+    `,
   ]);
   const brand = brands[0];
   const rule = rules[0];
@@ -577,6 +595,7 @@ async function loadCandidateSeed(
   }
   return {
     account,
+    authoritySourceIds: selectAuthorizedCertificateSourceIds(brand.profile, certs),
     brand,
     keywords: Object.freeze(keywords),
     rule,
@@ -593,11 +612,12 @@ async function createCandidate(
   dailyCitations: DailyCitationPort,
 ): Promise<void> {
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
-  const title = truncateTitle(angle.title(keyword.term), 80);
+  const title = normalizeOfficialSiteDailyTitle(angle.title(keyword.term));
   const objective = objectiveFor(candidateNo);
   const audience = `正在搜索“${keyword.term}”相关信息并准备做出决策的目标用户`;
   const evidence = await dailyCitations.retrieve({
     angle: angle.label,
+    authoritySourceIds: seed.authoritySourceIds,
     audience,
     businessDate: batch.businessDate,
     candidateNo,
@@ -623,6 +643,7 @@ async function createCandidate(
       '优先使用企业第一方资料；涉及外部事实时必须使用所提供证据。',
       '不得编造价格、地址、电话、资质、客户数量、行业排名或无法核验的承诺。',
     ].join(''),
+    authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: null,
     official_site_direct: true,
     schema_version: 'brief-constraints@1',
@@ -1057,9 +1078,23 @@ function objectiveFor(candidateNo: number): 'awareness' | 'conversion' | 'educat
   return (['education', 'trust', 'awareness', 'conversion'] as const)[(candidateNo - 1) % 4]!;
 }
 
-function truncateTitle(value: string, max: number): string {
+export function normalizeOfficialSiteDailyTitle(value: string): string {
   const normalized = value.normalize('NFC').replace(/\s+/gu, ' ').trim();
-  return normalized.length <= max ? normalized : `${normalized.slice(0, max - 1)}…`;
+  const base = normalized || '官网内容';
+  const expanded = base.length < 20 ? `${base}：关键事项、判断方法与完整行动建议` : base;
+  return expanded.length <= 60 ? expanded : `${expanded.slice(0, 59)}…`;
+}
+
+export function selectAuthorizedCertificateSourceIds(
+  brandProfile: JsonObject,
+  sources: readonly { readonly holderName: string; readonly id: string }[],
+): readonly string[] {
+  const ownerCompanyNames = findPublishedOwnerCompanyNames(brandProfile);
+  return Object.freeze(
+    sources
+      .filter((source) => ownerCompanyNames.includes(source.holderName))
+      .map((source) => source.id),
+  );
 }
 
 function sha256(value: string): string {

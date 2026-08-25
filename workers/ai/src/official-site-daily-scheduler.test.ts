@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveScheduleTimes } from './official-site-daily-scheduler.js';
+import {
+  normalizeOfficialSiteDailyTitle,
+  resolveScheduleTimes,
+  selectAuthorizedCertificateSourceIds,
+} from './official-site-daily-scheduler.js';
 
 const SCHEDULE = [
   '08:00:00',
@@ -16,6 +20,41 @@ const SCHEDULE = [
 ] as const;
 
 describe('official-site daily schedule', () => {
+  it.each(['搬家指南', '广州工厂搬迁怎么选：一份实用判断指南'])(
+    'keeps generated brief title inside the official-site 20-60 contract: %s',
+    (title) => {
+      const normalized = normalizeOfficialSiteDailyTitle(title);
+
+      expect(normalized.length).toBeGreaterThanOrEqual(20);
+      expect(normalized.length).toBeLessThanOrEqual(60);
+    },
+  );
+
+  it('truncates an oversized generated brief title to the official-site maximum', () => {
+    const normalized = normalizeOfficialSiteDailyTitle('官网日批'.repeat(20));
+
+    expect(normalized).toHaveLength(60);
+    expect(normalized.endsWith('…')).toBe(true);
+  });
+
+  it('only authorizes certificate sources whose holder exactly matches the published owner', () => {
+    expect(
+      selectAuthorizedCertificateSourceIds(
+        { positioning: '广东众人搬家起重吊装有限公司提供搬迁服务。' },
+        [
+          {
+            holderName: '广东众人搬家起重吊装有限公司',
+            id: '10000000-0000-4000-8000-000000000001',
+          },
+          {
+            holderName: '广州志远搬家服务有限公司',
+            id: '10000000-0000-4000-8000-000000000002',
+          },
+        ],
+      ),
+    ).toEqual(['10000000-0000-4000-8000-000000000001']);
+  });
+
   it('keeps all ten fixed Beijing-time slots when content is ready before 08:00', () => {
     const resolved = resolveScheduleTimes(
       '2026-07-26',

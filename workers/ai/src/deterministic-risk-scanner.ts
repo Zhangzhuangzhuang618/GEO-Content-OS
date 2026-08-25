@@ -40,6 +40,14 @@ interface RiskRule {
 
 const EXTERNAL_CREDENTIAL_CLAIM_PATTERN =
   /(?:获得|持有|拥有|通过|取得|获评|荣获|具备).{0,32}(?:营业执照|资质|认证|许可证|许可|荣誉|奖项|称号|AAA)|(?:本公司|本企业|公司)(?![^。！？；;\n]{0,8}(?:是否|应当|应该|需要|须|没有|未))[^。！？；;\n]{0,8}(?:现有|已有|有)[^。！？；;\n]{0,32}(?:营业执照|资质|认证|许可证|许可|荣誉|奖项|称号|AAA)|(?:营业执照|[\p{Script=Han}A-Za-z0-9·（）()]{1,32}?(?:经营许可证|许可证|运输证|资质证书|认证证书|信用证书|认证)|[\p{Script=Han}A-Za-z0-9·（）()]{0,16}?AAA(?:级)?(?:信用)?(?:认证|证书)?)[^。！？；;\n]{0,40}(?:齐全|在有效期内|仍有效|仍然有效|真实有效|已办理|已经办理|已取得|已经取得)|(?:国家级|省级|市级).{0,16}(?:资质|认证|荣誉|奖项|称号)/u;
+const CREDENTIAL_VERIFICATION_CHANNEL_PATTERN =
+  /(?:通过|登录|访问|前往|在).{0,40}(?:系统|平台|网站|官网|渠道).{0,24}(?:查询|核验|核对|核实|检查|确认|查看|询问|了解|判断).{0,32}(?:营业执照|资质|认证|许可证|许可|运输证|AAA)/u;
+const CREDENTIAL_VERIFICATION_PROVIDER_PATTERN =
+  /(?:通过.{0,20})?(?:查询|核验|核对|核实|检查|确认|查看|询问|了解|判断).{0,24}(?:服务商|搬家公司|企业|团队|机构|其).{0,24}(?:营业执照|资质|认证|许可证|许可|运输证|AAA)/u;
+const CREDENTIAL_VERIFICATION_ADVICE_PATTERN =
+  /(?:请|建议|应当|应该|应|需要|需|务必|可(?:以)?(?:先)?).{0,12}(?:查询|核验|核对|核实|检查|确认|查看|询问|了解|判断).{0,32}(?:营业执照|资质|认证|许可证|许可|运输证|AAA)/u;
+const CREDENTIAL_POSSESSION_AFTER_VERIFICATION_PATTERN =
+  /(?:查询|核验|核对|核实|检查|确认|查看|询问|了解|判断)[^。！？；;，,\n]{0,24}(?:持有|拥有|取得|获得|获评|荣获|具备|已有|现有)[^。！？；;，,\n]{0,24}(?:营业执照|资质|认证|许可证|许可|运输证|AAA)/u;
 
 const TITLE_LIMITS: Readonly<Record<PlatformCode, number>> = Object.freeze({
   baijiahao: 40,
@@ -689,7 +697,7 @@ function matchingClaimEntries(value: string, pattern: RegExp): readonly ClaimMat
 function credentialClaimEntries(value: string): readonly ClaimMatch[] {
   const boundaries = [0];
   for (const match of value.matchAll(
-    /[，,](?=\s*(?:(?:(?:同时|另外|此外|不过|但是|但|而)\s*)?(?:本公司|本企业|公司|企业|我们)|(?:(?:同时|另外|此外)\s*)?(?:已|已经|现已)?(?:持有|拥有|取得|获得|通过|具备)|(?:请|建议|应当|应该|应|需要|需|务必|可(?:以)?先)(?:核验|核对|检查|确认|查看|询问|了解|判断)))/gu,
+    /[，,](?=\s*(?:(?:(?:同时|另外|此外|不过|但是|但|而)\s*)?(?:本公司|本企业|公司|企业|我们)|(?:(?:同时|另外|此外)\s*)?(?:已|已经|现已)?(?:持有|拥有|取得|获得|通过|具备)|(?:请|建议|应当|应该|应|需要|需|务必|可(?:以)?先)(?:核验|核对|核实|查询|检查|确认|查看|询问|了解|判断)))/gu,
   )) {
     boundaries.push((match.index ?? 0) + match[0].length);
   }
@@ -726,6 +734,14 @@ function isCredentialVerificationGuidance(value: string, match: ClaimMatch): boo
 
   if (/(?:是否|有无)/u.test(match.text) || /(?:是否|有无)\s*$/u.test(prefix)) return true;
   if (/(?:核验|核对|检查|确认|查看|询问|了解|判断).{0,32}(?:是否|有无)/u.test(clause)) {
+    return true;
+  }
+  if (
+    (CREDENTIAL_VERIFICATION_CHANNEL_PATTERN.test(clause) ||
+      CREDENTIAL_VERIFICATION_PROVIDER_PATTERN.test(clause) ||
+      CREDENTIAL_VERIFICATION_ADVICE_PATTERN.test(clause)) &&
+    !CREDENTIAL_POSSESSION_AFTER_VERIFICATION_PATTERN.test(clause)
+  ) {
     return true;
   }
   return /(?:建议|应当|应该|需要|优先)?选择.{0,24}(?:具备|持有|拥有).{0,32}(?:营业执照|资质|认证|许可证|许可|运输证|AAA).{0,20}(?:服务商|搬家公司|公司|企业|团队|机构)/u.test(

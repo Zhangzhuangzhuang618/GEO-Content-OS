@@ -435,6 +435,10 @@ describe('deterministic pre-publish risk scanner', () => {
     '请核验营业执照与道路运输证照是否齐全。',
     '选择服务商时，应确认其是否具备道路运输经营许可证。',
     '建议选择具备营业执照的搬家公司。',
+    '通过国家企业信用信息公示系统查询营业执照。',
+    '可通过交通运输部官方平台核实道路运输经营许可证。',
+    '建议通过公开渠道核实服务商资质。',
+    '可通过电话核实服务商资质。',
   ])('does not treat credential verification guidance as an owner credential claim: %s', (text) => {
     expect(
       scanDeterministicRisks({
@@ -444,6 +448,21 @@ describe('deterministic pre-publish risk scanner', () => {
         platformCode: 'lieju',
       }).map((item) => item.rule_id),
     ).not.toContain('deterministic.fact.external_credential_requires_evidence');
+  });
+
+  it.each([
+    '公司通过AAA信用认证。',
+    '公司持有道路运输经营许可证，可通过官方平台查询证照编号。',
+    '公司通过官方平台查询后取得营业执照。',
+  ])('still blocks a positive owner credential claim next to verification wording: %s', (text) => {
+    expect(
+      scanDeterministicRisks({
+        brandProfile: brand(),
+        citations: [],
+        content: content({ blocks: [block('credential-claim', text)] }),
+        platformCode: 'official_site',
+      }).map((item) => item.rule_id),
+    ).toContain('deterministic.fact.external_credential_requires_evidence');
   });
 
   it('does not let credential guidance hide a later owner credential claim', () => {
