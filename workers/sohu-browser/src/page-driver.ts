@@ -217,10 +217,10 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
     const page = this.pages.get(accountId);
     if (!page) return false;
     const timeout = Math.max(1, expiresAt.getTime() - Date.now());
-    const expectedHost = new URL(this.config.editorUrl).hostname;
+    const loginUrl = new URL(this.config.loginUrl);
     const observed = await page
       .waitForFunction(
-        `(() => location.hostname === ${JSON.stringify(expectedHost)} && !location.pathname.includes('signin'))()`,
+        `(() => location.hostname !== ${JSON.stringify(loginUrl.hostname)} || location.pathname !== ${JSON.stringify(loginUrl.pathname)})()`,
         undefined,
         { timeout },
       )
@@ -230,6 +230,7 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
       await this.rejectOAuthFailure(page);
       return false;
     }
+    await this.rejectOAuthFailure(page);
     await this.openEditor(page);
     await this.rejectCaptcha(page);
     await this.rejectMissingArticlePermission(page);

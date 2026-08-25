@@ -255,6 +255,7 @@ function route(
     return;
   }
   if (request.url === '/signin') {
+    const alternateLandingUrl = `http://localhost:${request.headers.host?.split(':').at(-1)}/authenticated`;
     return html(
       response,
       `<div data-role="login-btn">登录</div>
@@ -274,7 +275,7 @@ function route(
          document.querySelector('[data-role="radio-protocol"]').onclick=(event)=>event.target.classList.toggle('radio-icon-sel');
          document.querySelector('[data-role="submit-user"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
          document.querySelector('[data-role="dynamic-get"]').onclick=(event)=>{event.target.textContent='59秒后重试'};
-         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'};
+         document.querySelector('[data-role="submit-mobile"]').onclick=()=>{if(!document.querySelector('[data-role="radio-protocol"]').classList.contains('radio-icon-sel'))return;document.cookie='sohu-auth=yes; path=/';location.href=${JSON.stringify(alternateLandingUrl)}};
          document.querySelector('[data-login="weChat"]').onclick=()=>{document.querySelector('.qrcode').style.display='block';setTimeout(()=>{document.cookie='sohu-auth=yes; path=/';location.href='/authenticated'},1500)};
        </script>`,
     );
