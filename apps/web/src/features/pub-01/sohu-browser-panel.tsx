@@ -35,7 +35,6 @@ export function SohuBrowserPanel({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const autoStarted = useRef(false);
 
   const runLogin = useCallback(
     async (input: SohuBrowserLoginInput) => {
@@ -80,10 +79,24 @@ export function SohuBrowserPanel({
   );
 
   useEffect(() => {
-    if (autoStarted.current) return;
-    autoStarted.current = true;
-    void runLogin({ method: 'wechat' });
-  }, [runLogin]);
+    const controller = new AbortController();
+    setLoading(true);
+    void getSohuBrowserSession(account.id, controller.signal)
+      .then((next) => {
+        if (controller.signal.aborted) return;
+        setSession(next);
+        setLogin(null);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setMessage('读取搜狐号登录态失败，请检查 API 与搜狐浏览器 Worker 日志。');
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [account.id]);
 
   useEffect(() => {
     if (session?.status !== 'qr_ready') return;

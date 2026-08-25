@@ -759,6 +759,7 @@ test('restarts an exhausted Baijiahao batch without hiding the previous attempt'
 
 test('shows actionable Sohu daily-batch items', async ({ page }) => {
   let keywordSyncRequest: Record<string, unknown> | null = null;
+  let loginStartCount = 0;
   let qualityCheckCount = 0;
   await page.route('**/api/v1/platform-accounts**', (route) =>
     json(route, { data: [sohuAccount()], meta: { request_id: 'account-list' } }),
@@ -793,23 +794,19 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
   });
   await page.route(
     `**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session/login`,
-    (route) =>
-      json(route, {
-        data: {
-          account_id: ACCOUNT_ID,
-          authenticated_at: '2026-08-16T00:00:00.000Z',
-          last_verified_at: '2026-08-16T00:00:00.000Z',
-          qr_expires_at: null,
-          status: 'authenticated',
-          version: 1,
-        },
-        meta: { request_id: 'sohu-login' },
-      }),
+    async (route) => {
+      loginStartCount += 1;
+      await route.abort();
+    },
   );
+  await mockSohuBrowserSession(page);
 
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '搜狐号登录' }).click();
   await expect(page.getByRole('heading', { name: '搜狐号托管浏览器' })).toBeVisible();
+  await expect(page.getByText('状态：已登录')).toBeVisible();
+  await expect(page.getByRole('img', { name: '搜狐号微信登录二维码' })).toHaveCount(0);
+  expect(loginStartCount).toBe(0);
   await page.getByRole('button', { name: '一键同步项目关键词到搜狐号' }).click();
   await expect(page.getByText(/已检查 10 个项目关键词，新增 6 个搜狐号适用范围/u)).toBeVisible();
   expect(keywordSyncRequest).toEqual({ platform_codes: ['sohu'], project_id: PROJECT_ID });
@@ -882,21 +879,7 @@ test('retries a prerequisite-blocked Sohu daily batch after explicit confirmatio
       await json(route, { data: [blocked], meta: { request_id: 'automation' } });
     },
   );
-  await page.route(
-    `**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session/login`,
-    (route) =>
-      json(route, {
-        data: {
-          account_id: ACCOUNT_ID,
-          authenticated_at: '2026-08-16T00:00:00.000Z',
-          last_verified_at: '2026-08-16T00:00:00.000Z',
-          qr_expires_at: null,
-          status: 'authenticated',
-          version: 1,
-        },
-        meta: { request_id: 'sohu-login' },
-      }),
-  );
+  await mockSohuBrowserSession(page);
 
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '搜狐号登录' }).click();
@@ -957,6 +940,7 @@ test('restarts an exhausted Sohu batch as a new attempt', async ({ page }) => {
       await json(route, { data: [current], meta: { request_id: 'automation' } });
     },
   );
+  await mockSohuBrowserSession(page);
 
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '搜狐号登录' }).click();
@@ -1031,6 +1015,22 @@ test('denies non-publisher roles before requesting account data', async ({ page 
   await expect(page.getByRole('heading', { name: '无权管理平台账号' })).toBeVisible();
   expect(accountRequests).toBe(0);
 });
+
+async function mockSohuBrowserSession(page: Page) {
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/sohu-browser-session`, (route) =>
+    json(route, {
+      data: {
+        account_id: ACCOUNT_ID,
+        authenticated_at: '2026-08-16T00:00:00.000Z',
+        last_verified_at: '2026-08-16T00:00:00.000Z',
+        qr_expires_at: null,
+        status: 'authenticated',
+        version: 1,
+      },
+      meta: { request_id: 'sohu-session' },
+    }),
+  );
+}
 
 function account({
   status = 'active',
