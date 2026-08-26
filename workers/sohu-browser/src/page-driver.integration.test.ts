@@ -336,8 +336,10 @@ function route(
        <div id="editor"><div class="ql-editor" contenteditable="true"></div></div>
        <textarea placeholder="请输入摘要"></textarea>
        <button class="ql-image" type="button">图片</button><input id="image-file" type="file" accept="image/*" style="display:none">
-       <label>无特别声明<input type="radio" name="resource" value="0"></label>
-       <label>包含AI创作内容<input type="radio" name="resource" value="2"></label>
+       <section id="info-source-signature">
+         <label class="info-radio-label">无需声明<input type="radio" name="resource" value="0"></label>
+         <label class="info-radio-label">含有AI生成内容<input type="radio" name="resource" value="2"></label>
+       </section>
        <div id="result"></div><button id="publish" type="button">发布</button>
        <script>
          const imageFile=document.querySelector('#image-file');

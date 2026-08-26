@@ -17,7 +17,8 @@ const SELECTORS = Object.freeze({
   authenticated: '.user-info, .user-name, [class*="account-info"]',
   body: '.ql-editor[contenteditable="true"], #editor .ql-editor',
   captcha: 'iframe[src*="captcha"], [class*="captcha"], text=/验证码|安全验证/u',
-  declarationAi: 'label:has-text("包含AI创作内容")',
+  declarationAi:
+    '#info-source-signature label:has(input[type="radio"][value="2"]), label:has-text("含有AI生成内容"), label:has-text("包含AI创作内容")',
   loginAccount: '[data-role="login-btn"], .login-sohu, button:has-text("登录")',
   loginPassword: '[data-role="user-secret"]',
   loginUsername: '[data-role="user-passport"]',
@@ -274,7 +275,7 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
       await uploadImages(page, input);
       stage = 'fill_abstract';
       await fillOptional(page, SELECTORS.abstract, input.payload.abstract);
-      await selectAiDeclaration(page);
+      await selectAiDeclaration(page, this.config.navigationTimeoutMs);
       stage = 'verify_pre_submit';
       await this.rejectCaptcha(page);
       await verifyContent(title, body, input);
@@ -569,9 +570,13 @@ async function uploadImages(page: Page, input: DriverPublishInput): Promise<void
   }
 }
 
-async function selectAiDeclaration(page: Page): Promise<void> {
+async function selectAiDeclaration(page: Page, timeoutMs: number): Promise<void> {
   const declaration = page.locator(SELECTORS.declarationAi).first();
-  if (!(await declaration.isVisible().catch(() => false))) {
+  const visible = await declaration
+    .waitFor({ state: 'visible', timeout: timeoutMs })
+    .then(() => true)
+    .catch(() => false);
+  if (!visible) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
       'Sohu AI-content declaration control was not found',
