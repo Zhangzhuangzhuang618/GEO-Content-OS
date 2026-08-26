@@ -205,6 +205,68 @@ describe('platform accounts', () => {
     expect(audits[0]?.before_json).toBeNull();
   });
 
+  it('keeps Baijiahao account authorization aligned with the browser session', async () => {
+    const database = requireClient(client);
+    const accountId = '31000000-0000-4000-8000-000000000145';
+    const previousBaseUrl = process.env['BAIJIAHAO_BROWSER_GATEWAY_BASE_URL'];
+    const previousToken = process.env['BAIJIAHAO_BROWSER_GATEWAY_TOKEN'];
+    process.env['BAIJIAHAO_BROWSER_GATEWAY_BASE_URL'] = 'http://baijiahao-browser.test:9095';
+    process.env['BAIJIAHAO_BROWSER_GATEWAY_TOKEN'] = 'x'.repeat(32);
+    try {
+      await database`
+        INSERT INTO platform_accounts(
+          id,tenant_id,workspace_id,platform_code,display_name,capabilities_json,
+          publish_mode,status,timezone
+        ) VALUES(
+          ${accountId}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'baijiahao',
+          'Baijiahao Browser Account','{"publish":true}'::jsonb,'api','active','Asia/Shanghai'
+        )
+      `;
+      await database`
+        INSERT INTO baijiahao_browser_sessions(
+          tenant_id,account_id,status,profile_key
+        ) VALUES(
+          ${TENANT_ID}::uuid,${accountId}::uuid,'reauth',
+          ${`baijiahao/${TENANT_ID}/${accountId}`}
+        )
+      `;
+      const activeProbe = {
+        capabilities: { publish: true },
+        providerAccountId: null,
+        publishMode: 'api' as const,
+        scopes: [] as readonly string[],
+        status: 'active' as const,
+        tokenExpiresAt: null,
+      };
+      const connector: PlatformAccountConnector = {
+        probe: vi.fn(async () => activeProbe),
+        refresh: vi.fn(async () => activeProbe),
+      };
+      const service = new PlatformAccountService(
+        database,
+        new CredentialEnvelopeService(requireKms(kms)),
+        connector,
+      );
+
+      const refreshed = await service.refresh(SCOPE, accountId, {}, 1, {
+        requestId: 'req-baijiahao-refresh-reauth',
+      });
+      expect(refreshed).toMatchObject({ status: 'reauth', version: 2 });
+
+      await database`
+        UPDATE baijiahao_browser_sessions SET status='authenticated',version=version+1
+        WHERE tenant_id=${TENANT_ID}::uuid AND account_id=${accountId}::uuid
+      `;
+      const tested = await service.test(SCOPE, accountId, 2, {
+        requestId: 'req-baijiahao-test-authenticated',
+      });
+      expect(tested.account).toMatchObject({ status: 'active', version: 3 });
+    } finally {
+      restoreEnvironment('BAIJIAHAO_BROWSER_GATEWAY_BASE_URL', previousBaseUrl);
+      restoreEnvironment('BAIJIAHAO_BROWSER_GATEWAY_TOKEN', previousToken);
+    }
+  });
+
   it('enforces workspace scope for reads and writes', async () => {
     const database = requireClient(client);
     const service = createService(database, requireKms(kms));

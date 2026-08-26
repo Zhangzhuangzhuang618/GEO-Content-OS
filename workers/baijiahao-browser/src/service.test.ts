@@ -366,7 +366,11 @@ describe('Baijiahao browser service', () => {
   });
 
   it('requires a publish-ready editor before clearing the browser safety pause', async () => {
-    const attention = browserSession('attention_required');
+    const attention = Object.freeze({
+      ...browserSession('attention_required'),
+      storageStateCiphertext: null,
+      storageStateKeyVersion: null,
+    });
     const authenticated = {
       ...attention,
       lastVerifiedAt: new Date('2026-08-05T00:00:00.000Z'),
@@ -379,12 +383,17 @@ describe('Baijiahao browser service', () => {
       markSession,
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
+      exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
       release: vi.fn(async () => undefined),
       verifyAuthenticated: vi.fn(async () => true),
       verifyPublishReady: vi.fn(async () => true),
     } as unknown as BaijiahaoPageDriver;
     const credentials = {
       decrypt: vi.fn(async () => '{}'),
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-encrypted-state',
+        credentialKeyVersion: 'test-v2',
+      })),
     } as unknown as CredentialEnvelopeService;
     const service = new BaijiahaoBrowserService(
       config(),
@@ -399,12 +408,15 @@ describe('Baijiahao browser service', () => {
       version: 2,
     });
     expect(driver.verifyPublishReady).toHaveBeenCalledOnce();
+    expect(driver.exportStorageState).toHaveBeenCalledWith(ACCOUNT_ID);
     expect(driver.verifyAuthenticated).not.toHaveBeenCalled();
     expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
     expect(markSession).toHaveBeenCalledWith(attention, {
       error: null,
       lastVerifiedAt: expect.any(Date),
       status: 'authenticated',
+      storageStateCiphertext: 'refreshed-encrypted-state',
+      storageStateKeyVersion: 'test-v2',
     });
   });
 
@@ -605,6 +617,12 @@ describe('Baijiahao browser service', () => {
 
   it('never resubmits an acknowledged publication when reconciliation remains unavailable', async () => {
     const session = browserSession('authenticated');
+    const refreshedSession = Object.freeze({
+      ...session,
+      storageStateCiphertext: 'refreshed-encrypted-state',
+      storageStateKeyVersion: 'test-v2',
+      version: 2,
+    });
     const publication = Object.freeze({
       accountId: ACCOUNT_ID,
       contentFingerprint: 'e'.repeat(64),
@@ -625,9 +643,11 @@ describe('Baijiahao browser service', () => {
     const submit = vi.fn();
     const store = {
       getOrCreateSession: vi.fn(async () => session),
+      markSession: vi.fn(async () => refreshedSession),
       preparePublication: vi.fn(async () => publication),
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
+      exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
       release: vi.fn(async () => undefined),
       reconcile: vi.fn(async () => null),
       submit,
@@ -635,6 +655,10 @@ describe('Baijiahao browser service', () => {
     } as unknown as BaijiahaoPageDriver;
     const credentials = {
       decrypt: vi.fn(async () => '{}'),
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-encrypted-state',
+        credentialKeyVersion: 'test-v2',
+      })),
     } as unknown as CredentialEnvelopeService;
     const service = new BaijiahaoBrowserService(
       config(),
@@ -667,6 +691,13 @@ describe('Baijiahao browser service', () => {
       }),
     ).rejects.toMatchObject({ code: 'PUBLISH_STATE_UNKNOWN', statusCode: 503 });
     expect(submit).not.toHaveBeenCalled();
+    expect(store.markSession).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        storageStateCiphertext: 'refreshed-encrypted-state',
+        storageStateKeyVersion: 'test-v2',
+      }),
+    );
     expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
@@ -691,11 +722,21 @@ describe('Baijiahao browser service', () => {
           version: publication.version + 1,
         }),
     );
-    const markSession = vi.fn(async () => ({
+    const refreshedSession = Object.freeze({
       ...session,
-      status: 'attention_required' as const,
+      storageStateCiphertext: 'refreshed-encrypted-state',
+      storageStateKeyVersion: 'test-v2',
       version: 2,
-    }));
+    });
+    const attentionSession = Object.freeze({
+      ...refreshedSession,
+      status: 'attention_required' as const,
+      version: 3,
+    });
+    const markSession = vi
+      .fn()
+      .mockResolvedValueOnce(refreshedSession)
+      .mockResolvedValueOnce(attentionSession);
     const store = {
       getOrCreateSession: vi.fn(async () => session),
       insertArtifact: vi.fn(async () => undefined),
@@ -706,6 +747,7 @@ describe('Baijiahao browser service', () => {
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('attention-required')),
+      exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
       submit: vi.fn(async () => {
         throw new PageDriverOperationError(
           'upload_body_images',
@@ -716,6 +758,10 @@ describe('Baijiahao browser service', () => {
     } as unknown as BaijiahaoPageDriver;
     const credentials = {
       decrypt: vi.fn(async () => '{}'),
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-encrypted-state',
+        credentialKeyVersion: 'test-v2',
+      })),
     } as unknown as CredentialEnvelopeService;
     const storage = {
       putObject: vi.fn(async () => ({ uri: 'memory://test/attention-required.png' })),
@@ -748,7 +794,7 @@ describe('Baijiahao browser service', () => {
       stage: 'upload_body_images',
       statusCode: 423,
     });
-    expect(markSession).toHaveBeenCalledWith(session, {
+    expect(markSession).toHaveBeenLastCalledWith(refreshedSession, {
       error: {
         code: 'EDITOR_OPERATION_FAILED',
         schema_version: 'baijiahao-browser-error@1',
@@ -818,11 +864,18 @@ describe('Baijiahao browser service', () => {
       getOrCreateSession: vi.fn(async () => session),
       insertArtifact: vi.fn(async () => undefined),
       loadImageAssets: vi.fn(async () => []),
+      markSession: vi.fn(async () => ({
+        ...session,
+        storageStateCiphertext: 'refreshed-encrypted-state',
+        storageStateKeyVersion: 'test-v2',
+        version: 2,
+      })),
       preparePublication: vi.fn(async () => prepared),
       updatePublication,
     } as unknown as PostgresBaijiahaoBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('post-submit')),
+      exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
       release: vi.fn(async () => undefined),
       submit: vi.fn(async () => ({
         externalId: 'rejected-145',
@@ -834,6 +887,10 @@ describe('Baijiahao browser service', () => {
     } as unknown as BaijiahaoPageDriver;
     const credentials = {
       decrypt: vi.fn(async () => '{}'),
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-encrypted-state',
+        credentialKeyVersion: 'test-v2',
+      })),
     } as unknown as CredentialEnvelopeService;
     const storage = {
       putObject: vi.fn(async () => ({ uri: 'memory://test/post-submit.png' })),

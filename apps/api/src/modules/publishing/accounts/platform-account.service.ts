@@ -118,13 +118,14 @@ export class PlatformAccountService {
       );
       if (!credential) throw invalid();
       const probe = await this.connector.refresh({ credential, platformCode: row.platform_code });
+      const status = await browserAwareAccountStatus(tx, row, probe.status);
       const stored =
         input.credential || ['baijiahao', 'sohu', 'lieju'].includes(row.platform_code)
           ? await encryptCredential(this.credentials, credential)
           : null;
       const rows = await tx<
         Row[]
-      >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,publish_mode=${probe.publishMode},status=${probe.status},credential_ciphertext=COALESCE(${stored?.credentialCiphertext ?? null},credential_ciphertext),credential_key_version=COALESCE(${stored?.credentialKeyVersion ?? null},credential_key_version),version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
+      >`UPDATE platform_accounts account SET provider_account_id=${probe.providerAccountId},scopes=${tx.array([...probe.scopes], 25)}::text[],token_expires_at=${probe.tokenExpiresAt},capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,publish_mode=${probe.publishMode},status=${status},credential_ciphertext=COALESCE(${stored?.credentialCiphertext ?? null},credential_ciphertext),credential_key_version=COALESCE(${stored?.credentialKeyVersion ?? null},credential_key_version),version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
       return requireRow(rows);
     });
   }
@@ -185,9 +186,10 @@ export class PlatformAccountService {
           platformCode: row.platform_code,
           publishMode: row.publish_mode,
         });
+        const status = await browserAwareAccountStatus(tx, row, probe.status);
         const rows = await tx<
           Row[]
-        >`UPDATE platform_accounts account SET capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,status=${probe.status},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
+        >`UPDATE platform_accounts account SET capabilities_json=${jsonbText(tx, probe.capabilities)}::jsonb,status=${status},version=version+1 WHERE id=${id}::uuid AND tenant_id=${scope.tenantId}::uuid RETURNING *`;
         return requireRow(rows);
       },
     );
@@ -461,6 +463,22 @@ function record(value: unknown): Readonly<Record<string, unknown>> | null {
 
 function jsonbText(client: Client, value: unknown) {
   return client.typed(JSON.stringify(value), 25);
+}
+
+async function browserAwareAccountStatus(
+  transaction: TransactionSql,
+  row: Row,
+  probedStatus: PlatformAccountView['status'],
+): Promise<PlatformAccountView['status']> {
+  if (row.platform_code !== 'baijiahao' || row.publish_mode !== 'api') return probedStatus;
+  const sessions = await transaction<{ status: string }[]>`
+    SELECT status FROM baijiahao_browser_sessions
+    WHERE tenant_id=${row.tenant_id}::uuid AND account_id=${row.id}::uuid
+  `;
+  const sessionStatus = sessions[0]?.status;
+  return sessionStatus === 'authenticated' || sessionStatus === 'attention_required'
+    ? 'active'
+    : 'reauth';
 }
 
 async function disableAutomationPolicies(

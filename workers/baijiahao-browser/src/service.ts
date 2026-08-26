@@ -147,11 +147,7 @@ export class BaijiahaoBrowserService {
                 storageState,
               );
         if (!authenticated) return sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
-        const verified = await this.store.markSession(current, {
-          error: null,
-          lastVerifiedAt: new Date(),
-          status: 'authenticated',
-        });
+        const verified = await this.persistVerifiedSession(current);
         return sessionView(verified);
       } catch (error) {
         const code = sessionVerificationErrorCode(error);
@@ -291,6 +287,7 @@ export class BaijiahaoBrowserService {
         void session;
         throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login has expired');
       }
+      session = await this.persistVerifiedSession(session);
       const contentFingerprint = sha256(
         `${input.payload.title}\n${normalizeText(input.payload.body_text)}`,
       );
@@ -621,6 +618,19 @@ export class BaijiahaoBrowserService {
     });
     await this.store.markAccountActive(session.accountId, session.tenantId);
     return authenticated;
+  }
+
+  private async persistVerifiedSession(session: BrowserSession): Promise<BrowserSession> {
+    const encrypted = await this.credentials.encrypt(
+      await this.driver.exportStorageState(session.accountId),
+    );
+    return this.store.markSession(session, {
+      error: null,
+      lastVerifiedAt: new Date(),
+      status: 'authenticated',
+      storageStateCiphertext: encrypted.credentialCiphertext,
+      storageStateKeyVersion: encrypted.credentialKeyVersion,
+    });
   }
 
   private async requireReauth(session: BrowserSession, code: string): Promise<BrowserSession> {
