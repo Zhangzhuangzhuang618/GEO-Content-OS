@@ -23,6 +23,8 @@ SHOW archive_timeout; -- 5min
 SELECT archived_count, failed_count, last_archived_time FROM pg_stat_archiver;
 ```
 
+归档目标中若已有同名 WAL，命令只在源文件与归档文件逐字节一致时返回成功；内容不一致时必须失败且不得覆盖，避免容器重建后被历史同名文件永久阻塞，也不牺牲归档完整性。
+
 托管 PostgreSQL 应使用供应商的连续归档/PITR 能力实现同等配置，不复制本地文件型 `archive_command`。必须记录供应商实际保留期、最近可恢复时间和跨区域策略。
 
 ## 3. 每日基础备份

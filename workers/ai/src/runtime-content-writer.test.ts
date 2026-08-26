@@ -349,6 +349,115 @@ describe('AI Worker runtime wiring', () => {
     expect(adapter.requests[1]!.tools).toBeUndefined();
   });
 
+  it.each(['baijiahao', 'lieju', 'sohu'] as const)(
+    'uses a bounded targeted repair when initial %s generation still has an unsupported credential after the full retry',
+    async (platformCode) => {
+      const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+      const clean = multiPlatformContentData([platformCode], new Set());
+      const variant = clean.variants[0]!;
+      const citationId = '10000000-0000-4000-8000-000000000168';
+      const sourceId = '20000000-0000-4000-8000-000000000168';
+      const masterBlockIndex = clean.master_content.blocks.length - 1;
+      const variantBlockIndex = variant.blocks.length - 1;
+      const credentialText = '公司持有道路运输经营许可证。';
+      const unsupported = {
+        master_content: {
+          ...clean.master_content,
+          blocks: clean.master_content.blocks.map((block, index) =>
+            index === masterBlockIndex
+              ? { ...block, text: `${block.text}${credentialText}` }
+              : block,
+          ),
+        },
+        variants: [
+          {
+            ...variant,
+            blocks: variant.blocks.map((block, index) =>
+              index === variantBlockIndex
+                ? { ...block, text: `${block.text}${credentialText}` }
+                : block,
+            ),
+          },
+        ],
+      };
+      const targetedRepair = {
+        replacements: [
+          {
+            replacement_text: clean.master_content.blocks[masterBlockIndex]!.text,
+            target_id: `master_content.blocks[${masterBlockIndex}].text`,
+          },
+          {
+            replacement_text: variant.blocks[variantBlockIndex]!.text,
+            target_id: `variants.${platformCode}.blocks[${variantBlockIndex}].text`,
+          },
+        ],
+      };
+      const adapter = new LooseMockAdapter(
+        [
+          { text: JSON.stringify(unsupported) },
+          { text: JSON.stringify(unsupported) },
+          { text: JSON.stringify(targetedRepair) },
+        ],
+        'deepseek-v4-flash',
+      );
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-flash', adapter]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      );
+      const baseWriterInput = multiPlatformWriterInput(fixture.input as JsonObject, [platformCode]);
+      const baseBrief = baseWriterInput['brief'] as JsonObject;
+      const baseStrategy = baseWriterInput['strategy'] as JsonObject;
+      const writerInput = {
+        ...baseWriterInput,
+        brief: {
+          ...baseBrief,
+          constraints: {
+            ...(baseBrief['constraints'] as JsonObject),
+            authorized_certificate_source_ids: [sourceId],
+          },
+        },
+        citations: [
+          {
+            chunk_id: citationId,
+            citation_id: citationId,
+            quote_text:
+              '资料类型：企业证照\n证照名称：道路运输经营许可证\n持证主体：广州志远搬家服务有限公司',
+            source_id: sourceId,
+          },
+        ],
+        strategy: {
+          ...baseStrategy,
+          profile: {
+            ...(baseStrategy['profile'] as JsonObject),
+            positioning: '广州志远搬家服务有限公司面向广州提供搬迁服务。',
+          },
+        },
+      } as JsonObject;
+
+      const master = await writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: `runtime-${platformCode}-initial-credential-final-repair`,
+        writerInput,
+      });
+      const generatedVariant = await writer.generateVariant({
+        context: context(VARIANT_RUN, `72000000-0000-4000-8000-000000000168`),
+        masterContent: master,
+        platformCode,
+        requestId: `runtime-${platformCode}-initial-credential-final-repair-variant`,
+        writerInput,
+      });
+
+      expect(master.blocks.map((block) => block.text).join('\n')).not.toContain(credentialText);
+      expect(generatedVariant.blocks.map((block) => block.text).join('\n')).not.toContain(
+        credentialText,
+      );
+      expect(adapter.requests).toHaveLength(3);
+      expect(adapter.requests[2]!.tools).toBeUndefined();
+    },
+  );
+
   it('uses a targeted repair to remove only unsupported credentials and preserve cited credentials', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const clean = multiPlatformContentData(['lieju'], new Set());

@@ -66,7 +66,7 @@ try {
     '-c',
     `archive_timeout=${CONFIGURED_ARCHIVE_TIMEOUT_SECONDS}s`,
     '-c',
-    'archive_command=test ! -f /var/lib/postgresql/wal-archive/%f && cp %p /var/lib/postgresql/wal-archive/%f',
+    'archive_command=if [ -f /var/lib/postgresql/wal-archive/%f ]; then cmp -s %p /var/lib/postgresql/wal-archive/%f; else cp %p /var/lib/postgresql/wal-archive/%f; fi',
   ]);
   waitForPostgres(sourceContainer);
 

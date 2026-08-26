@@ -728,11 +728,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     let targetedRepairRejection: string | null = null;
-    if (
-      revision &&
-      hasBrowserPlatformVariant(output.data) &&
-      onlyTargetedTextRepairIssues(assessment.issues, deterministicIssues)
-    ) {
+    if (onlyTargetedTextRepairIssues(assessment.issues, deterministicIssues)) {
       const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
       output = targetedRepair.output;
       targetedRepairRejection = targetedRepair.rejectionReason;
@@ -1338,12 +1334,6 @@ function onlyUnchangedRewriteIssues(issues: readonly string[]): boolean {
   return (
     issues.length > 0 &&
     issues.every((issue) => issue.includes('质量报告驱动重写结果与待修改版本完全相同'))
-  );
-}
-
-function hasBrowserPlatformVariant(data: ContentWriterData): boolean {
-  return data.variants.some(
-    (content) => content.platform_code === 'lieju' || content.platform_code === 'sohu',
   );
 }
 

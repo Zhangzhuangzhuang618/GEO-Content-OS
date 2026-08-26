@@ -270,7 +270,7 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
       stage = 'fill_title';
       await title.fill(input.payload.title);
       stage = 'fill_body';
-      await fillBody(body, input.payload.body_html);
+      await fillBody(body, input.payload.body_html, input.payload.body_text);
       stage = 'upload_images';
       await uploadImages(page, input);
       stage = 'fill_abstract';
@@ -514,12 +514,40 @@ export class PlaywrightSohuPageDriver implements SohuPageDriver {
   }
 }
 
-async function fillBody(body: Locator, html: string): Promise<void> {
-  await body.evaluate((element, value) => {
-    element.innerHTML = value;
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+async function fillBody(body: Locator, html: string, text: string): Promise<void> {
+  const pastedWithQuill = await body.evaluate((element, value) => {
+    interface QuillEditor {
+      readonly clipboard?: {
+        dangerouslyPasteHTML?: (html: string, source?: string) => void;
+      };
+    }
+    interface QuillElement {
+      readonly __quill?: QuillEditor;
+    }
+    interface QuillConstructor {
+      find?: (element: unknown) => QuillEditor | null;
+    }
+
+    const quillConstructor = (globalThis as typeof globalThis & { Quill?: QuillConstructor }).Quill;
+    const container = element.closest('.ql-container');
+    const candidates = [element, element.parentElement, container];
+
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      try {
+        const editor = (candidate as QuillElement).__quill ?? quillConstructor?.find?.(candidate);
+        const paste = editor?.clipboard?.dangerouslyPasteHTML;
+        if (!paste) continue;
+        paste.call(editor.clipboard, value, 'user');
+        return true;
+      } catch {
+        continue;
+      }
+    }
+    return false;
   }, html);
+
+  if (!pastedWithQuill) await body.fill(text);
 }
 
 async function uploadImages(page: Page, input: DriverPublishInput): Promise<void> {
@@ -610,7 +638,7 @@ async function verifyContent(
   if (!actual || !expected || actual.length < expected.length * 0.8) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
-      'Sohu editor did not preserve the complete body',
+      `Sohu editor did not preserve the complete body (expected=${expected.length}, actual=${actual.length})`,
     );
   }
 }

@@ -342,9 +342,13 @@ function route(
        </section>
        <div id="result"></div><button id="publish" type="button">发布</button>
        <script>
+         const editor=document.querySelector('.ql-editor');
+         let quillHtml='';
+         const quill={clipboard:{dangerouslyPasteHTML(value){quillHtml=value;editor.innerHTML=value}}};
+         window.Quill={find:(element)=>element===editor||element===editor.parentElement?quill:null};
          const imageFile=document.querySelector('#image-file');
          document.querySelector('.ql-image').onclick=()=>imageFile.click();
-         imageFile.onchange=()=>{const image=document.createElement('img');image.alt='正文配图';document.querySelector('.ql-editor').append(image)};
+         imageFile.onchange=()=>{editor.innerHTML=quillHtml;const image=document.createElement('img');image.alt='正文配图';editor.append(image)};
          document.querySelector('#publish').onclick=async()=>{
            const result=await fetch('/publish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
              abstract:document.querySelector('textarea').value,
