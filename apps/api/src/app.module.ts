@@ -5,6 +5,7 @@ import { AuditQueryModule } from './modules/audit/index.js';
 import { BriefModule, ContentApiModule } from './modules/content/index.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IdentityModule } from './modules/identity/identity.module.js';
+import { WentianConnectorModule } from './modules/integrations/wentian/index.js';
 import { FactAdjudicationModule, SourceModule } from './modules/knowledge/index.js';
 import { PlatformAccessModule } from './modules/platform-access/platform-access.module.js';
 import { PlatformConfigModule } from './modules/platform-config/index.js';
@@ -30,6 +31,7 @@ import {
     FactAdjudicationModule,
     HealthModule,
     IdentityModule,
+    WentianConnectorModule,
     KeywordModule,
     PlatformAccessModule,
     PlatformConfigModule,

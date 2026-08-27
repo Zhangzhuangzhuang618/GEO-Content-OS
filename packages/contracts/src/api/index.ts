@@ -13,6 +13,7 @@ export * from './platform-tenants/index.js';
 export * from './topics.js';
 export * from './strategy/index.js';
 export * from './workspaces.js';
+export * from './wentian/index.js';
 export * from './projects.js';
 export * from './publishing/index.js';
 export * from './review/index.js';

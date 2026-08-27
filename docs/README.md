@@ -21,6 +21,10 @@
 - [Windows Docker Desktop 部署手册](deployment/WINDOWS_DEPLOYMENT.md)
 - [“重新发起今日批次”功能部署说明](deployment/DAILY_BATCH_RESTART_DEPLOYMENT.md)
 
+## 已批准集成
+
+- [问天GEO连接器](integrations/wentian/README.md)（`CHG-VIS-002`已批准；问天完整系统在独立项目开发，GEO只保留薄连接器）
+
 ## 可执行修正
 
 - 冻结基线后的兼容修正和批准的新任务记录在 `adr/`；当前有效范围为 ADR-0001 至 ADR-0030。

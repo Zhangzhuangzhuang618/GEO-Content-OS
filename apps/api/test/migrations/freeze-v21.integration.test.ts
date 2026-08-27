@@ -9,8 +9,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js';
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
+import { IDENTITY_SEED } from '../../src/modules/identity/seeds/identity.seed.js';
 
-const FREEZE_TABLE_COUNT = 87;
+const FREEZE_TABLE_COUNT = 89;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -75,7 +76,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T154 with official Lieju publishing state', async () => {
+  it('migrates an empty database through T157 with the Wentian connector state', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -126,6 +127,8 @@ describe('freeze v2.1 database verification', () => {
         'keyword_import_candidates',
         'content_media_runs',
         'content_media_assets',
+        'wentian_project_bindings',
+        'wentian_query_set_syncs',
       ]),
     );
     expect(migrationRows[0]?.count).toBe(migrationFiles.length);
@@ -286,6 +289,76 @@ describe('freeze v2.1 database verification', () => {
         )
       `,
       /model_rate_cards_effective_range_check/,
+    );
+  });
+
+  it('enforces Wentian project scope, one open binding and immutable query-set revision syncs', async () => {
+    if (!client) throw new Error('Database client did not start');
+
+    const querySetId = '26000000-0000-4000-8000-000000000051';
+    const bindingId = '26000000-0000-4000-8000-000000000052';
+    await client`
+      INSERT INTO ai_visibility_query_sets (
+        id, tenant_id, workspace_id, project_id, name, brand_name, industry,
+        competitor_names_json, created_by
+      ) VALUES (
+        ${querySetId}, ${IDENTITY_SEED.tenantId}, ${FREEZE_V21_SEED.workspaceId},
+        ${FREEZE_V21_SEED.projectId}, '问天迁移测试', '示例品牌', '示例行业',
+        '["竞品甲","竞品乙"]'::jsonb, ${IDENTITY_SEED.userId}
+      )
+    `;
+    await client`
+      INSERT INTO wentian_project_bindings (
+        id, tenant_id, workspace_id, project_id, wentian_binding_id,
+        wentian_scope_id, geo_project_ref, status, requested_by,
+        requested_at, updated_at
+      ) VALUES (
+        ${bindingId}, ${IDENTITY_SEED.tenantId}, ${FREEZE_V21_SEED.workspaceId},
+        ${FREEZE_V21_SEED.projectId}, '26000000-0000-4000-8000-000000000053',
+        '26000000-0000-4000-8000-000000000054', ${FREEZE_V21_SEED.projectId},
+        'active', ${IDENTITY_SEED.userId}, now(), now()
+      )
+    `;
+    await client`
+      INSERT INTO wentian_query_set_syncs (
+        tenant_id, workspace_id, project_id, binding_id, query_set_id,
+        query_set_revision, wentian_snapshot_id, snapshot_hash, query_count,
+        idempotency_key, synced_by, synced_at
+      ) VALUES (
+        ${IDENTITY_SEED.tenantId}, ${FREEZE_V21_SEED.workspaceId},
+        ${FREEZE_V21_SEED.projectId}, ${bindingId}, ${querySetId}, 1,
+        '26000000-0000-4000-8000-000000000055', ${'a'.repeat(64)}, 1,
+        'wentian-migration-sync-1', ${IDENTITY_SEED.userId}, now()
+      )
+    `;
+
+    await expectDatabaseRejection(
+      client`
+        INSERT INTO wentian_project_bindings (
+          tenant_id, workspace_id, project_id, wentian_binding_id,
+          geo_project_ref, status, requested_by, requested_at, updated_at
+        ) VALUES (
+          ${IDENTITY_SEED.tenantId}, ${FREEZE_V21_SEED.workspaceId},
+          ${FREEZE_V21_SEED.projectId}, '26000000-0000-4000-8000-000000000056',
+          ${FREEZE_V21_SEED.projectId}, 'pending_wentian', ${IDENTITY_SEED.userId}, now(), now()
+        )
+      `,
+      /wentian_project_bindings_one_open_uq/,
+    );
+    await expectDatabaseRejection(
+      client`
+        INSERT INTO wentian_query_set_syncs (
+          tenant_id, workspace_id, project_id, binding_id, query_set_id,
+          query_set_revision, wentian_snapshot_id, snapshot_hash, query_count,
+          idempotency_key, synced_by, synced_at
+        ) VALUES (
+          ${IDENTITY_SEED.tenantId}, ${FREEZE_V21_SEED.workspaceId},
+          ${FREEZE_V21_SEED.projectId}, ${bindingId}, ${querySetId}, 1,
+          '26000000-0000-4000-8000-000000000057', ${'b'.repeat(64)}, 1,
+          'wentian-migration-sync-2', ${IDENTITY_SEED.userId}, now()
+        )
+      `,
+      /wentian_query_set_syncs_binding_revision_uq/,
     );
   });
 

@@ -112,6 +112,9 @@ describe('error contracts', () => {
       'BROWSER_GATEWAY_UNAVAILABLE',
       'RATE_LIMITED',
       'AI_PROVIDER_TIMEOUT',
+      'WENTIAN_CONNECTOR_NOT_CONFIGURED',
+      'WENTIAN_CONNECTOR_UNAVAILABLE',
+      'WENTIAN_BINDING_CONFLICT',
     ]);
     expect(Object.keys(ERROR_DEFINITIONS)).toEqual(ERROR_CODES);
     expect(ERROR_DEFINITIONS.RESOURCE_NOT_FOUND.httpStatus).toBe(404);

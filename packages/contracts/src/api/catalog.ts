@@ -12,6 +12,7 @@ import { PUBLISHING_API_CONTRACTS } from './publishing/index.js';
 import { REVIEW_API_CONTRACTS } from './review/index.js';
 import { STRATEGY_API_CONTRACTS } from './strategy/index.js';
 import { TENANT_LIFECYCLE_API_CONTRACTS } from './tenant-lifecycle/index.js';
+import { WENTIAN_API_CONTRACTS } from './wentian/index.js';
 
 export interface ApiContractCatalogItem {
   readonly bodySchema: z.ZodType | null;
@@ -61,6 +62,7 @@ const sourceContracts: readonly ContractLike[] = [
   ...ANALYTICS_API_CONTRACTS,
   AUDIT_API_CONTRACT,
   ...TENANT_LIFECYCLE_API_CONTRACTS,
+  ...WENTIAN_API_CONTRACTS,
 ];
 
 export const API_CONTRACTS: readonly ApiContractCatalogItem[] = Object.freeze(

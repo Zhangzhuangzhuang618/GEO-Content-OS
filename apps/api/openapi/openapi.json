@@ -251,7 +251,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -596,7 +599,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -1125,7 +1131,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -1648,7 +1657,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -2441,7 +2453,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -2740,7 +2755,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -3071,7 +3089,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -3246,7 +3267,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -3492,7 +3516,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -3781,7 +3808,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -4024,7 +4054,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -4309,7 +4342,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -4607,7 +4643,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -4780,7 +4819,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -4854,7 +4896,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -4952,7 +4997,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -5046,7 +5094,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -5136,7 +5187,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -5287,7 +5341,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -5465,7 +5522,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -5623,7 +5683,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -5880,7 +5943,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -6168,7 +6234,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -6394,7 +6463,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -6645,7 +6717,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -6890,7 +6965,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -7247,7 +7325,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -7647,7 +7728,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -7929,7 +8013,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -8324,7 +8411,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -8736,7 +8826,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -8974,7 +9067,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -9705,7 +9801,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -9939,7 +10038,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -10173,7 +10275,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -10491,7 +10596,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -11259,7 +11367,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -11722,7 +11833,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -12877,7 +12991,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -14143,7 +14260,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -14248,7 +14368,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -14460,7 +14583,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -15634,7 +15760,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -15939,7 +16068,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -16242,7 +16374,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -16594,7 +16729,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -16841,7 +16979,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -17225,7 +17366,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -17534,7 +17678,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -17802,7 +17949,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -18070,7 +18220,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -18357,7 +18510,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -18602,7 +18758,1269 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "sessionCookie": [] }]
+      }
+    },
+    "/integrations/wentian/bindings": {
+      "post": {
+        "operationId": "wentian_binding_request",
+        "tags": ["Integrations"],
+        "x-contract-key": "wentian.binding.request",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "tenant.members.manage",
+        "x-policy": "tenant_admin_or_owner",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": ["project_id", "workspace_id"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "decision_reason": {
+                          "anyOf": [{ "type": "string", "maxLength": 500 }, { "type": "null" }]
+                        },
+                        "geo_project_ref": { "type": "string", "minLength": 1, "maxLength": 160 },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "requested_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending_wentian",
+                            "active",
+                            "suspended",
+                            "rejected",
+                            "disconnected"
+                          ]
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "wentian_binding_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "wentian_scope_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "decision_reason",
+                        "geo_project_ref",
+                        "id",
+                        "requested_at",
+                        "status",
+                        "updated_at",
+                        "version",
+                        "wentian_binding_id",
+                        "wentian_scope_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "WentianBindingView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/integrations/wentian/bindings/{id}": {
+      "delete": {
+        "operationId": "wentian_binding_disconnect",
+        "tags": ["Integrations"],
+        "x-contract-key": "wentian.binding.disconnect",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "tenant.members.manage",
+        "x-policy": "tenant_admin_or_owner",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "decision_reason": {
+                          "anyOf": [{ "type": "string", "maxLength": 500 }, { "type": "null" }]
+                        },
+                        "geo_project_ref": { "type": "string", "minLength": 1, "maxLength": 160 },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "requested_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending_wentian",
+                            "active",
+                            "suspended",
+                            "rejected",
+                            "disconnected"
+                          ]
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "wentian_binding_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "wentian_scope_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "decision_reason",
+                        "geo_project_ref",
+                        "id",
+                        "requested_at",
+                        "status",
+                        "updated_at",
+                        "version",
+                        "wentian_binding_id",
+                        "wentian_scope_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "WentianBindingView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/integrations/wentian/bindings/{id}/refresh": {
+      "post": {
+        "operationId": "wentian_binding_refresh",
+        "tags": ["Integrations"],
+        "x-contract-key": "wentian.binding.refresh",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "tenant.members.manage",
+        "x-policy": "tenant_admin_or_owner",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": ["project_id", "workspace_id"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "decision_reason": {
+                          "anyOf": [{ "type": "string", "maxLength": 500 }, { "type": "null" }]
+                        },
+                        "geo_project_ref": { "type": "string", "minLength": 1, "maxLength": 160 },
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "requested_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "pending_wentian",
+                            "active",
+                            "suspended",
+                            "rejected",
+                            "disconnected"
+                          ]
+                        },
+                        "updated_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "version": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "wentian_binding_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "wentian_scope_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "decision_reason",
+                        "geo_project_ref",
+                        "id",
+                        "requested_at",
+                        "status",
+                        "updated_at",
+                        "version",
+                        "wentian_binding_id",
+                        "wentian_scope_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "WentianBindingView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/integrations/wentian/query-set-syncs": {
+      "post": {
+        "operationId": "wentian_query_set_sync",
+        "tags": ["Integrations"],
+        "x-contract-key": "wentian.query-set.sync",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "tenant.members.manage",
+        "x-policy": "tenant_admin_or_owner",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "query_set_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": ["project_id", "workspace_id", "query_set_id"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "query_count": { "type": "integer", "minimum": 1, "maximum": 100 },
+                        "query_set_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "query_set_revision": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "snapshot_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                        "synced_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "wentian_snapshot_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "query_count",
+                        "query_set_id",
+                        "query_set_revision",
+                        "snapshot_hash",
+                        "synced_at",
+                        "wentian_snapshot_id"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "WentianQuerySyncView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/integrations/wentian/sso-tickets": {
+      "post": {
+        "operationId": "wentian_sso_ticket_create",
+        "tags": ["Integrations"],
+        "x-contract-key": "wentian.sso-ticket.create",
+        "x-idempotency": "key+body_hash",
+        "x-permission": "tenant.profile.read",
+        "x-policy": "tenant_member",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": { "maxLength": 128, "minLength": 8, "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "project_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "workspace_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": ["project_id", "workspace_id"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "expires_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                        },
+                        "launch_url": { "type": "string", "format": "uri" }
+                      },
+                      "required": ["expires_at", "launch_url"],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "WentianSsoTicketView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
+                          ]
+                        },
+                        "message": { "type": "string", "minLength": 1 },
+                        "details": {},
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["code", "message", "request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "API error envelope"
+          }
+        },
+        "security": [{ "csrfCookie": [], "sessionCookie": [] }]
+      }
+    },
+    "/integrations/wentian/status": {
+      "get": {
+        "operationId": "wentian_status",
+        "tags": ["Integrations"],
+        "x-contract-key": "wentian.status",
+        "x-idempotency": "-",
+        "x-permission": "tenant.profile.read",
+        "x-policy": "tenant_member",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "binding": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "decision_reason": {
+                                  "anyOf": [
+                                    { "type": "string", "maxLength": 500 },
+                                    { "type": "null" }
+                                  ]
+                                },
+                                "geo_project_ref": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 160
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "requested_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "status": {
+                                  "type": "string",
+                                  "enum": [
+                                    "pending_wentian",
+                                    "active",
+                                    "suspended",
+                                    "rejected",
+                                    "disconnected"
+                                  ]
+                                },
+                                "updated_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "version": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "wentian_binding_id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "wentian_scope_id": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "format": "uuid",
+                                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                    },
+                                    { "type": "null" }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "decision_reason",
+                                "geo_project_ref",
+                                "id",
+                                "requested_at",
+                                "status",
+                                "updated_at",
+                                "version",
+                                "wentian_binding_id",
+                                "wentian_scope_id"
+                              ],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
+                        },
+                        "configuration_status": {
+                          "type": "string",
+                          "enum": ["configured", "not_configured", "invalid"]
+                        },
+                        "contract_version": {
+                          "type": "string",
+                          "const": "wentian-geo-connector@1"
+                        },
+                        "latest_sync": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "query_count": { "type": "integer", "minimum": 1, "maximum": 100 },
+                                "query_set_id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                },
+                                "query_set_revision": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "maximum": 9007199254740991
+                                },
+                                "snapshot_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                                "synced_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "wentian_snapshot_id": {
+                                  "type": "string",
+                                  "format": "uuid",
+                                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "query_count",
+                                "query_set_id",
+                                "query_set_revision",
+                                "snapshot_hash",
+                                "synced_at",
+                                "wentian_snapshot_id"
+                              ],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "binding",
+                        "configuration_status",
+                        "contract_version",
+                        "latest_sync"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "request_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+                            {
+                              "type": "string",
+                              "minLength": 16,
+                              "maxLength": 80,
+                              "pattern": "^[A-Za-z0-9._:-]+$"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["request_id"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["data", "meta"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "description": "WentianConnectorStatusView"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "AUTH_REQUIRED",
+                            "CSRF_INVALID",
+                            "TENANT_CONTEXT_REQUIRED",
+                            "RESOURCE_NOT_FOUND",
+                            "PERMISSION_DENIED",
+                            "STATE_TRANSITION_INVALID",
+                            "VERSION_CONFLICT",
+                            "IDEMPOTENCY_CONFLICT",
+                            "QUALITY_BLOCKED",
+                            "BUDGET_EXCEEDED",
+                            "SCHEMA_VALIDATION_FAILED",
+                            "ADAPTER_CAPABILITY_UNAVAILABLE",
+                            "ADAPTER_AUTH_EXPIRED",
+                            "BROWSER_GATEWAY_UNAVAILABLE",
+                            "RATE_LIMITED",
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -18828,7 +20246,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -19067,7 +20488,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -19159,7 +20583,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -19334,7 +20761,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -19525,7 +20955,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -19703,7 +21136,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -19956,7 +21392,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -20310,7 +21749,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -20758,7 +22200,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -21124,7 +22569,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -21431,7 +22879,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -21717,7 +23168,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -22126,7 +23580,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -22334,7 +23791,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -22592,7 +24052,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -22843,7 +24306,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -23060,7 +24526,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -23264,7 +24733,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -23466,7 +24938,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -23652,7 +25127,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -23857,7 +25335,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -24137,7 +25618,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -24367,7 +25851,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -24628,7 +26115,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -24853,7 +26343,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -25104,7 +26597,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -25680,7 +27176,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -26307,7 +27806,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -26911,7 +28413,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -27098,7 +28603,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -27303,7 +28811,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -27508,7 +29019,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -27906,7 +29420,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -28353,7 +29870,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -28783,7 +30303,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -29213,7 +30736,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -29451,7 +30977,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -29638,7 +31167,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -29871,7 +31403,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -30104,7 +31639,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -30405,7 +31943,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -30732,7 +32273,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -31065,7 +32609,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -31398,7 +32945,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -31641,7 +33191,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -31866,7 +33419,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -32053,7 +33609,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -32318,7 +33877,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -32583,7 +34145,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -32747,7 +34312,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -33018,7 +34586,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -33270,7 +34841,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -33502,7 +35076,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -33728,7 +35305,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -34023,7 +35603,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -34314,7 +35897,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -34568,7 +36154,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -34816,7 +36405,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -35145,7 +36737,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -35415,7 +37010,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -35682,7 +37280,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -35905,7 +37506,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -36128,7 +37732,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -36364,7 +37971,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -36604,7 +38214,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -36838,7 +38451,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -37035,7 +38651,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -37280,7 +38899,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -37625,7 +39247,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -37895,7 +39520,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -38516,7 +40144,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -38719,7 +40350,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -38985,7 +40619,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -39137,7 +40774,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -39295,7 +40935,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -39562,7 +41205,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -39856,7 +41502,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -40133,7 +41782,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -40491,7 +42143,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -41170,7 +42825,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -41333,7 +42991,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -42055,7 +43716,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -42252,7 +43916,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -42974,7 +44641,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -43253,7 +44923,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -43544,7 +45217,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -43956,7 +45632,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -44061,7 +45740,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -44729,7 +46411,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -44970,7 +46655,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -45186,7 +46874,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -45338,7 +47029,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -45517,7 +47211,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -45719,7 +47416,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -45917,7 +47617,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -46305,7 +48008,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -46668,7 +48374,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -46993,7 +48702,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -47324,7 +49036,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -47605,7 +49320,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -47887,7 +49605,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -48117,7 +49838,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -48375,7 +50099,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -48678,7 +50405,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -48910,7 +50640,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -49227,7 +50960,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },
@@ -49478,7 +51214,10 @@
                             "ADAPTER_AUTH_EXPIRED",
                             "BROWSER_GATEWAY_UNAVAILABLE",
                             "RATE_LIMITED",
-                            "AI_PROVIDER_TIMEOUT"
+                            "AI_PROVIDER_TIMEOUT",
+                            "WENTIAN_CONNECTOR_NOT_CONFIGURED",
+                            "WENTIAN_CONNECTOR_UNAVAILABLE",
+                            "WENTIAN_BINDING_CONFLICT"
                           ]
                         },
                         "message": { "type": "string", "minLength": 1 },

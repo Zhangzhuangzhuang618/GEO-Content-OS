@@ -68,6 +68,7 @@ const SECONDARY_NAVIGATION = [
     items: [
       { href: '/anl-01', label: '数据总览', prefixes: ['/anl-01'] },
       { href: '/anl-03', label: 'AI 可见度', prefixes: ['/anl-03'] },
+      { href: '/anl-05', label: '问天信源探测', prefixes: ['/anl-05'] },
       { href: '/anl-02', label: '指标导入', prefixes: ['/anl-02'] },
       { href: '/anl-04', label: '成本中心', prefixes: ['/anl-04'] },
     ],
