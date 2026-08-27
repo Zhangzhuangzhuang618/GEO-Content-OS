@@ -148,6 +148,39 @@ describe('Content Writer semantic quality gate', () => {
       ),
     ).toEqual({ issues: [], passed: true });
 
+    expect(
+      assessContentWriterContents(
+        [
+          {
+            ...douyin,
+            platform_meta: {
+              ...douyinImageNoteMeta(),
+              description: DOUYIN_NARRATIVE_DESCRIPTION.replace(/\n+/gu, ''),
+            },
+          },
+        ],
+        'quality',
+      ).issues,
+    ).toContain('douyin:发布主文案必须使用 5–8 个长短有变化的自然段');
+
+    expect(
+      assessContentWriterContents(
+        [
+          {
+            ...douyin,
+            platform_meta: {
+              ...douyinImageNoteMeta(),
+              description: DOUYIN_NARRATIVE_DESCRIPTION.replace(
+                '一份搬家服务选择指南。',
+                '先说结论，一份搬家服务选择指南。',
+              ),
+            },
+          },
+        ],
+        'quality',
+      ).issues,
+    ).toContain('douyin:发布主文案仍含模板钩子、助手过渡语或空泛免责声明');
+
     const repeated = douyinImageNoteMeta();
     expect(
       assessContentWriterContents(
@@ -227,11 +260,20 @@ function douyinImageNoteMeta() {
       },
     ],
     content_kind: 'image_note',
-    description:
-      '跨区搬家当天是否顺利，通常取决于两端现场条件、车辆安排和物品准备是否提前衔接。先确认旧址与新址的楼层、电梯预约和停车位置，再根据物品体积与道路条件核对车型。大件、易碎品和需要拆装的家具应分别记录，避免到场后临时调整。报价还要逐项确认等待、搬运距离和临时加项的处理边界。按这些条件逐项沟通，比只比较一个总价更容易发现遗漏。',
+    description: DOUYIN_NARRATIVE_DESCRIPTION,
     topics: ['跨区搬家', '搬家准备', '搬家避坑', '广州搬家'],
   } as const;
 }
+
+const DOUYIN_NARRATIVE_DESCRIPTION = [
+  '一份搬家服务选择指南。广州跨区搬家涉及两端楼层、电梯预约、停车位置和物品拆装，任一条件遗漏都容易带来等待、临时加项或物品磕碰。',
+  '确定方案前应核对新旧地址的通道、门洞、装卸距离和可作业时间，记录大件、易碎品与需要拆装的家具。现场信息越完整，车型、人员和搬运顺序越容易评估，也能减少到场后反复调整。',
+  '报价环节要把运输、人工、拆装、包装、楼层和等待等项目分别确认，并写清哪些情况会增加费用。只拿一个总价比较，很难判断服务范围是否一致；把服务边界落在书面约定里，后续核对更直接。',
+  '物品防护与责任处理也要提前谈清。易碎品可按类别包装，大件家具需要确认拆装方式，贵重或特殊物品应单独记录；交接时按清单验收，发现磕碰或缺件便于按约定处理。',
+  '预约时间会影响车辆调度和整体工期。遇到电梯限时、园区进场登记或道路临停限制，应预留沟通时间，并确认计划变化时的响应方式，避免人员和车辆到场后长时间等待。',
+  '实操可按四点核对：第一，比较两到三份服务方案，确认项目口径一致；第二，把易碎品、大件和特殊物品单独列出；第三，确认电梯、停车和进场时间；第四，把费用变化条件、责任划分和验收方式写进约定。',
+  '搬家方案需要结合物品规模、两端现场和时间要求综合判断。对照现场记录、分项报价、防护安排与异常处理方式逐项选择，能够减少临时变更带来的风险。',
+].join('\n\n');
 
 function complete(
   platformCode: ContentWriterContent['platform_code'],

@@ -358,8 +358,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
             ]
           : input.platformCode === 'douyin'
             ? [
-                '保持 platform_meta.content_kind=image_note，使用6-9张封面/正文/总结图文卡片；封面必须是具体问题或收益钩子，正文单页单重点且为24-88字，整组覆盖场景、标准、步骤和风险边界，删除长段拆页、通用模板标题与同义重复。',
-                'description 使用160-500字补充条件和边界，不得逐页复述卡片；只修复当前报告指出的问题，不得换题或补造事实。',
+                '保持 platform_meta.content_kind=image_note，使用6-9张封面/正文/总结图文卡片；卡片按主题痛点、现场核对、报价或服务边界、防护风险、预约工期、实操清单和结论推进，正文单页单重点且为24-88字，删除长段拆页、通用模板标题与同义重复。',
+                'description 是独立发布主文案，使用420-900字和5-8个自然段：第一段恰好两句，第一句点题、第二句写对象和现实痛点；第二至第三段给解决方案，并在现有企业资料支持时自然提及一次本企业全称；随后覆盖报价或服务边界、防护或责任风险、预约或工期；倒数第二段给出至少3条明确编号的实操避坑点，最后一段给选择依据。不得复制摘要、正文块或卡片，不得使用模板钩子、助手过渡语或空泛免责声明。只修复当前报告指出的问题，不得换题或补造事实。',
                 '不得声明原创，不得伪造热点、排行、亲历或用户评价；AI 创作标识由发布器如实设置。',
               ]
             : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),
@@ -730,7 +730,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
     let deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     if (
       deterministicIssues.length === 0 &&
-      (assessment.passed || (!revision && input.context.modelPolicy === 'fast'))
+      (assessment.passed ||
+        (!revision &&
+          input.context.modelPolicy === 'fast' &&
+          assessment.issues.every((issue) => !issue.startsWith('douyin:'))))
     ) {
       return output;
     }
@@ -1238,15 +1241,13 @@ function deterministicContentIssues(
   data: ContentWriterData,
   writerInput: JsonObject,
 ): readonly string[] {
-  const issues = [
-    ...companyNamePolicyIssues(
-      data,
-      'content-writer',
-      ownerCompanyNamesFromWriterInput(writerInput),
-    ),
-  ];
+  const ownerCompanyNames = ownerCompanyNamesFromWriterInput(writerInput);
+  const issues = [...companyNamePolicyIssues(data, 'content-writer', ownerCompanyNames)];
   for (const content of data.variants) {
     issues.push(...credentialCitationIssues(content, writerInput));
+    if (content.platform_code === 'douyin') {
+      issues.push(...douyinOwnerPromotionIssues(content, ownerCompanyNames));
+    }
     if (
       content.platform_code === 'baijiahao' &&
       (content.cta !== null || content.blocks.some((block) => block.block_type === 'cta'))
@@ -1256,6 +1257,31 @@ function deterministicContentIssues(
   }
   issues.push(...credentialCitationIssues(data.master_content, writerInput));
   return Object.freeze(issues);
+}
+
+function douyinOwnerPromotionIssues(
+  content: ContentWriterContent,
+  ownerCompanyNames: readonly string[],
+): readonly string[] {
+  if (ownerCompanyNames.length === 0) return Object.freeze([]);
+  const description = stringValue(content.platform_meta['description']);
+  const paragraphs = description
+    .split(/\n+/u)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const solutionParagraphs = paragraphs.slice(1, 3).join('\n');
+  if (!ownerCompanyNames.some((name) => solutionParagraphs.includes(name))) {
+    return Object.freeze([
+      `douyin:发布主文案第二或第三段必须自然提及一次当前企业名称（${ownerCompanyNames.join('、')}），并且只能说明输入资料支持的服务`,
+    ]);
+  }
+  const mentionCount = ownerCompanyNames.reduce(
+    (total, name) => total + description.split(name).length - 1,
+    0,
+  );
+  return mentionCount > 2
+    ? Object.freeze(['douyin:发布主文案中的本企业名称最多自然出现 2 次，避免重复推广'])
+    : Object.freeze([]);
 }
 
 function credentialCitationIssues(

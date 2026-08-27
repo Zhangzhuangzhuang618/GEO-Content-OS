@@ -58,6 +58,24 @@ const UNSUPPORTED_AUTHORITY_PATTERNS = [
   /保证(?:不会|没有|无)/u,
 ] as const;
 
+const DOUYIN_DESCRIPTION_MINIMUM = 420;
+const DOUYIN_DESCRIPTION_MAXIMUM = 900;
+const DOUYIN_DESCRIPTION_PARAGRAPH_MINIMUM = 5;
+const DOUYIN_DESCRIPTION_PARAGRAPH_MAXIMUM = 8;
+const DOUYIN_PAIN_PATTERN =
+  /涉及|容易|可能|常见|遇到|损伤|延误|混乱|加价|停工|风险|难点|麻烦|遗漏|不足|卡住/u;
+const DOUYIN_SOLUTION_PATTERN = /勘测|核对|记录|评估|确认|检查|清点|测量|规划/u;
+const DOUYIN_PRICE_BOUNDARY_PATTERN = /报价|费用|计费|收费|服务范围|服务边界|书面约定/u;
+const DOUYIN_PROTECTION_PATTERN = /防护|包装|加固|保障|损坏|磕碰|风险|责任|验收/u;
+const DOUYIN_SCHEDULE_PATTERN = /预约|响应|排期|工期|停工|调度|时间|进场|出场/u;
+const DOUYIN_CONCLUSION_PATTERN = /结合|对照|综合|核对|确认|选择|判断|降低|避免|减少/u;
+const DOUYIN_ASSISTANT_FLAVOR_PATTERNS = [
+  /^\s*(?:先说结论|直接说结论|这次只看)/u,
+  /真正(?:决定|重要|关键)[^。！？!?]{0,60}(?:不是|并非)[^。！？!?]{0,60}(?:而是|是)/u,
+  /(?:^|[。！？!?\n])(?:下面(?:我们)?(?:来)?|接下来(?:我们)?)(?:看|说|介绍|分析|梳理)|总的来说|综上所述|希望(?:以上|这些).{0,16}(?:帮助|参考)/u,
+  /以上(?:内容|流程|建议).{0,24}(?:仅供参考|来自公开|整理)/u,
+] as const;
+
 export function assessContentWriterData(
   data: ContentWriterData,
   policy: ContentGenerationPolicy,
@@ -193,10 +211,12 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
   const description = meta['description'];
   if (
     typeof description !== 'string' ||
-    [...description.trim()].length < 160 ||
-    [...description.trim()].length > 500
+    [...description.trim()].length < DOUYIN_DESCRIPTION_MINIMUM ||
+    [...description.trim()].length > DOUYIN_DESCRIPTION_MAXIMUM
   ) {
-    issues.push('douyin:platform_meta.description 必须为 160–500 个字符');
+    issues.push('douyin:platform_meta.description 必须为 420–900 个字符');
+  } else {
+    issues.push(...douyinNarrativeDescriptionIssues(content, description));
   }
   const topics = meta['topics'];
   if (
@@ -267,7 +287,7 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
   if (
     cards.some((card) => {
       const value = card as Readonly<Record<string, unknown>>;
-      return /^(?:实用提示|实用指南|要点回顾|注意事项|温馨提示|内容总结)$/u.test(
+      return /^(?:实用提示|实用指南|要点回顾|注意事项|温馨提示|内容总结|总结)$/u.test(
         String(value['heading']).trim(),
       );
     })
@@ -296,6 +316,118 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
     issues.push('douyin:正文卡片缺少风险、不适用情形或事实边界');
   }
   return issues;
+}
+
+function douyinNarrativeDescriptionIssues(
+  content: ContentWriterContent,
+  description: string,
+): readonly string[] {
+  const issues: string[] = [];
+  const paragraphs = descriptionParagraphs(description);
+  if (
+    paragraphs.length < DOUYIN_DESCRIPTION_PARAGRAPH_MINIMUM ||
+    paragraphs.length > DOUYIN_DESCRIPTION_PARAGRAPH_MAXIMUM
+  ) {
+    issues.push('douyin:发布主文案必须使用 5–8 个长短有变化的自然段');
+  }
+
+  const openingSentences = sentenceTexts(paragraphs[0] ?? '');
+  if (
+    openingSentences.length !== 2 ||
+    [...(openingSentences[0] ?? '')].length > 48 ||
+    sharedMeaningfulCharacters(openingSentences[0] ?? '', content.title) < 2
+  ) {
+    issues.push('douyin:发布主文案第一段必须用第一句点题、第二句交代场景痛点');
+  } else if (!DOUYIN_PAIN_PATTERN.test(openingSentences[1] ?? '')) {
+    issues.push('douyin:发布主文案第二句话缺少具体对象、现实问题或后果');
+  }
+
+  const normalizedDescription = normalize(description);
+  const duplicatedSource = [
+    content.summary,
+    ...content.blocks.map((block) => block.text),
+    ...douyinCardTexts(content.platform_meta['cards']),
+  ].some((value) => normalize(value) === normalizedDescription);
+  if (duplicatedSource) {
+    issues.push('douyin:发布主文案不得直接复制摘要、正文块或单张卡片');
+  }
+
+  if (!DOUYIN_SOLUTION_PATTERN.test(description)) {
+    issues.push('douyin:发布主文案缺少可执行的现场核对或方案动作');
+  }
+  if (!DOUYIN_PRICE_BOUNDARY_PATTERN.test(description)) {
+    issues.push('douyin:发布主文案缺少报价、费用或服务边界说明');
+  }
+  if (!DOUYIN_PROTECTION_PATTERN.test(description)) {
+    issues.push('douyin:发布主文案缺少防护、责任或风险处理说明');
+  }
+  if (!DOUYIN_SCHEDULE_PATTERN.test(description)) {
+    issues.push('douyin:发布主文案缺少预约、工期或现场调度说明');
+  }
+  if (practicalTipCount(description) < 3) {
+    issues.push('douyin:发布主文案必须给出至少 3 条明确编号的实操避坑点');
+  }
+  if (!DOUYIN_CONCLUSION_PATTERN.test(paragraphs.at(-1) ?? '')) {
+    issues.push('douyin:发布主文案最后一段必须落到可执行的选择依据或判断结论');
+  }
+  if (DOUYIN_ASSISTANT_FLAVOR_PATTERNS.some((pattern) => pattern.test(description))) {
+    issues.push('douyin:发布主文案仍含模板钩子、助手过渡语或空泛免责声明');
+  }
+  if (/[？?]\s*$/u.test(description)) {
+    issues.push('douyin:发布主文案不得用无明确任务的互动问句收尾');
+  }
+  return issues;
+}
+
+function descriptionParagraphs(value: string): readonly string[] {
+  return Object.freeze(
+    value
+      .split(/\n+/u)
+      .map((paragraph) => paragraph.trim())
+      .filter(Boolean),
+  );
+}
+
+function sentenceTexts(value: string): readonly string[] {
+  return Object.freeze(
+    (value.match(/[^。！？!?]+[。！？!?]?/gu) ?? [])
+      .map((sentence) => sentence.trim())
+      .filter(Boolean),
+  );
+}
+
+function sharedMeaningfulCharacters(left: string, right: string): number {
+  const ignored = new Set([...'的一是在了与和及为把将可要']);
+  const leftCharacters = new Set(
+    [...normalize(left)].filter(
+      (character) => /[\p{Script=Han}A-Za-z0-9]/u.test(character) && !ignored.has(character),
+    ),
+  );
+  return [
+    ...new Set(
+      [...normalize(right)].filter(
+        (character) => /[\p{Script=Han}A-Za-z0-9]/u.test(character) && !ignored.has(character),
+      ),
+    ),
+  ].filter((character) => leftCharacters.has(character)).length;
+}
+
+function practicalTipCount(value: string): number {
+  const chinese = value.match(/第[一二三四五六七八九十](?=[，、：:])/gu) ?? [];
+  const arabic = value.match(/(?:^|[\s；;。])\d{1,2}[.、](?=\S)/gu) ?? [];
+  return new Set([...chinese, ...arabic.map((item) => item.trim())]).size;
+}
+
+function douyinCardTexts(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return Object.freeze([]);
+  return Object.freeze(
+    value.flatMap((card) => {
+      if (!record(card)) return [];
+      return [card['heading'], card['body']].filter(
+        (text): text is string => typeof text === 'string',
+      );
+    }),
+  );
 }
 
 function hasNearDuplicate(values: readonly string[]): boolean {

@@ -103,6 +103,116 @@ describe('AI Worker runtime wiring', () => {
     expect(generatedVariant.blocks.some((block) => block.block_type === 'cta')).toBe(false);
   });
 
+  it('does not let fast mode bypass the Douyin narrative caption gate', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const repaired = multiPlatformContentData(['douyin'], new Set());
+    const initial = {
+      ...repaired,
+      variants: [
+        {
+          ...repaired.variants[0]!,
+          platform_meta: {
+            ...repaired.variants[0]!.platform_meta,
+            description: '搬家当天少等待，需要提前核对现场条件、物品清单和时间安排。',
+          },
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(initial) }, { text: JSON.stringify(repaired) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['douyin']);
+    const masterContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-fast-caption-master-0061',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-fast-caption-variant-0061',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      'platform_meta.description 必须为 420–900 个字符',
+    );
+    expect((variant.platform_meta as JsonObject)['description']).toBe(DOUYIN_NARRATIVE_DESCRIPTION);
+  });
+
+  it('places the published owner company naturally in the solution paragraphs', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = multiPlatformContentData(['douyin'], new Set());
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const repairedDescription = DOUYIN_NARRATIVE_DESCRIPTION.replace(
+      '确定方案前应核对',
+      `${ownerCompanyName}可先协助核对`,
+    );
+    const repaired = {
+      ...initial,
+      variants: [
+        {
+          ...initial.variants[0]!,
+          platform_meta: {
+            ...initial.variants[0]!.platform_meta,
+            description: repairedDescription,
+          },
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(initial) }, { text: JSON.stringify(repaired) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = multiPlatformWriterInput(fixture.input as JsonObject, ['douyin']);
+    const strategy = baseInput['strategy'] as JsonObject;
+    const writerInput = {
+      ...baseInput,
+      strategy: {
+        ...strategy,
+        profile: {
+          ...(strategy['profile'] as JsonObject),
+          positioning: `${ownerCompanyName}面向广州提供搬迁服务。`,
+        },
+      },
+    } as JsonObject;
+    const masterContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-owner-master-0061',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-owner-variant-0061',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '第二或第三段必须自然提及一次当前企业名称',
+    );
+    expect((variant.platform_meta as JsonObject)['description']).toContain(ownerCompanyName);
+  });
+
   it('retries an unchanged quality-guided rewrite with the original diagnostics', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const original = multiPlatformContentData(['baijiahao'], new Set());
@@ -1762,11 +1872,20 @@ function douyinImageNoteMeta() {
       },
     ],
     content_kind: 'image_note',
-    description:
-      '搬家前是否顺利，通常取决于两端现场条件、车辆安排和物品准备是否提前衔接。先确认旧址与新址的楼层、电梯预约和停车位置，再根据物品体积与道路条件核对车型。大件、易碎品和需要拆装的家具应分别记录，避免到场后临时调整。报价还要逐项确认等待、搬运距离和临时加项的处理边界。如果两端条件差异较大，还应预留装卸衔接时间，并提前约定无法按原计划作业时的调整方式。按这些条件逐项沟通，比只比较一个总价更容易发现遗漏。',
+    description: DOUYIN_NARRATIVE_DESCRIPTION,
     topics: ['搬家准备', '搬家指南', '搬家避坑', '广州搬家'],
   } as const;
 }
+
+const DOUYIN_NARRATIVE_DESCRIPTION = [
+  '一份搬家服务选择指南。广州跨区搬家涉及两端楼层、电梯预约、停车位置和物品拆装，任一条件遗漏都容易带来等待、临时加项或物品磕碰。',
+  '确定方案前应核对新旧地址的通道、门洞、装卸距离和可作业时间，记录大件、易碎品与需要拆装的家具。现场信息越完整，车型、人员和搬运顺序越容易评估，也能减少到场后反复调整。',
+  '报价环节要把运输、人工、拆装、包装、楼层和等待等项目分别确认，并写清哪些情况会增加费用。只拿一个总价比较，很难判断服务范围是否一致；把服务边界落在书面约定里，后续核对更直接。',
+  '物品防护与责任处理也要提前谈清。易碎品可按类别包装，大件家具需要确认拆装方式，贵重或特殊物品应单独记录；交接时按清单验收，发现磕碰或缺件便于按约定处理。',
+  '预约时间会影响车辆调度和整体工期。遇到电梯限时、园区进场登记或道路临停限制，应预留沟通时间，并确认计划变化时的响应方式，避免人员和车辆到场后长时间等待。',
+  '实操可按四点核对：第一，比较两到三份服务方案，确认项目口径一致；第二，把易碎品、大件和特殊物品单独列出；第三，确认电梯、停车和进场时间；第四，把费用变化条件、责任划分和验收方式写进约定。',
+  '搬家方案需要结合物品规模、两端现场和时间要求综合判断。对照现场记录、分项报价、防护安排与异常处理方式逐项选择，能够减少临时变更带来的风险。',
+].join('\n\n');
 
 const PLATFORM_STRUCTURES = {
   master: { blocks: 8, headings: 3 },
