@@ -92,6 +92,7 @@ interface PublishMediaConfig {
 
 interface MediaStateRow {
   readonly assetCount: number;
+  readonly expectedAssetCount: number | null;
   readonly platformCode: string;
   readonly runId: string | null;
   readonly runStatus: 'queued' | 'running' | 'succeeded' | 'fallback' | 'cancelled' | null;
@@ -99,9 +100,11 @@ interface MediaStateRow {
 
 interface MediaRequestRow {
   readonly assetCount: number;
+  readonly contentKind: string | null;
   readonly contentHash: string;
   readonly contentVersionId: string;
   readonly currentContentVersionId: string | null;
+  readonly expectedAssetCount: number | null;
   readonly packageId: string;
   readonly platformCode: string;
   readonly projectId: string;
@@ -285,14 +288,42 @@ export class PublishingApiService {
     return Object.freeze({ platform_code: job.platformCode });
   }
 
-  public requestMedia(
+  public async requestMedia(
     transaction: postgres.TransactionSql,
     scope: PublishingApiScope,
     jobId: string,
     expectedVersion: number,
     requestId: string,
   ): Promise<PublishMediaRun> {
-    return this.requestMediaInTransaction(transaction, scope, jobId, expectedVersion, requestId);
+    const run = await this.requestMediaInTransaction(
+      transaction,
+      scope,
+      jobId,
+      expectedVersion,
+      requestId,
+      false,
+    );
+    if (!run) {
+      throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Image generation was not queued');
+    }
+    return run;
+  }
+
+  public requestRequiredMedia(
+    transaction: postgres.TransactionSql,
+    scope: PublishingApiScope,
+    jobId: string,
+    expectedVersion: number,
+    requestId: string,
+  ): Promise<PublishMediaRun | null> {
+    return this.requestMediaInTransaction(
+      transaction,
+      scope,
+      jobId,
+      expectedVersion,
+      requestId,
+      true,
+    );
   }
 
   public async attempts(
@@ -391,6 +422,12 @@ export class PublishingApiService {
   private async mediaState(scope: PublishingApiScope, jobId: string): Promise<PublishMediaState> {
     const rows = await this.database<MediaStateRow[]>`
       SELECT variant.platform_code AS "platformCode",
+        CASE
+          WHEN content.content_json->'platform_meta'->>'content_kind'='image_note'
+            AND jsonb_typeof(content.content_json->'platform_meta'->'cards')='array'
+          THEN jsonb_array_length(content.content_json->'platform_meta'->'cards')
+          ELSE NULL
+        END AS "expectedAssetCount",
         COALESCE((
           SELECT count(*)::integer FROM content_media_assets AS link
           JOIN media_assets AS asset
@@ -406,6 +443,9 @@ export class PublishingApiService {
         ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
       JOIN content_packages AS package
         ON package.id=variant.package_id AND package.tenant_id=variant.tenant_id
+      JOIN content_versions AS content
+        ON content.id=job.content_version_id AND content.tenant_id=job.tenant_id
+        AND content.package_id=package.id AND content.variant_id=variant.id
       LEFT JOIN LATERAL (
         SELECT id,status FROM content_media_runs
         WHERE tenant_id=job.tenant_id AND variant_id=job.variant_id
@@ -423,12 +463,15 @@ export class PublishingApiService {
     const supported =
       isMediaPlatform(row.platformCode) &&
       (row.platformCode === 'douyin' || this.mediaConfig.enabled);
-    const status =
-      row.assetCount > 0
-        ? 'ready'
-        : row.runStatus === 'queued' || row.runStatus === 'running'
-          ? row.runStatus
-          : 'none';
+    const ready =
+      row.platformCode === 'douyin' && row.expectedAssetCount !== null
+        ? row.expectedAssetCount > 0 && row.assetCount === row.expectedAssetCount
+        : row.assetCount > 0;
+    const status = ready
+      ? 'ready'
+      : row.runStatus === 'queued' || row.runStatus === 'running'
+        ? row.runStatus
+        : 'none';
     return Object.freeze({
       asset_count: row.assetCount,
       run_id: row.runId,
@@ -443,13 +486,21 @@ export class PublishingApiService {
     jobId: string,
     expectedVersion: number,
     requestId: string,
-  ): Promise<PublishMediaRun> {
+    requiredOnly: boolean,
+  ): Promise<PublishMediaRun | null> {
     const rows = await transaction<MediaRequestRow[]>`
       SELECT job.status,job.version,job.variant_id AS "variantId",
         job.content_version_id AS "contentVersionId",variant.platform_code AS "platformCode",
         variant.current_content_version_id AS "currentContentVersionId",
         package.id AS "packageId",package.workspace_id AS "workspaceId",
         package.project_id AS "projectId",content.content_hash AS "contentHash",
+        content.content_json->'platform_meta'->>'content_kind' AS "contentKind",
+        CASE
+          WHEN content.content_json->'platform_meta'->>'content_kind'='image_note'
+            AND jsonb_typeof(content.content_json->'platform_meta'->'cards')='array'
+          THEN jsonb_array_length(content.content_json->'platform_meta'->'cards')
+          ELSE NULL
+        END AS "expectedAssetCount",
         report.id AS "qualityReportId",
         COALESCE((
           report.decision='pass'
@@ -490,6 +541,9 @@ export class PublishingApiService {
     if (row.version !== expectedVersion) {
       throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Publish job version changed');
     }
+    if (requiredOnly && (row.platformCode !== 'douyin' || row.contentKind !== 'image_note')) {
+      return null;
+    }
     if (!this.mediaConfig.enabled && row.platformCode !== 'douyin') {
       throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Image generation is disabled');
     }
@@ -515,7 +569,12 @@ export class PublishingApiService {
         'The scheduled content does not have a passing current quality report',
       );
     }
-    if (row.assetCount > 0) {
+    const mediaReady =
+      row.platformCode === 'douyin' && row.expectedAssetCount !== null
+        ? row.expectedAssetCount > 0 && row.assetCount === row.expectedAssetCount
+        : row.assetCount > 0;
+    if (mediaReady) {
+      if (requiredOnly) return null;
       throw new PublishingApiError(
         'PUBLISHING_STATE_INVALID',
         'The scheduled content already has generated images',

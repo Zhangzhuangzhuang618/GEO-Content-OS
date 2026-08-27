@@ -68,6 +68,112 @@ describe('manual publish media event', () => {
 
     expect(event.data.publishJobId).toBe(publishJobId);
   });
+
+  it('resumes the same scheduled Douyin job after card media is persisted', async () => {
+    const publishJobId = '10000000-0000-4000-8000-000000000009';
+    const payloads: Readonly<Record<string, unknown>>[] = [];
+    const transaction = (async (strings: TemplateStringsArray, ...values: unknown[]) => {
+      const query = strings.join('?');
+      if (query.includes('FROM quality_reports')) {
+        return [
+          {
+            automationGate: null,
+            decision: 'pass',
+            generationRunId: '10000000-0000-4000-8000-000000000013',
+            geoScores: {},
+            issues: { issues: [] },
+            score: 90,
+          },
+        ];
+      }
+      if (query.includes('UPDATE content_media_runs SET status=')) return [{ id: 'media-run' }];
+      if (query.includes('FROM publish_jobs')) {
+        return [
+          {
+            id: publishJobId,
+            scheduledAt: new Date('2026-08-27T08:00:00.000Z'),
+            version: 4,
+          },
+        ];
+      }
+      if (query.includes('INSERT INTO outbox_events')) {
+        const payload = values.find(
+          (value) =>
+            typeof value === 'string' &&
+            value.startsWith('{') &&
+            value.includes('publishing.job.execution_requested'),
+        );
+        if (typeof payload === 'string') payloads.push(JSON.parse(payload));
+        return [];
+      }
+      if (query.includes('INSERT INTO audit_events')) return [];
+      throw new Error(`Unexpected SQL: ${query}`);
+    }) as unknown as postgres.TransactionSql;
+    const client = Object.assign(transaction, {
+      begin: async <T>(callback: (sql: postgres.TransactionSql) => Promise<T>) =>
+        callback(transaction),
+    }) as unknown as postgres.Sql;
+    const worker = new ContentMediaWorker(
+      client,
+      {} as never,
+      null,
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        enabled: true,
+        generationSteps: 4,
+        plannerModelKey: 'deepseek-v4-flash',
+        publicBaseUrl: null,
+      },
+    );
+    const event = validateMediaGenerationEvent({
+      ...mediaEvent(),
+      data: {
+        ...mediaEvent().data,
+        platform_code: 'douyin',
+        publish_job_id: publishJobId,
+      },
+    });
+
+    await (
+      worker as unknown as {
+        persistAndResume(
+          event: unknown,
+          claim: unknown,
+          plan: unknown,
+          assets: readonly unknown[],
+          status: 'succeeded',
+          diagnostics: Readonly<Record<string, unknown>>,
+        ): Promise<void>;
+      }
+    ).persistAndResume(
+      event,
+      {
+        content: {},
+        contentHash: 'a'.repeat(64),
+        createdBy: '10000000-0000-4000-8000-000000000001',
+        generationModel: null,
+        generationRunId: '10000000-0000-4000-8000-000000000013',
+        inspectionModel: null,
+        manualPublishJobId: publishJobId,
+        platformCode: 'douyin',
+        provider: null,
+        version: 2,
+      },
+      { schema_version: 'douyin-note-media-plan@2' },
+      [],
+      'succeeded',
+      {},
+    );
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0]).toMatchObject({
+      data: { job_id: publishJobId, job_version: 4 },
+      event_type: 'publishing.job.execution_requested.v1',
+      tenant: { id: '10000000-0000-4000-8000-000000000002' },
+    });
+  });
 });
 
 describe('Douyin image-note quality metadata', () => {

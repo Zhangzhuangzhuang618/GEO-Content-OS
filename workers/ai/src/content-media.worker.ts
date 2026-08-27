@@ -870,6 +870,43 @@ export class ContentMediaWorker {
       if (completed.length !== 1) throw new Error('Content media run lease was lost');
 
       if (claim.manualPublishJobId) {
+        if (claim.platformCode === 'douyin') {
+          const jobs = await transaction<{ id: string; scheduledAt: Date; version: number }[]>`
+            SELECT id,scheduled_at AS "scheduledAt",version
+            FROM publish_jobs
+            WHERE id=${claim.manualPublishJobId}::uuid AND tenant_id=${event.tenantId}::uuid
+              AND variant_id=${event.data.variantId}::uuid
+              AND content_version_id=${event.data.contentVersionId}::uuid
+              AND payload_hash=${event.data.contentHash} AND status='scheduled'
+            FOR UPDATE
+          `;
+          const job = jobs[0];
+          if (job) {
+            const resumeEvent = DomainEventEnvelopeSchema.parse({
+              aggregate: { id: job.id, type: 'publish_job' },
+              data: {
+                job_id: job.id,
+                job_version: job.version,
+                request_id: `media-resume-${event.data.requestId}`.slice(0, 80),
+                scheduled_at: job.scheduledAt.toISOString(),
+              },
+              event_id: randomUUID(),
+              event_type: 'publishing.job.execution_requested.v1',
+              occurred_at: new Date().toISOString(),
+              tenant: { id: event.tenantId },
+            });
+            await transaction`
+              INSERT INTO outbox_events (
+                id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,next_attempt_at
+              ) VALUES (
+                ${resumeEvent.event_id}::uuid,${event.tenantId}::uuid,
+                ${resumeEvent.event_type},${resumeEvent.aggregate.type},
+                ${resumeEvent.aggregate.id}::uuid,${JSON.stringify(resumeEvent)}::text::jsonb,
+                GREATEST(${job.scheduledAt}::timestamptz,now())
+              )
+            `;
+          }
+        }
         await transaction`
           INSERT INTO audit_events (
             tenant_id,actor_id,action,resource_type,resource_id,before_json,after_json,request_id

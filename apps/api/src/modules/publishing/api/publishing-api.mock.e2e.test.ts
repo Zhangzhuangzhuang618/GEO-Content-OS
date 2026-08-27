@@ -228,6 +228,7 @@ describe('publishing API mock E2E', () => {
     detail: vi.fn(async () => detail),
     listJobs,
     requestMedia: vi.fn(async () => ({ id: MEDIA_RUN_ID, status: 'queued' as const })),
+    requestRequiredMedia: vi.fn(async () => ({ id: MEDIA_RUN_ID, status: 'queued' as const })),
     signedExport: vi.fn(async () => download),
   };
   const jobs = {
@@ -437,6 +438,13 @@ describe('publishing API mock E2E', () => {
       expect.objectContaining({ account_id: ACCOUNT_ID, variant_id: VARIANT_ID }),
       'publish-job-create-0001',
     );
+    expect(api.requestRequiredMedia).toHaveBeenCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      JOB_ID,
+      3,
+      REQUEST_ID,
+    );
     expect(cancelResponse.statusCode).toBe(200);
     expect(cancelResponse.headers.etag).toBe('"4"');
     findPublishingApiContract('job.cancel').responseSchema.parse(cancelResponse.json());
@@ -445,6 +453,32 @@ describe('publishing API mock E2E', () => {
       JOB_ID,
       3,
       'Editorial calendar changed',
+    );
+  });
+
+  it('requeues required media when retrying a failed image-note publish job', async () => {
+    const response = await application.inject({
+      headers: { 'idempotency-key': 'publish-job-retry-media-0001', 'if-match': '"3"' },
+      method: 'POST',
+      payload: {},
+      url: `/publish-jobs/${JOB_ID}/retry`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    findPublishingApiContract('job.retry').responseSchema.parse(response.json());
+    expect(jobs.retryInTransaction).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ tenantId: TENANT_ID, userId: USER_ID }),
+      JOB_ID,
+      3,
+      {},
+    );
+    expect(api.requestRequiredMedia).toHaveBeenLastCalledWith(
+      {},
+      { tenantId: TENANT_ID, userId: USER_ID },
+      JOB_ID,
+      3,
+      REQUEST_ID,
     );
   });
 

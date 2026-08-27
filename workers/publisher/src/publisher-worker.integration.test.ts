@@ -145,6 +145,82 @@ describe('publisher worker', () => {
     ]);
   });
 
+  it('keeps a Douyin image-note job scheduled until every card image is ready', async () => {
+    const database = requireClient(client);
+    const douyinVersionId = '81000000-0000-4000-8000-000000000126';
+    const douyinContentHash = 'c'.repeat(64);
+    const cards = [
+      { body: '先确认范围。', card_key: 'cover', heading: '搬迁少停工清单', kind: 'cover' },
+      { body: '提前完成标签。', card_key: 'packing', heading: '打包', kind: 'body' },
+      { body: '提前核对网络。', card_key: 'network', heading: '网络', kind: 'body' },
+      { body: '按部门恢复工位。', card_key: 'desk', heading: '工位', kind: 'body' },
+      { body: '逐项验收再收尾。', card_key: 'summary', heading: '核对完成', kind: 'summary' },
+    ];
+    await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+    await database`
+      UPDATE briefs SET platform_codes=ARRAY['douyin']::varchar[] WHERE id=${BRIEF_ID}::uuid
+    `;
+    await database`
+      UPDATE content_variants SET platform_code='douyin' WHERE id=${VARIANT_ID}::uuid
+    `;
+    await database`
+      UPDATE platform_accounts SET platform_code='douyin' WHERE id=${ACCOUNT_ID}::uuid
+    `;
+    await database`
+      INSERT INTO content_versions(
+        id,tenant_id,package_id,variant_id,version_no,schema_version,
+        content_json,content_hash,created_by
+      ) VALUES(
+        ${douyinVersionId}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,
+        2,'content-writer@1',${database.json({
+          blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '办公室搬迁清单。' }],
+          citation_map: [],
+          cta: null,
+          hashtags: ['办公室搬迁'],
+          platform_code: 'douyin',
+          platform_meta: {
+            cards,
+            content_kind: 'image_note',
+            description: '办公室搬迁当天减少停工时间的实用清单。',
+            topics: ['办公室搬迁'],
+          },
+          schema_version: 'content-writer@1',
+          summary: '提前拆解任务，按清单恢复。',
+          title: '办公室搬迁少停工清单',
+        })},${douyinContentHash},${USER_ID}::uuid
+      )
+    `;
+    await database`
+      UPDATE content_variants SET current_content_version_id=${douyinVersionId}::uuid
+      WHERE id=${VARIANT_ID}::uuid
+    `;
+    await database`
+      INSERT INTO publish_jobs(
+        id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+        idempotency_key,payload_hash,status,created_by
+      ) VALUES(
+        ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${douyinVersionId}::uuid,
+        ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
+        ${douyinContentHash},'scheduled',${USER_ID}::uuid
+      )
+    `;
+    const platform = new FakePlatform();
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'busy' });
+
+    expect(platform.claims).toHaveLength(0);
+    expect(
+      await database<{ attemptCount: number; jobStatus: string; variantStatus: string }[]>`
+        SELECT job.attempt_count AS "attemptCount",job.status AS "jobStatus",
+          variant.status AS "variantStatus"
+        FROM publish_jobs AS job
+        JOIN content_variants AS variant ON variant.id=job.variant_id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([{ attemptCount: 0, jobStatus: 'scheduled', variantStatus: 'scheduled' }]);
+  });
+
   it('retries an idempotent official-site unknown state twice and stops after attempt three', async () => {
     const database = requireClient(client);
     await enableAutomation(database);

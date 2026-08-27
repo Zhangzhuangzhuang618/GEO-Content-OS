@@ -907,13 +907,16 @@ export class PublishJobController {
         scope,
         '/publish-jobs',
         parsed.data as JsonValue,
-        (transaction) =>
-          this.jobs.createInTransaction(
+        async (transaction) => {
+          const job = await this.jobs.createInTransaction(
             transaction,
             publishScope(scope, request),
             parsed.data,
             key,
-          ),
+          );
+          await this.api.requestRequiredMedia(transaction, scope, job.id, job.version, request.id);
+          return job;
+        },
         HttpStatus.CREATED,
         key,
       );
@@ -1009,14 +1012,17 @@ export class PublishJobController {
         scope,
         route,
         parsedBody.data as JsonValue,
-        (transaction) =>
-          this.jobs.retryInTransaction(
+        async (transaction) => {
+          const job = await this.jobs.retryInTransaction(
             transaction,
             publishScope(scope, request),
             parsedParams.data.id,
             version,
             parsedBody.data,
-          ),
+          );
+          await this.api.requestRequiredMedia(transaction, scope, job.id, job.version, request.id);
+          return job;
+        },
         HttpStatus.OK,
         undefined,
         version,

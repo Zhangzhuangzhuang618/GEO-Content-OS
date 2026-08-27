@@ -178,6 +178,38 @@ export class PostgresPublisherStore implements PublisherStorePort {
       }
       if (row.scheduledAt > new Date()) return { kind: 'busy' } as const;
 
+      const mediaAssets = await transaction<
+        {
+          altText: string;
+          contentHash: string;
+          id: string;
+          mimeType: string;
+          objectUri: string;
+          position: number;
+          publicUrl: string | null;
+          role: 'body' | 'cover';
+          sizeBytes: string;
+          source: 'certificate' | 'cloudflare' | 'template';
+        }[]
+      >`
+        SELECT asset.id,asset.object_uri AS "objectUri",asset.content_hash AS "contentHash",
+          asset.mime_type AS "mimeType",asset.size_bytes::text AS "sizeBytes",
+          link.role,link.position,link.alt_text AS "altText",link.public_url AS "publicUrl",
+          link.source
+        FROM content_media_assets AS link
+        JOIN media_assets AS asset
+          ON asset.id=link.media_asset_id AND asset.tenant_id=link.tenant_id
+          AND asset.asset_type='image' AND asset.deleted_at IS NULL
+        WHERE link.tenant_id=${row.tenantId}::uuid
+          AND link.content_version_id=${row.contentVersionId}::uuid
+          AND link.quality_json->>'decision'='pass'
+        ORDER BY CASE link.role WHEN 'cover' THEN 0 ELSE 1 END,link.position,link.id
+      `;
+      const requiredDouyinAssets = douyinImageNoteCardCount(row.content);
+      if (requiredDouyinAssets !== null && mediaAssets.length !== requiredDouyinAssets) {
+        return { kind: 'busy' } as const;
+      }
+
       let attempt = row.attemptCount;
       if (row.status === 'publishing' || row.status === 'cancel_requested') {
         if (!isStale(row.updatedAt, this.staleAfterMs)) return { kind: 'busy' } as const;
@@ -235,33 +267,6 @@ export class PostgresPublisherStore implements PublisherStorePort {
           AND COALESCE(chunk.metadata_json->>'url', source.uri) ~* '^https?://'
         ORDER BY citation.chunk_id::text, source.title,
           COALESCE(chunk.metadata_json->>'url', source.uri)
-      `;
-      const mediaAssets = await transaction<
-        {
-          altText: string;
-          contentHash: string;
-          id: string;
-          mimeType: string;
-          objectUri: string;
-          position: number;
-          publicUrl: string | null;
-          role: 'body' | 'cover';
-          sizeBytes: string;
-          source: 'certificate' | 'cloudflare' | 'template';
-        }[]
-      >`
-        SELECT asset.id,asset.object_uri AS "objectUri",asset.content_hash AS "contentHash",
-          asset.mime_type AS "mimeType",asset.size_bytes::text AS "sizeBytes",
-          link.role,link.position,link.alt_text AS "altText",link.public_url AS "publicUrl",
-          link.source
-        FROM content_media_assets AS link
-        JOIN media_assets AS asset
-          ON asset.id=link.media_asset_id AND asset.tenant_id=link.tenant_id
-          AND asset.asset_type='image' AND asset.deleted_at IS NULL
-        WHERE link.tenant_id=${row.tenantId}::uuid
-          AND link.content_version_id=${row.contentVersionId}::uuid
-          AND link.quality_json->>'decision'='pass'
-        ORDER BY CASE link.role WHEN 'cover' THEN 0 ELSE 1 END,link.position,link.id
       `;
       return {
         kind: 'claimed',
@@ -2053,6 +2058,19 @@ function responseHashFromDiagnostics(
 ): string | null {
   const value = diagnostics?.['response_sha256'];
   return typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value) ? value : null;
+}
+
+function douyinImageNoteCardCount(content: Readonly<Record<string, unknown>>): number | null {
+  if (content['platform_code'] !== 'douyin') return null;
+  const platformMeta = content['platform_meta'];
+  if (!isRecord(platformMeta) || platformMeta['content_kind'] !== 'image_note') return null;
+  const cards = platformMeta['cards'];
+  if (!Array.isArray(cards) || cards.length < 1) throw stateInvalid();
+  return cards.length;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isStale(updatedAt: Date, staleAfterMs: number): boolean {
