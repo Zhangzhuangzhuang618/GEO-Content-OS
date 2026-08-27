@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+import { buildDouyinDescriptionCaption } from '@geo-content-os/adapter-platforms/douyin/render';
 import { chromium, type BrowserContext, type Locator, type Page, type Response } from 'playwright';
 
 import type { DouyinBrowserConfig } from './config.js';
@@ -165,7 +166,10 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       stage = 'fill_title';
       await title.fill(input.payload.title);
       stage = 'fill_description';
-      await fillRichText(description, caption(input.payload));
+      await fillRichText(
+        description,
+        buildDouyinDescriptionCaption(input.payload.description, input.payload.topics),
+      );
       stage = 'mark_ai_generated';
       await setAiGeneratedDeclaration(page, this.config.navigationTimeoutMs);
       stage = 'clear_original_declaration';
@@ -738,20 +742,23 @@ async function verifyPreSubmit(
   description: Locator,
   input: DriverPublishInput,
 ): Promise<void> {
+  const expectedCaption = buildDouyinDescriptionCaption(
+    input.payload.description,
+    input.payload.topics,
+  );
   const actualTitle = normalizeText(
     (await currentFieldValue(page, title, input.payload.title)) ?? '',
   );
   const actualDescription = normalizeText(
-    (await currentFieldValue(page, description, input.payload.description, true)) ?? '',
+    (await currentFieldValue(page, description, expectedCaption, true)) ?? '',
   );
   if (actualTitle !== normalizeText(input.payload.title)) {
     throw new PageDriverError('PAGE_SIGNATURE_CHANGED', 'Douyin editor did not preserve the title');
   }
-  const expectedDescription = normalizeText(input.payload.description);
-  if (!actualDescription.includes(expectedDescription)) {
+  if (!actualDescription.includes(normalizeText(expectedCaption))) {
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
-      'Douyin editor did not preserve the description',
+      'Douyin editor did not preserve the description and topics',
     );
   }
 }
@@ -1015,11 +1022,6 @@ async function restoreStorageState(context: BrowserContext, json: string): Promi
       browserGlobal.localStorage.setItem(item.name, item.value);
     }
   }, localStorageByOrigin);
-}
-
-function caption(payload: DriverPublishInput['payload']): string {
-  const topics = payload.topics.map((topic) => `#${topic.replace(/^#+/u, '')}`).join(' ');
-  return `${payload.description}\n\n${topics}`.trim();
 }
 
 function extractExternalId(value: string | null): string | null {

@@ -1,5 +1,6 @@
 export * from './api/index.js';
 export * from './company-name-policy.js';
+export * from './douyin-editorial-policy.js';
 export * from './errors.js';
 export * from './events.js';
 export * from './lieju-content-policy.js';

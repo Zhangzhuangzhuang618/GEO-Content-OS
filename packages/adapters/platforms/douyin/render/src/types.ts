@@ -98,6 +98,7 @@ export type DouyinPayload = DouyinScriptPayload | DouyinImageNotePayload;
 export type DouyinValidationCode =
   | 'CARD_ASSET_COUNT_MISMATCH'
   | 'CARD_ORDER_INVALID'
+  | 'CAPTION_LENGTH_EXCEEDED'
   | 'CITATION_LINK_MISSING'
   | 'DURATION_MISMATCH'
   | 'HOOK_REQUIRED'

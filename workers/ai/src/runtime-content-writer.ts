@@ -1,5 +1,6 @@
 import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
+  assessDouyinOwnerPromotion,
   companyNamePolicyInstruction,
   findDisallowedCompanyNames,
   findLiejuForbiddenContactDetails,
@@ -1246,7 +1247,9 @@ function deterministicContentIssues(
   for (const content of data.variants) {
     issues.push(...credentialCitationIssues(content, writerInput));
     if (content.platform_code === 'douyin') {
-      issues.push(...douyinOwnerPromotionIssues(content, ownerCompanyNames));
+      issues.push(
+        ...assessDouyinOwnerPromotion(content, ownerCompanyNames).map((finding) => finding.message),
+      );
     }
     if (
       content.platform_code === 'baijiahao' &&
@@ -1257,31 +1260,6 @@ function deterministicContentIssues(
   }
   issues.push(...credentialCitationIssues(data.master_content, writerInput));
   return Object.freeze(issues);
-}
-
-function douyinOwnerPromotionIssues(
-  content: ContentWriterContent,
-  ownerCompanyNames: readonly string[],
-): readonly string[] {
-  if (ownerCompanyNames.length === 0) return Object.freeze([]);
-  const description = stringValue(content.platform_meta['description']);
-  const paragraphs = description
-    .split(/\n+/u)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean);
-  const solutionParagraphs = paragraphs.slice(1, 3).join('\n');
-  if (!ownerCompanyNames.some((name) => solutionParagraphs.includes(name))) {
-    return Object.freeze([
-      `douyin:发布主文案第二或第三段必须自然提及一次当前企业名称（${ownerCompanyNames.join('、')}），并且只能说明输入资料支持的服务`,
-    ]);
-  }
-  const mentionCount = ownerCompanyNames.reduce(
-    (total, name) => total + description.split(name).length - 1,
-    0,
-  );
-  return mentionCount > 2
-    ? Object.freeze(['douyin:发布主文案中的本企业名称最多自然出现 2 次，避免重复推广'])
-    : Object.freeze([]);
 }
 
 function credentialCitationIssues(

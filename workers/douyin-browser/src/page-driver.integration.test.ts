@@ -103,7 +103,7 @@ describe('Douyin local browser simulator', () => {
       expect(preSubmitBytes).toBeGreaterThan(0);
       expect(submitted).toMatchObject({
         aiDeclared: true,
-        description: expect.stringContaining('#搬家准备 #广州搬家'),
+        description: '搬家前核对服务范围、报价边界和验收方式。\n\n#搬家准备 #广州搬家',
         fingerprint: CONTENT_FINGERPRINT,
         originalDeclared: false,
         title: '搬家前先看这五项',

@@ -5,6 +5,10 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsImport, { type FormatsPlugin } from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 
+import {
+  buildDouyinDescriptionCaption,
+  DOUYIN_DESCRIPTION_CAPTION_MAX_CHARACTERS,
+} from './src/caption.js';
 import { renderDouyin } from './src/render.js';
 import { DOUYIN_RENDER_RULES_V1 } from './src/rules.js';
 import { DOUYIN_PAYLOAD_JSON_SCHEMA, DOUYIN_RENDER_INPUT_JSON_SCHEMA } from './src/schema.js';
@@ -80,6 +84,20 @@ describe('douyin render contract', () => {
     expect(codes(validateDouyinContent(input))).toEqual(
       expect.arrayContaining(['CARD_ASSET_COUNT_MISMATCH', 'CARD_ORDER_INVALID']),
     );
+  });
+
+  it('blocks the actual creator caption when description and topics exceed the limit', async () => {
+    const input = (await imageNoteInput()) as {
+      content: { platform_meta: { description: string; topics: string[] } };
+    };
+    input.content.platform_meta.description = '搬'.repeat(990);
+    const caption = buildDouyinDescriptionCaption(
+      input.content.platform_meta.description,
+      input.content.platform_meta.topics,
+    );
+    expect(caption).toContain('#搬家指南 #报价核对');
+    expect([...caption].length).toBeGreaterThan(DOUYIN_DESCRIPTION_CAPTION_MAX_CHARACTERS);
+    expect(codes(validateDouyinContent(input))).toContain('CAPTION_LENGTH_EXCEEDED');
   });
 
   it('enforces the creator-center title boundary for image notes only', async () => {

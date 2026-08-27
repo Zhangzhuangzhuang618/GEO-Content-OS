@@ -1,5 +1,9 @@
 import { DOUYIN_RENDER_RULES_V1 } from './rules.js';
 import { DouyinRenderInputSchema } from './schema.js';
+import {
+  douyinDescriptionCaptionLength,
+  DOUYIN_DESCRIPTION_CAPTION_MAX_CHARACTERS,
+} from './caption.js';
 import type {
   DouyinImageNotePlatformMeta,
   DouyinRenderInput,
@@ -57,6 +61,18 @@ function validateImageNote(
   meta: DouyinImageNotePlatformMeta,
   issues: DouyinValidationIssue[],
 ): void {
+  if (
+    douyinDescriptionCaptionLength(meta.description, meta.topics) >
+    DOUYIN_DESCRIPTION_CAPTION_MAX_CHARACTERS
+  ) {
+    issues.push(
+      blocker(
+        'CAPTION_LENGTH_EXCEEDED',
+        `发布主文案与话题合计不得超过 ${DOUYIN_DESCRIPTION_CAPTION_MAX_CHARACTERS} 个字符。`,
+        'content.platform_meta',
+      ),
+    );
+  }
   if (
     meta.cards[0]?.kind !== 'cover' ||
     meta.cards.at(-1)?.kind !== 'summary' ||

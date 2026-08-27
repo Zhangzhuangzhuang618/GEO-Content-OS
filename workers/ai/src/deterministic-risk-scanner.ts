@@ -1,4 +1,6 @@
 import {
+  assessDouyinImageNoteEditorial,
+  assessDouyinOwnerPromotion,
   findDisallowedCompanyNames,
   findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
@@ -145,6 +147,7 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
   addOfficialSiteTechnicalIssues(issues, input);
   addBaijiahaoPlatformIssues(issues, input);
   addLiejuPlatformIssues(issues, input);
+  addDouyinEditorialIssues(issues, input, allowedCompanyNames);
 
   for (const section of contentSections(input.content)) {
     for (const rule of RISK_RULES) {
@@ -179,6 +182,36 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
     }
   }
   return Object.freeze(deduplicate(issues));
+}
+
+function addDouyinEditorialIssues(
+  issues: QualityIssue[],
+  input: DeterministicRiskScanInput,
+  allowedCompanyNames: readonly string[],
+): void {
+  if (input.platformCode !== 'douyin') return;
+  const platformMeta = record(input.content['platform_meta']);
+  if (
+    platformMeta?.['content_kind'] === 'script_package' ||
+    Array.isArray(platformMeta?.['storyboard'])
+  ) {
+    return;
+  }
+  const findings = [
+    ...assessDouyinImageNoteEditorial(input.content),
+    ...assessDouyinOwnerPromotion(input.content, allowedCompanyNames),
+  ];
+  for (const finding of findings) {
+    issues.push(
+      issue(
+        `deterministic.douyin.${finding.code}`,
+        finding.code.startsWith('owner_') ? 'brand' : 'format',
+        finding.location,
+        finding.message.replace(/^douyin:/u, ''),
+        finding.suggestion,
+      ),
+    );
+  }
 }
 
 export function findExternalCredentialClaims(value: string): readonly string[] {

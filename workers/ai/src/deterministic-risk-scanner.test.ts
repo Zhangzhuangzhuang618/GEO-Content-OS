@@ -760,6 +760,57 @@ describe('deterministic pre-publish risk scanner', () => {
     );
   });
 
+  it('reuses the Douyin editorial gate for manual pre-publish edits', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        cta: null,
+        platform_code: 'douyin',
+        platform_meta: {
+          cards: [],
+          content_kind: 'image_note',
+          description: '人工改成了一段过短文案。',
+          topics: ['广州搬家', '搬家准备', '搬家避坑'],
+        },
+        title: '广州搬家怎么准备',
+      }),
+      platformCode: 'douyin',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toEqual(
+      expect.arrayContaining([
+        'deterministic.douyin.cards_count',
+        'deterministic.douyin.description_length',
+        'deterministic.douyin.owner_solution_mention',
+      ]),
+    );
+  });
+
+  it('keeps legacy Douyin script packages outside the image-note editorial gate', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        cta: null,
+        platform_code: 'douyin',
+        platform_meta: {
+          content_kind: 'script_package',
+          duration_seconds: 30,
+          storyboard: [{ end_second: 3, start_second: 0, visual: '现场', voiceover: '说明' }],
+          subtitles: [{ end_second: 3, start_second: 0, text: '说明' }],
+          topics: ['广州搬家'],
+        },
+        title: '旧版抖音脚本包',
+      }),
+      platformCode: 'douyin',
+    });
+
+    expect(
+      issues.map((item) => item.rule_id).filter((ruleId) => ruleId.includes('.douyin.')),
+    ).toEqual([]);
+  });
+
   it('allows bounded Lieju service promotion and a page-contact CTA', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),
