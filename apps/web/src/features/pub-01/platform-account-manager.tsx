@@ -30,6 +30,7 @@ import { OfficialSiteAutomationPanel } from './official-site-automation-panel';
 import { BaijiahaoAutomationPanel } from './baijiahao-automation-panel';
 import { SohuBrowserPanel } from './sohu-browser-panel';
 import { LiejuBrowserPanel } from './lieju-browser-panel';
+import { DouyinBrowserPanel } from './douyin-browser-panel';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -161,7 +162,7 @@ export function PlatformAccountManager() {
       return;
     }
     if (
-      !['baijiahao', 'sohu', 'lieju'].includes(editingAccount.platform_code) &&
+      !['baijiahao', 'douyin', 'sohu', 'lieju'].includes(editingAccount.platform_code) &&
       editingAccount.publish_mode !== 'api' &&
       parsed.data.publish_mode === 'api' &&
       (!parsed.data.base_url.trim() || !parsed.data.bearer_token.trim())
@@ -328,7 +329,9 @@ export function PlatformAccountManager() {
           onPlatformChange={(next) => {
             setPlatformCode(next);
             setPublishMode(
-              ['official_site', 'baijiahao', 'sohu', 'lieju'].includes(next) ? 'api' : 'export',
+              ['official_site', 'baijiahao', 'douyin', 'sohu', 'lieju'].includes(next)
+                ? 'api'
+                : 'export',
             );
           }}
           onSubmit={connect}
@@ -366,6 +369,11 @@ export function PlatformAccountManager() {
           />
         ) : automationAccount.platform_code === 'lieju' ? (
           <LiejuBrowserPanel
+            account={automationAccount}
+            onClose={() => setAutomationAccount(null)}
+          />
+        ) : automationAccount.platform_code === 'douyin' ? (
+          <DouyinBrowserPanel
             account={automationAccount}
             onClose={() => setAutomationAccount(null)}
           />
@@ -614,7 +622,7 @@ function EditForm({
           </>
         )}
         {publishMode === 'api' &&
-        !['baijiahao', 'sohu', 'lieju'].includes(account.platform_code) ? (
+        !['baijiahao', 'douyin', 'sohu', 'lieju'].includes(account.platform_code) ? (
           <>
             <label className="text-sm text-ink-700">
               新的发布 API 根地址
@@ -690,7 +698,7 @@ function ConnectForm({
     >
       <h2 className="text-xl font-semibold text-ink-950">连接平台账号</h2>
       <p className="mt-2 text-sm text-ink-500">
-        先选平台和发布方式。百家号与搜狐号由服务器托管浏览器管理，其他“自动发布”账号需要 API
+        先选平台和发布方式。百家号、搜狐号与抖音由服务器托管浏览器管理，其他“自动发布”账号需要 API
         地址和令牌。
       </p>
       <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -840,7 +848,7 @@ function ConnectForm({
               不依赖浏览器登录；接口未提供状态查询，超时或返回不明确时会停止重试并等待人工确认。
             </p>
           </>
-        ) : publishMode === 'api' && !['baijiahao', 'sohu'].includes(platformCode) ? (
+        ) : publishMode === 'api' && !['baijiahao', 'douyin', 'sohu'].includes(platformCode) ? (
           <>
             <label className="text-sm text-ink-700">
               {platformCode === 'official_site' ? '官网发布 API 根地址' : '平台 API 根地址'}
@@ -878,7 +886,7 @@ function ConnectForm({
           <input name="base_url" type="hidden" value="" />
         )}
         {platformCode !== 'lieju' &&
-        (publishMode !== 'api' || ['baijiahao', 'sohu'].includes(platformCode)) ? (
+        (publishMode !== 'api' || ['baijiahao', 'douyin', 'sohu'].includes(platformCode)) ? (
           <input name="bearer_token" type="hidden" value="" />
         ) : null}
       </div>
@@ -1004,6 +1012,17 @@ function ConnectionGuide({
         <p className="font-semibold text-ink-900">搜狐号自动发布使用独立托管浏览器</p>
         <p className="mt-2">
           内部网关和令牌由服务器管理。账号保存后点击“搜狐号登录”，使用微信扫码；系统不保存搜狐账号密码，也不会自动声明原创。
+        </p>
+      </div>
+    );
+  }
+  if (platformCode === 'douyin') {
+    return (
+      <div className="mt-5 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm leading-6 text-ink-700">
+        <p className="font-semibold text-ink-900">抖音图文自动发布使用独立托管浏览器</p>
+        <p className="mt-2">
+          内部网关和令牌由服务器管理。账号保存后点击“抖音图文自动化”扫码登录；系统会生成 3:4
+          图文卡片，按真实情况声明 AI 辅助，不会自动勾选原创。
         </p>
       </div>
     );
@@ -1138,6 +1157,16 @@ function AccountCard({
             {account.capabilities['delivery_method'] === 'official_api'
               ? '列举网自动化'
               : '列举网登录'}
+          </button>
+        ) : null}
+        {account.platform_code === 'douyin' && account.publish_mode === 'api' ? (
+          <button
+            className={smallButton}
+            disabled={busy}
+            onClick={() => onAutomation(account)}
+            type="button"
+          >
+            抖音图文自动化
           </button>
         ) : null}
         {account.publish_mode === 'api' && !disabled ? (

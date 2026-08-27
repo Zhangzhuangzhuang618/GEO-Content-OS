@@ -126,6 +126,25 @@ test('previews the exact scheduled article and opens an immutable manual-edit fl
   expect(cancellations[0]?.headers['if-match']).toBe('"4"');
 });
 
+test('shows an identical Douyin call to action only once in the publish preview', async ({
+  page,
+}) => {
+  const response = detail(job({ attemptCount: 0, status: 'scheduled', version: 1 }), []);
+  response.data.content_snapshot.content.platform_code = 'douyin';
+  response.data.content_snapshot.content.cta = '保存清单后再逐项核对。';
+  response.data.content_snapshot.content.blocks.push({
+    block_key: 'cta',
+    block_type: 'cta',
+    text: '保存清单后，再逐项核对。',
+  });
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    await json(route, response);
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await expect(page.getByText('保存清单后再逐项核对。')).toHaveCount(1);
+});
+
 test('requires manual verification before retrying an unknown Baijiahao publication', async ({
   page,
 }) => {
@@ -278,7 +297,8 @@ test('records a manually verified Baijiahao publication with its public link', a
   });
 
   await page.goto(`/pub-03?id=${JOB_ID}`);
-  page.once('dialog', (dialog) => dialog.accept('https://baijiahao.baidu.com/s?id=123456'));
+  await expect(page.getByLabel('已发布作品公开链接')).toHaveAttribute('placeholder', 'https://...');
+  await page.getByLabel('已发布作品公开链接').fill('https://baijiahao.baidu.com/s?id=123456');
   await page.getByRole('button', { name: '确认已经发布' }).click();
 
   await expect(page.getByText('已按人工核实结果记录为已发布。')).toBeVisible();
@@ -287,6 +307,58 @@ test('records a manually verified Baijiahao publication with its public link', a
       body: {
         external_post_id: '123456',
         external_url: 'https://baijiahao.baidu.com/s?id=123456',
+        resolution: 'published',
+      },
+      path: `/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`,
+    },
+  ]);
+});
+
+test('extracts the work id from a manually verified Douyin public link', async ({ page }) => {
+  const externalPostId = '7678487251839470902';
+  const externalUrl = `https://www.douyin.com/note/${externalPostId}`;
+  let currentJob: Record<string, unknown> = {
+    ...job({ attemptCount: 15, status: 'failed', version: 57 }),
+    last_error: { code: 'PUBLISH_STATE_UNKNOWN' },
+  };
+  let unknownResolution: Record<string, unknown> | null = {
+    can_retry: true,
+    latest_attempt_no: 15,
+    platform_code: 'douyin',
+  };
+  const douyinAttempt = {
+    ...attempt(5, 'unknown'),
+    adapter_code: 'douyin-browser@1.0.0',
+    attempt_no: 15,
+  };
+  const writes: { body: unknown; path: string }[] = [];
+  await page.route(`**/api/v1/publish-jobs/${JOB_ID}**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      await json(route, detail(currentJob, [douyinAttempt], null, unknownResolution));
+      return;
+    }
+    writes.push({ body: request.postDataJSON() as unknown, path });
+    currentJob = {
+      ...job({ attemptCount: 15, status: 'published', version: 58 }),
+      external_post_id: externalPostId,
+      external_url: externalUrl,
+    };
+    unknownResolution = null;
+    await json(route, { data: currentJob, meta: { request_id: 'douyin-published' } });
+  });
+
+  await page.goto(`/pub-03?id=${JOB_ID}`);
+  await page.getByLabel('已发布作品公开链接').fill(externalUrl);
+  await page.getByRole('button', { name: '确认已经发布' }).click();
+
+  await expect(page.getByText('已按人工核实结果记录为已发布。')).toBeVisible();
+  expect(writes).toEqual([
+    {
+      body: {
+        external_post_id: externalPostId,
+        external_url: externalUrl,
         resolution: 'published',
       },
       path: `/api/v1/publish-jobs/${JOB_ID}/resolve-unknown`,
@@ -552,7 +624,7 @@ function detail(
             },
           ],
           citation_map: [],
-          cta: null,
+          cta: null as string | null,
           hashtags: ['发布预览'],
           platform_code: 'official_site',
           platform_meta: {},

@@ -125,7 +125,82 @@ describe('Content Writer semantic quality gate', () => {
       ).issues,
     ).toContain('official_site:标题为 10 个字符，必须为 20–60 个字符');
   });
+
+  it('requires a complete ordered Douyin image-note card set', () => {
+    const douyin = complete('douyin', 40);
+
+    expect(assessContentWriterContents([douyin], 'quality').issues).toEqual(
+      expect.arrayContaining([
+        'douyin:platform_meta.content_kind 必须为 image_note',
+        'douyin:platform_meta.cards 必须包含 5–10 张图文卡片',
+      ]),
+    );
+
+    expect(
+      assessContentWriterContents(
+        [
+          {
+            ...douyin,
+            platform_meta: douyinImageNoteMeta(),
+          },
+        ],
+        'quality',
+      ),
+    ).toEqual({ issues: [], passed: true });
+
+    expect(
+      assessContentWriterContents(
+        [
+          {
+            ...douyin,
+            platform_meta: { ...douyinImageNoteMeta(), server_owned_field: 'invalid' },
+          },
+        ],
+        'quality',
+      ).issues,
+    ).toContain('douyin:platform_meta 只能包含 content_kind、description、topics 和 cards');
+  });
 });
+
+function douyinImageNoteMeta() {
+  return {
+    cards: [
+      {
+        body: '先明确搬家需求和现场条件。',
+        card_key: 'cover',
+        heading: '搬家前怎么准备',
+        kind: 'cover',
+      },
+      {
+        body: '列出物品、楼层和车辆通行条件。',
+        card_key: 'inventory',
+        heading: '先列清单',
+        kind: 'body',
+      },
+      {
+        body: '核对服务范围、计价方式和额外费用。',
+        card_key: 'quote',
+        heading: '确认报价',
+        kind: 'body',
+      },
+      {
+        body: '把时间、责任边界和异常处理写进约定。',
+        card_key: 'terms',
+        heading: '书面确认',
+        kind: 'body',
+      },
+      {
+        body: '按清单逐项验收并保存双方确认记录。',
+        card_key: 'summary',
+        heading: '最后复核',
+        kind: 'summary',
+      },
+    ],
+    content_kind: 'image_note',
+    description: '搬家前可执行的准备、报价与验收清单。',
+    topics: ['搬家准备', '搬家指南'],
+  } as const;
+}
 
 function complete(
   platformCode: ContentWriterContent['platform_code'],

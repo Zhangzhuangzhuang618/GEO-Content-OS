@@ -7,7 +7,7 @@ import {
   CredentialEnvelopeService,
   LocalCredentialKms,
 } from '@geo-content-os/security/credentials';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -39,6 +39,10 @@ const DAILY_ITEM_ID = 'a5000000-0000-4000-8000-000000000125';
 const OFFICIAL_VARIANT_ID = 'b1000000-0000-4000-8000-000000000125';
 const BROWSER_SESSION_ID = 'b2000000-0000-4000-8000-000000000125';
 const BROWSER_PUBLICATION_ID = 'b3000000-0000-4000-8000-000000000125';
+const SOURCE_DOCUMENT_ID = 'b4000000-0000-4000-8000-000000000125';
+const SOURCE_CHUNK_ID = 'b5000000-0000-4000-8000-000000000125';
+const CITATION_ID = 'b6000000-0000-4000-8000-000000000125';
+const SECOND_CITATION_ID = 'b7000000-0000-4000-8000-000000000125';
 const CONTENT_HASH = 'a'.repeat(64);
 const PLATFORM_PAYLOAD_HASH = 'b'.repeat(64);
 const ACCESS_TOKEN = 't125-platform-secret';
@@ -63,7 +67,8 @@ describe('publisher worker', () => {
     const database = requireClient(client);
     await database`
       TRUNCATE
-        export_artifacts, publish_attempts, publish_jobs, media_assets, platform_accounts,
+        export_artifacts, publish_attempts, publish_jobs, ai_citations, source_chunks,
+        source_documents, media_assets, platform_accounts,
         content_versions, content_variants, content_packages, briefs, brand_profiles,
         workspace_memberships, projects, workspaces, audit_events, outbox_events,
         memberships, tenants, users
@@ -115,6 +120,29 @@ describe('publisher worker', () => {
       FROM audit_events WHERE resource_id=${JOB_ID}::uuid
     `;
     expect(audit[0]?.value).not.toContain(ACCESS_TOKEN);
+  });
+
+  it('maps content chunk citation ids to their public links', async () => {
+    const database = requireClient(client);
+    await seedCitation(database);
+    const platform = new FakePlatform({
+      externalId: 'external-citation-t125',
+      mode: 'api',
+      payloadHash: PLATFORM_PAYLOAD_HASH,
+      response: { status: 'published' },
+      url: 'https://example.com/posts/external-citation-t125',
+    });
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+
+    expect(platform.claims[0]?.citations).toEqual([
+      {
+        citation_id: SOURCE_CHUNK_ID,
+        label: 'Public evidence',
+        url: 'https://example.com/evidence',
+      },
+    ]);
   });
 
   it('retries an idempotent official-site unknown state twice and stops after attempt three', async () => {
@@ -734,6 +762,64 @@ describe('publisher worker', () => {
     ]);
   });
 
+  it('replaces a Douyin content fingerprint with the verified remote work id', async () => {
+    const database = requireClient(client);
+    const fingerprint = 'c'.repeat(64);
+    const remoteId = '7678487251839470902';
+    const remoteUrl = `https://www.douyin.com/note/${remoteId}`;
+    await enableDouyinManualPublishing(database, fingerprint);
+    const platform = new FakePlatform(
+      {
+        externalId: fingerprint,
+        mode: 'api',
+        payloadHash: PLATFORM_PAYLOAD_HASH,
+        response: { status: 'processing' },
+        url: null,
+      },
+      undefined,
+      [{ externalId: remoteId, status: 'published', url: remoteUrl }],
+    );
+    const worker = createWorker(database, requireCredentials(credentials), platform);
+
+    await expect(worker.run(event())).resolves.toMatchObject({ disposition: 'processed' });
+    await database`
+      UPDATE douyin_browser_publications SET
+        status='published',external_post_id=${remoteId},external_url=${remoteUrl},
+        last_reconciled_at=now(),version=version+1
+      WHERE publish_job_id=${JOB_ID}::uuid
+    `;
+    await expect(
+      worker.reconcileBaijiahao(await latestDouyinReconcileEvent(database)),
+    ).resolves.toMatchObject({ disposition: 'completed' });
+
+    expect(
+      await database<
+        {
+          browserExternalId: string;
+          browserStatus: string;
+          externalId: string;
+          externalUrl: string;
+          jobStatus: string;
+        }[]
+      >`
+        SELECT job.status AS "jobStatus",job.external_post_id AS "externalId",
+          job.external_url AS "externalUrl",publication.status AS "browserStatus",
+          publication.external_post_id AS "browserExternalId"
+        FROM publish_jobs AS job
+        JOIN douyin_browser_publications AS publication ON publication.publish_job_id=job.id
+        WHERE job.id=${JOB_ID}::uuid
+      `,
+    ).toEqual([
+      {
+        browserExternalId: remoteId,
+        browserStatus: 'published',
+        externalId: remoteId,
+        externalUrl: remoteUrl,
+        jobStatus: 'published',
+      },
+    ]);
+  });
+
   it('completes the Sohu automation run and daily batch after remote publication', async () => {
     const database = requireClient(client);
     await enableSohuAutomationPublishing(database);
@@ -962,6 +1048,18 @@ async function latestSohuReconcileEvent(database: Sql): Promise<unknown> {
   `;
   const payload = events[0]?.payload;
   if (!payload) throw new Error('Sohu reconciliation event was not queued');
+  return payload;
+}
+
+async function latestDouyinReconcileEvent(database: Sql): Promise<unknown> {
+  const events = await database<{ payload: unknown }[]>`
+    SELECT payload_json AS payload FROM outbox_events
+    WHERE event_type='douyin.publication.reconcile_requested.v1'
+    ORDER BY (payload_json->'data'->>'reconcile_attempt')::integer DESC,id DESC
+    LIMIT 1
+  `;
+  const payload = events[0]?.payload;
+  if (!payload) throw new Error('Douyin reconciliation event was not queued');
   return payload;
 }
 
@@ -1226,6 +1324,57 @@ async function enableSohuManualPublishing(
   `;
 }
 
+async function enableDouyinManualPublishing(database: Sql, fingerprint: string): Promise<void> {
+  await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+  await database`
+    UPDATE briefs SET platform_codes=ARRAY['douyin']::varchar[]
+    WHERE id=${BRIEF_ID}::uuid
+  `;
+  await database`
+    UPDATE platform_accounts SET
+      platform_code='douyin',provider_account_id='douyin-t158',display_name='Douyin T158',
+      capabilities_json=${database.json({ get_status: true, metrics: true, publish: true })},
+      publish_mode='api',status='active'
+    WHERE id=${ACCOUNT_ID}::uuid
+  `;
+  await database`
+    UPDATE content_variants SET
+      platform_code='douyin',platform_account_id=${ACCOUNT_ID}::uuid,
+      status='scheduled',is_required=true
+    WHERE id=${VARIANT_ID}::uuid
+  `;
+  await database`
+    INSERT INTO publish_jobs(
+      id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,
+      idempotency_key,payload_hash,status,origin,created_by
+    ) VALUES(
+      ${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-158-stable',
+      ${CONTENT_HASH},'scheduled','manual',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO douyin_browser_sessions(
+      id,tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+    ) VALUES(
+      ${BROWSER_SESSION_ID}::uuid,${TENANT_ID}::uuid,${ACCOUNT_ID}::uuid,
+      'authenticated','tenants/t158/accounts/douyin',now(),now()
+    )
+  `;
+  await database`
+    INSERT INTO douyin_browser_publications(
+      id,tenant_id,session_id,account_id,publish_job_id,content_version_id,
+      idempotency_key,payload_hash,content_fingerprint,title,status,field_summary_json,
+      submitted_at
+    ) VALUES(
+      ${BROWSER_PUBLICATION_ID}::uuid,${TENANT_ID}::uuid,${BROWSER_SESSION_ID}::uuid,
+      ${ACCOUNT_ID}::uuid,${JOB_ID}::uuid,${VERSION_ID}::uuid,
+      'publish-job-158-stable',${CONTENT_HASH},${fingerprint},
+      '抖音图文测试作品','submitting','{}'::jsonb,now()
+    )
+  `;
+}
+
 async function enableLiejuOfficialPublishing(
   database: Sql,
   origin: 'lieju_automation' | 'manual' = 'manual',
@@ -1451,6 +1600,51 @@ async function seed(database: Sql, credentials: CredentialEnvelopeService): Prom
       ${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00.000Z','publish-job-125-stable',
       ${CONTENT_HASH},'scheduled',${USER_ID}::uuid
     )
+  `;
+}
+
+async function seedCitation(database: Sql): Promise<void> {
+  const quote = '公开资料直接支持这项事实。';
+  await database`
+    INSERT INTO source_documents(
+      id,tenant_id,workspace_id,project_id,title,source_type,mime_type,
+      uri,content_hash,status,created_by
+    ) VALUES(
+      ${SOURCE_DOCUMENT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+      ${PROJECT_ID}::uuid,'Public evidence','url','text/html',
+      'https://example.com/evidence',${'d'.repeat(64)},'active',${USER_ID}::uuid
+    )
+  `;
+  await database`
+    INSERT INTO source_chunks(
+      id,tenant_id,source_document_id,chunk_no,text,text_hash,
+      metadata_json,token_count,status
+    ) VALUES(
+      ${SOURCE_CHUNK_ID}::uuid,${TENANT_ID}::uuid,${SOURCE_DOCUMENT_ID}::uuid,
+      0,${quote},${createHash('sha256').update(quote).digest('hex')},
+      ${database.json({
+        char_end: quote.length,
+        char_start: 0,
+        schema_version: 'chunk-metadata@1',
+        url: 'https://example.com/evidence',
+      })},12,'active'
+    )
+  `;
+  await database`
+    INSERT INTO ai_citations(
+      id,tenant_id,content_version_id,claim_key,claim_text,
+      chunk_id,quote_text,quote_hash
+    ) VALUES
+      (
+        ${CITATION_ID}::uuid,${TENANT_ID}::uuid,${VERSION_ID}::uuid,
+        'public-evidence',${quote},${SOURCE_CHUNK_ID}::uuid,${quote},
+        ${createHash('sha256').update(quote).digest('hex')}
+      ),
+      (
+        ${SECOND_CITATION_ID}::uuid,${TENANT_ID}::uuid,${VERSION_ID}::uuid,
+        'public-evidence-second-claim',${quote},${SOURCE_CHUNK_ID}::uuid,${quote},
+        ${createHash('sha256').update(quote).digest('hex')}
+      )
   `;
 }
 

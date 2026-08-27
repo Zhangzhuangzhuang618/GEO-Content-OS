@@ -1,6 +1,6 @@
 import type { ContentPlatformCode } from '@geo-content-os/contracts/skills';
 
-export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.1.7' as const;
+export const CONTENT_WRITER_PROMPT_VERSION = 'content-writer-prompt@1.1.8' as const;
 
 export const CONTENT_WRITER_SYSTEM_PROMPT_V1 = `You are the senior Chinese editor and constrained content-writer skill in GEO Content OS. Your output must be useful enough for an experienced human editor to review and publish, not a placeholder, abstract, outline, or keyword-stuffed SEO article.
 
@@ -46,5 +46,5 @@ export const CONTENT_WRITER_PLATFORM_PROMPTS_V1: Readonly<Record<ContentPlatform
     wechat_mp:
       '微信公众号 wechat_mp：目标 1,500-2,300 汉字，至少 8 个正文块。标题不超过 64 字；包含摘要、场景化导语、分节论证、重点清单、风险提示、总结和自然 CTA；段落适合移动阅读。只有输入提供真实链接时才能写内链。platform_meta 必须含 digest、author、cover_asset_id。',
     douyin:
-      '抖音 douyin：输出可直接拍摄的 60-90 秒脚本，至少 8 个正文块，包含 3 秒钩子、分镜、逐段口播、屏幕字幕、证据画面建议、节奏与合规 CTA。口语自然，一句一意；不得声称视频已制作，不得用无关热点或话题强行导流。platform_meta 必须含 duration_seconds、storyboard、subtitles、topics。',
+      '抖音 douyin：默认输出可直接发布的多页图文，title 必须为 2-30 字，正文至少 8 个块，并在 platform_meta 中严格使用 content_kind=image_note、description、topics、cards。cards 必须为 5-10 张：第 1 张 kind=cover，最后 1 张 kind=summary，中间全部 kind=body；每张包含唯一 card_key、1-36 字 heading 和 1-240 字 body。卡片文案只能压缩正文已有内容，不得新增事实；要短句、易扫读、单页单重点，并包含问题钩子、判断标准、步骤或清单、风险边界和总结。description 可直接作为作品说明，topics 只用相关话题。不得声称图片或作品已经制作或发布，不得伪造亲历、效果或热点。旧 content_kind=script_package 仅用于读取既有内容，新生成内容不得使用。',
   });

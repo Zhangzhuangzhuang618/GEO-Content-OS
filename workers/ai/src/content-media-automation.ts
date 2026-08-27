@@ -19,7 +19,9 @@ export class ContentMediaAutomation {
   ) {}
 
   public shouldEnqueue(gate: QualityAutomationGate, policy: QualityAutomationPolicy): boolean {
-    if (!this.config.enabled || !gate.passed) return false;
+    if (!gate.passed) return false;
+    if (policy.kind === 'browser_platform' && policy.value.platformCode === 'douyin') return true;
+    if (!this.config.enabled) return false;
     return !(
       policy.kind === 'browser_platform' &&
       policy.value.platformCode === 'lieju' &&

@@ -1710,7 +1710,8 @@ type PublishEditOrigin =
   | 'official_site_automation'
   | 'baijiahao_automation'
   | 'sohu_automation'
-  | 'lieju_automation';
+  | 'lieju_automation'
+  | 'douyin_automation';
 
 async function recoverCancelledPublishAutomation(
   transaction: TransactionSql,
@@ -1830,7 +1831,12 @@ async function recoverCancelledPublishAutomation(
     return;
   }
 
-  const platformCode = job.origin === 'sohu_automation' ? 'sohu' : 'lieju';
+  const platformCode =
+    job.origin === 'sohu_automation'
+      ? 'sohu'
+      : job.origin === 'douyin_automation'
+        ? 'douyin'
+        : 'lieju';
   const runs = await transaction<{ id: string }[]>`
     UPDATE browser_platform_automation_runs AS automation SET
       status='quality_pending',content_version_id=${contentVersionId}::uuid,

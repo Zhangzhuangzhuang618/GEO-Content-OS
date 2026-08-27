@@ -210,6 +210,7 @@ export function PublishJobDetailView() {
 
   async function resolveUnknown(
     resolution: 'not_published' | 'not_published_closed' | 'published',
+    publishedExternalUrl?: string,
   ) {
     if (!detail?.unknown_resolution) return;
     const csrf = readCookie('geo_csrf');
@@ -237,8 +238,9 @@ export function PublishJobDetailView() {
       }
       input = { resolution };
     } else {
-      const value = window.prompt('请粘贴已经发布的百家号文章公开链接。')?.trim();
-      const externalUrl = value ? safeHttpUrl(value) : null;
+      const externalUrl = publishedExternalUrl?.trim()
+        ? safeHttpUrl(publishedExternalUrl.trim())
+        : null;
       if (!externalUrl) {
         setMessage('确认失败：必须提供有效的 HTTP 或 HTTPS 公开链接。');
         return;
@@ -365,9 +367,11 @@ function DetailContent({
   readonly onReconcileBaijiahao: () => Promise<void>;
   readonly onResolveUnknown: (
     resolution: 'not_published' | 'not_published_closed' | 'published',
+    publishedExternalUrl?: string,
   ) => Promise<void>;
 }) {
   const { job } = detail;
+  const [publishedExternalUrl, setPublishedExternalUrl] = useState('');
   const externalUrl = safeHttpUrl(job.external_url);
   const retryLimitReached = job.attempt_count >= (job.origin === 'manual' ? 20 : 3);
   return (
@@ -495,14 +499,32 @@ function DetailContent({
                     {busy === 'resolve' ? '正在处理…' : '确认未发布并结束任务'}
                   </button>
                 ) : null}
-                <button
-                  className={secondaryButton}
-                  disabled={busy !== null}
-                  onClick={() => void onResolveUnknown('published')}
-                  type="button"
-                >
-                  {busy === 'resolve' ? '正在处理…' : '确认已经发布'}
-                </button>
+                <div className="w-full rounded-lg border border-amber-200 bg-white/70 p-3">
+                  <label
+                    className="block text-xs font-semibold text-amber-950"
+                    htmlFor="verified-published-url"
+                  >
+                    已发布作品公开链接
+                  </label>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <input
+                      className="min-w-0 flex-1 rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink-950 outline-none focus:border-brand-500"
+                      id="verified-published-url"
+                      onChange={(event) => setPublishedExternalUrl(event.target.value)}
+                      placeholder="https://..."
+                      type="url"
+                      value={publishedExternalUrl}
+                    />
+                    <button
+                      className={secondaryButton}
+                      disabled={busy !== null || publishedExternalUrl.trim().length === 0}
+                      onClick={() => void onResolveUnknown('published', publishedExternalUrl)}
+                      type="button"
+                    >
+                      {busy === 'resolve' ? '正在处理…' : '确认已经发布'}
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
             {!detail.unknown_resolution.blocked_reason && !detail.unknown_resolution.can_retry ? (
@@ -591,6 +613,15 @@ function ContentSnapshotPreview({
   readonly snapshot: PublishJobDetail['content_snapshot'];
 }) {
   const { content } = snapshot;
+  const visibleBlocks = content.blocks.filter(
+    (block) =>
+      !(
+        content.platform_code === 'douyin' &&
+        block.block_type === 'cta' &&
+        content.cta &&
+        normalizePreviewText(block.text) === normalizePreviewText(content.cta)
+      ),
+  );
   return (
     <section className="mt-5 rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -610,7 +641,7 @@ function ContentSnapshotPreview({
           </p>
         ) : null}
         <div className="mt-6 space-y-5">
-          {content.blocks.map((block) =>
+          {visibleBlocks.map((block) =>
             block.block_type === 'heading' ? (
               <h4 className="pt-2 text-lg font-semibold text-ink-950" key={block.block_key}>
                 {block.text}
@@ -651,9 +682,14 @@ function ContentSnapshotPreview({
   );
 }
 
+function normalizePreviewText(value: string) {
+  return value.replace(/[\s\p{P}\p{S}]/gu, '').toLocaleLowerCase('zh-CN');
+}
+
 function originLabel(origin: PublishJob['origin']) {
   if (origin === 'official_site_automation') return '官网机器质检通过后自动创建';
   if (origin === 'baijiahao_automation') return '百家号自动化创建';
+  if (origin === 'douyin_automation') return '抖音图文自动化创建';
   if (origin === 'sohu_automation') return '搜狐号自动化创建';
   if (origin === 'lieju_automation') return '列举网自动化创建';
   return '人工创建';
@@ -824,7 +860,12 @@ function safeHttpUrl(value: string | null): string | null {
 function externalIdFromUrl(value: string): string | null {
   const url = new URL(value);
   const externalId = url.searchParams.get('id') ?? url.searchParams.get('nid');
-  return externalId && externalId.length <= 240 ? externalId : null;
+  if (externalId && externalId.length <= 240) return externalId;
+  if (url.hostname === 'douyin.com' || url.hostname.endsWith('.douyin.com')) {
+    const pathMatch = url.pathname.match(/^\/(?:note|video)\/(\d{6,40})(?:\/|$)/u);
+    if (pathMatch?.[1]) return pathMatch[1];
+  }
+  return null;
 }
 
 function toIso(value: string | null): string | null {
@@ -853,7 +894,8 @@ function attemptStatusLabel(status: PublishAttempt['status']) {
   return { failed: '失败', running: '进行中', succeeded: '成功', unknown: '外部状态未知' }[status];
 }
 
-function browserPlatformLabel(platformCode: 'baijiahao' | 'lieju' | 'sohu'): string {
+function browserPlatformLabel(platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu'): string {
+  if (platformCode === 'douyin') return '抖音';
   return platformCode === 'sohu' ? '搜狐号' : platformCode === 'lieju' ? '列举网' : '百家号';
 }
 

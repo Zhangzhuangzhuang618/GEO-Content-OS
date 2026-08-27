@@ -29,7 +29,7 @@ export interface ValidatedMediaGenerationEvent {
     readonly contentVersionId: string;
     readonly mediaRunId: string;
     readonly packageId: string;
-    readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
+    readonly platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu';
     readonly projectId: string;
     readonly publishJobId: string | null;
     readonly qualityReportId: string;
@@ -80,7 +80,7 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
     (data.validationMode === 'manual_edit'
       ? !data.sourcePublishJobId || !UUID.test(data.sourcePublishJobId)
       : data.sourcePublishJobId !== null) ||
-    !['official_site', 'baijiahao', 'sohu', 'lieju'].includes(data.platformCode) ||
+    !['official_site', 'baijiahao', 'sohu', 'lieju', 'douyin'].includes(data.platformCode) ||
     [
       data.actorUserId,
       data.contentVersionId,
@@ -98,7 +98,8 @@ export function validateMediaGenerationEvent(raw: unknown): ValidatedMediaGenera
   return Object.freeze({
     data: Object.freeze({
       ...data,
-      platformCode: data.platformCode as 'baijiahao' | 'lieju' | 'official_site' | 'sohu',
+      platformCode: data.platformCode as
+        'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu',
       validationMode: data.validationMode as 'full' | 'manual_edit',
     }),
     eventId: event.event_id,

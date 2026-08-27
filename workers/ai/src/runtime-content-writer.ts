@@ -118,6 +118,35 @@ const TARGETED_TEXT_REPAIR_SCHEMA: JsonObject = Object.freeze({
   type: 'object',
 });
 
+const CONTENT_WRITER_EXPANSION_DRAFT_SCHEMA: JsonObject = Object.freeze({
+  $id: 'https://geo.example/schemas/content-writer-expansion-draft-1.json',
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  additionalProperties: false,
+  properties: {
+    blocks: {
+      items: {
+        additionalProperties: false,
+        properties: {
+          block_type: { enum: ['paragraph', 'list'] },
+          citation_ids: {
+            items: { format: 'uuid', type: 'string' },
+            type: 'array',
+            uniqueItems: true,
+          },
+          text: { maxLength: 500, minLength: 40, type: 'string' },
+        },
+        required: ['block_type', 'text', 'citation_ids'],
+        type: 'object',
+      },
+      maxItems: 5,
+      minItems: 2,
+      type: 'array',
+    },
+  },
+  required: ['blocks'],
+  type: 'object',
+});
+
 export class RuntimeContentWriter implements ContentWriterPort {
   private readonly runs = new Map<string, CachedRun>();
 
@@ -309,7 +338,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly context: ContentWriterRunContext;
     readonly currentContent: GeneratedContent;
     readonly issues: readonly string[];
-    readonly platformCode: 'lieju' | 'sohu';
+    readonly platformCode: 'douyin' | 'lieju' | 'sohu';
     readonly requestId: string;
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
@@ -327,7 +356,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
               '标题保持 5-30 字，并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许介绍本企业服务、使用“通过页面联系方式咨询”等中性引导，以及保留与正文相关的外部网址和官方核验链接；品牌、事实和资质表述不是列举网平台默认禁区，但必须与当前企业资料及引用证据一致。不得在正文写具体电话或手机号、微信/QQ 账号，不得添加极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。',
               '列举网发布层按字面拦截最好、最佳、首选、任何含“百分百”的表达、100%保证和明确排名宣传。即使这些词出现在否定、引用或举例中，也必须删除原词并改写为不含该词的中性表达。',
             ]
-          : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),
+          : input.platformCode === 'douyin'
+            ? [
+                '保持 platform_meta.content_kind=image_note，保持5-10张封面/正文/总结图文卡片的结构；只改写报告指出的卡片或文案。',
+                '不得声明原创，不得伪造热点、排行、亲历或用户评价；AI 创作标识由发布器如实设置。',
+              ]
+            : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),
         ...input.issues,
       ]),
     });
@@ -529,7 +563,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
             targetCharacters,
             requiredCharacters,
           ),
-          outputSchema: OFFICIAL_SITE_ARTICLE_EXPANSION_DRAFT_SCHEMA,
+          outputSchema: CONTENT_WRITER_EXPANSION_DRAFT_SCHEMA,
           recordUsage: (usage) => this.recordUsage(input.context, usage),
           requestId: `${input.requestId}-${content.platform_code}-expansion-${round}`,
           ...(input.signal ? { signal: input.signal } : {}),
@@ -1937,9 +1971,26 @@ function jsonObject(value: unknown): JsonObject | undefined {
 }
 
 function generated(content: ContentWriterContent): GeneratedContent {
+  const duplicateCtaBlockKeys =
+    content.platform_code === 'douyin' && typeof content.cta === 'string'
+      ? new Set(
+          content.blocks
+            .filter(
+              (block) =>
+                block.block_type === 'cta' &&
+                normalizeContentText(block.text) === normalizeContentText(content.cta ?? ''),
+            )
+            .map((block) => block.block_key),
+        )
+      : new Set<string>();
+  const blocks = content.blocks.filter((block) => !duplicateCtaBlockKeys.has(block.block_key));
+  const citationMap = content.citation_map.filter(
+    (mapping) => !duplicateCtaBlockKeys.has(mapping.claim_key),
+  );
   return Object.freeze({
     ...content,
-    blocks: Object.freeze(content.blocks.map((block) => Object.freeze({ ...block }))),
+    blocks: Object.freeze(blocks.map((block) => Object.freeze({ ...block }))),
+    citation_map: Object.freeze(citationMap.map((mapping) => Object.freeze({ ...mapping }))),
     platform_code: content.platform_code,
     schema_version: 'content-writer-data@1',
   }) as GeneratedContent;
@@ -1991,8 +2042,11 @@ function baijiahaoSourceContent(
 
 function browserPlatformSourceContent(
   source: GeneratedContent,
-  platformCode: 'lieju' | 'master' | 'sohu',
+  platformCode: 'douyin' | 'lieju' | 'master' | 'sohu',
 ): ContentWriterContent {
+  if (platformCode === 'douyin') {
+    return Object.freeze({ ...modelRevisionContent(source), platform_code: platformCode });
+  }
   const normalized = baijiahaoSourceContent(
     source,
     platformCode === 'master' ? 'master' : 'baijiahao',

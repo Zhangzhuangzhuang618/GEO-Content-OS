@@ -25,7 +25,7 @@ export interface ValidatedBrowserPlatformRewriteEvent {
     readonly contentVersionId: string;
     readonly generationRunId: string;
     readonly packageId: string;
-    readonly platformCode: 'lieju' | 'sohu';
+    readonly platformCode: 'douyin' | 'lieju' | 'sohu';
     readonly projectId: string;
     readonly requestId: string;
     readonly rewriteAttempt: number;
@@ -65,7 +65,7 @@ export function validateBrowserPlatformRewriteEvent(
   };
   if (
     event.aggregate.id !== data.variantId ||
-    !['lieju', 'sohu'].includes(data.platformCode) ||
+    !['douyin', 'lieju', 'sohu'].includes(data.platformCode) ||
     !REQUEST_ID.test(data.requestId) ||
     data.rewriteAttempt < 1 ||
     data.rewriteAttempt > 3 ||
@@ -85,7 +85,7 @@ export function validateBrowserPlatformRewriteEvent(
   return Object.freeze({
     data: Object.freeze({
       ...data,
-      platformCode: data.platformCode as 'lieju' | 'sohu',
+      platformCode: data.platformCode as 'douyin' | 'lieju' | 'sohu',
     }),
     eventId: event.event_id,
     tenantId: event.tenant.id,

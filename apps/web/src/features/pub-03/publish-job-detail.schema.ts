@@ -52,7 +52,7 @@ export const PublishJobDetailResponseSchema = z
       .object({
         attempts: z.array(PublishAttemptSchema),
         baijiahao_reconciliation: z
-          .object({ platform_code: z.enum(['baijiahao', 'lieju', 'sohu']) })
+          .object({ platform_code: z.enum(['baijiahao', 'douyin', 'lieju', 'sohu']) })
           .strict()
           .nullable(),
         export_artifact: ExportArtifactSchema.nullable(),
@@ -73,7 +73,7 @@ export const PublishJobDetailResponseSchema = z
               .optional(),
             can_retry: z.boolean(),
             latest_attempt_no: z.number().int().min(1).max(20),
-            platform_code: z.enum(['baijiahao', 'lieju', 'sohu']),
+            platform_code: z.enum(['baijiahao', 'douyin', 'lieju', 'sohu']),
           })
           .strict()
           .nullable(),

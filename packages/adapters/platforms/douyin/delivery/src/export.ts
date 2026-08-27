@@ -8,6 +8,7 @@ import {
   type DouyinExportBundle,
   type DouyinExportFile,
 } from './types.js';
+import type { DouyinScriptPayload } from '../../render/src/types.js';
 
 export function hashDouyinPayload(payload: DouyinDeliveryInput['payload']): string {
   return sha256(stableStringify(payload));
@@ -22,6 +23,9 @@ export function exportDouyin(input: unknown): DouyinExportBundle {
     );
   }
   const basePath = parsed.content_version_id;
+  if (parsed.payload.schema_version === 'douyin-image-note-payload@1') {
+    return exportImageNote(parsed, basePath);
+  }
   const metadata = {
     citation_links: parsed.payload.citation_links,
     duration_seconds: parsed.payload.duration_seconds,
@@ -67,10 +71,79 @@ export function exportDouyin(input: unknown): DouyinExportBundle {
   });
 }
 
+function exportImageNote(parsed: DouyinDeliveryInput, basePath: string): DouyinExportBundle {
+  if (parsed.payload.schema_version !== 'douyin-image-note-payload@1') {
+    throw new DouyinDeliveryError('PAYLOAD_HASH_MISMATCH', 'Douyin image-note payload is invalid');
+  }
+  const payload = parsed.payload;
+  const caption = [
+    payload.title,
+    payload.description,
+    payload.topics.map((topic) => `#${topic}`).join(' '),
+  ].join('\n\n');
+  const metadata = {
+    ai_generated: true,
+    citation_links: payload.citation_links,
+    content_kind: payload.content_kind,
+    platform_code: 'douyin',
+    rule_version: payload.rule_version,
+    schema_version: payload.schema_version,
+    title: payload.title,
+    topics: payload.topics,
+  };
+  const contentFiles = [
+    file(`${basePath}/image-note.json`, 'application/json', `${stableStringify(payload)}\n`),
+    file(`${basePath}/caption.txt`, 'text/plain; charset=utf-8', caption),
+    file(
+      `${basePath}/media-manifest.json`,
+      'application/json',
+      `${stableStringify({
+        cards: payload.cards.map((card, index) => ({
+          asset_id: payload.image_asset_ids[index],
+          card_key: card.card_key,
+          kind: card.kind,
+          position: index,
+        })),
+        schema_version: 'douyin-image-note-media-manifest@1',
+      })}\n`,
+    ),
+    file(`${basePath}/metadata.json`, 'application/json', `${stableStringify(metadata)}\n`),
+  ];
+  return bundle(parsed, contentFiles);
+}
+
+function bundle(
+  parsed: DouyinDeliveryInput,
+  contentFiles: readonly DouyinExportFile[],
+): DouyinExportBundle {
+  const manifestBody = `${stableStringify({
+    content_version_id: parsed.content_version_id,
+    files: contentFiles.map(({ content_type, path, sha256: fileHash }) => ({
+      content_type,
+      path,
+      sha256: fileHash,
+    })),
+    payload_hash: parsed.payload_hash,
+    platform_code: 'douyin',
+    rule_version: parsed.payload.rule_version,
+    schema_version: DOUYIN_EXPORT_SCHEMA_VERSION,
+  })}\n`;
+  return Object.freeze({
+    content_version_id: parsed.content_version_id,
+    files: Object.freeze([
+      ...contentFiles,
+      file(`${parsed.content_version_id}/manifest.json`, 'application/json', manifestBody),
+    ]),
+    payload_hash: parsed.payload_hash,
+    platform_code: 'douyin',
+    schema_version: DOUYIN_EXPORT_SCHEMA_VERSION,
+  });
+}
+
 export function stableStringify(value: unknown): string {
   return JSON.stringify(sortJson(value));
 }
-function renderSrt(subtitles: DouyinDeliveryInput['payload']['subtitles']): string {
+function renderSrt(subtitles: DouyinScriptPayload['subtitles']): string {
   return `${subtitles
     .map(
       (subtitle, index) =>

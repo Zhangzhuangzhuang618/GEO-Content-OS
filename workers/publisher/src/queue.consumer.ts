@@ -31,7 +31,9 @@ export class PublisherQueueConsumer {
       async (job) => {
         const result =
           job.name === 'baijiahao.publication.reconcile_requested.v1' ||
-          job.name === 'sohu.publication.reconcile_requested.v1'
+          job.name === 'sohu.publication.reconcile_requested.v1' ||
+          job.name === 'lieju.publication.reconcile_requested.v1' ||
+          job.name === 'douyin.publication.reconcile_requested.v1'
             ? await publisher.reconcileBaijiahao(job.data)
             : await publisher.run(job.data);
         if (result.disposition === 'busy') {

@@ -14,6 +14,10 @@ const liejuFixtureUrl = new URL(
   '../../../packages/adapters/platforms/lieju/render/fixtures/lieju.valid.input.json',
   import.meta.url,
 );
+const douyinFixtureUrl = new URL(
+  '../../../packages/adapters/platforms/douyin/render/fixtures/douyin.valid.input.json',
+  import.meta.url,
+);
 
 describe('PlatformPublisher', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -252,6 +256,92 @@ describe('PlatformPublisher', () => {
     const multipart = Buffer.from(requestBody ?? []).toString('latin1');
     expect(multipart).not.toContain('body_asset_ids');
     expect(multipart).not.toContain('[img]');
+  });
+
+  it('injects the complete ordered Douyin card assets into the frozen browser payload', async () => {
+    const fixture = (await readJson(douyinFixtureUrl)) as {
+      readonly citations: PublishClaim['citations'];
+      readonly content: Readonly<Record<string, unknown>>;
+    };
+    const cards = [
+      { body: '报价不能只看总价。', card_key: 'cover', heading: '搬家报价怎么核对', kind: 'cover' },
+      {
+        body: '确认物品、楼层和停车距离。',
+        card_key: 'scope',
+        heading: '先确认范围',
+        kind: 'body',
+      },
+      {
+        body: '逐项查看车辆、人工和材料。',
+        card_key: 'items',
+        heading: '再核对项目',
+        kind: 'body',
+      },
+      { body: '把可能加价的条件写清楚。', card_key: 'risk', heading: '明确费用边界', kind: 'body' },
+      {
+        body: '保留书面项目和验收约定。',
+        card_key: 'summary',
+        heading: '最后检查',
+        kind: 'summary',
+      },
+    ] as const;
+    const assetIds = Array.from({ length: cards.length }, () => randomUUID());
+    const positions = [4, 0, 2, 1, 3] as const;
+    const mediaAssets = positions.map((position) => ({
+      altText: `抖音图文第${position + 1}页`,
+      contentHash: String(position).repeat(64),
+      id: assetIds[position]!,
+      mimeType: 'image/jpeg' as const,
+      objectUri: `memory://publisher/douyin-${position}.jpg`,
+      position,
+      publicUrl: null,
+      role: position === 0 ? ('cover' as const) : ('body' as const),
+      sizeBytes: 100,
+      source: 'template' as const,
+    }));
+    const claim = createClaim(
+      {
+        ...fixture.content,
+        platform_meta: {
+          cards,
+          content_kind: 'image_note',
+          description: '搬家报价逐项核对指南。',
+          topics: ['搬家指南'],
+        },
+        schema_version: 'content-writer-data@1',
+      },
+      fixture.citations,
+      mediaAssets,
+      {
+        idempotencyKey: `douyin:${randomUUID()}`,
+        platformCode: 'douyin',
+        publishMode: 'api',
+      },
+    );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(200, { get_status: true, metrics: false, publish: true }))
+      .mockResolvedValueOnce(
+        jsonResponse(201, {
+          external_id: 'douyin-publication-fingerprint',
+          status: 'processing',
+          url: null,
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new PlatformPublisher().deliver(claim, {
+      base_url: 'https://douyin-gateway.example/',
+      bearer_token: 'test-secret',
+    });
+
+    expect(result).toMatchObject({ mode: 'api', response: { status: 'processing' } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const request = fetchMock.mock.calls[1]?.[1];
+    const body = JSON.parse(String(request?.body)) as {
+      payload: { image_asset_ids: readonly string[] };
+    };
+    expect(body.payload.image_asset_ids).toEqual(assetIds);
   });
 });
 

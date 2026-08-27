@@ -116,11 +116,13 @@ export class PlatformPublisher implements PublisherPlatformPort {
   ): Promise<BaijiahaoRemoteStatus> {
     const config = accountScopedCredential(claim.platformCode, claim.accountId, credential);
     const adapter =
-      claim.platformCode === 'sohu'
-        ? new SohuDeliveryAdapter(config)
-        : claim.platformCode === 'lieju'
-          ? new LiejuDeliveryAdapter(config)
-          : new BaijiahaoDeliveryAdapter(config);
+      claim.platformCode === 'douyin'
+        ? new DouyinDeliveryAdapter(config)
+        : claim.platformCode === 'sohu'
+          ? new SohuDeliveryAdapter(config)
+          : claim.platformCode === 'lieju'
+            ? new LiejuDeliveryAdapter(config)
+            : new BaijiahaoDeliveryAdapter(config);
     const result = await adapter.getStatus(claim.externalId, signal);
     return Object.freeze({
       externalId: result.external_id,
@@ -280,7 +282,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           signal,
           renderDouyin({
             citations: claim.citations,
-            content,
+            content: douyinImageNoteContentWithMedia(content, claim.mediaAssets ?? []),
             rule_version: DOUYIN_RENDER_RULE_VERSION,
           }),
           hashDouyinPayload,
@@ -341,6 +343,24 @@ function liejuArticleContentWithMedia(
       ...platformMeta,
       cover_asset_id: cover?.id ?? null,
     }),
+  });
+}
+
+function douyinImageNoteContentWithMedia(
+  content: Readonly<Record<string, unknown>>,
+  assets: readonly NonNullable<PublishClaim['mediaAssets']>[number][],
+): Readonly<Record<string, unknown>> {
+  if (assets.length === 0) return content;
+  const platformMeta = content['platform_meta'];
+  if (typeof platformMeta !== 'object' || platformMeta === null || Array.isArray(platformMeta)) {
+    return content;
+  }
+  const imageAssetIds = [...assets]
+    .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id))
+    .map((asset) => asset.id);
+  return Object.freeze({
+    ...content,
+    platform_meta: Object.freeze({ ...platformMeta, image_asset_ids: imageAssetIds }),
   });
 }
 
@@ -570,7 +590,7 @@ function deliveryConfig(
 }
 
 function accountScopedCredential(
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
   accountId: string,
   credential: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
@@ -586,6 +606,7 @@ function accountScopedCredential(
 function usesAccountScopedGateway(platformCode: string, liejuDeliveryMethod: unknown): boolean {
   return (
     platformCode === 'baijiahao' ||
+    platformCode === 'douyin' ||
     platformCode === 'sohu' ||
     (platformCode === 'lieju' && liejuDeliveryMethod !== 'official_api')
   );

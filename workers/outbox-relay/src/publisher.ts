@@ -103,7 +103,9 @@ export function retryOptionsForEvent(
     eventType === 'content.variant.media_generation_requested.v1' ||
     eventType === 'publishing.job.published.v1' ||
     eventType === 'baijiahao.publication.reconcile_requested.v1' ||
-    eventType === 'sohu.publication.reconcile_requested.v1'
+    eventType === 'sohu.publication.reconcile_requested.v1' ||
+    eventType === 'lieju.publication.reconcile_requested.v1' ||
+    eventType === 'douyin.publication.reconcile_requested.v1'
   ) {
     return { attempts: 5, backoff: { delay: 30_000, type: 'exponential' } };
   }

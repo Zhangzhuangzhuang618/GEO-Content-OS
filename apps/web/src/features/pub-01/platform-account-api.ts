@@ -91,7 +91,8 @@ export async function createPlatformAccount(
               },
             },
           }
-        : form.publish_mode === 'api' && !['baijiahao', 'sohu'].includes(form.platform_code)
+        : form.publish_mode === 'api' &&
+            !['baijiahao', 'douyin', 'sohu'].includes(form.platform_code)
           ? {
               credential: {
                 base_url: form.base_url.trim(),
@@ -566,6 +567,65 @@ export async function getSohuBrowserSession(
   );
   if (!response.ok) throw new PlatformAccountRequestError(response.status);
   const parsed = BaijiahaoBrowserSessionResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function getDouyinBrowserSession(
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<BaijiahaoBrowserSession> {
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/douyin-browser-session`,
+    { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
+  );
+  if (!response.ok) throw new PlatformAccountRequestError(response.status);
+  const parsed = BaijiahaoBrowserSessionResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new PlatformAccountRequestError(502);
+  return parsed.data.data;
+}
+
+export async function startDouyinBrowserLogin(
+  account: PlatformAccount,
+  csrf: string,
+  reauthenticate = false,
+): Promise<BaijiahaoBrowserLogin> {
+  try {
+    return await requestDouyinBrowserLogin(account, csrf, reauthenticate);
+  } catch (error) {
+    if (
+      !(error instanceof PlatformAccountRequestError) ||
+      error.code !== 'PLATFORM_ACCOUNT_VERSION_CONFLICT'
+    ) {
+      throw error;
+    }
+    const latest = (
+      await listPlatformAccounts({
+        platformCode: 'douyin',
+        workspaceId: account.workspace_id,
+      })
+    ).find(({ id }) => id === account.id);
+    if (!latest) throw error;
+    return requestDouyinBrowserLogin(latest, csrf, reauthenticate);
+  }
+}
+
+async function requestDouyinBrowserLogin(
+  account: PlatformAccount,
+  csrf: string,
+  reauthenticate: boolean,
+): Promise<BaijiahaoBrowserLogin> {
+  const action = reauthenticate ? 'reauth' : 'login';
+  const response = await fetch(
+    `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/douyin-browser-session/${action}`,
+    {
+      credentials: 'include',
+      headers: writeHeaders(csrf, account.version),
+      method: 'POST',
+    },
+  );
+  if (!response.ok) throw await parseRequestError(response);
+  const parsed = BaijiahaoBrowserLoginResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PlatformAccountRequestError(502);
   return parsed.data.data;
 }

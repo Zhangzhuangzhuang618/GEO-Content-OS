@@ -274,7 +274,7 @@ export async function seedFreezeV21(client: DatabaseClient): Promise<void> {
           '1.0.0',
           ${JSON.stringify(rules)}::text::jsonb,
           ${sha256(serializedRules)},
-          ${platformCode === 'official_site' ? 'retired' : 'published'},
+          ${platformCode === 'official_site' || platformCode === 'douyin' ? 'retired' : 'published'},
           ${IDENTITY_SEED.userId},
           TIMESTAMPTZ '2026-01-01T00:00:00Z',
           'Freeze v2.1 demo platform rule',
@@ -309,6 +309,38 @@ export async function seedFreezeV21(client: DatabaseClient): Promise<void> {
         ${IDENTITY_SEED.userId},
         TIMESTAMPTZ '2026-08-14T00:00:00Z',
         'Add Sohu article generation and managed browser publishing rules',
+        ${IDENTITY_SEED.userId}
+      )
+      ON CONFLICT DO NOTHING
+    `;
+
+    const douyinImageNoteRules = {
+      schema_version: 'platform-rules@1',
+      platform_code: 'douyin',
+      require_citations: true,
+      content_kind: 'image_note',
+      title_min_characters: 2,
+      title_max_characters: 30,
+      card_count_min: 5,
+      card_count_max: 10,
+      declare_ai_generated: true,
+      declare_original: false,
+    };
+    const serializedDouyinImageNoteRules = JSON.stringify(douyinImageNoteRules);
+    await transaction`
+      INSERT INTO platform_rule_versions (
+        id, platform_code, version, rules_json, content_hash, status,
+        created_by, published_at, change_summary, published_by
+      ) VALUES (
+        '26000000-0000-4000-8000-000000000011',
+        'douyin',
+        '1.1.0',
+        ${serializedDouyinImageNoteRules}::text::jsonb,
+        ${sha256(serializedDouyinImageNoteRules)},
+        'published',
+        ${IDENTITY_SEED.userId},
+        TIMESTAMPTZ '2026-08-26T00:00:00Z',
+        'Add Douyin image-note generation and managed browser publishing rules',
         ${IDENTITY_SEED.userId}
       )
       ON CONFLICT DO NOTHING

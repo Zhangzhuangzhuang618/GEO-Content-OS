@@ -16,6 +16,8 @@ import {
   BaijiahaoAutomationPolicyService,
   BrowserPlatformAutomationPolicyService,
   BaijiahaoBrowserGatewayClient,
+  DouyinBrowserGatewayClient,
+  DouyinBrowserSessionService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountService,
   SohuBrowserGatewayClient,
@@ -74,6 +76,10 @@ import {
       useFactory: () => new SohuBrowserGatewayClient(),
     },
     {
+      provide: DouyinBrowserGatewayClient,
+      useFactory: () => new DouyinBrowserGatewayClient(),
+    },
+    {
       provide: LiejuBrowserGatewayClient,
       useFactory: () => new LiejuBrowserGatewayClient(),
     },
@@ -88,6 +94,12 @@ import {
       provide: LiejuBrowserSessionService,
       useFactory: (database: IdentityAuthDatabase, gateway: LiejuBrowserGatewayClient) =>
         new LiejuBrowserSessionService(database, gateway),
+    },
+    {
+      inject: [IdentityAuthDatabase, DouyinBrowserGatewayClient],
+      provide: DouyinBrowserSessionService,
+      useFactory: (database: IdentityAuthDatabase, gateway: DouyinBrowserGatewayClient) =>
+        new DouyinBrowserSessionService(database, gateway),
     },
     {
       inject: [IdentityAuthDatabase, BaijiahaoBrowserGatewayClient],

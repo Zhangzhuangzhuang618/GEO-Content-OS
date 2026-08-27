@@ -11,7 +11,7 @@ import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 import { IDENTITY_SEED } from '../../src/modules/identity/seeds/identity.seed.js';
 
-const FREEZE_TABLE_COUNT = 89;
+const FREEZE_TABLE_COUNT = 92;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -76,7 +76,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T157 with the Wentian connector state', async () => {
+  it('migrates an empty database through T158 with Douyin image-note publishing state', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -119,6 +119,9 @@ describe('freeze v2.1 database verification', () => {
         'lieju_browser_publications',
         'lieju_browser_artifacts',
         'lieju_api_publications',
+        'douyin_browser_sessions',
+        'douyin_browser_publications',
+        'douyin_browser_artifacts',
         'browser_platform_automation_policies',
         'browser_platform_automation_runs',
         'browser_platform_daily_batches',

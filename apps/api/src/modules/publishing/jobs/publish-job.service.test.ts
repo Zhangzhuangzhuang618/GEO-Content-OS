@@ -312,6 +312,154 @@ describe('PublishJobService rescheduling', () => {
     );
   });
 
+  it('retries a Douyin publication projected as failed after confirming it was not published', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 4,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      platformCode: 'douyin',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'not_published', {
+      attemptNo: 4,
+      errorCode: 'MANUAL_REQUIRED',
+      status: 'failed',
+    });
+    const { outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      resolution: 'not_published',
+    });
+
+    expect(result).toMatchObject({ status: 'scheduled', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE douyin_browser_publications') &&
+          sql.includes("status='prepared'") &&
+          sql.includes("'manual_required','failed'"),
+      ),
+    ).toBe(true);
+    expect(outbox.enqueue).toHaveBeenCalledOnce();
+  });
+
+  it('retries a terminally unreconciled Douyin submission with only its content fingerprint linked', async () => {
+    const sqlStatements: string[] = [];
+    const fingerprint = 'a'.repeat(64);
+    const before = jobRow({
+      attemptCount: 4,
+      externalPostId: fingerprint,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      platformCode: 'douyin',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(
+      before,
+      sqlStatements,
+      'not_published',
+      { attemptNo: 4, errorCode: null, status: 'succeeded' },
+      { contentFingerprint: fingerprint, externalPostId: fingerprint },
+    );
+    const { outbox, service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      resolution: 'not_published',
+    });
+
+    expect(result).toMatchObject({ external_post_id: null, status: 'scheduled', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE douyin_browser_publications') &&
+          sql.includes('external_post_id=NULL'),
+      ),
+    ).toBe(true);
+    expect(outbox.enqueue).toHaveBeenCalledOnce();
+  });
+
+  it('accepts a human-confirmed Douyin publication after failure projection', async () => {
+    const sqlStatements: string[] = [];
+    const before = jobRow({
+      attemptCount: 4,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      platformCode: 'douyin',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(before, sqlStatements, 'published', {
+      attemptNo: 4,
+      errorCode: 'MANUAL_REQUIRED',
+      status: 'failed',
+    });
+    const { service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      external_post_id: 'douyin-note-130',
+      external_url: 'https://www.douyin.com/note/130',
+      resolution: 'published',
+    });
+
+    expect(result).toMatchObject({ status: 'published', version: 2 });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE douyin_browser_publications') &&
+          sql.includes("status='published'") &&
+          sql.includes("'manual_required','failed'"),
+      ),
+    ).toBe(true);
+  });
+
+  it('replaces a Douyin fingerprint placeholder with the verified public work id', async () => {
+    const sqlStatements: string[] = [];
+    const fingerprint = 'b'.repeat(64);
+    const externalPostId = '7678487251839470902';
+    const externalUrl = `https://www.douyin.com/note/${externalPostId}`;
+    const before = jobRow({
+      attemptCount: 15,
+      externalPostId: fingerprint,
+      origin: 'manual',
+      packageStatus: 'publish_failed',
+      platformCode: 'douyin',
+      status: 'failed',
+      variantStatus: 'publish_failed',
+    });
+    const transaction = createUnknownResolutionTransaction(
+      before,
+      sqlStatements,
+      'published',
+      { attemptNo: 15, errorCode: null, status: 'succeeded' },
+      { contentFingerprint: fingerprint, externalPostId: fingerprint },
+    );
+    const { service } = createService();
+
+    const result = await service.resolveUnknownInTransaction(transaction, SCOPE, JOB_ID, 1, {
+      external_post_id: externalPostId,
+      external_url: externalUrl,
+      resolution: 'published',
+    });
+
+    expect(result).toMatchObject({
+      external_post_id: externalPostId,
+      external_url: externalUrl,
+      status: 'published',
+      version: 2,
+    });
+    expect(
+      sqlStatements.some(
+        (sql) =>
+          sql.includes('UPDATE douyin_browser_publications') &&
+          sql.includes("status='published'") &&
+          sql.includes('external_post_id IS NOT DISTINCT FROM'),
+      ),
+    ).toBe(true);
+  });
+
   it('records a verified manual-required Baijiahao automation as published', async () => {
     const sqlStatements: string[] = [];
     const before = jobRow({
@@ -542,16 +690,26 @@ function createUnknownResolutionTransaction(
   latestAttempt: {
     readonly attemptNo: number;
     readonly errorCode: string | null;
-    readonly status: 'failed' | 'unknown';
+    readonly status: 'failed' | 'succeeded' | 'unknown';
   } = { attemptNo: 3, errorCode: null, status: 'unknown' },
+  publication: {
+    readonly contentFingerprint?: string | null;
+    readonly externalPostId?: string | null;
+  } = {},
 ) {
-  return vi.fn(async (strings: TemplateStringsArray) => {
+  return vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const sql = strings.join('?');
     sqlStatements.push(sql);
     if (sql.includes('FROM publish_jobs AS job')) return [before];
     if (sql.includes('FROM publish_attempts')) return [latestAttempt];
     if (sql.includes('_browser_publications') && sql.includes('FOR UPDATE')) {
-      return [{ externalPostId: null, id: PUBLICATION_ID }];
+      return [
+        {
+          contentFingerprint: publication.contentFingerprint ?? null,
+          externalPostId: publication.externalPostId ?? null,
+          id: PUBLICATION_ID,
+        },
+      ];
     }
     if (sql.includes('UPDATE') && sql.includes('_browser_publications')) {
       return [{ id: PUBLICATION_ID }];
@@ -561,17 +719,8 @@ function createUnknownResolutionTransaction(
         {
           ...before,
           externalPostId:
-            resolution === 'published'
-              ? before.platformCode === 'sohu'
-                ? 'sohu-post-153'
-                : 'baijiahao-post-130'
-              : null,
-          externalUrl:
-            resolution === 'published'
-              ? before.platformCode === 'sohu'
-                ? 'https://www.sohu.com/a/153'
-                : 'https://baijiahao.baidu.com/s?id=130'
-              : null,
+            resolution === 'published' ? ((values[0] as string | null) ?? null) : null,
+          externalUrl: resolution === 'published' ? ((values[1] as string | null) ?? null) : null,
           publishedAt: resolution === 'published' ? new Date() : null,
           scheduledAt: resolution === 'not_published' ? new Date() : before.scheduledAt,
           status:
@@ -610,6 +759,7 @@ function createUnknownResolutionTransaction(
 
 function jobRow({
   attemptCount = 0,
+  externalPostId = null,
   origin,
   packageStatus = 'scheduled',
   platformCode = 'official_site',
@@ -618,14 +768,16 @@ function jobRow({
   variantVersion = 2,
 }: {
   attemptCount?: number;
+  externalPostId?: string | null;
   origin:
     | 'baijiahao_automation'
+    | 'douyin_automation'
     | 'lieju_automation'
     | 'manual'
     | 'official_site_automation'
     | 'sohu_automation';
   packageStatus?: 'generated' | 'publish_failed' | 'scheduled';
-  platformCode?: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
+  platformCode?: 'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu';
   status: 'cancelled' | 'failed' | 'scheduled';
   variantStatus: 'publish_failed' | 'quality_passed' | 'scheduled';
   variantVersion?: number;
@@ -641,7 +793,7 @@ function jobRow({
     contentVersionId: CONTENT_VERSION_ID,
     createdAt: '2026-07-30T00:00:00.000Z',
     createdBy: USER_ID,
-    externalPostId: null,
+    externalPostId,
     externalUrl: null,
     id: JOB_ID,
     idempotencyKey: 'publish-job-reschedule-130',

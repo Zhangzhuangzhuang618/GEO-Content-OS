@@ -92,6 +92,7 @@ interface ResolvedExternalState {
 }
 
 interface BrowserPublicationRow {
+  readonly contentFingerprint: string | null;
   readonly externalPostId: string | null;
   readonly id: string;
   readonly status: string;
@@ -100,7 +101,7 @@ interface BrowserPublicationRow {
 type AutomatedOrigin = Exclude<PublishJobView['origin'], 'manual'>;
 type BrowserPlatformAutomatedOrigin = Extract<
   AutomatedOrigin,
-  'lieju_automation' | 'sohu_automation'
+  'douyin_automation' | 'lieju_automation' | 'sohu_automation'
 >;
 
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{8,128}$/u;
@@ -450,7 +451,7 @@ export class PublishJobService {
       if (before.attemptCount < attemptLimit) {
         throw stateInvalid('Publish job can still be retried');
       }
-      if (before.externalPostId || publication?.externalPostId) {
+      if (hasConfirmedRemotePublicationReference(before, publication)) {
         throw stateInvalid('A remote publication is already linked to this publish job');
       }
       if (publication) {
@@ -533,7 +534,7 @@ export class PublishJobService {
     }
 
     if (input.resolution === 'not_published') {
-      if (publication?.externalPostId) {
+      if (hasConfirmedRemotePublicationReference(before, publication)) {
         throw stateInvalid('A remote publication is already linked to this publish job');
       }
       if (publication) {
@@ -562,7 +563,8 @@ export class PublishJobService {
     if (
       publication?.externalPostId &&
       input.external_post_id &&
-      publication.externalPostId !== input.external_post_id
+      publication.externalPostId !== input.external_post_id &&
+      !canReplaceDouyinFingerprintReference(before, publication, input)
     ) {
       throw stateInvalid('Confirmed remote publication does not match the linked publication');
     }
@@ -1037,7 +1039,7 @@ async function enqueueBrowserReconciliation(
   outbox: OutboxWriter,
   scope: PublishJobScope,
   job: Pick<JobRow, 'accountId' | 'id' | 'version'>,
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
 ): Promise<void> {
   await outbox.enqueue(
     {
@@ -1068,7 +1070,7 @@ async function latestAttemptRequiresManualResolution(
   if (!attempt) return false;
   return (
     attempt.status === 'unknown' ||
-    (['baijiahao', 'sohu', 'lieju'].includes(platformCode) &&
+    (['baijiahao', 'douyin', 'sohu', 'lieju'].includes(platformCode) &&
       attemptRequiresManualResolution(attempt))
   );
 }
@@ -1077,11 +1079,20 @@ function selectBrowserPublications(
   transaction: TransactionSql,
   tenantId: string,
   jobId: string,
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
 ): Promise<BrowserPublicationRow[]> {
+  if (platformCode === 'douyin') {
+    return transaction<BrowserPublicationRow[]>`
+      SELECT id,content_fingerprint AS "contentFingerprint",
+             external_post_id AS "externalPostId",status
+      FROM douyin_browser_publications
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+      FOR UPDATE
+    `;
+  }
   if (platformCode === 'sohu') {
     return transaction<BrowserPublicationRow[]>`
-      SELECT id,external_post_id AS "externalPostId",status
+      SELECT id,NULL::text AS "contentFingerprint",external_post_id AS "externalPostId",status
       FROM sohu_browser_publications
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
       FOR UPDATE
@@ -1089,14 +1100,14 @@ function selectBrowserPublications(
   }
   if (platformCode === 'lieju') {
     return transaction<BrowserPublicationRow[]>`
-      SELECT id,external_post_id AS "externalPostId",status
+      SELECT id,NULL::text AS "contentFingerprint",external_post_id AS "externalPostId",status
       FROM lieju_browser_publications
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
       FOR UPDATE
     `;
   }
   return transaction<BrowserPublicationRow[]>`
-    SELECT id,external_post_id AS "externalPostId",status
+    SELECT id,NULL::text AS "contentFingerprint",external_post_id AS "externalPostId",status
     FROM baijiahao_browser_publications
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
     FOR UPDATE
@@ -1115,11 +1126,59 @@ function selectLiejuOfficialPublications(
   jobId: string,
 ): Promise<BrowserPublicationRow[]> {
   return transaction<BrowserPublicationRow[]>`
-    SELECT id,remote_reference AS "externalPostId",status
+    SELECT id,NULL::text AS "contentFingerprint",remote_reference AS "externalPostId",status
     FROM lieju_api_publications
     WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
     FOR UPDATE
   `;
+}
+
+function hasConfirmedRemotePublicationReference(
+  job: Pick<JobRow, 'externalPostId' | 'platformCode'>,
+  publication: BrowserPublicationRow | undefined,
+): boolean {
+  const references = [job.externalPostId, publication?.externalPostId].filter(
+    (value): value is string => Boolean(value),
+  );
+  if (references.length === 0) return false;
+  return !(
+    job.platformCode === 'douyin' &&
+    publication?.contentFingerprint &&
+    references.every((reference) => reference === publication.contentFingerprint)
+  );
+}
+
+function canReplaceDouyinFingerprintReference(
+  job: Pick<JobRow, 'externalPostId' | 'platformCode'>,
+  publication: BrowserPublicationRow,
+  input: { external_post_id?: string | undefined; external_url: string },
+): boolean {
+  const fingerprint = publication.contentFingerprint;
+  const externalPostId = input.external_post_id;
+  if (
+    job.platformCode !== 'douyin' ||
+    !fingerprint ||
+    !externalPostId ||
+    !/^\d{6,40}$/u.test(externalPostId)
+  ) {
+    return false;
+  }
+  const references = [job.externalPostId, publication.externalPostId].filter(
+    (value): value is string => Boolean(value),
+  );
+  if (references.length === 0 || references.some((reference) => reference !== fingerprint)) {
+    return false;
+  }
+  try {
+    const url = new URL(input.external_url);
+    const isDouyinHost = url.hostname === 'douyin.com' || url.hostname.endsWith('.douyin.com');
+    return (
+      isDouyinHost &&
+      new RegExp(`^/(?:note|video)/${externalPostId}(?:/|$)`, 'u').test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function resetLiejuOfficialPublication(
@@ -1176,12 +1235,12 @@ async function markProcessingJobNotPublished(
     'publishing',
     'publish_failed',
   );
-  if (job.origin === 'lieju_automation') {
+  if (isBrowserPlatformAutomatedOrigin(job.origin)) {
     await transaction`
       UPDATE browser_platform_automation_runs SET
         status='publish_failed',finished_at=now(),version=version+1
       WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${job.id}::uuid
-        AND platform_code='lieju' AND status='processing'
+        AND platform_code=${job.platformCode} AND status='processing'
     `;
     await transaction`
       UPDATE browser_platform_daily_batch_items SET status='publish_failed'
@@ -1196,16 +1255,26 @@ function resetBrowserPublication(
   transaction: TransactionSql,
   tenantId: string,
   publicationId: string,
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
 ): Promise<{ id: string }[]> {
   const reason = `人工核实${browserPlatformLabel(platformCode)}后台未创建内容，允许使用原幂等键重试。`;
+  if (platformCode === 'douyin') {
+    return transaction<{ id: string }[]>`
+      UPDATE douyin_browser_publications SET
+        status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+        submitted_at=NULL,last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
+      RETURNING id
+    `;
+  }
   if (platformCode === 'sohu') {
     return transaction<{ id: string }[]>`
       UPDATE sohu_browser_publications SET
         status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
         submitted_at=NULL,last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-        AND status IN ('submitting','unknown','processing','manual_required')
+        AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
       RETURNING id
     `;
   }
@@ -1215,7 +1284,7 @@ function resetBrowserPublication(
         status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
         submitted_at=NULL,last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-        AND status IN ('submitting','unknown','processing','manual_required')
+        AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
       RETURNING id
     `;
   }
@@ -1224,7 +1293,7 @@ function resetBrowserPublication(
       status='prepared',external_post_id=NULL,external_url=NULL,review_reason=${reason},
       submitted_at=NULL,last_reconciled_at=now(),version=version+1
     WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-      AND status IN ('submitting','unknown','processing','manual_required')
+      AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
     RETURNING id
   `;
 }
@@ -1233,16 +1302,26 @@ function closeBrowserPublicationNotPublished(
   transaction: TransactionSql,
   tenantId: string,
   publicationId: string,
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
 ): Promise<{ id: string }[]> {
   const reason = `人工核实${browserPlatformLabel(platformCode)}后台未创建内容，发布任务结束。`;
+  if (platformCode === 'douyin') {
+    return transaction<{ id: string }[]>`
+      UPDATE douyin_browser_publications SET
+        status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
+        last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
+      RETURNING id
+    `;
+  }
   if (platformCode === 'sohu') {
     return transaction<{ id: string }[]>`
       UPDATE sohu_browser_publications SET
         status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
         last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-        AND status IN ('submitting','unknown','processing','manual_required','failed')
+        AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
       RETURNING id
     `;
   }
@@ -1252,7 +1331,7 @@ function closeBrowserPublicationNotPublished(
         status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
         last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-        AND status IN ('submitting','unknown','processing','manual_required','failed')
+        AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
       RETURNING id
     `;
   }
@@ -1261,7 +1340,7 @@ function closeBrowserPublicationNotPublished(
       status='failed',external_post_id=NULL,external_url=NULL,review_reason=${reason},
       last_reconciled_at=now(),version=version+1
     WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-      AND status IN ('submitting','unknown','processing','manual_required','failed')
+      AND status IN ('prepared','submitting','unknown','processing','manual_required','failed')
     RETURNING id
   `;
 }
@@ -1270,18 +1349,41 @@ function confirmBrowserPublication(
   transaction: TransactionSql,
   tenantId: string,
   publicationId: string,
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
   externalPostId: string | null,
   externalUrl: string,
 ): Promise<{ id: string }[]> {
   const reason = `人工核实${browserPlatformLabel(platformCode)}内容已经发布。`;
+  if (platformCode === 'douyin') {
+    return transaction<{ id: string }[]>`
+      UPDATE douyin_browser_publications SET
+        status='published',external_post_id=${externalPostId},external_url=${externalUrl},
+        review_reason=${reason},last_reconciled_at=now(),version=version+1
+      WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
+        AND (
+          status IN ('submitting','unknown','processing','manual_required','failed')
+          OR (
+            status='published'
+            AND (
+              external_post_id IS NOT DISTINCT FROM ${externalPostId}
+              OR (
+                external_post_id=content_fingerprint
+                AND content_fingerprint ~ '^[0-9a-f]{64}$'
+                AND ${externalPostId} ~ '^[0-9]{6,40}$'
+              )
+            )
+          )
+        )
+      RETURNING id
+    `;
+  }
   if (platformCode === 'sohu') {
     return transaction<{ id: string }[]>`
       UPDATE sohu_browser_publications SET
         status='published',external_post_id=${externalPostId},external_url=${externalUrl},
         review_reason=${reason},last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-        AND status IN ('submitting','unknown','processing','manual_required')
+        AND status IN ('submitting','unknown','processing','manual_required','failed')
       RETURNING id
     `;
   }
@@ -1291,7 +1393,7 @@ function confirmBrowserPublication(
         status='published',external_post_id=${externalPostId},external_url=${externalUrl},
         review_reason=${reason},last_reconciled_at=now(),version=version+1
       WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-        AND status IN ('submitting','unknown','processing','manual_required')
+        AND status IN ('submitting','unknown','processing','manual_required','failed')
       RETURNING id
     `;
   }
@@ -1300,7 +1402,7 @@ function confirmBrowserPublication(
       status='published',external_post_id=${externalPostId},external_url=${externalUrl},
       review_reason=${reason},last_reconciled_at=now(),version=version+1
     WHERE id=${publicationId}::uuid AND tenant_id=${tenantId}::uuid
-      AND status IN ('submitting','unknown','processing','manual_required')
+      AND status IN ('submitting','unknown','processing','manual_required','failed')
     RETURNING id
   `;
 }
@@ -1318,12 +1420,15 @@ async function loadLatestAttempt(
   return rows[0];
 }
 
-function browserPlatformLabel(platformCode: 'baijiahao' | 'lieju' | 'sohu'): string {
+function browserPlatformLabel(platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu'): string {
+  if (platformCode === 'douyin') return '抖音';
   return platformCode === 'sohu' ? '搜狐号' : platformCode === 'lieju' ? '列举网' : '百家号';
 }
 
-function isBrowserPlatform(value: PlatformCode): value is 'baijiahao' | 'lieju' | 'sohu' {
-  return value === 'baijiahao' || value === 'lieju' || value === 'sohu';
+function isBrowserPlatform(
+  value: PlatformCode,
+): value is 'baijiahao' | 'douyin' | 'lieju' | 'sohu' {
+  return value === 'baijiahao' || value === 'douyin' || value === 'lieju' || value === 'sohu';
 }
 
 function attemptRequiresManualResolution(attempt: LatestAttemptRow): boolean {
@@ -1636,7 +1741,9 @@ function isAutomatedOrigin(origin: JobRow['origin']): origin is AutomatedOrigin 
 function isBrowserPlatformAutomatedOrigin(
   origin: JobRow['origin'],
 ): origin is BrowserPlatformAutomatedOrigin {
-  return origin === 'sohu_automation' || origin === 'lieju_automation';
+  return (
+    origin === 'sohu_automation' || origin === 'lieju_automation' || origin === 'douyin_automation'
+  );
 }
 
 function automationTransitionCause(

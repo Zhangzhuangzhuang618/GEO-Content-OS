@@ -33,6 +33,7 @@ export const CreatePlatformAccountRequestSchema = z
       value.publish_mode !== 'api' ||
       value.platform_code === 'baijiahao' ||
       value.platform_code === 'sohu' ||
+      value.platform_code === 'douyin' ||
       value.credential !== undefined,
     {
       message: 'API accounts require credential',
@@ -514,7 +515,7 @@ export const BrowserPlatformAutomationPolicyViewSchema = z
     geo_total_min: z.literal(85),
     id: UuidSchema,
     max_rewrites: z.literal(3),
-    platform_code: z.enum(['sohu', 'lieju']),
+    platform_code: z.enum(['douyin', 'sohu', 'lieju']),
     platform_fit_min: z.literal(80),
     project_id: UuidSchema,
     publish_attempt_limit: z.literal(3),

@@ -290,7 +290,7 @@ export const BrowserPlatformAutomationPolicySchema = z
     geo_total_min: z.literal(85),
     id: z.string().uuid(),
     max_rewrites: z.literal(3),
-    platform_code: z.enum(['sohu', 'lieju']),
+    platform_code: z.enum(['douyin', 'sohu', 'lieju']),
     platform_fit_min: z.literal(80),
     project_id: z.string().uuid(),
     publish_attempt_limit: z.literal(3),
@@ -410,7 +410,12 @@ export const PlatformAccountFormSchema = z
       });
     }
     if (value.publish_mode !== 'api') return;
-    if (value.platform_code === 'baijiahao' || value.platform_code === 'sohu') return;
+    if (
+      value.platform_code === 'baijiahao' ||
+      value.platform_code === 'douyin' ||
+      value.platform_code === 'sohu'
+    )
+      return;
     if (value.platform_code === 'lieju') {
       const required = [
         ['api_key', value.api_key],
@@ -603,6 +608,7 @@ function isValidApiBaseUrl(value: string) {
       '127.0.0.1',
       '::1',
       'baijiahao-browser',
+      'douyin-browser',
       'sohu-browser',
       'lieju-browser',
     ].includes(url.hostname.toLocaleLowerCase('en-US'))

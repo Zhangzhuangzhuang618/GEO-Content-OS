@@ -19,6 +19,7 @@ import { PolicyGuard, setPolicyContext } from '../../identity/rbac/index.js';
 import {
   BaijiahaoAutomationPolicyService,
   BrowserPlatformAutomationPolicyService,
+  DouyinBrowserSessionService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
@@ -276,6 +277,11 @@ describe('publishing API mock E2E', () => {
     reauthenticate: vi.fn(),
     status: vi.fn(),
   };
+  const douyinBrowser = {
+    login: vi.fn(),
+    reauthenticate: vi.fn(),
+    status: vi.fn(),
+  };
   const idempotency = {
     execute: vi.fn(
       async (
@@ -298,6 +304,7 @@ describe('publishing API mock E2E', () => {
         { provide: PublishingApiService, useValue: api },
         { provide: SohuBrowserSessionService, useValue: sohuBrowser },
         { provide: LiejuBrowserSessionService, useValue: liejuBrowser },
+        { provide: DouyinBrowserSessionService, useValue: douyinBrowser },
       ],
     })
       .overrideGuard(PolicyGuard)

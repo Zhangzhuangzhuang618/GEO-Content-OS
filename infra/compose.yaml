@@ -151,6 +151,9 @@ services:
       LIEJU_BROWSER_GATEWAY_BASE_URL: http://lieju-browser:9097
       LIEJU_BROWSER_GATEWAY_TOKEN: ${LIEJU_BROWSER_GATEWAY_TOKEN:?LIEJU_BROWSER_GATEWAY_TOKEN must be set via --env-file .env}
       LIEJU_BROWSER_GATEWAY_TIMEOUT_MS: ${LIEJU_BROWSER_GATEWAY_TIMEOUT_MS:-65000}
+      DOUYIN_BROWSER_GATEWAY_BASE_URL: http://douyin-browser:9098
+      DOUYIN_BROWSER_GATEWAY_TOKEN: ${DOUYIN_BROWSER_GATEWAY_TOKEN:?DOUYIN_BROWSER_GATEWAY_TOKEN must be set via --env-file .env}
+      DOUYIN_BROWSER_GATEWAY_TIMEOUT_MS: ${DOUYIN_BROWSER_GATEWAY_TIMEOUT_MS:-65000}
       CORS_ALLOWED_ORIGINS: http://localhost:${WEB_PORT:-3000},http://127.0.0.1:${WEB_PORT:-3000}
       CONTENT_MODEL_BALANCED_KEY: ${CONTENT_MODEL_BALANCED_KEY:-deepseek-v4-flash}
       CONTENT_MODEL_FAST_KEY: ${CONTENT_MODEL_FAST_KEY:-deepseek-v4-flash}
@@ -446,6 +449,54 @@ services:
         - node
         - -e
         - fetch('http://127.0.0.1:9097/health/ready').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
+
+  douyin-browser:
+    <<: *app-hardening
+    image: geo-content-os/douyin-browser:dev
+    build:
+      context: ..
+      dockerfile: infra/docker/douyin-browser.Dockerfile
+    shm_size: 1gb
+    tmpfs:
+      - /tmp
+      - /var/lib/geo-content-os/douyin:uid=1001,gid=1001,mode=0700,size=536870912
+    environment:
+      DOUYIN_BROWSER_GATEWAY_TOKEN: ${DOUYIN_BROWSER_GATEWAY_TOKEN:?DOUYIN_BROWSER_GATEWAY_TOKEN must be set via --env-file .env}
+      DOUYIN_BROWSER_HEADLESS: ${DOUYIN_BROWSER_HEADLESS:-true}
+      DOUYIN_BROWSER_NAVIGATION_TIMEOUT_MS: ${DOUYIN_BROWSER_NAVIGATION_TIMEOUT_MS:-30000}
+      DOUYIN_BROWSER_PROFILE_ROOT: /var/lib/geo-content-os/douyin
+      DOUYIN_BROWSER_SIMULATOR: ${DOUYIN_BROWSER_SIMULATOR:-false}
+      DOUYIN_EDITOR_URL: ${DOUYIN_EDITOR_URL:-https://creator.douyin.com/creator-micro/content/upload}
+      DOUYIN_LOGIN_URL: ${DOUYIN_LOGIN_URL:-https://creator.douyin.com/}
+      DOUYIN_MANAGE_URL: ${DOUYIN_MANAGE_URL:-https://creator.douyin.com/creator-micro/content/manage}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-geo}:${POSTGRES_PASSWORD:-geo_local_password}@postgres:5432/${POSTGRES_DB:-geo_content_os_dev}
+      HEALTH_PORT: '9098'
+      NODE_ENV: development
+      PUBLISHING_CREDENTIAL_KEY_BASE64: ${PUBLISHING_CREDENTIAL_KEY_BASE64:?PUBLISHING_CREDENTIAL_KEY_BASE64 must be set via --env-file .env}
+      PUBLISHING_CREDENTIAL_KEY_VERSION: ${PUBLISHING_CREDENTIAL_KEY_VERSION:-local-v1}
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-geo_minio}
+      S3_AUTO_CREATE_BUCKET: 'true'
+      S3_BUCKET: ${S3_BUCKET:-geo-content-os-dev}
+      S3_ENDPOINT: http://minio:9000
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_REGION: us-east-1
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-geo_minio_local_password}
+      S3_SERVER_SIDE_ENCRYPTION: 'false'
+      STORAGE_DRIVER: s3
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      <<: *node-healthcheck
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:9098/health/ready').then((response)=>process.exit(response.ok?0:1)).catch(()=>process.exit(1))
 
   ai-worker:
     <<: *worker-service

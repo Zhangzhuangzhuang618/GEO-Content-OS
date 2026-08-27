@@ -62,3 +62,12 @@ export interface TemplateImageInput {
   readonly label: string;
   readonly title: string;
 }
+
+export interface DouyinNoteCardInput {
+  readonly body: string;
+  readonly heading: string;
+  readonly index: number;
+  readonly kind: 'cover' | 'body' | 'summary';
+  readonly title: string;
+  readonly total: number;
+}

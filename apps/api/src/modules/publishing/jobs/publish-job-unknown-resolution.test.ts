@@ -49,4 +49,15 @@ describe('assessUnknownPublishResolution', () => {
       }),
     ).toEqual({ blockedReason: null, processingOfficial: true });
   });
+
+  it('allows recovery after Douyin reconciliation fails a previously accepted submission', () => {
+    expect(
+      assessUnknownPublishResolution({
+        ...BASE,
+        latestAttempt: { errorCode: null, status: 'succeeded' },
+        liejuOfficial: false,
+        platformCode: 'douyin',
+      }),
+    ).toEqual({ blockedReason: null, processingOfficial: false });
+  });
 });

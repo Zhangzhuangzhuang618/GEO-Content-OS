@@ -45,7 +45,7 @@ export interface AutomationGateDocument {
   readonly geo_total: number;
   readonly passed: boolean;
   readonly platform_fit: number;
-  readonly platform_code?: 'lieju' | 'sohu';
+  readonly platform_code?: 'douyin' | 'lieju' | 'sohu';
   readonly question_coverage: number;
   readonly readability_safety: number;
   readonly schema_version:

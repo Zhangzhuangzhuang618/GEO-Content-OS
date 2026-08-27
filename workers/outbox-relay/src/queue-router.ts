@@ -26,6 +26,7 @@ const EVENT_QUEUE: Readonly<Record<EventType, OutboxQueueName>> = Object.freeze(
   'baijiahao.publication.reconcile_requested.v1': 'geo-publisher',
   'sohu.publication.reconcile_requested.v1': 'geo-publisher',
   'lieju.publication.reconcile_requested.v1': 'geo-publisher',
+  'douyin.publication.reconcile_requested.v1': 'geo-publisher',
   'analytics.metrics.import_requested.v1': 'geo-analytics',
   'analytics.visibility.probe_requested.v1': 'geo-ai',
   'analytics.export.requested.v1': 'geo-analytics',

@@ -31,7 +31,7 @@ describe('douyin render contract', () => {
     const golden = (await readJson('douyin.valid.golden.json')) as ValidGolden;
     const result = renderDouyin(input);
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok || result.payload.schema_version !== 'douyin-payload@1') return;
     const payloadValidator = validator(DOUYIN_PAYLOAD_JSON_SCHEMA);
     expect(payloadValidator(result.payload), errors(payloadValidator.errors)).toBe(true);
     expect(result.payload).toMatchObject({
@@ -46,6 +46,50 @@ describe('douyin render contract', () => {
     expect(result.payload.topics).toHaveLength(golden.topic_count);
     expect(result.payload.citation_links).toHaveLength(golden.citation_link_count);
     expect(sha256(result.payload)).toBe(golden.payload_sha256);
+  });
+
+  it('renders a publishable image-note payload while preserving legacy scripts', async () => {
+    const input = await imageNoteInput();
+    const inputValidator = validator(DOUYIN_RENDER_INPUT_JSON_SCHEMA);
+    expect(inputValidator(input), errors(inputValidator.errors)).toBe(true);
+    const result = renderDouyin(input);
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.payload.schema_version !== 'douyin-image-note-payload@1') return;
+    const payloadValidator = validator(DOUYIN_PAYLOAD_JSON_SCHEMA);
+    expect(payloadValidator(result.payload), errors(payloadValidator.errors)).toBe(true);
+    expect(result.payload).toMatchObject({
+      ai_generated: true,
+      content_kind: 'image_note',
+      platform_code: 'douyin',
+    });
+    expect(result.payload.cards).toHaveLength(5);
+    expect(result.payload.image_asset_ids).toHaveLength(5);
+  });
+
+  it('blocks image notes with missing or incorrectly ordered card assets', async () => {
+    const input = (await imageNoteInput()) as {
+      content: {
+        platform_meta: {
+          cards: { kind: string }[];
+          image_asset_ids: string[];
+        };
+      };
+    };
+    input.content.platform_meta.cards[0]!.kind = 'body';
+    input.content.platform_meta.image_asset_ids.push('22000000-0000-4000-8000-000000000205');
+    expect(codes(validateDouyinContent(input))).toEqual(
+      expect.arrayContaining(['CARD_ASSET_COUNT_MISMATCH', 'CARD_ORDER_INVALID']),
+    );
+  });
+
+  it('enforces the creator-center title boundary for image notes only', async () => {
+    const imageNote = (await imageNoteInput()) as { content: { title: string } };
+    imageNote.content.title = '抖音图文标题'.repeat(6);
+    expect(codes(validateDouyinContent(imageNote))).toContain('PAYLOAD_SCHEMA_INVALID');
+
+    const legacy = (await readJson('douyin.valid.input.json')) as { content: { title: string } };
+    legacy.content.title = '旧脚本包兼容标题'.repeat(5);
+    expect(validateDouyinContent(legacy).ok).toBe(true);
   });
 
   it('matches blocker golden and never renders invalid content', async () => {
@@ -111,7 +155,7 @@ describe('douyin render contract', () => {
   it('renders a script package without claiming a produced video', async () => {
     const result = renderDouyin(await readJson('douyin.valid.input.json'));
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (!result.ok || result.payload.schema_version !== 'douyin-payload@1') return;
     expect(result.payload.script_text).toContain('脚本类型：抖音口播脚本包（不含成片）');
     expect(result.payload.script_text).not.toContain('视频已制作');
     expect(result.payload.hook).toBe(result.payload.storyboard[0]!.voiceover);
@@ -149,6 +193,53 @@ function codes(result: ReturnType<typeof validateDouyinContent>): string[] {
 }
 async function readJson(name: string): Promise<unknown> {
   return JSON.parse(await readFile(fixtureUrl(name), 'utf8')) as unknown;
+}
+async function imageNoteInput(): Promise<unknown> {
+  const input = (await readJson('douyin.valid.input.json')) as {
+    content: { platform_meta: unknown };
+  };
+  input.content.platform_meta = {
+    cards: [
+      {
+        body: '先看清报价包含哪些项目。',
+        card_key: 'cover',
+        heading: '搬家报价怎么核对',
+        kind: 'cover',
+      },
+      {
+        body: '物品数量、楼层、电梯和停车距离都会影响工作量。',
+        card_key: 'scope',
+        heading: '先确认搬运范围',
+        kind: 'body',
+      },
+      {
+        body: '分别核对车辆、人工、拆装和材料费用。',
+        card_key: 'items',
+        heading: '逐项核对费用',
+        kind: 'body',
+      },
+      {
+        body: '把可能增加费用的条件写进确认单。',
+        card_key: 'risk',
+        heading: '提前确认边界',
+        kind: 'body',
+      },
+      {
+        body: '保留书面项目、时间和验收约定，再做选择。',
+        card_key: 'summary',
+        heading: '最后做一次检查',
+        kind: 'summary',
+      },
+    ],
+    content_kind: 'image_note',
+    description: '搬家报价不只看总价，按项目、条件和边界逐项核对更清楚。',
+    image_asset_ids: Array.from(
+      { length: 5 },
+      (_, index) => `30000000-0000-4000-8000-0000000002${String(index).padStart(2, '0')}`,
+    ),
+    topics: ['搬家指南', '报价核对'],
+  };
+  return input;
 }
 function sha256(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');

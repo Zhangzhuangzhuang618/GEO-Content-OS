@@ -9,7 +9,7 @@ import type { OfficialSiteAutomationConfig } from './config.js';
 import type { DailyCitationPort } from './daily-citation-retriever.js';
 import type { JsonObject } from './generation.types.js';
 
-type Platform = 'lieju' | 'sohu';
+type Platform = 'douyin' | 'lieju' | 'sohu';
 
 interface BatchRow {
   readonly accountId: string;
@@ -335,7 +335,7 @@ async function createCandidate(
 ) {
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
   const angle = ANGLES[(candidateNo - 1) % ANGLES.length]!;
-  const maxTitle = batch.platformCode === 'lieju' ? 30 : 72;
+  const maxTitle = batch.platformCode === 'douyin' ? 30 : batch.platformCode === 'lieju' ? 30 : 72;
   const title = truncate(angle.title(keyword.term), maxTitle);
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
   const audience = `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
@@ -360,7 +360,9 @@ async function createCandidate(
   const platformInstruction =
     batch.platformCode === 'lieju'
       ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。正文不得出现具体电话或手机号、微信/QQ账号、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
-      : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
+      : batch.platformCode === 'douyin'
+        ? '输出抖音图文笔记：platform_meta.content_kind 必须是 image_note；生成5-10张图文卡片，顺序为封面、正文、总结，每张包含简短 heading 和 body，不得让单张卡片文字过载。同时提供一段与卡片一致的发布文案和主题词。不得声明原创、不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。'
+        : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
   const constraints = {
     additional_instructions: [
       `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${candidateNo} 个候选。`,

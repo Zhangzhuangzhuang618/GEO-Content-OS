@@ -71,7 +71,7 @@ export class PublisherWorker {
       delivery = await this.dependencies.platform.deliver(claim, credential, signal);
       if (
         delivery.mode === 'export' &&
-        ['baijiahao', 'sohu', 'lieju'].includes(claim.platformCode) &&
+        ['baijiahao', 'douyin', 'sohu', 'lieju'].includes(claim.platformCode) &&
         claim.publishMode === 'api'
       ) {
         throw Object.assign(new Error('Browser publishing capability is temporarily unavailable'), {
@@ -83,7 +83,7 @@ export class PublisherWorker {
       const diagnostics = safeDeliveryDiagnostics(failure.diagnostics);
       const unknown = failure.code === 'PUBLISH_STATE_UNKNOWN' || failure.code === undefined;
       if (
-        ['official_site', 'baijiahao', 'sohu', 'lieju'].includes(claim.platformCode) &&
+        ['official_site', 'baijiahao', 'douyin', 'sohu', 'lieju'].includes(claim.platformCode) &&
         claim.liejuDeliveryMethod !== 'official_api' &&
         claim.attempt < 3 &&
         (unknown || failure.code === 'CAPABILITY_UNAVAILABLE')

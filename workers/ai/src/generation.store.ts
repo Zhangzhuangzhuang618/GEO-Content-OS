@@ -54,6 +54,13 @@ interface VariantStateRow {
 }
 
 const TERMINAL_RUN_STATUSES = new Set(['cancelled', 'failed', 'succeeded']);
+const AUTOMATED_QUALITY_PLATFORMS = new Set<PlatformCode>([
+  'official_site',
+  'baijiahao',
+  'douyin',
+  'sohu',
+  'lieju',
+]);
 const EDITABLE_VARIANT_STATUSES = new Set<ContentVariantStatus>([
   'generated',
   'published',
@@ -304,12 +311,7 @@ export class PostgresGenerationStore implements GenerationStorePort {
       if (pointed.length !== 1) throw stateInvalid();
       await succeedRun(transaction, event, claim.run.runId, claim.leaseVersion);
       await insertAudit(transaction, event, versionId, claim.run.platformCode);
-      if (
-        claim.run.platformCode === 'official_site' ||
-        claim.run.platformCode === 'baijiahao' ||
-        claim.run.platformCode === 'sohu' ||
-        claim.run.platformCode === 'lieju'
-      ) {
+      if (requiresAutomatedQuality(claim.run.platformCode)) {
         await this.automation?.queueQualityAfterGeneration(
           transaction,
           event,
@@ -424,6 +426,10 @@ export class PostgresGenerationStore implements GenerationStorePort {
       return status;
     });
   }
+}
+
+export function requiresAutomatedQuality(platformCode: PlatformCode): boolean {
+  return AUTOMATED_QUALITY_PLATFORMS.has(platformCode);
 }
 
 export async function prepareOfficialSiteContent(

@@ -1,7 +1,9 @@
 import { DOUYIN_RENDER_RULES_V1 } from './rules.js';
 import { DouyinRenderInputSchema } from './schema.js';
 import type {
+  DouyinImageNotePlatformMeta,
   DouyinRenderInput,
+  DouyinScriptPlatformMeta,
   DouyinValidationCode,
   DouyinValidationIssue,
   DouyinValidationResult,
@@ -18,8 +20,74 @@ export function validateDouyinContent(input: unknown): DouyinValidationResult {
     };
   }
   const value = parsed.data as DouyinRenderInput;
-  const { duration_seconds: duration, storyboard, subtitles, topics } = value.content.platform_meta;
   const issues: DouyinValidationIssue[] = [];
+  const meta = value.content.platform_meta;
+  if (isImageNote(meta)) validateImageNote(meta, issues);
+  else validateScript(meta, issues);
+  const allText = [
+    value.content.title,
+    value.content.summary,
+    ...value.content.blocks.map((block) => block.text),
+    ...(isImageNote(meta)
+      ? [meta.description, ...meta.cards.flatMap((card) => [card.heading, card.body])]
+      : [
+          ...meta.storyboard.flatMap((scene) => [scene.visual, scene.voiceover]),
+          ...meta.subtitles.map((subtitle) => subtitle.text),
+        ]),
+    value.content.cta ?? '',
+  ].join('\n');
+  if (DOUYIN_RENDER_RULES_V1.productionClaimMarkers.some((marker) => allText.includes(marker))) {
+    issues.push(
+      blocker('PRODUCTION_CLAIM_FORBIDDEN', '不得声称作品已制作、拍摄或发布。', 'content'),
+    );
+  }
+  const referenced = new Set(value.content.citation_map.flatMap((claim) => claim.citation_ids));
+  const available = new Set(value.citations.map((citation) => citation.citation_id));
+  if ([...referenced].some((citationId) => !available.has(citationId))) {
+    issues.push(
+      blocker('CITATION_LINK_MISSING', '引用 ID 必须映射到可输出的 HTTP(S) 链接。', 'citations'),
+    );
+  }
+  return issues.length === 0
+    ? { issues: [], ok: true, value }
+    : { issues: Object.freeze(issues), ok: false };
+}
+
+function validateImageNote(
+  meta: DouyinImageNotePlatformMeta,
+  issues: DouyinValidationIssue[],
+): void {
+  if (
+    meta.cards[0]?.kind !== 'cover' ||
+    meta.cards.at(-1)?.kind !== 'summary' ||
+    meta.cards.slice(1, -1).some((card) => card.kind !== 'body') ||
+    new Set(meta.cards.map((card) => card.card_key)).size !== meta.cards.length
+  ) {
+    issues.push(
+      blocker(
+        'CARD_ORDER_INVALID',
+        '图文必须以封面开始、以总结结束，中间仅包含正文卡片，且卡片标识不得重复。',
+        'content.platform_meta.cards',
+      ),
+    );
+  }
+  if (
+    !meta.image_asset_ids ||
+    meta.image_asset_ids.length !== meta.cards.length ||
+    new Set(meta.image_asset_ids).size !== meta.image_asset_ids.length
+  ) {
+    issues.push(
+      blocker(
+        'CARD_ASSET_COUNT_MISMATCH',
+        '每张抖音图文卡片必须对应一张已通过媒体门禁的图片。',
+        'content.platform_meta.image_asset_ids',
+      ),
+    );
+  }
+}
+
+function validateScript(meta: DouyinScriptPlatformMeta, issues: DouyinValidationIssue[]): void {
+  const { duration_seconds: duration, storyboard, subtitles, topics } = meta;
   if (storyboard.length === 0) {
     issues.push(
       blocker('STORYBOARD_REQUIRED', '必须提供至少一个分镜。', 'content.platform_meta.storyboard'),
@@ -61,38 +129,17 @@ export function validateDouyinContent(input: unknown): DouyinValidationResult {
       ),
     );
   }
-  const allText = [
-    value.content.title,
-    value.content.summary,
-    ...value.content.blocks.map((block) => block.text),
-    ...storyboard.flatMap((scene) => [scene.visual, scene.voiceover]),
-    ...subtitles.map((subtitle) => subtitle.text),
-    value.content.cta ?? '',
-  ].join('\n');
-  if (DOUYIN_RENDER_RULES_V1.productionClaimMarkers.some((marker) => allText.includes(marker))) {
-    issues.push(
-      blocker(
-        'PRODUCTION_CLAIM_FORBIDDEN',
-        '只能输出脚本包，不得声称视频已制作、拍摄或发布。',
-        'content',
-      ),
-    );
-  }
-  const referenced = new Set(value.content.citation_map.flatMap((claim) => claim.citation_ids));
-  const available = new Set(value.citations.map((citation) => citation.citation_id));
-  if ([...referenced].some((citationId) => !available.has(citationId))) {
-    issues.push(
-      blocker('CITATION_LINK_MISSING', '引用 ID 必须映射到可输出的 HTTP(S) 链接。', 'citations'),
-    );
-  }
-  return issues.length === 0
-    ? { issues: [], ok: true, value }
-    : { issues: Object.freeze(issues), ok: false };
+}
+
+function isImageNote(
+  value: DouyinRenderInput['content']['platform_meta'],
+): value is DouyinImageNotePlatformMeta {
+  return value.content_kind === 'image_note';
 }
 
 function timelineMatchesDuration(
-  storyboard: DouyinRenderInput['content']['platform_meta']['storyboard'],
-  subtitles: DouyinRenderInput['content']['platform_meta']['subtitles'],
+  storyboard: DouyinScriptPlatformMeta['storyboard'],
+  subtitles: DouyinScriptPlatformMeta['subtitles'],
   duration: number,
 ): boolean {
   const entries = [...storyboard, ...subtitles];

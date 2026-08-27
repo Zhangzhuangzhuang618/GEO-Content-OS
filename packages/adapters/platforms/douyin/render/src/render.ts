@@ -1,11 +1,15 @@
 import { DouyinPayloadSchema } from './schema.js';
 import {
+  DOUYIN_IMAGE_NOTE_PAYLOAD_SCHEMA_VERSION,
   DOUYIN_PAYLOAD_SCHEMA_VERSION,
   DOUYIN_PLATFORM_CODE,
   DOUYIN_RENDER_RULE_VERSION,
   type DouyinCitationLink,
+  type DouyinImageNotePlatformMeta,
+  type DouyinImageNotePayload,
   type DouyinPayload,
   type DouyinRenderResult,
+  type DouyinScriptPlatformMeta,
   type DouyinStoryboardScene,
   type DouyinSubtitle,
 } from './types.js';
@@ -18,27 +22,10 @@ export function renderDouyin(input: unknown): DouyinRenderResult {
   const meta = content.platform_meta;
   const linkedIds = new Set(content.citation_map.flatMap((claim) => claim.citation_ids));
   const citationLinks = citations.filter((citation) => linkedIds.has(citation.citation_id));
-  const payload: DouyinPayload = {
-    citation_links: citationLinks,
-    duration_seconds: meta.duration_seconds,
-    hook: meta.storyboard[0]!.voiceover.trim(),
-    platform_code: DOUYIN_PLATFORM_CODE,
-    rule_version: DOUYIN_RENDER_RULE_VERSION,
-    schema_version: DOUYIN_PAYLOAD_SCHEMA_VERSION,
-    script_kind: 'script_package',
-    script_text: renderScriptText(
-      content.title,
-      meta.duration_seconds,
-      meta.storyboard,
-      meta.subtitles,
-      meta.topics,
-      citationLinks,
-    ),
-    storyboard: meta.storyboard,
-    subtitles: meta.subtitles,
-    title: content.title,
-    topics: meta.topics,
-  };
+  const payload: DouyinPayload =
+    meta.content_kind === 'image_note'
+      ? imageNotePayload(content.title, meta, citationLinks)
+      : scriptPayload(content.title, meta, citationLinks);
   const parsed = DouyinPayloadSchema.safeParse(payload);
   if (!parsed.success) {
     return {
@@ -52,6 +39,54 @@ export function renderDouyin(input: unknown): DouyinRenderResult {
     };
   }
   return { issues: [], ok: true, payload: parsed.data as DouyinPayload };
+}
+
+function imageNotePayload(
+  title: string,
+  meta: DouyinImageNotePlatformMeta,
+  citations: readonly DouyinCitationLink[],
+): DouyinImageNotePayload {
+  return {
+    ai_generated: true,
+    cards: meta.cards,
+    citation_links: citations,
+    content_kind: 'image_note',
+    description: meta.description,
+    image_asset_ids: meta.image_asset_ids ?? [],
+    platform_code: DOUYIN_PLATFORM_CODE,
+    rule_version: DOUYIN_RENDER_RULE_VERSION,
+    schema_version: DOUYIN_IMAGE_NOTE_PAYLOAD_SCHEMA_VERSION,
+    title,
+    topics: meta.topics,
+  };
+}
+
+function scriptPayload(
+  title: string,
+  meta: DouyinScriptPlatformMeta,
+  citationLinks: readonly DouyinCitationLink[],
+): DouyinPayload {
+  return {
+    citation_links: citationLinks,
+    duration_seconds: meta.duration_seconds,
+    hook: meta.storyboard[0]!.voiceover.trim(),
+    platform_code: DOUYIN_PLATFORM_CODE,
+    rule_version: DOUYIN_RENDER_RULE_VERSION,
+    schema_version: DOUYIN_PAYLOAD_SCHEMA_VERSION,
+    script_kind: 'script_package',
+    script_text: renderScriptText(
+      title,
+      meta.duration_seconds,
+      meta.storyboard,
+      meta.subtitles,
+      meta.topics,
+      citationLinks,
+    ),
+    storyboard: meta.storyboard,
+    subtitles: meta.subtitles,
+    title,
+    topics: meta.topics,
+  };
 }
 
 function renderScriptText(

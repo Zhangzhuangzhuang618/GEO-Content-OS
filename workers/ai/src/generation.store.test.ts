@@ -1,7 +1,7 @@
 import type postgres from 'postgres';
 import { describe, expect, it } from 'vitest';
 
-import { insertGeneratedVersion } from './generation.store.js';
+import { insertGeneratedVersion, requiresAutomatedQuality } from './generation.store.js';
 import type { GeneratedContent, ValidatedGenerationEvent } from './generation.types.js';
 
 const EXISTING_VERSION_ID = '80000000-0000-4000-8000-000000000053';
@@ -26,6 +26,15 @@ describe('generated content version persistence', () => {
     expect(queries[1]).toContain('ON CONFLICT DO NOTHING');
     expect(queries[2]).toContain('content_hash =');
     expect(queries.some((query) => query.includes('INSERT INTO content_blocks'))).toBe(false);
+  });
+});
+
+describe('automatic quality handoff', () => {
+  it('includes Douyin image-note variants in the automatic quality pipeline', () => {
+    expect(requiresAutomatedQuality('douyin')).toBe(true);
+    expect(requiresAutomatedQuality('sohu')).toBe(true);
+    expect(requiresAutomatedQuality('lieju')).toBe(true);
+    expect(requiresAutomatedQuality('zhihu')).toBe(false);
   });
 });
 

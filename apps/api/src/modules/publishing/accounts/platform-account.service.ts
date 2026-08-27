@@ -16,6 +16,7 @@ import {
   type DatabaseClientSource,
 } from '../../../database/index.js';
 import { readBaijiahaoBrowserGatewayCredential } from './baijiahao-browser-gateway.client.js';
+import { readDouyinBrowserGatewayCredential } from './douyin-browser-gateway.client.js';
 import { readSohuBrowserGatewayCredential } from './sohu-browser-gateway.client.js';
 import { readLiejuBrowserGatewayCredential } from './lieju-browser-gateway.client.js';
 import { PlatformAccountError } from './platform-account.errors.js';
@@ -120,7 +121,7 @@ export class PlatformAccountService {
       const probe = await this.connector.refresh({ credential, platformCode: row.platform_code });
       const status = await browserAwareAccountStatus(tx, row, probe.status);
       const stored =
-        input.credential || ['baijiahao', 'sohu', 'lieju'].includes(row.platform_code)
+        input.credential || ['baijiahao', 'douyin', 'sohu', 'lieju'].includes(row.platform_code)
           ? await encryptCredential(this.credentials, credential)
           : null;
       const rows = await tx<
@@ -364,6 +365,7 @@ async function accountCredential(
 ): Promise<Readonly<Record<string, unknown>> | null> {
   if (publishMode !== 'api') return null;
   if (platformCode === 'baijiahao') return readBaijiahaoBrowserGatewayCredential();
+  if (platformCode === 'douyin') return readDouyinBrowserGatewayCredential();
   if (platformCode === 'sohu') return readSohuBrowserGatewayCredential();
   if (platformCode === 'lieju') {
     const previous = fallback ? await fallback() : null;
@@ -493,6 +495,11 @@ async function disableAutomationPolicies(
   `;
   await transaction`
     UPDATE baijiahao_automation_policies
+    SET enabled=false,daily_enabled=false,version=version+1
+    WHERE tenant_id=${tenantId}::uuid AND account_id=${accountId}::uuid AND enabled
+  `;
+  await transaction`
+    UPDATE browser_platform_automation_policies
     SET enabled=false,daily_enabled=false,version=version+1
     WHERE tenant_id=${tenantId}::uuid AND account_id=${accountId}::uuid AND enabled
   `;

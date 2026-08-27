@@ -102,6 +102,22 @@ export class DouyinDeliveryAdapter {
       );
     }
     if (!isSuccess(response.status_code)) {
+      if (
+        response.status_code === 401 ||
+        response.status_code === 423 ||
+        [
+          'AUTH_REQUIRED',
+          'CAPTCHA_REQUIRED',
+          'MULTIPLE_MATCHES',
+          'PAGE_SIGNATURE_CHANGED',
+          'PUBLICATION_TERMINAL',
+        ].includes(responseCode(response.body))
+      ) {
+        throw new DouyinDeliveryError(
+          'MANUAL_REQUIRED',
+          'Douyin browser publication requires manual handling',
+        );
+      }
       throw new DouyinDeliveryError('PUBLISH_REJECTED', 'Douyin rejected publication');
     }
     const parsedResponse = DouyinPublishResponseSchema.safeParse(response.body);
@@ -157,6 +173,7 @@ export class DouyinDeliveryAdapter {
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${configuration.bearer_token}`,
+        ...(configuration.account_id ? { 'x-platform-account-id': configuration.account_id } : {}),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
       },
@@ -214,4 +231,10 @@ function normalizedBaseUrl(value: string): string {
 }
 function isSuccess(statusCode: number): boolean {
   return statusCode >= 200 && statusCode < 300;
+}
+
+function responseCode(value: unknown): string {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? String((value as Readonly<Record<string, unknown>>)['code'] ?? '')
+    : '';
 }

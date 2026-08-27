@@ -36,7 +36,12 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     () => automaticDailyScheduleTimes(dailyTargetCount),
     [dailyTargetCount],
   );
-  const platformName = account.platform_code === 'lieju' ? '列举网' : '搜狐号';
+  const platformName =
+    account.platform_code === 'lieju'
+      ? '列举网'
+      : account.platform_code === 'douyin'
+        ? '抖音'
+        : '搜狐号';
 
   useEffect(() => {
     setDailyTargetCount(selected?.daily_target_count ?? defaultTarget);

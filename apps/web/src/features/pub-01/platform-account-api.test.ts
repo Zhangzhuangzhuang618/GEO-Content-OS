@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { startBaijiahaoBrowserLogin, updatePlatformAccount } from './platform-account-api';
+import {
+  startBaijiahaoBrowserLogin,
+  startDouyinBrowserLogin,
+  updatePlatformAccount,
+} from './platform-account-api';
 import type { PlatformAccountRequestError } from './platform-account-api';
 import { PlatformAccountEditSchema } from './platform-account.schema';
 import type { PlatformAccount, PlatformAccountEdit } from './platform-account.schema';
@@ -84,6 +88,100 @@ describe('Baijiahao browser login API', () => {
         details: { reason: 'BROWSER_GATEWAY_UNAVAILABLE', upstream_status: 503 },
         status: 503,
       }),
+    );
+  });
+});
+
+describe('Douyin browser login API', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('refreshes a stale account version and retries the login once', async () => {
+    const account = {
+      ...LIEJU_ACCOUNT,
+      id: '00000000-0000-4000-8000-000000000158',
+      platform_code: 'douyin' as const,
+      version: 2,
+    } satisfies PlatformAccount;
+    const current = { ...account, status: 'reauth' as const, version: 3 };
+    const login = {
+      account_id: account.id,
+      authenticated_at: null,
+      last_verified_at: null,
+      qr_expires_at: '2026-08-27T01:03:00.000Z',
+      qr_image_data_url: 'data:image/png;base64,cXItYnl0ZXM=',
+      status: 'qr_ready',
+      version: 24,
+    } as const;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT',
+              message: '账号版本已变化',
+              request_id: '00000000-0000-4000-8000-000000000159',
+            },
+          }),
+          { status: 409 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [current],
+            meta: { request_id: '00000000-0000-4000-8000-000000000160' },
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: login,
+            meta: { request_id: '00000000-0000-4000-8000-000000000161' },
+          }),
+          { status: 200 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(startDouyinBrowserLogin(account, 'csrf-token', true)).resolves.toEqual(login);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ 'if-match': '"2"' });
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain(
+      `platform_code=douyin&workspace_id=${account.workspace_id}`,
+    );
+    expect(fetchMock.mock.calls[2]?.[1]?.headers).toMatchObject({ 'if-match': '"3"' });
+  });
+
+  it('uses the isolated Douyin session route and keeps safe diagnostics', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'STATE_TRANSITION_INVALID',
+              details: { reason: 'CAPTCHA_REQUIRED', upstream_status: 423 },
+              message: '需要人工验证',
+              request_id: '00000000-0000-4000-8000-000000000158',
+            },
+          }),
+          { status: 409 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const account = { ...ACCOUNT, platform_code: 'douyin' } as PlatformAccount;
+
+    await expect(startDouyinBrowserLogin(account, 'csrf-token')).rejects.toEqual(
+      expect.objectContaining<Partial<PlatformAccountRequestError>>({
+        code: 'STATE_TRANSITION_INVALID',
+        details: { reason: 'CAPTCHA_REQUIRED', upstream_status: 423 },
+        status: 409,
+      }),
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(
+      `/platform-accounts/${ACCOUNT.id}/douyin-browser-session/login`,
     );
   });
 });

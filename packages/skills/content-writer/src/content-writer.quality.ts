@@ -96,6 +96,10 @@ function assessContent(
     }
   }
 
+  if (content.platform_code === 'douyin') {
+    issues.push(...douyinImageNoteIssues(content));
+  }
+
   if (characters < required(target.characters)) {
     issues.push(
       `${content.platform_code}:正文仅 ${characters} 个有效字符，至少需要 ${required(target.characters)} 个`,
@@ -166,6 +170,89 @@ function assessContent(
     issues.push(`${content.platform_code}:摘要与正文首段完全重复`);
   }
   return issues;
+}
+
+function douyinImageNoteIssues(content: ContentWriterContent): readonly string[] {
+  const issues: string[] = [];
+  const titleLength = [...content.title.trim()].length;
+  if (titleLength < 2 || titleLength > 30) {
+    issues.push(`douyin:标题为 ${titleLength} 个字符，必须为 2–30 个字符`);
+  }
+
+  const meta = content.platform_meta;
+  if (
+    Object.keys(meta).some(
+      (key) => !['cards', 'content_kind', 'description', 'topics'].includes(key),
+    )
+  ) {
+    issues.push('douyin:platform_meta 只能包含 content_kind、description、topics 和 cards');
+  }
+  if (meta['content_kind'] !== 'image_note') {
+    issues.push('douyin:platform_meta.content_kind 必须为 image_note');
+  }
+  const description = meta['description'];
+  if (
+    typeof description !== 'string' ||
+    description.trim().length === 0 ||
+    [...description.trim()].length > 1_000
+  ) {
+    issues.push('douyin:platform_meta.description 必须为 1–1000 个字符');
+  }
+  const topics = meta['topics'];
+  if (
+    !Array.isArray(topics) ||
+    topics.length < 1 ||
+    topics.length > 20 ||
+    topics.some(
+      (topic) =>
+        typeof topic !== 'string' || topic.trim().length === 0 || [...topic.trim()].length > 40,
+    ) ||
+    new Set(topics.map((topic) => (typeof topic === 'string' ? topic.trim() : String(topic))))
+      .size !== topics.length
+  ) {
+    issues.push('douyin:platform_meta.topics 必须包含 1–20 个不重复的有效话题');
+  }
+
+  const cards = meta['cards'];
+  if (!Array.isArray(cards) || cards.length < 5 || cards.length > 10) {
+    issues.push('douyin:platform_meta.cards 必须包含 5–10 张图文卡片');
+    return issues;
+  }
+  const keys = new Set<string>();
+  const validCards = cards.every((card, index) => {
+    if (!record(card)) return false;
+    const body = card['body'];
+    const cardKey = card['card_key'];
+    const heading = card['heading'];
+    const kind = card['kind'];
+    const valid =
+      Object.keys(card).every((key) => ['body', 'card_key', 'heading', 'kind'].includes(key)) &&
+      typeof body === 'string' &&
+      body.trim().length > 0 &&
+      [...body.trim()].length <= 240 &&
+      typeof cardKey === 'string' &&
+      /^[a-z0-9_-]{1,80}$/u.test(cardKey) &&
+      !keys.has(cardKey) &&
+      typeof heading === 'string' &&
+      heading.trim().length > 0 &&
+      [...heading.trim()].length <= 36 &&
+      (kind === 'cover' || kind === 'body' || kind === 'summary') &&
+      (index === 0
+        ? kind === 'cover'
+        : index === cards.length - 1
+          ? kind === 'summary'
+          : kind === 'body');
+    if (typeof cardKey === 'string') keys.add(cardKey);
+    return valid;
+  });
+  if (!validCards) {
+    issues.push('douyin:图文卡片必须按封面、正文、总结排序，且 card_key 唯一、标题和正文长度有效');
+  }
+  return issues;
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function countReadableCharacters(value: string): number {

@@ -127,6 +127,21 @@ const bindings: readonly Binding[] = [
     PlatformAccountController,
     PlatformAccountController.prototype.reauthenticateLiejuBrowser,
   ),
+  bind(
+    'account.douyin_browser_session.get',
+    PlatformAccountController,
+    PlatformAccountController.prototype.getDouyinBrowserSession,
+  ),
+  bind(
+    'account.douyin_browser_session.login',
+    PlatformAccountController,
+    PlatformAccountController.prototype.startDouyinBrowserLogin,
+  ),
+  bind(
+    'account.douyin_browser_session.reauth',
+    PlatformAccountController,
+    PlatformAccountController.prototype.reauthenticateDouyinBrowser,
+  ),
   bind('job.create', PublishJobController, PublishJobController.prototype.create),
   bind('job.list', PublishJobController, PublishJobController.prototype.list),
   bind('job.get', PublishJobController, PublishJobController.prototype.detail),

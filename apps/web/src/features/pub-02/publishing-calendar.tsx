@@ -548,6 +548,7 @@ function JobRow({
 function originLabel(origin: PublishJob['origin']) {
   if (origin === 'official_site_automation') return '官网机器质检通过后自动发布';
   if (origin === 'baijiahao_automation') return '百家号自动化发布';
+  if (origin === 'douyin_automation') return '抖音图文自动化发布';
   if (origin === 'sohu_automation') return '搜狐号自动化发布';
   if (origin === 'lieju_automation') return '列举网自动化发布';
   return '人工审核内容';

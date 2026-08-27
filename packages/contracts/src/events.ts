@@ -18,6 +18,7 @@ export const EVENT_TYPES = Object.freeze([
   'baijiahao.publication.reconcile_requested.v1',
   'sohu.publication.reconcile_requested.v1',
   'lieju.publication.reconcile_requested.v1',
+  'douyin.publication.reconcile_requested.v1',
   'analytics.metrics.import_requested.v1',
   'analytics.visibility.probe_requested.v1',
   'analytics.export.requested.v1',

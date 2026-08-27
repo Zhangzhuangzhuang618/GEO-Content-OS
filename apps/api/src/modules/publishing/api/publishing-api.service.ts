@@ -260,7 +260,7 @@ export class PublishingApiService {
   private async baijiahaoReconciliation(
     scope: PublishingApiScope,
     job: JobRow,
-  ): Promise<{ readonly platform_code: 'baijiahao' | 'lieju' | 'sohu' } | null> {
+  ): Promise<{ readonly platform_code: 'baijiahao' | 'douyin' | 'lieju' | 'sohu' } | null> {
     if (
       !isBrowserPlatform(job.platformCode) ||
       job.status !== 'publishing' ||
@@ -420,7 +420,9 @@ export class PublishingApiService {
     `;
     const row = rows[0];
     if (!row) throw new PublishingApiError('PUBLISHING_NOT_FOUND', 'Publish job was not found');
-    const supported = this.mediaConfig.enabled && isMediaPlatform(row.platformCode);
+    const supported =
+      isMediaPlatform(row.platformCode) &&
+      (row.platformCode === 'douyin' || this.mediaConfig.enabled);
     const status =
       row.assetCount > 0
         ? 'ready'
@@ -488,7 +490,7 @@ export class PublishingApiService {
     if (row.version !== expectedVersion) {
       throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Publish job version changed');
     }
-    if (!this.mediaConfig.enabled) {
+    if (!this.mediaConfig.enabled && row.platformCode !== 'douyin') {
       throw new PublishingApiError('PUBLISHING_STATE_INVALID', 'Image generation is disabled');
     }
     if (row.status !== 'scheduled') {
@@ -736,8 +738,16 @@ function browserPublicationRows(
   database: postgres.Sql,
   tenantId: string,
   jobId: string,
-  platformCode: 'baijiahao' | 'lieju' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'sohu',
 ): Promise<{ externalPostId: string | null; status: string }[]> {
+  if (platformCode === 'douyin') {
+    return database<{ externalPostId: string | null; status: string }[]>`
+      SELECT external_post_id AS "externalPostId",status
+      FROM douyin_browser_publications
+      WHERE tenant_id=${tenantId}::uuid AND publish_job_id=${jobId}::uuid
+      LIMIT 2
+    `;
+  }
   if (platformCode === 'sohu') {
     return database<{ externalPostId: string | null; status: string }[]>`
       SELECT external_post_id AS "externalPostId",status
@@ -783,12 +793,14 @@ function readPublishMediaConfig(environment: NodeJS.ProcessEnv = process.env): P
   });
 }
 
-function isMediaPlatform(value: string): value is 'baijiahao' | 'lieju' | 'official_site' | 'sohu' {
-  return ['baijiahao', 'lieju', 'official_site', 'sohu'].includes(value);
+function isMediaPlatform(
+  value: string,
+): value is 'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu' {
+  return ['baijiahao', 'douyin', 'lieju', 'official_site', 'sohu'].includes(value);
 }
 
-function isBrowserPlatform(value: string): value is 'baijiahao' | 'lieju' | 'sohu' {
-  return value === 'baijiahao' || value === 'lieju' || value === 'sohu';
+function isBrowserPlatform(value: string): value is 'baijiahao' | 'douyin' | 'lieju' | 'sohu' {
+  return value === 'baijiahao' || value === 'douyin' || value === 'lieju' || value === 'sohu';
 }
 
 function boundedRequestId(value: string): string {

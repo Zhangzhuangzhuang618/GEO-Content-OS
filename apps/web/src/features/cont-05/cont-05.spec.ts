@@ -42,6 +42,45 @@ test('saves a complete document with the required variant version', async ({ pag
   });
 });
 
+test('edits the final Douyin image cards and topics without exposing raw JSON', async ({
+  page,
+}) => {
+  let saved: unknown;
+  await page.unroute(`**/api/v1/content-variants/${VARIANT_ID}`);
+  await page.route(`**/api/v1/content-variants/${VARIANT_ID}`, async (route) => {
+    const value = detail('douyin', {
+      cards: [
+        {
+          body: '原图片正文',
+          card_key: 'card-cover',
+          heading: '原图片标题',
+          kind: 'cover',
+        },
+      ],
+      content_kind: 'image_note',
+      description: '发布说明',
+      topics: ['广州搬家'],
+    });
+    if (route.request().method() === 'PATCH') saved = route.request().postDataJSON();
+    await json(route, value);
+  });
+
+  await page.goto(`/cont-05?id=${VARIANT_ID}`);
+  await page.getByLabel('第 1 张图正文').fill('降低受潮和滑倒风险');
+  await page.getByLabel('抖音话题').fill('广州搬家，雨天搬家');
+  await page.getByRole('button', { name: '保存修改' }).click();
+
+  expect(saved).toMatchObject({
+    content: {
+      platform_meta: {
+        cards: [{ body: '降低受潮和滑倒风险', card_key: 'card-cover' }],
+        topics: ['广州搬家', '雨天搬家'],
+      },
+    },
+  });
+  await expect(page.getByLabel('平台高级设置 JSON')).not.toBeVisible();
+});
+
 test('saves an edited scheduled article and requests manual revalidation', async ({ page }) => {
   const sourceJobId = 'c0000000-0000-4000-8000-000000000086';
   let saved: unknown;
@@ -167,7 +206,10 @@ test('keeps permission and mobile states safe', async ({ page }) => {
   await expect(page.locator('main')).toHaveCSS('min-height', '844px');
 });
 
-function detail() {
+function detail(
+  platformCode = 'zhihu',
+  platformMeta: Record<string, unknown> = { content_type: 'answer' },
+) {
   return {
     citations: [
       {
@@ -182,7 +224,7 @@ function detail() {
         tenant_id: TENANT_ID,
       },
     ],
-    current_content: version(CURRENT_ID, 2),
+    current_content: version(CURRENT_ID, 2, platformCode, platformMeta),
     locks: [] as ReturnType<typeof blockLock>[],
     quality_report: {
       content_version_id: CURRENT_ID,
@@ -197,17 +239,25 @@ function detail() {
       id: VARIANT_ID,
       is_required: true,
       package_id: PACKAGE_ID,
-      platform_code: 'zhihu',
+      platform_code: platformCode,
       quality_score: 91,
       status: 'quality_passed',
       tenant_id: TENANT_ID,
       updated_at: '2026-07-15T01:00:00.000Z',
       version: 4,
     },
-    versions: [version(CURRENT_ID, 2), version(OLD_ID, 1)],
+    versions: [
+      version(CURRENT_ID, 2, platformCode, platformMeta),
+      version(OLD_ID, 1, platformCode, platformMeta),
+    ],
   };
 }
-function version(id: string, versionNo: number) {
+function version(
+  id: string,
+  versionNo: number,
+  platformCode = 'zhihu',
+  platformMeta: Record<string, unknown> = { content_type: 'answer' },
+) {
   return {
     blocks: [
       {
@@ -227,8 +277,8 @@ function version(id: string, versionNo: number) {
       citation_map: [{ citation_ids: [], claim_key: 'claim-1', claim_text: '声明' }],
       cta: null,
       hashtags: ['GEO'],
-      platform_code: 'zhihu',
-      platform_meta: { content_type: 'answer' },
+      platform_code: platformCode,
+      platform_meta: platformMeta,
       schema_version: 'content-writer-data@1',
       summary: '摘要',
       title: '原始 GEO 标题',

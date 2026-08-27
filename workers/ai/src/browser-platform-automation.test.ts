@@ -158,6 +158,32 @@ describe('browser-platform automation', () => {
       platform_codes: ['lieju'],
     });
   });
+
+  it('keeps the Douyin image-note contract when rebuilding rewrite input', () => {
+    const input = {
+      brief: {
+        constraints: { additional_instructions: '仅修复本次质量报告。' },
+        platform_codes: ['douyin'],
+        title: '搬家前怎么准备',
+      },
+      citations: [],
+      generation_mode: 'draft',
+      locked_blocks: [],
+      platform_rules_by_code: { douyin: { rules: { title_max_characters: 30 } } },
+      strategy: { profile: { positioning: '广州示例搬家有限公司提供搬迁服务。' } },
+    };
+
+    const rewrite = buildBrowserPlatformRewriteInput(input, 'douyin');
+    const brief = rewrite['brief'] as Record<string, unknown>;
+    const constraints = brief['constraints'] as Record<string, unknown>;
+    const instructions = constraints['additional_instructions'];
+
+    expect(instructions).toEqual(expect.stringContaining('仅修复本次质量报告。'));
+    expect(instructions).toEqual(expect.stringContaining('content_kind=image_note'));
+    expect(instructions).toEqual(expect.stringContaining('5-10张'));
+    expect(instructions).not.toEqual(expect.stringContaining('搜狐号'));
+    expect(rewrite['brief']).toMatchObject({ platform_codes: ['douyin'] });
+  });
 });
 
 function generationEvent(): ValidatedGenerationEvent {

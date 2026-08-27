@@ -56,6 +56,53 @@ describe('AI Worker runtime wiring', () => {
     expect(recordUsage).toHaveBeenCalledOnce();
   });
 
+  it('removes an identical Douyin CTA block while preserving the canonical CTA', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const output = multiPlatformContentData(['douyin'], new Set());
+    const cta = '保存清单后，再逐项核对。';
+    const variant = output.variants[0]!;
+    const adapter = new LooseMockAdapter(
+      [
+        {
+          text: JSON.stringify({
+            ...output,
+            variants: [
+              {
+                ...variant,
+                blocks: [...variant.blocks, { block_key: 'cta', block_type: 'cta', text: cta }],
+                cta,
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['douyin']);
+    const masterContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-cta-master-0061',
+      writerInput,
+    });
+    const generatedVariant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-cta-variant-0061',
+      writerInput,
+    });
+
+    expect(generatedVariant.cta).toBe(cta);
+    expect(generatedVariant.blocks.some((block) => block.block_type === 'cta')).toBe(false);
+  });
+
   it('retries an unchanged quality-guided rewrite with the original diagnostics', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const original = multiPlatformContentData(['baijiahao'], new Set());
@@ -1302,8 +1349,10 @@ describe('AI Worker runtime wiring', () => {
       const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
       const data = multiPlatformContentData([platformCode], new Set([platformCode]));
       const original = data.variants[0]!;
+      const expansion =
+        platformCode === 'douyin' ? shortDouyinExpansionDraft() : platformExpansionDraft();
       const adapter = new LooseMockAdapter(
-        [{ text: JSON.stringify(data) }, { text: JSON.stringify(platformExpansionDraft()) }],
+        [{ text: JSON.stringify(data) }, { text: JSON.stringify(expansion) }],
         'deepseek-v4-pro',
       );
       const recordUsage = vi.fn();
@@ -1346,6 +1395,9 @@ describe('AI Worker runtime wiring', () => {
       );
       expect(expansionPrompt).toContain(`The ${platformCode} version currently has`);
       expect(expansionPrompt).toContain('required_new_effective_characters');
+      if (platformCode === 'douyin') {
+        expect(expansion.blocks.every((block) => block.text.length < 100)).toBe(true);
+      }
     },
   );
 
@@ -1663,9 +1715,49 @@ function platformContent(platformCode: 'master' | ContentPlatformCode, short: bo
     cta: null,
     hashtags: [],
     platform_code: platformCode,
-    platform_meta: {},
+    platform_meta: platformCode === 'douyin' ? douyinImageNoteMeta() : {},
     summary: '文章说明搬家前可执行的服务核对步骤与风险边界。',
     title: '搬家前如何核对服务细节',
+  } as const;
+}
+
+function douyinImageNoteMeta() {
+  return {
+    cards: [
+      {
+        body: '先明确搬家需求和现场条件。',
+        card_key: 'cover',
+        heading: '搬家前怎么准备',
+        kind: 'cover',
+      },
+      {
+        body: '列出物品、楼层和车辆通行条件。',
+        card_key: 'inventory',
+        heading: '先列清单',
+        kind: 'body',
+      },
+      {
+        body: '核对服务范围、计价方式和额外费用。',
+        card_key: 'quote',
+        heading: '确认报价',
+        kind: 'body',
+      },
+      {
+        body: '把时间、责任边界和异常处理写进约定。',
+        card_key: 'terms',
+        heading: '书面确认',
+        kind: 'body',
+      },
+      {
+        body: '按清单逐项验收并保存双方确认记录。',
+        card_key: 'summary',
+        heading: '最后复核',
+        kind: 'summary',
+      },
+    ],
+    content_kind: 'image_note',
+    description: '搬家前可执行的准备、报价与验收清单。',
+    topics: ['搬家准备', '搬家指南'],
   } as const;
 }
 
@@ -1692,6 +1784,18 @@ function platformExpansionDraft() {
       block_type: index === 1 ? ('list' as const) : ('paragraph' as const),
       citation_ids: [],
       text: text(`补充第${index + 1}项时`),
+    })),
+  } as const;
+}
+
+function shortDouyinExpansionDraft() {
+  const text = (label: string) =>
+    `${label}时先核对现场条件与书面约定，再记录执行顺序、责任边界和异常处理办法，完成后按清单逐项复核。把车辆、物品、费用和验收结果分别留痕，发现差异时先停止确认并补齐书面记录。`;
+  return {
+    blocks: Array.from({ length: 5 }, (_, index) => ({
+      block_type: index === 2 ? ('list' as const) : ('paragraph' as const),
+      citation_ids: [],
+      text: text(`补充第${index + 1}项`),
     })),
   } as const;
 }

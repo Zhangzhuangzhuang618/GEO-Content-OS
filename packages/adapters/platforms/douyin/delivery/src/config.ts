@@ -17,6 +17,7 @@ export const DouyinDeliveryConfigSchema = z.discriminatedUnion('mode', [
   z.object({ mode: z.literal('export_only') }).strict(),
   z
     .object({
+      account_id: z.string().uuid().optional(),
       base_url: z.url().refine(isSafeBaseUrl),
       bearer_token: z.string().trim().min(1),
       endpoints: EndpointSchema.default({
@@ -26,7 +27,7 @@ export const DouyinDeliveryConfigSchema = z.discriminatedUnion('mode', [
         status: '/status',
       }),
       mode: z.literal('api'),
-      timeout_ms: z.number().int().min(100).max(60_000).default(10_000),
+      timeout_ms: z.number().int().min(100).max(300_000).default(300_000),
     })
     .strict(),
 ]);

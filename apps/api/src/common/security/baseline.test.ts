@@ -43,6 +43,15 @@ describe('API security baseline', () => {
       method: 'GET',
       url: `${API_BASE_PATH}/health/live`,
     });
+    const writePreflight = await application.inject({
+      headers: {
+        'access-control-request-headers': 'if-match,x-csrf-token',
+        'access-control-request-method': 'POST',
+        origin: 'https://app.example.com',
+      },
+      method: 'OPTIONS',
+      url: `${API_BASE_PATH}/platform-accounts/account-id/test`,
+    });
 
     expect(allowed.headers['access-control-allow-origin']).toBe('https://app.example.com');
     expect(allowed.headers['access-control-allow-credentials']).toBe('true');
@@ -51,6 +60,8 @@ describe('API security baseline', () => {
     expect(allowed.headers['x-content-type-options']).toBe('nosniff');
     expect(allowed.headers['x-frame-options']).toBe('DENY');
     expect(allowed.headers['cache-control']).toBe('no-store');
+    expect(writePreflight.statusCode).toBe(204);
+    expect(writePreflight.headers['access-control-allow-headers']).toContain('if-match');
     expect(denied.headers['access-control-allow-origin']).toBeUndefined();
   });
 

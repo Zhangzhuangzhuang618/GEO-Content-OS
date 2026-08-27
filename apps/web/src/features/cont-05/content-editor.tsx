@@ -800,7 +800,8 @@ function PlatformSettings({
     return <p className="mt-4 text-sm text-red-600">高级平台数据格式有误，请展开后修正。</p>;
   }
   const entries = Object.entries(metadata).filter(([, value]) => isPrimitive(value));
-  if (entries.length === 0) {
+  const douyinImageNote = readDouyinImageNote(metadata);
+  if (entries.length === 0 && !douyinImageNote) {
     return <p className="mt-4 text-sm text-ink-500">当前平台没有需要额外填写的设置。</p>;
   }
   function update(key: string, rawValue: string, currentValue: unknown) {
@@ -811,6 +812,9 @@ function PlatformSettings({
           ? rawValue === 'true'
           : rawValue;
     onChange(JSON.stringify({ ...metadata, [key]: nextValue }, null, 2));
+  }
+  function updateDouyinImageNote(value: DouyinImageNoteMetadata) {
+    onChange(JSON.stringify({ ...metadata, cards: value.cards, topics: value.topics }, null, 2));
   }
   return (
     <div className="mt-4 space-y-4">
@@ -842,7 +846,76 @@ function PlatformSettings({
       {Object.keys(metadata).length > entries.length ? (
         <p className="text-xs leading-5 text-ink-500">其他平台设置由系统自动维护，无需手动填写。</p>
       ) : null}
+      {douyinImageNote ? (
+        <DouyinImageNoteSettings
+          disabled={disabled}
+          metadata={douyinImageNote}
+          onChange={updateDouyinImageNote}
+        />
+      ) : null}
     </div>
+  );
+}
+
+type DouyinImageNoteCard = {
+  readonly body: string;
+  readonly card_key: string;
+  readonly heading: string;
+  readonly kind: string;
+};
+type DouyinImageNoteMetadata = {
+  readonly cards: readonly DouyinImageNoteCard[];
+  readonly topics: readonly string[];
+};
+
+function DouyinImageNoteSettings({
+  disabled,
+  metadata,
+  onChange,
+}: {
+  readonly disabled: boolean;
+  readonly metadata: DouyinImageNoteMetadata;
+  readonly onChange: (value: DouyinImageNoteMetadata) => void;
+}) {
+  function patchCard(index: number, value: Partial<DouyinImageNoteCard>) {
+    onChange({
+      ...metadata,
+      cards: metadata.cards.map((card, position) =>
+        position === index ? { ...card, ...value } : card,
+      ),
+    });
+  }
+  return (
+    <section className="space-y-4 border-t border-line pt-4">
+      <TextField
+        disabled={disabled}
+        label="抖音话题"
+        placeholder="例如：广州搬家，雨天搬家"
+        value={metadata.topics.join('，')}
+        onChange={(value) => onChange({ ...metadata, topics: splitList(value) })}
+      />
+      <p className="text-xs leading-5 text-ink-500">
+        以下文字会直接出现在最终发布的图片中，请与正文一起核对。
+      </p>
+      {metadata.cards.map((card, index) => (
+        <section className="rounded-xl border border-line bg-white p-3" key={card.card_key}>
+          <p className="text-xs font-semibold text-ink-500">第 {index + 1} 张图</p>
+          <TextField
+            disabled={disabled}
+            label={`第 ${index + 1} 张图标题`}
+            value={card.heading}
+            onChange={(value) => patchCard(index, { heading: value })}
+          />
+          <TextArea
+            disabled={disabled}
+            label={`第 ${index + 1} 张图正文`}
+            minHeight="min-h-24"
+            value={card.body}
+            onChange={(value) => patchCard(index, { body: value })}
+          />
+        </section>
+      ))}
+    </section>
   );
 }
 
@@ -1069,6 +1142,35 @@ function parseJsonObject(value: string): Record<string, unknown> | null {
 }
 function isPrimitive(value: unknown): value is boolean | null | number | string {
   return value === null || ['boolean', 'number', 'string'].includes(typeof value);
+}
+function readDouyinImageNote(metadata: Record<string, unknown>): DouyinImageNoteMetadata | null {
+  if (metadata.content_kind !== 'image_note' || !Array.isArray(metadata.cards)) return null;
+  if (
+    !Array.isArray(metadata.topics) ||
+    metadata.topics.some((topic) => typeof topic !== 'string')
+  ) {
+    return null;
+  }
+  const cards: DouyinImageNoteCard[] = [];
+  for (const value of metadata.cards) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const card = value as Record<string, unknown>;
+    if (
+      typeof card.body !== 'string' ||
+      typeof card.card_key !== 'string' ||
+      typeof card.heading !== 'string' ||
+      typeof card.kind !== 'string'
+    ) {
+      return null;
+    }
+    cards.push({
+      body: card.body,
+      card_key: card.card_key,
+      heading: card.heading,
+      kind: card.kind,
+    });
+  }
+  return { cards, topics: metadata.topics as string[] };
 }
 function blockTypeLabel(type: EditableBlock['block_type']) {
   return {

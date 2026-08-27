@@ -60,7 +60,8 @@ export interface PublishJobView {
     | 'official_site_automation'
     | 'baijiahao_automation'
     | 'sohu_automation'
-    | 'lieju_automation';
+    | 'lieju_automation'
+    | 'douyin_automation';
   readonly payloadHash: string;
   readonly publishedAt: Date | null;
   readonly scheduledAt: Date;

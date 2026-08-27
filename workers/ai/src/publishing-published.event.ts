@@ -37,6 +37,7 @@ export interface ValidatedPublishingPublishedEvent {
     readonly jobVersion: number;
     readonly origin:
       | 'baijiahao_automation'
+      | 'douyin_automation'
       | 'lieju_automation'
       | 'manual'
       | 'official_site_automation'
@@ -91,6 +92,7 @@ export function validatePublishingPublishedEvent(raw: unknown): ValidatedPublish
       'manual',
       'official_site_automation',
       'baijiahao_automation',
+      'douyin_automation',
       'sohu_automation',
       'lieju_automation',
     ].includes(data.origin) ||

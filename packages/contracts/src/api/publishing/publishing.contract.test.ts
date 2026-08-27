@@ -53,11 +53,11 @@ describe('Publishing API frozen contract', () => {
     expect(parsed.manual_items[0]?.quality_report_id).toBe('40000000-0000-4000-8000-000000000001');
   });
 
-  it('contains all thirty-eight publishing endpoints exactly once', () => {
-    expect(PUBLISHING_API_CONTRACTS).toHaveLength(38);
+  it('contains all forty-one publishing endpoints exactly once', () => {
+    expect(PUBLISHING_API_CONTRACTS).toHaveLength(41);
     expect(
       new Set(PUBLISHING_API_CONTRACTS.map(({ method, path }) => `${method} ${path}`)).size,
-    ).toBe(38);
+    ).toBe(41);
     expect(
       PUBLISHING_API_CONTRACTS.every(({ permission }) => permission === 'publishing.manage'),
     ).toBe(true);
@@ -88,7 +88,7 @@ describe('Publishing API frozen contract', () => {
     const operations = Object.values(PUBLISHING_OPENAPI_DOCUMENT.paths).flatMap((path) =>
       Object.values(path),
     );
-    expect(operations).toHaveLength(38);
+    expect(operations).toHaveLength(41);
     for (const contract of PUBLISHING_API_CONTRACTS) {
       const operation = PUBLISHING_OPENAPI_DOCUMENT.paths[contract.path]?.[
         contract.method.toLowerCase()

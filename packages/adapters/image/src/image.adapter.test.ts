@@ -3,6 +3,7 @@ import sharp from 'sharp';
 
 import { CloudflareWorkersAiImageAdapter } from './cloudflare.adapter.js';
 import { readImageProviderConfiguration } from './config.js';
+import { renderDouyinNoteCard, wrapDouyinNoteHeading, wrapDouyinNoteText } from './douyin-note.js';
 import {
   applyAiDisclosure,
   imageHash,
@@ -15,6 +16,86 @@ import {
 } from './image-processing.js';
 
 describe('image adapter', () => {
+  it('renders deterministic 3:4 Douyin image-note cards', async () => {
+    const input = {
+      body: '先列出物品、楼层和车辆条件，再按项目核对报价，避免只比较一个总价。',
+      heading: '搬家报价怎么核对',
+      index: 1,
+      kind: 'body' as const,
+      title: '广州搬家报价核对指南',
+      total: 7,
+    };
+    const first = await renderDouyinNoteCard(input);
+    const second = await renderDouyinNoteCard(input);
+    expect(imageHash(first)).toBe(imageHash(second));
+    expect(await imageMetadata(first)).toMatchObject({
+      format: 'jpeg',
+      height: 1_440,
+      width: 1_080,
+    });
+    const headingClearance = await sharp(first)
+      .extract({ height: 36, left: 80, top: 160, width: 700 })
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+    const darkPixels = Array.from(
+      { length: headingClearance.length / 3 },
+      (_, index) => index * 3,
+    ).filter(
+      (offset) =>
+        (headingClearance[offset] ?? 255) < 50 &&
+        (headingClearance[offset + 1] ?? 255) < 70 &&
+        (headingClearance[offset + 2] ?? 255) < 100,
+    ).length;
+    expect(darkPixels).toBe(0);
+  });
+
+  it('blocks text that cannot fit the deterministic Douyin card layout', async () => {
+    await expect(
+      renderDouyinNoteCard({
+        body: '这是一段需要被拒绝的超长卡片正文。'.repeat(40),
+        heading: '布局溢出验证',
+        index: 1,
+        kind: 'body',
+        title: '测试标题',
+        total: 5,
+      }),
+    ).rejects.toThrow('exceeds the deterministic layout');
+  });
+
+  it('avoids an orphaned final character in long Douyin cover headings', () => {
+    expect(wrapDouyinNoteHeading('跨区搬家当天6个检查点', 'cover')).toEqual([
+      '跨区搬家当天',
+      '6个检查点',
+    ]);
+  });
+
+  it('keeps decimal values intact when wrapping Douyin card text', () => {
+    const source = '到场车型是否和报价一致？面包车、4.2米厢式货车、6.8米以上货车载量差很多。';
+    const lines = wrapDouyinNoteText(source, 17);
+    expect(lines.join('')).toBe(source);
+    expect(lines.some((line) => line.includes('4.2'))).toBe(true);
+    expect(lines.some((line) => line.includes('6.8'))).toBe(true);
+    expect(lines.every((line) => !line.endsWith('4') && !line.startsWith('.2'))).toBe(true);
+  });
+
+  it('keeps Chinese words and closing punctuation on readable Douyin lines', () => {
+    const cover = wrapDouyinNoteText('搬家当天盯住四件事：车辆、物品、打包、费用。', 17);
+    const body = wrapDouyinNoteText(
+      '家电家具是否做了防护包裹；易碎品单独装箱标注；拆装件记录顺序方便复位。',
+      17,
+    );
+
+    expect(cover.join('')).toBe('搬家当天盯住四件事：车辆、物品、打包、费用。');
+    expect(cover.some((line) => line.endsWith('打') || line.startsWith('包'))).toBe(false);
+    expect(
+      [...cover, ...body].every((line) => !/^[，。！？；：、）》】」』〕,.!?;:)]/u.test(line)),
+    ).toBe(true);
+    expect(
+      [...cover, ...body].every((line) => !/^[，。！？；：、）》】」』〕,.!?;:)]+$/u.test(line)),
+    ).toBe(true);
+  });
+
   it('renders deterministic publishable templates and disclosure labels', async () => {
     const first = await renderTemplateImage({
       accent: 'blue',

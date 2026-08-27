@@ -5,6 +5,7 @@ import {
   inspectionPassed,
   normalizeGeneratedImage,
   normalizePublishedSourceImage,
+  renderDouyinNoteCard,
   renderTemplateImage,
   type ImageInspectionResult,
   type ImageProvider,
@@ -47,7 +48,7 @@ interface MediaClaim {
   readonly generationModel: string | null;
   readonly inspectionModel: string | null;
   readonly manualPublishJobId: string | null;
-  readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
+  readonly platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu';
   readonly provider: string | null;
   readonly version: number;
 }
@@ -96,7 +97,7 @@ interface RecoverableMediaRun {
   readonly createdBy: string;
   readonly id: string;
   readonly packageId: string;
-  readonly platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu';
+  readonly platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu';
   readonly projectId: string;
   readonly qualityReportId: string;
   readonly sourcePublishJobId: string | null;
@@ -109,6 +110,21 @@ interface RecoverableMediaRun {
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const AI_DISCLOSURE_LABEL = 'AI示意图';
 const AI_DISCLOSURE_STORAGE_VALUE = 'ai_generated';
+
+interface DouyinNoteMediaPlan {
+  readonly cards: readonly DouyinNotePlanCard[];
+  readonly schema_version: 'douyin-note-media-plan@1';
+  readonly source: 'deterministic_template';
+}
+
+interface DouyinNotePlanCard {
+  readonly body: string;
+  readonly cardKey: string;
+  readonly heading: string;
+  readonly kind: 'cover' | 'body' | 'summary';
+}
+
+type ContentMediaPlan = ArticleImagePlan | DouyinNoteMediaPlan;
 
 export class ContentMediaWorker {
   public constructor(
@@ -156,7 +172,7 @@ export class ContentMediaWorker {
                   AND automation.status='media_pending'
               )
             ) OR (
-              run.platform_code IN ('sohu','lieju') AND EXISTS (
+              run.platform_code IN ('sohu','lieju','douyin') AND EXISTS (
                 SELECT 1 FROM browser_platform_automation_runs AS automation
                 WHERE automation.tenant_id=run.tenant_id
                   AND automation.variant_id=run.variant_id
@@ -232,33 +248,39 @@ export class ContentMediaWorker {
     if (!claim) return Object.freeze({ disposition: 'completed' });
 
     try {
-      const plan = await this.planner.plan({
-        content: claim.content,
-        platformCode: claim.platformCode,
-        requestId: event.data.requestId,
-        scope: scope(event),
-        ...(signal ? { signal } : {}),
-      });
-      if (plan.plannerFailure) {
-        console.error('Article image planning failed; using template fallback', {
-          contentVersionId: event.data.contentVersionId,
-          error: plan.plannerFailure,
-          mediaRunId: event.data.mediaRunId,
+      let plan: ContentMediaPlan;
+      let prepared: Awaited<ReturnType<ContentMediaWorker['prepareAssets']>>;
+      if (claim.platformCode === 'douyin') {
+        plan = douyinNoteMediaPlan(claim.content);
+        prepared = await this.prepareDouyinAssets(plan, claim);
+      } else {
+        plan = await this.planner.plan({
+          content: claim.content,
           platformCode: claim.platformCode,
           requestId: event.data.requestId,
+          scope: scope(event),
+          ...(signal ? { signal } : {}),
         });
-      }
-      let prepared: Awaited<ReturnType<ContentMediaWorker['prepareAssets']>>;
-      try {
-        prepared = await this.prepareAssets(plan, claim, event.data.requestId, signal);
-      } catch (error) {
-        prepared = Object.freeze({
-          assets: Object.freeze([]),
-          externalCalls: 0,
-          providerErrors: Object.freeze([safeError(error)]),
-          sourceMediaErrors: Object.freeze([]),
-          usedFallback: true,
-        });
+        if (plan.plannerFailure) {
+          console.error('Article image planning failed; using template fallback', {
+            contentVersionId: event.data.contentVersionId,
+            error: plan.plannerFailure,
+            mediaRunId: event.data.mediaRunId,
+            platformCode: claim.platformCode,
+            requestId: event.data.requestId,
+          });
+        }
+        try {
+          prepared = await this.prepareAssets(plan, claim, event.data.requestId, signal);
+        } catch (error) {
+          prepared = Object.freeze({
+            assets: Object.freeze([]),
+            externalCalls: 0,
+            providerErrors: Object.freeze([safeError(error)]),
+            sourceMediaErrors: Object.freeze([]),
+            usedFallback: true,
+          });
+        }
       }
       const stored: StoredAsset[] = [];
       const storageErrors: string[] = [];
@@ -278,14 +300,18 @@ export class ContentMediaWorker {
           });
         }
       }
+      if (claim.platformCode === 'douyin' && stored.length !== prepared.assets.length) {
+        throw new Error('Douyin image-note card storage is incomplete');
+      }
 
       const status: MediaStatus =
         prepared.usedFallback || stored.length !== prepared.assets.length
           ? 'fallback'
           : 'succeeded';
+      const plannerFailure = 'plannerFailure' in plan ? plan.plannerFailure : null;
       await this.persistAndResume(event, claim, plan, stored, status, {
         external_calls: prepared.externalCalls,
-        planner_failure: plan.plannerFailure,
+        planner_failure: plannerFailure,
         provider_failures: prepared.providerErrors,
         source_media_failures: prepared.sourceMediaErrors,
         storage_failures: storageErrors,
@@ -586,6 +612,52 @@ export class ContentMediaWorker {
     });
   }
 
+  private async prepareDouyinAssets(
+    plan: DouyinNoteMediaPlan,
+    claim: MediaClaim,
+  ): Promise<{
+    readonly assets: readonly PreparedAsset[];
+    readonly externalCalls: number;
+    readonly providerErrors: readonly string[];
+    readonly sourceMediaErrors: readonly string[];
+    readonly usedFallback: boolean;
+  }> {
+    const title = safeDisplayText(string(claim.content['title']) || '内容指南', '内容指南', 80);
+    const assets = await Promise.all(
+      plan.cards.map(async (card, position): Promise<PreparedAsset> => {
+        const role = position === 0 ? ('cover' as const) : ('body' as const);
+        return Object.freeze({
+          altText: safeDisplayText(
+            `${card.heading}：${card.body}`,
+            `抖音图文第${position + 1}页`,
+            220,
+          ),
+          body: await renderDouyinNoteCard({
+            body: card.body,
+            heading: card.heading,
+            index: position,
+            kind: card.kind,
+            title,
+            total: plan.cards.length,
+          }),
+          position,
+          promptHash: null,
+          quality: douyinNoteQuality(),
+          role,
+          source: 'template' as const,
+          sourceDocumentId: null,
+        });
+      }),
+    );
+    return Object.freeze({
+      assets: Object.freeze(assets),
+      externalCalls: 0,
+      providerErrors: Object.freeze([]),
+      sourceMediaErrors: Object.freeze([]),
+      usedFallback: false,
+    });
+  }
+
   private async storeAsset(
     tenantId: string,
     contentVersionId: string,
@@ -624,7 +696,7 @@ export class ContentMediaWorker {
   private persistAndResume(
     event: ReturnType<typeof validateMediaGenerationEvent>,
     claim: MediaClaim,
-    plan: ArticleImagePlan,
+    plan: ContentMediaPlan,
     assets: readonly StoredAsset[],
     status: MediaStatus,
     diagnostics: Readonly<Record<string, unknown>>,
@@ -874,7 +946,7 @@ function parseQualityResult(row: StoredQualityRow): QualityCheckerData {
 
 function parseQualityGate(
   value: unknown,
-  platformCode: 'baijiahao' | 'lieju' | 'official_site' | 'sohu',
+  platformCode: 'baijiahao' | 'douyin' | 'lieju' | 'official_site' | 'sohu',
 ): BaijiahaoQualityGate | BrowserPlatformQualityGate | OfficialSiteQualityGate {
   if (!record(value) || value['passed'] !== true || !Array.isArray(value['blocking_rules'])) {
     throw new Error('Stored quality gate is invalid');
@@ -896,6 +968,58 @@ function templateQuality(): Readonly<Record<string, unknown>> {
     decision: 'pass',
     method: 'deterministic_template',
     schema_version: 'content-image-quality@1',
+  });
+}
+
+export function douyinNoteQuality(): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    card_schema_version: 'douyin-note-card@1',
+    decision: 'pass',
+    format: '1080x1440-jpeg',
+    method: 'deterministic_text_layout',
+    schema_version: 'content-image-quality@1',
+  });
+}
+
+function douyinNoteMediaPlan(content: Readonly<Record<string, unknown>>): DouyinNoteMediaPlan {
+  const platformMeta = content['platform_meta'];
+  if (!record(platformMeta) || platformMeta['content_kind'] !== 'image_note') {
+    throw new Error('Douyin automation requires an image-note content version');
+  }
+  const rawCards = platformMeta['cards'];
+  if (!Array.isArray(rawCards) || rawCards.length < 5 || rawCards.length > 10) {
+    throw new Error('Douyin image note must contain between 5 and 10 cards');
+  }
+  const cards = rawCards.map((value, index): DouyinNotePlanCard => {
+    if (!record(value)) throw new Error(`Douyin image-note card ${index + 1} is invalid`);
+    const body = string(value['body']).trim();
+    const cardKey = string(value['card_key']).trim();
+    const heading = string(value['heading']).trim();
+    const kind = value['kind'];
+    if (
+      !body ||
+      [...body].length > 240 ||
+      !/^[a-z0-9_-]{1,80}$/u.test(cardKey) ||
+      !heading ||
+      [...heading].length > 36 ||
+      (kind !== 'cover' && kind !== 'body' && kind !== 'summary')
+    ) {
+      throw new Error(`Douyin image-note card ${index + 1} is invalid`);
+    }
+    return Object.freeze({ body, cardKey, heading, kind });
+  });
+  if (
+    cards[0]?.kind !== 'cover' ||
+    cards.at(-1)?.kind !== 'summary' ||
+    cards.slice(1, -1).some((card) => card.kind !== 'body') ||
+    new Set(cards.map((card) => card.cardKey)).size !== cards.length
+  ) {
+    throw new Error('Douyin image-note card order is invalid');
+  }
+  return Object.freeze({
+    cards: Object.freeze(cards),
+    schema_version: 'douyin-note-media-plan@1',
+    source: 'deterministic_template',
   });
 }
 

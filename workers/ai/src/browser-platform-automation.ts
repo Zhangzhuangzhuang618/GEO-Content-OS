@@ -25,7 +25,7 @@ import type {
 import type { ValidatedQualityEvent } from './quality.event.js';
 import type { RuntimeContentWriter } from './runtime-content-writer.js';
 
-type Platform = 'lieju' | 'sohu';
+type Platform = 'douyin' | 'lieju' | 'sohu';
 type AutomationSql = postgres.Sql | postgres.TransactionSql;
 
 export interface BrowserPlatformQualityGate {
@@ -771,7 +771,9 @@ export function buildBrowserPlatformRewriteInput(
   const additional =
     platformCode === 'lieju'
       ? '这是列举网自动化分类信息。标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务、自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。不得在正文写具体电话或手机号、微信/QQ账号，不得使用极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
-      : '这是搜狐号自动化图文。不得声明原创，不得伪造热点、排行、亲历或用户评价。';
+      : platformCode === 'douyin'
+        ? '这是抖音自动化图文。保持 platform_meta.content_kind=image_note 以及5-10张封面、正文、总结卡片的完整结构，只修复当前质量报告指出的问题；不得伪造热点、排行、亲历或用户评价，AI创作标识由发布器如实设置。'
+        : '这是搜狐号自动化图文。不得声明原创，不得伪造热点、排行、亲历或用户评价。';
   const originalAdditional =
     typeof constraints['additional_instructions'] === 'string'
       ? constraints['additional_instructions'].trim()

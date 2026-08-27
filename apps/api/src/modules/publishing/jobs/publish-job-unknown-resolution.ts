@@ -33,11 +33,17 @@ export function assessUnknownPublishResolution(
     input.liejuOfficial &&
     input.jobStatus === 'publishing' &&
     input.variantStatus === 'publishing';
+  const terminalDouyinReconciliation =
+    input.platformCode === 'douyin' &&
+    input.jobStatus === 'failed' &&
+    input.variantStatus === 'publish_failed' &&
+    input.latestAttempt?.status === 'succeeded';
   const requiresResolution =
     input.latestAttempt?.status === 'unknown' ||
     (input.latestAttempt?.status === 'failed' &&
       input.latestAttempt.errorCode === 'MANUAL_REQUIRED') ||
-    (processingOfficial && input.latestAttempt?.status === 'succeeded');
+    (processingOfficial && input.latestAttempt?.status === 'succeeded') ||
+    terminalDouyinReconciliation;
 
   if (!['failed', 'publishing'].includes(input.jobStatus) || !requiresResolution) return null;
   if (
@@ -52,6 +58,8 @@ export function assessUnknownPublishResolution(
   return { blockedReason: null, processingOfficial };
 }
 
-function isBrowserPlatform(value: PlatformCode): value is 'baijiahao' | 'lieju' | 'sohu' {
-  return value === 'baijiahao' || value === 'lieju' || value === 'sohu';
+function isBrowserPlatform(
+  value: PlatformCode,
+): value is 'baijiahao' | 'douyin' | 'lieju' | 'sohu' {
+  return value === 'baijiahao' || value === 'douyin' || value === 'lieju' || value === 'sohu';
 }

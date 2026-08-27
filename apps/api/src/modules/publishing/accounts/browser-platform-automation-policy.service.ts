@@ -10,7 +10,7 @@ import { resolveDatabaseClient, type DatabaseClientSource } from '../../../datab
 import { PlatformAccountError } from './platform-account.errors.js';
 import type { PlatformAccountAudit, PlatformAccountScope } from './platform-account.types.js';
 
-type Platform = 'lieju' | 'sohu';
+type Platform = 'douyin' | 'lieju' | 'sohu';
 
 interface PolicyRow {
   readonly accountId: string;
@@ -491,7 +491,7 @@ export class BrowserPlatformAutomationPolicyService {
         publish_mode AS "publishMode",status
       FROM platform_accounts
       WHERE id=${accountId}::uuid AND tenant_id=${scope.tenantId}::uuid
-        AND platform_code IN ('sohu','lieju') AND deleted_at IS NULL
+        AND platform_code IN ('sohu','lieju','douyin') AND deleted_at IS NULL
         AND has_project_scope_access(tenant_id,workspace_id,NULL,${scope.userId}::uuid)
     `;
     const account = rows[0];

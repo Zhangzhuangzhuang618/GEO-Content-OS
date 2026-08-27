@@ -79,6 +79,7 @@ export const PublishJobViewSchema = z
       'baijiahao_automation',
       'sohu_automation',
       'lieju_automation',
+      'douyin_automation',
     ]),
     payload_hash: z.string().regex(/^[0-9a-f]{64}$/u),
     published_at: IsoDateTimeSchema.nullable(),
@@ -147,7 +148,7 @@ export const PublishJobDetailSchema = z
     attempts: z.array(PublishAttemptViewSchema),
     baijiahao_reconciliation: z
       .object({
-        platform_code: z.enum(['baijiahao', 'lieju', 'sohu']),
+        platform_code: z.enum(['baijiahao', 'douyin', 'lieju', 'sohu']),
       })
       .strict()
       .nullable(),
@@ -169,7 +170,7 @@ export const PublishJobDetailSchema = z
           .optional(),
         can_retry: z.boolean(),
         latest_attempt_no: z.number().int().min(1).max(20),
-        platform_code: z.enum(['baijiahao', 'lieju', 'sohu']),
+        platform_code: z.enum(['baijiahao', 'douyin', 'lieju', 'sohu']),
       })
       .strict()
       .nullable(),

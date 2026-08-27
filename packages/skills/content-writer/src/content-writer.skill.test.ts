@@ -39,7 +39,8 @@ afterEach(async () => {
 
 describe('ContentWriterSkill', () => {
   it('publishes the Lieju question-title and literal-contact boundary', () => {
-    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.7');
+    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.8');
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('content_kind=image_note');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.lieju).toContain(
       '自然使用“如何、怎么、指南、方法、哪些”等问法之一',
     );

@@ -182,6 +182,37 @@ describe('quality automation media handoff', () => {
     ).toBe(true);
   });
 
+  it('always renders deterministic Douyin cards after the quality gate passes', () => {
+    const media = new ContentMediaAutomation(
+      {
+        enabled: false,
+        generationSteps: 4,
+        plannerModelKey: 'deepseek-v4-flash',
+        publicBaseUrl: null,
+      },
+      { generationModel: null, inspectionModel: null, provider: null },
+    );
+
+    expect(
+      media.shouldEnqueue(
+        { ...LIEJU_PASSED_GATE, platform_code: 'douyin' },
+        {
+          kind: 'browser_platform',
+          value: { platformCode: 'douyin' } as never,
+        },
+      ),
+    ).toBe(true);
+    expect(
+      media.shouldEnqueue(
+        { ...LIEJU_PASSED_GATE, passed: false, platform_code: 'douyin' },
+        {
+          kind: 'browser_platform',
+          value: { platformCode: 'douyin' } as never,
+        },
+      ),
+    ).toBe(false);
+  });
+
   it('keeps failed quality gates on the existing rewrite or block path', async () => {
     const enqueue = vi.fn(async () => undefined);
     const media = new ContentMediaAutomation(

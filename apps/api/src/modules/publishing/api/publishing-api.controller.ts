@@ -57,6 +57,7 @@ import { getPolicyContext, PolicyGuard, RequirePermissions } from '../../identit
 import {
   BaijiahaoAutomationPolicyService,
   BrowserPlatformAutomationPolicyService,
+  DouyinBrowserSessionService,
   OfficialSiteAutomationPolicyService,
   PlatformAccountError,
   PlatformAccountService,
@@ -88,6 +89,8 @@ export class PlatformAccountController {
     private readonly baijiahaoAutomation: BaijiahaoAutomationPolicyService,
     @Inject(BrowserPlatformAutomationPolicyService)
     private readonly browserPlatformAutomation: BrowserPlatformAutomationPolicyService,
+    @Inject(DouyinBrowserSessionService)
+    private readonly douyinBrowser: DouyinBrowserSessionService,
     @Inject(SohuBrowserSessionService)
     private readonly sohuBrowser: SohuBrowserSessionService,
     @Inject(LiejuBrowserSessionService)
@@ -690,6 +693,65 @@ export class PlatformAccountController {
     if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
     try {
       const data = await this.sohuBrowser.status(requireScope(request), parsed.data.id);
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Get(':id/douyin-browser-session')
+  @RequirePermissions('publishing.manage')
+  public async getDouyinBrowserSession(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.douyinBrowser.status(requireScope(request), parsed.data.id);
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/douyin-browser-session/login')
+  @RequirePermissions('publishing.manage')
+  public async startDouyinBrowserLogin(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.douyinBrowser.login(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
+      await sendData(reply, request.id, data, data.version);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Post(':id/douyin-browser-session/reauth')
+  @RequirePermissions('publishing.manage')
+  public async reauthenticateDouyinBrowser(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.douyinBrowser.reauthenticate(
+        requireScope(request),
+        parsed.data.id,
+        parseIfMatch(request.headers['if-match']),
+      );
       await sendData(reply, request.id, data, data.version);
     } catch (error) {
       await sendPublishingError(reply, request.id, error);

@@ -28,6 +28,7 @@ export const PublishJobSchema = z
       'manual',
       'official_site_automation',
       'baijiahao_automation',
+      'douyin_automation',
       'sohu_automation',
       'lieju_automation',
     ]),

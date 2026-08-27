@@ -831,6 +831,47 @@ test('shows actionable Sohu daily-batch items', async ({ page }) => {
   expect(qualityCheckCount).toBe(1);
 });
 
+test('shows authenticated Douyin image-note automation without starting a new login', async ({
+  page,
+}) => {
+  let loginStartCount = 0;
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session/login`,
+    async (route) => {
+      loginStartCount += 1;
+      await route.abort();
+    },
+  );
+  await mockDouyinBrowserSession(page);
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+
+  await expect(page.getByRole('heading', { name: '抖音图文自动发布' })).toBeVisible();
+  await expect(page.getByText('系统生成 3:4 图文卡片', { exact: false })).toBeVisible();
+  await expect(page.getByText('状态：已登录')).toBeVisible();
+  await expect(page.getByRole('img', { name: '抖音登录二维码' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '一键同步项目关键词到抖音' })).toBeVisible();
+  expect(loginStartCount).toBe(0);
+});
+
 test('retries a prerequisite-blocked Sohu daily batch after explicit confirmation', async ({
   page,
 }) => {
@@ -1032,6 +1073,22 @@ async function mockSohuBrowserSession(page: Page) {
   );
 }
 
+async function mockDouyinBrowserSession(page: Page) {
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`, (route) =>
+    json(route, {
+      data: {
+        account_id: ACCOUNT_ID,
+        authenticated_at: '2026-08-26T00:00:00.000Z',
+        last_verified_at: '2026-08-26T00:00:00.000Z',
+        qr_expires_at: null,
+        status: 'authenticated',
+        version: 1,
+      },
+      meta: { request_id: 'douyin-session' },
+    }),
+  );
+}
+
 function account({
   status = 'active',
   version,
@@ -1086,6 +1143,18 @@ function sohuAccount() {
     platform_code: 'sohu',
     provider_account_id: null,
     publishing_url: 'https://mp.sohu.com/',
+    token_expires_at: null,
+  };
+}
+
+function douyinAccount() {
+  return {
+    ...account({ version: 1 }),
+    display_name: '抖音图文生产账号',
+    id: ACCOUNT_ID,
+    platform_code: 'douyin',
+    provider_account_id: null,
+    publishing_url: 'https://creator.douyin.com/creator-micro/content/upload',
     token_expires_at: null,
   };
 }

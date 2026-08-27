@@ -41,6 +41,7 @@ export async function registerApiSecurityMiddleware(
       'content-type',
       CSRF_HEADER_NAME,
       'idempotency-key',
+      'if-match',
       'traceparent',
       'x-request-id',
     ],

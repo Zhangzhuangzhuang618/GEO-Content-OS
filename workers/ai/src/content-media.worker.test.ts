@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
 
-import { ContentMediaWorker, safeError } from './content-media.worker.js';
+import { ContentMediaWorker, douyinNoteQuality, safeError } from './content-media.worker.js';
 import { validateMediaGenerationEvent } from './media-generation.event.js';
 
 describe('content media error diagnostics', () => {
@@ -67,6 +67,18 @@ describe('manual publish media event', () => {
     });
 
     expect(event.data.publishJobId).toBe(publishJobId);
+  });
+});
+
+describe('Douyin image-note quality metadata', () => {
+  it('satisfies the frozen content media quality contract', () => {
+    expect(douyinNoteQuality()).toEqual({
+      card_schema_version: 'douyin-note-card@1',
+      decision: 'pass',
+      format: '1080x1440-jpeg',
+      method: 'deterministic_text_layout',
+      schema_version: 'content-image-quality@1',
+    });
   });
 });
 
