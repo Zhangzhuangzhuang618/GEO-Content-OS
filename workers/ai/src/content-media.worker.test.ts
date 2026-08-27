@@ -73,10 +73,11 @@ describe('manual publish media event', () => {
 describe('Douyin image-note quality metadata', () => {
   it('satisfies the frozen content media quality contract', () => {
     expect(douyinNoteQuality()).toEqual({
-      card_schema_version: 'douyin-note-card@1',
+      card_schema_version: 'douyin-note-card@2',
       decision: 'pass',
       format: '1080x1440-jpeg',
-      method: 'deterministic_text_layout',
+      layout: 'focus',
+      method: 'deterministic_editorial_layout',
       schema_version: 'content-image-quality@1',
     });
   });

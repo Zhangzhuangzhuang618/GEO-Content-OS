@@ -358,7 +358,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
             ]
           : input.platformCode === 'douyin'
             ? [
-                '保持 platform_meta.content_kind=image_note，保持5-10张封面/正文/总结图文卡片的结构；只改写报告指出的卡片或文案。',
+                '保持 platform_meta.content_kind=image_note，使用6-9张封面/正文/总结图文卡片；封面必须是具体问题或收益钩子，正文单页单重点且为24-88字，整组覆盖场景、标准、步骤和风险边界，删除长段拆页、通用模板标题与同义重复。',
+                'description 使用160-500字补充条件和边界，不得逐页复述卡片；只修复当前报告指出的问题，不得换题或补造事实。',
                 '不得声明原创，不得伪造热点、排行、亲历或用户评价；AI 创作标识由发布器如实设置。',
               ]
             : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),

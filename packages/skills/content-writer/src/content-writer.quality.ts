@@ -175,8 +175,8 @@ function assessContent(
 function douyinImageNoteIssues(content: ContentWriterContent): readonly string[] {
   const issues: string[] = [];
   const titleLength = [...content.title.trim()].length;
-  if (titleLength < 2 || titleLength > 30) {
-    issues.push(`douyin:标题为 ${titleLength} 个字符，必须为 2–30 个字符`);
+  if (titleLength < 6 || titleLength > 26) {
+    issues.push(`douyin:标题为 ${titleLength} 个字符，必须为 6–26 个字符`);
   }
 
   const meta = content.platform_meta;
@@ -193,16 +193,16 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
   const description = meta['description'];
   if (
     typeof description !== 'string' ||
-    description.trim().length === 0 ||
-    [...description.trim()].length > 1_000
+    [...description.trim()].length < 160 ||
+    [...description.trim()].length > 500
   ) {
-    issues.push('douyin:platform_meta.description 必须为 1–1000 个字符');
+    issues.push('douyin:platform_meta.description 必须为 160–500 个字符');
   }
   const topics = meta['topics'];
   if (
     !Array.isArray(topics) ||
-    topics.length < 1 ||
-    topics.length > 20 ||
+    topics.length < 3 ||
+    topics.length > 8 ||
     topics.some(
       (topic) =>
         typeof topic !== 'string' || topic.trim().length === 0 || [...topic.trim()].length > 40,
@@ -210,12 +210,12 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
     new Set(topics.map((topic) => (typeof topic === 'string' ? topic.trim() : String(topic))))
       .size !== topics.length
   ) {
-    issues.push('douyin:platform_meta.topics 必须包含 1–20 个不重复的有效话题');
+    issues.push('douyin:platform_meta.topics 必须包含 3–8 个不重复的有效话题');
   }
 
   const cards = meta['cards'];
-  if (!Array.isArray(cards) || cards.length < 5 || cards.length > 10) {
-    issues.push('douyin:platform_meta.cards 必须包含 5–10 张图文卡片');
+  if (!Array.isArray(cards) || cards.length < 6 || cards.length > 9) {
+    issues.push('douyin:platform_meta.cards 必须包含 6–9 张图文卡片');
     return issues;
   }
   const keys = new Set<string>();
@@ -225,17 +225,22 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
     const cardKey = card['card_key'];
     const heading = card['heading'];
     const kind = card['kind'];
+    const headingLength = typeof heading === 'string' ? [...heading.trim()].length : 0;
+    const bodyLength = typeof body === 'string' ? [...body.trim()].length : 0;
+    const textLengthValid =
+      kind === 'cover'
+        ? headingLength >= 6 && headingLength <= 22 && bodyLength >= 12 && bodyLength <= 46
+        : kind === 'summary'
+          ? headingLength >= 4 && headingLength <= 16 && bodyLength >= 30 && bodyLength <= 96
+          : headingLength >= 4 && headingLength <= 16 && bodyLength >= 24 && bodyLength <= 88;
     const valid =
       Object.keys(card).every((key) => ['body', 'card_key', 'heading', 'kind'].includes(key)) &&
       typeof body === 'string' &&
-      body.trim().length > 0 &&
-      [...body.trim()].length <= 240 &&
       typeof cardKey === 'string' &&
       /^[a-z0-9_-]{1,80}$/u.test(cardKey) &&
       !keys.has(cardKey) &&
       typeof heading === 'string' &&
-      heading.trim().length > 0 &&
-      [...heading.trim()].length <= 36 &&
+      textLengthValid &&
       (kind === 'cover' || kind === 'body' || kind === 'summary') &&
       (index === 0
         ? kind === 'cover'
@@ -246,9 +251,75 @@ function douyinImageNoteIssues(content: ContentWriterContent): readonly string[]
     return valid;
   });
   if (!validCards) {
-    issues.push('douyin:图文卡片必须按封面、正文、总结排序，且 card_key 唯一、标题和正文长度有效');
+    issues.push(
+      'douyin:图文卡片必须按封面、正文、总结排序，且 card_key 唯一、标题简短、正文适合单页扫读',
+    );
+    return issues;
+  }
+
+  const normalizedCards = cards.map((card) => {
+    const value = card as Readonly<Record<string, unknown>>;
+    return `${String(value['heading'])}\n${String(value['body'])}`;
+  });
+  if (hasNearDuplicate(normalizedCards)) {
+    issues.push('douyin:不同卡片存在同义重复，必须让每页提供新的判断或动作');
+  }
+  if (
+    cards.some((card) => {
+      const value = card as Readonly<Record<string, unknown>>;
+      return /^(?:实用提示|实用指南|要点回顾|注意事项|温馨提示|内容总结)$/u.test(
+        String(value['heading']).trim(),
+      );
+    })
+  ) {
+    issues.push('douyin:卡片标题仍是通用模板词，必须改为该页的具体信息');
+  }
+  const cover = cards[0] as Readonly<Record<string, unknown>>;
+  const coverText = `${String(cover['heading'])}${String(cover['body'])}`;
+  if (!/[？?]|怎么|如何|先看|关键|避坑|清单|步骤|判断|别急/u.test(coverText)) {
+    issues.push('douyin:封面缺少具体问题、收益或判断钩子');
+  }
+  const bodyText = cards
+    .slice(1, -1)
+    .map((card) => {
+      const value = card as Readonly<Record<string, unknown>>;
+      return `${String(value['heading'])}\n${String(value['body'])}`;
+    })
+    .join('\n');
+  if (!/判断|标准|条件|取决|核对|选择|是否|先看/u.test(bodyText)) {
+    issues.push('douyin:正文卡片缺少可执行的选择标准或判断条件');
+  }
+  if (!/步骤|先|再|准备|确认|检查|清点|预约|沟通|记录|核对/u.test(bodyText)) {
+    issues.push('douyin:正文卡片缺少明确步骤或操作清单');
+  }
+  if (!/风险|避免|不要|不适合|注意|否则|边界|不能|可能|警惕/u.test(bodyText)) {
+    issues.push('douyin:正文卡片缺少风险、不适用情形或事实边界');
   }
   return issues;
+}
+
+function hasNearDuplicate(values: readonly string[]): boolean {
+  const grams = values.map((value) => characterBigrams(normalize(value)));
+  for (let left = 0; left < grams.length; left += 1) {
+    for (let right = left + 1; right < grams.length; right += 1) {
+      const a = grams[left]!;
+      const b = grams[right]!;
+      if (a.size === 0 || b.size === 0) continue;
+      let intersection = 0;
+      for (const gram of a) if (b.has(gram)) intersection += 1;
+      if ((2 * intersection) / (a.size + b.size) >= 0.72) return true;
+    }
+  }
+  return false;
+}
+
+function characterBigrams(value: string): ReadonlySet<string> {
+  const characters = [...value];
+  const grams = new Set<string>();
+  for (let index = 0; index < characters.length - 1; index += 1) {
+    grams.add(`${characters[index]}${characters[index + 1]}`);
+  }
+  return grams;
 }
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {

@@ -1725,39 +1725,46 @@ function douyinImageNoteMeta() {
   return {
     cards: [
       {
-        body: '先明确搬家需求和现场条件。',
+        body: '搬家前别急着定方案，先把现场条件和服务边界逐项排清楚。',
         card_key: 'cover',
         heading: '搬家前怎么准备',
         kind: 'cover',
       },
       {
-        body: '列出物品、楼层和车辆通行条件。',
-        card_key: 'inventory',
-        heading: '先列清单',
+        body: '旧址和新址的楼层、电梯预约、门口停车位置，会影响装卸顺序和等待时间。',
+        card_key: 'scenario',
+        heading: '先看两边现场条件',
         kind: 'body',
       },
       {
-        body: '核对服务范围、计价方式和额外费用。',
-        card_key: 'quote',
-        heading: '确认报价',
+        body: '根据物品体积和道路条件选择车型，同时核对车辆能否进入两端装卸点。',
+        card_key: 'criteria',
+        heading: '车型要按条件判断',
         kind: 'body',
       },
       {
-        body: '把时间、责任边界和异常处理写进约定。',
-        card_key: 'terms',
-        heading: '书面确认',
+        body: '先分房间清点物品；再标记大件和易碎品；最后确认拆装与复位顺序。',
+        card_key: 'steps',
+        heading: '物品按三步准备',
         kind: 'body',
       },
       {
-        body: '按清单逐项验收并保存双方确认记录。',
+        body: '注意临时加项、超时等待和无法停车等风险，不能只比较一个打包总价。',
+        card_key: 'risk',
+        heading: '这些临时风险要确认',
+        kind: 'body',
+      },
+      {
+        body: '按现场条件选车型，按清单准备物品，并把时间、费用和异常处理逐项确认。',
         card_key: 'summary',
-        heading: '最后复核',
+        heading: '最后按清单再核对',
         kind: 'summary',
       },
     ],
     content_kind: 'image_note',
-    description: '搬家前可执行的准备、报价与验收清单。',
-    topics: ['搬家准备', '搬家指南'],
+    description:
+      '搬家前是否顺利，通常取决于两端现场条件、车辆安排和物品准备是否提前衔接。先确认旧址与新址的楼层、电梯预约和停车位置，再根据物品体积与道路条件核对车型。大件、易碎品和需要拆装的家具应分别记录，避免到场后临时调整。报价还要逐项确认等待、搬运距离和临时加项的处理边界。如果两端条件差异较大，还应预留装卸衔接时间，并提前约定无法按原计划作业时的调整方式。按这些条件逐项沟通，比只比较一个总价更容易发现遗漏。',
+    topics: ['搬家准备', '搬家指南', '搬家避坑', '广州搬家'],
   } as const;
 }
 

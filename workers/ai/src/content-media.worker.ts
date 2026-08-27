@@ -3,6 +3,7 @@ import {
   imageHash,
   imageMetadata,
   inspectionPassed,
+  normalizeDouyinNoteBackground,
   normalizeGeneratedImage,
   normalizePublishedSourceImage,
   renderDouyinNoteCard,
@@ -27,7 +28,14 @@ import type {
 } from './browser-platform-automation.js';
 import type { ContentMediaAutomationConfig } from './config.js';
 import { validateMediaGenerationEvent } from './media-generation.event.js';
-import type { ArticleImagePlan, ArticleImagePlanner } from './media-planner.js';
+import type {
+  ArticleImagePlan,
+  ArticleImagePlanner,
+  ArticleImagePlannerDiagnostics,
+  DouyinImageNotePlanningCard,
+  DouyinImageNoteVisual,
+  DouyinImageNoteVisualPlan,
+} from './media-planner.js';
 import type {
   OfficialSiteAutomation,
   OfficialSiteQualityGate,
@@ -113,15 +121,19 @@ const AI_DISCLOSURE_STORAGE_VALUE = 'ai_generated';
 
 interface DouyinNoteMediaPlan {
   readonly cards: readonly DouyinNotePlanCard[];
-  readonly schema_version: 'douyin-note-media-plan@1';
-  readonly source: 'deterministic_template';
+  readonly plannerDiagnostics: ArticleImagePlannerDiagnostics;
+  readonly plannerFailure: string | null;
+  readonly schema_version: 'douyin-note-media-plan@2';
+  readonly source: 'deepseek' | 'template';
 }
 
-interface DouyinNotePlanCard {
+interface DouyinNotePlanCard extends DouyinImageNotePlanningCard {
   readonly body: string;
   readonly cardKey: string;
   readonly heading: string;
   readonly kind: 'cover' | 'body' | 'summary';
+  readonly layout: 'checklist' | 'cover' | 'focus' | 'legacy' | 'photo' | 'summary';
+  readonly visual: DouyinImageNoteVisual | null;
 }
 
 type ContentMediaPlan = ArticleImagePlan | DouyinNoteMediaPlan;
@@ -251,8 +263,26 @@ export class ContentMediaWorker {
       let plan: ContentMediaPlan;
       let prepared: Awaited<ReturnType<ContentMediaWorker['prepareAssets']>>;
       if (claim.platformCode === 'douyin') {
-        plan = douyinNoteMediaPlan(claim.content);
-        prepared = await this.prepareDouyinAssets(plan, claim);
+        const cards = douyinNoteCards(claim.content);
+        const visualPlan = await this.planner.planDouyin({
+          cards,
+          description: douyinDescription(claim.content),
+          requestId: event.data.requestId,
+          scope: scope(event),
+          ...(signal ? { signal } : {}),
+          title: string(claim.content['title']) || '内容指南',
+        });
+        plan = douyinNoteMediaPlan(cards, visualPlan);
+        if (plan.plannerFailure) {
+          console.error('Douyin image-note visual planning failed; using editorial templates', {
+            contentVersionId: event.data.contentVersionId,
+            error: plan.plannerFailure,
+            mediaRunId: event.data.mediaRunId,
+            platformCode: claim.platformCode,
+            requestId: event.data.requestId,
+          });
+        }
+        prepared = await this.prepareDouyinAssets(plan, claim, event.data.requestId, signal);
       } else {
         plan = await this.planner.plan({
           content: claim.content,
@@ -615,6 +645,8 @@ export class ContentMediaWorker {
   private async prepareDouyinAssets(
     plan: DouyinNoteMediaPlan,
     claim: MediaClaim,
+    requestId: string,
+    signal?: AbortSignal,
   ): Promise<{
     readonly assets: readonly PreparedAsset[];
     readonly externalCalls: number;
@@ -623,38 +655,89 @@ export class ContentMediaWorker {
     readonly usedFallback: boolean;
   }> {
     const title = safeDisplayText(string(claim.content['title']) || '内容指南', '内容指南', 80);
-    const assets = await Promise.all(
-      plan.cards.map(async (card, position): Promise<PreparedAsset> => {
-        const role = position === 0 ? ('cover' as const) : ('body' as const);
-        return Object.freeze({
+    const assets: PreparedAsset[] = [];
+    const providerErrors: string[] = [];
+    const backgroundHashes = new Set<string>();
+    let externalCalls = 0;
+    let usedFallback = plan.source === 'template';
+    for (const [position, card] of plan.cards.entries()) {
+      const role = position === 0 ? ('cover' as const) : ('body' as const);
+      let background: Uint8Array | undefined;
+      let inspection: ImageInspectionResult | null = null;
+      let promptHash: string | null = null;
+      if (card.visual) {
+        if (!this.provider) {
+          usedFallback = true;
+          providerErrors.push(`card[${position}]: image provider is unavailable`);
+        } else {
+          try {
+            externalCalls += 1;
+            const generated = await this.provider.generate({
+              prompt: card.visual.prompt,
+              requestId: `${requestId}:douyin:generate:${position + 1}`,
+              seed: seed(claim.contentHash, position),
+              ...(signal ? { signal } : {}),
+              steps: this.config.generationSteps,
+            });
+            const normalized = await normalizeDouyinNoteBackground(generated.body);
+            const normalizedHash = imageHash(normalized);
+            if (backgroundHashes.has(normalizedHash)) {
+              throw new Error('Generated Douyin image duplicates another card background');
+            }
+            externalCalls += 1;
+            inspection = await this.provider.inspect({
+              body: normalized,
+              expectedScene: douyinInspectionScene(card.visual),
+              mimeType: 'image/jpeg',
+              requestId: `${requestId}:douyin:inspect:${position + 1}`,
+              ...(signal ? { signal } : {}),
+            });
+            if (!inspectionPassed(inspection)) {
+              throw new Error('Generated Douyin image failed image QA');
+            }
+            backgroundHashes.add(normalizedHash);
+            background = normalized;
+            promptHash = imageHash(new TextEncoder().encode(card.visual.prompt));
+          } catch (error) {
+            usedFallback = true;
+            providerErrors.push(`card[${position}]: ${safeError(error)}`);
+            inspection = null;
+          }
+        }
+      }
+      const layout = background ? card.layout : fallbackDouyinLayout(card, position);
+      assets.push(
+        Object.freeze({
           altText: safeDisplayText(
-            `${card.heading}：${card.body}`,
+            background && card.visual ? card.visual.caption : `${card.heading}：${card.body}`,
             `抖音图文第${position + 1}页`,
             220,
           ),
           body: await renderDouyinNoteCard({
+            ...(background ? { background } : {}),
             body: card.body,
             heading: card.heading,
             index: position,
             kind: card.kind,
+            layout,
             title,
             total: plan.cards.length,
           }),
           position,
-          promptHash: null,
-          quality: douyinNoteQuality(),
+          promptHash,
+          quality: douyinNoteQuality(layout, inspection),
           role,
-          source: 'template' as const,
+          source: background ? ('cloudflare' as const) : ('template' as const),
           sourceDocumentId: null,
-        });
-      }),
-    );
+        }),
+      );
+    }
     return Object.freeze({
       assets: Object.freeze(assets),
-      externalCalls: 0,
-      providerErrors: Object.freeze([]),
+      externalCalls,
+      providerErrors: Object.freeze(providerErrors),
       sourceMediaErrors: Object.freeze([]),
-      usedFallback: false,
+      usedFallback,
     });
   }
 
@@ -971,17 +1054,26 @@ function templateQuality(): Readonly<Record<string, unknown>> {
   });
 }
 
-export function douyinNoteQuality(): Readonly<Record<string, unknown>> {
+export function douyinNoteQuality(
+  layout: DouyinNotePlanCard['layout'] = 'focus',
+  inspection: ImageInspectionResult | null = null,
+): Readonly<Record<string, unknown>> {
   return Object.freeze({
-    card_schema_version: 'douyin-note-card@1',
+    ...(inspection ? { background_quality: providerQuality(inspection) } : {}),
+    card_schema_version: 'douyin-note-card@2',
     decision: 'pass',
     format: '1080x1440-jpeg',
-    method: 'deterministic_text_layout',
+    layout,
+    method: inspection
+      ? 'generated_background_with_deterministic_text'
+      : 'deterministic_editorial_layout',
     schema_version: 'content-image-quality@1',
   });
 }
 
-function douyinNoteMediaPlan(content: Readonly<Record<string, unknown>>): DouyinNoteMediaPlan {
+function douyinNoteCards(
+  content: Readonly<Record<string, unknown>>,
+): readonly DouyinImageNotePlanningCard[] {
   const platformMeta = content['platform_meta'];
   if (!record(platformMeta) || platformMeta['content_kind'] !== 'image_note') {
     throw new Error('Douyin automation requires an image-note content version');
@@ -990,7 +1082,7 @@ function douyinNoteMediaPlan(content: Readonly<Record<string, unknown>>): Douyin
   if (!Array.isArray(rawCards) || rawCards.length < 5 || rawCards.length > 10) {
     throw new Error('Douyin image note must contain between 5 and 10 cards');
   }
-  const cards = rawCards.map((value, index): DouyinNotePlanCard => {
+  const cards = rawCards.map((value, index): DouyinImageNotePlanningCard => {
     if (!record(value)) throw new Error(`Douyin image-note card ${index + 1} is invalid`);
     const body = string(value['body']).trim();
     const cardKey = string(value['card_key']).trim();
@@ -1016,11 +1108,69 @@ function douyinNoteMediaPlan(content: Readonly<Record<string, unknown>>): Douyin
   ) {
     throw new Error('Douyin image-note card order is invalid');
   }
+  return Object.freeze(cards);
+}
+
+function douyinNoteMediaPlan(
+  cards: readonly DouyinImageNotePlanningCard[],
+  visualPlan: DouyinImageNoteVisualPlan,
+): DouyinNoteMediaPlan {
+  const visuals = new Map(visualPlan.visuals.map((visual) => [visual.cardKey, visual]));
   return Object.freeze({
-    cards: Object.freeze(cards),
-    schema_version: 'douyin-note-media-plan@1',
-    source: 'deterministic_template',
+    cards: Object.freeze(
+      cards.map((card, position): DouyinNotePlanCard => {
+        const editorial = supportsDouyinEditorialLayout(card);
+        const visual = editorial ? (visuals.get(card.cardKey) ?? null) : null;
+        const layout = editorial
+          ? card.kind === 'cover'
+            ? ('cover' as const)
+            : card.kind === 'summary'
+              ? ('summary' as const)
+              : visual
+                ? ('photo' as const)
+                : fallbackDouyinLayout(card, position)
+          : ('legacy' as const);
+        return Object.freeze({ ...card, layout, visual });
+      }),
+    ),
+    plannerDiagnostics: visualPlan.plannerDiagnostics,
+    plannerFailure: visualPlan.plannerFailure,
+    schema_version: 'douyin-note-media-plan@2',
+    source: visualPlan.source,
   });
+}
+
+function fallbackDouyinLayout(
+  card: DouyinImageNotePlanningCard,
+  position: number,
+): DouyinNotePlanCard['layout'] {
+  if (!supportsDouyinEditorialLayout(card)) return 'legacy';
+  if (card.kind === 'cover') return 'cover';
+  if (card.kind === 'summary') return 'summary';
+  return /(?:\r?\n)|[；：]|(?:^|\D)[1-5一二三四五][.、）)]/u.test(card.body) || position % 2 === 0
+    ? 'checklist'
+    : 'focus';
+}
+
+function supportsDouyinEditorialLayout(card: DouyinImageNotePlanningCard): boolean {
+  const headingLength = [...card.heading].length;
+  const bodyLength = [...card.body].length;
+  if (card.kind === 'cover') {
+    return headingLength >= 6 && headingLength <= 22 && bodyLength >= 12 && bodyLength <= 46;
+  }
+  if (card.kind === 'summary') {
+    return headingLength >= 4 && headingLength <= 16 && bodyLength >= 30 && bodyLength <= 96;
+  }
+  return headingLength >= 4 && headingLength <= 16 && bodyLength >= 24 && bodyLength <= 88;
+}
+
+function douyinDescription(content: Readonly<Record<string, unknown>>): string {
+  const platformMeta = content['platform_meta'];
+  return record(platformMeta) ? string(platformMeta['description']) : '';
+}
+
+function douyinInspectionScene(visual: DouyinImageNoteVisual): string {
+  return `Douyin image-note background (Chinese): ${visual.caption}\nPlanned visual representation (English): ${visual.prompt}`;
 }
 
 function providerQuality(value: ImageInspectionResult): Readonly<Record<string, unknown>> {

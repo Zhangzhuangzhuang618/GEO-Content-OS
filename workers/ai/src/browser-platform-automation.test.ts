@@ -180,7 +180,7 @@ describe('browser-platform automation', () => {
 
     expect(instructions).toEqual(expect.stringContaining('仅修复本次质量报告。'));
     expect(instructions).toEqual(expect.stringContaining('content_kind=image_note'));
-    expect(instructions).toEqual(expect.stringContaining('5-10张'));
+    expect(instructions).toEqual(expect.stringContaining('6-9张'));
     expect(instructions).not.toEqual(expect.stringContaining('搜狐号'));
     expect(rewrite['brief']).toMatchObject({ platform_codes: ['douyin'] });
   });

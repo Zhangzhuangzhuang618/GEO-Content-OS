@@ -163,6 +163,75 @@ describe('ArticleImagePlanner', () => {
     expect(plan.plannerFailure).toContain('api_key=[REDACTED]');
     expect(plan.plannerFailure).not.toContain('planner-secret');
   });
+
+  it('plans a bounded set of distinct Douyin card backgrounds', async () => {
+    const recordUsage = vi.fn(async () => undefined);
+    const model = adapter({
+      visuals: [
+        {
+          caption: '跨区搬家车辆与住宅场景示意',
+          card_key: 'cover',
+          prompt:
+            'A polished editorial illustration of a generic moving truck between two city neighborhoods',
+        },
+        {
+          caption: '工作人员核对装卸条件示意',
+          card_key: 'conditions',
+          prompt:
+            'Anonymous movers checking a residential elevator and a clear loading path with boxes',
+        },
+        {
+          caption: '物品分区清点示意',
+          card_key: 'inventory',
+          prompt: 'An organized editorial scene of anonymous people grouping generic boxes by room',
+        },
+      ],
+    });
+    const planner = new ArticleImagePlanner(model, recordUsage);
+
+    const plan = await planner.planDouyin(douyinInput());
+
+    expect(plan.source).toBe('deepseek');
+    expect(plan.visuals).toHaveLength(3);
+    expect(plan.visuals[0]).toMatchObject({ cardKey: 'cover' });
+    expect(plan.visuals[0]?.prompt).toContain('vertical 3:4 composition');
+    expect(plan.visuals[0]?.prompt).toContain('not documentary evidence');
+    expect(recordUsage).toHaveBeenCalledOnce();
+    expect(vi.mocked(model.generate).mock.calls[0]?.[0]).toMatchObject({
+      requestId: 'douyin-media-plan-test:douyin',
+      responseFormat: { type: 'json_object' },
+    });
+  });
+
+  it('falls back when a Douyin plan selects the summary card as a generated scene', async () => {
+    const model = adapter({
+      visuals: [
+        {
+          caption: '封面示意',
+          card_key: 'cover',
+          prompt: 'A generic editorial moving scene with anonymous people and unbranded boxes',
+        },
+        {
+          caption: '条件核对示意',
+          card_key: 'conditions',
+          prompt: 'Anonymous people checking a generic loading route in an editorial illustration',
+        },
+        {
+          caption: '总结示意',
+          card_key: 'summary',
+          prompt: 'A generic summary scene with anonymous people and blank cards without text',
+        },
+      ],
+    });
+    const planner = new ArticleImagePlanner(model, async () => undefined);
+
+    const plan = await planner.planDouyin(douyinInput());
+
+    expect(plan.source).toBe('template');
+    expect(plan.visuals).toEqual([]);
+    expect(plan.plannerFailure).toContain('Douyin visual plan violates');
+    expect(plan.plannerDiagnostics.attempts).toBe(2);
+  });
 });
 
 function input(title: string) {
@@ -171,6 +240,53 @@ function input(title: string) {
     platformCode: 'official_site' as const,
     requestId: 'media-plan-test-1',
     scope: SCOPE,
+  };
+}
+
+function douyinInput() {
+  return {
+    cards: [
+      {
+        body: '先看车辆、电梯和装卸时段。',
+        cardKey: 'cover',
+        heading: '跨区搬家怎么排',
+        kind: 'cover' as const,
+      },
+      {
+        body: '核对楼层、电梯预约和门口停车条件。',
+        cardKey: 'conditions',
+        heading: '先看装卸条件',
+        kind: 'body' as const,
+      },
+      {
+        body: '按房间分组并记录大件和易碎物品。',
+        cardKey: 'inventory',
+        heading: '物品先分区',
+        kind: 'body' as const,
+      },
+      {
+        body: '确认车型、到场时段和装载限制。',
+        cardKey: 'vehicle',
+        heading: '车辆这样核对',
+        kind: 'body' as const,
+      },
+      {
+        body: '临时加项和等待时间需要提前确认。',
+        cardKey: 'risk',
+        heading: '注意临时风险',
+        kind: 'body' as const,
+      },
+      {
+        body: '按条件、物品、车辆和风险逐项确认。',
+        cardKey: 'summary',
+        heading: '最后再核对',
+        kind: 'summary' as const,
+      },
+    ],
+    description: '跨区搬家需要先确认装卸条件，再安排车辆和物品顺序。',
+    requestId: 'douyin-media-plan-test',
+    scope: SCOPE,
+    title: '跨区搬家当天怎么安排',
   };
 }
 

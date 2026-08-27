@@ -64,10 +64,12 @@ export interface TemplateImageInput {
 }
 
 export interface DouyinNoteCardInput {
+  readonly background?: Uint8Array;
   readonly body: string;
   readonly heading: string;
   readonly index: number;
   readonly kind: 'cover' | 'body' | 'summary';
+  readonly layout: 'checklist' | 'cover' | 'focus' | 'legacy' | 'photo' | 'summary';
   readonly title: string;
   readonly total: number;
 }

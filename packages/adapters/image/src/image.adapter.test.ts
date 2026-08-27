@@ -3,7 +3,12 @@ import sharp from 'sharp';
 
 import { CloudflareWorkersAiImageAdapter } from './cloudflare.adapter.js';
 import { readImageProviderConfiguration } from './config.js';
-import { renderDouyinNoteCard, wrapDouyinNoteHeading, wrapDouyinNoteText } from './douyin-note.js';
+import {
+  normalizeDouyinNoteBackground,
+  renderDouyinNoteCard,
+  wrapDouyinNoteHeading,
+  wrapDouyinNoteText,
+} from './douyin-note.js';
 import {
   applyAiDisclosure,
   imageHash,
@@ -22,6 +27,7 @@ describe('image adapter', () => {
       heading: '搬家报价怎么核对',
       index: 1,
       kind: 'body' as const,
+      layout: 'checklist' as const,
       title: '广州搬家报价核对指南',
       total: 7,
     };
@@ -57,10 +63,50 @@ describe('image adapter', () => {
         heading: '布局溢出验证',
         index: 1,
         kind: 'body',
+        layout: 'focus',
         title: '测试标题',
         total: 5,
       }),
     ).rejects.toThrow('exceeds the deterministic layout');
+  });
+
+  it('keeps the T158 long-card renderer available for immutable legacy content', async () => {
+    const card = await renderDouyinNoteCard({
+      body: '先核对旧址与新址的楼层、电梯、停车和搬运距离，再按物品体积选择车型。大件家具需要单独确认拆装方式，易碎品应记录打包和搬运要求；报价还要写清等待、加项及异常处理边界。'.repeat(
+        2,
+      ),
+      heading: '旧图文内容继续按原版式完整渲染',
+      index: 1,
+      kind: 'body',
+      layout: 'legacy',
+      title: '旧抖音图文内容兼容验证',
+      total: 5,
+    });
+
+    expect(await imageMetadata(card)).toMatchObject({ height: 1_440, width: 1_080 });
+  });
+
+  it('composes a generated portrait background with server-owned readable text', async () => {
+    const source = await renderTemplateImage({
+      accent: 'teal',
+      label: '场景背景',
+      title: '该文字只用于构造测试图片',
+    });
+    const background = await normalizeDouyinNoteBackground(source);
+    const card = await renderDouyinNoteCard({
+      background,
+      body: '先确认装卸条件，再核对车辆与电梯时段，避免临时等待。',
+      heading: '先把时间条件排清楚',
+      index: 2,
+      kind: 'body',
+      layout: 'photo',
+      title: '跨区搬家怎么安排',
+      total: 7,
+    });
+
+    expect(await imageMetadata(background)).toMatchObject({ height: 1_440, width: 1_080 });
+    expect(await imageMetadata(card)).toMatchObject({ height: 1_440, width: 1_080 });
+    expect(imageHash(card)).not.toBe(imageHash(background));
   });
 
   it('avoids an orphaned final character in long Douyin cover headings', () => {
