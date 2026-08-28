@@ -956,7 +956,10 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
   await page.goto('/pub-01');
   await page.getByRole('button', { name: '抖音图文自动化' }).click();
   await expect(page.getByRole('heading', { name: '需要完成二次验证' })).toBeVisible();
-  await expect(page.getByRole('img', { name: '抖音二次验证脱敏诊断截图' })).toBeVisible();
+  await expect(
+    page.getByText('二次验证诊断证据已安全保存；页面截图不作为操作画面展示'),
+  ).toBeVisible();
+  await expect(page.getByRole('img', { name: '抖音二次验证脱敏诊断截图' })).toHaveCount(0);
   await page.getByRole('button', { name: '发送短信验证码' }).click();
   await expect(page.getByLabel('短信验证码')).toBeVisible();
   await page.getByLabel('短信验证码').fill('654321');

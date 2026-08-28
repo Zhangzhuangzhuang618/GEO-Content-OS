@@ -92,7 +92,7 @@ export function DouyinBrowserPanel({
       setMessage(
         error instanceof PlatformAccountRequestError &&
           (error.status === 423 || error.details?.['reason'] === 'CAPTCHA_REQUIRED')
-          ? '抖音要求二次验证，请核验下方脱敏诊断后继续。'
+          ? '抖音要求二次验证，请使用下方验证方式继续。'
           : error instanceof PlatformAccountRequestError &&
               error.code === 'PLATFORM_ACCOUNT_VERSION_CONFLICT'
             ? '账号状态刚刚发生变化，请再次点击生成二维码。'
@@ -213,20 +213,8 @@ export function DouyinBrowserPanel({
               {session.verification.page_path}
             </p>
             <p className="mt-1 text-xs text-ink-500">
-              诊断截图已隐藏页面文字与背景图，并遮盖输入框、二维码、头像和账号区域。
+              二次验证诊断证据已安全保存；页面截图不作为操作画面展示，请使用下方验证方式继续。
             </p>
-            {session.verification.diagnostic_image_data_url ? (
-              <div className="mt-4 overflow-hidden rounded-xl border border-line bg-white p-2">
-                <Image
-                  alt="抖音二次验证脱敏诊断截图"
-                  className="h-auto max-h-[420px] w-full object-contain"
-                  height={480}
-                  src={session.verification.diagnostic_image_data_url}
-                  unoptimized
-                  width={720}
-                />
-              </div>
-            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               {session.verification.available_methods.includes('original_device_scan') ? (
                 <button
