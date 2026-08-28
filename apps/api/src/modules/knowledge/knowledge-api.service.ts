@@ -11,6 +11,7 @@ import type {
   SourceListQuery,
   SourceScopeQuery,
   SourceView,
+  UpdateSourceValidityRequest,
 } from '@geo-content-os/contracts';
 import {
   CertificateSourceProfileSchema,
@@ -473,6 +474,58 @@ export class KnowledgeApiService {
         { reason: input.reason, status: 'expired' },
         audit,
       );
+    });
+  }
+
+  public async updateSourceValidity(
+    tenantId: string,
+    userId: string,
+    sourceId: string,
+    expectedUpdatedAt: string,
+    input: UpdateSourceValidityRequest,
+    audit: KnowledgeAuditContext,
+  ): Promise<SourceView> {
+    return this.database.client.begin(async (transaction) => {
+      const source = await lockManagedSource(transaction, tenantId, userId, sourceId);
+      if (toIso(source.updatedAt) !== expectedUpdatedAt) {
+        throw new KnowledgeApiVersionConflictError();
+      }
+      if (
+        insuranceProofProfile(source.metadata) &&
+        (!input.effective_from || !input.effective_to)
+      ) {
+        throw new KnowledgeApiValidationError(
+          'Insurance proof requires a complete coverage period',
+        );
+      }
+      const rows = await transaction<{ updatedAt: Date }[]>`
+        UPDATE source_documents
+        SET
+          effective_from = ${input.effective_from}::date,
+          effective_to = ${input.effective_to}::date,
+          updated_at = now()
+        WHERE id = ${sourceId}::uuid AND tenant_id = ${tenantId}::uuid
+        RETURNING updated_at AS "updatedAt"
+      `;
+      const updatedAt = rows[0]?.updatedAt;
+      if (!updatedAt) throw new Error('Source validity update returned no row');
+      const updatedSource: SourceDocumentView = {
+        ...source,
+        effectiveFrom: input.effective_from,
+        effectiveTo: input.effective_to,
+        updatedAt,
+      };
+      await insertAudit(
+        transaction,
+        tenantId,
+        userId,
+        'knowledge.source.validity_updated',
+        sourceId,
+        toSourceView(source),
+        { ...toSourceView(updatedSource), reason: input.reason },
+        audit,
+      );
+      return toSourceView(updatedSource);
     });
   }
 }

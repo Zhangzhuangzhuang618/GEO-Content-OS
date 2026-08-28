@@ -24,6 +24,7 @@ export interface ApiContractCatalogItem {
   readonly permission: string;
   readonly policy: string;
   readonly querySchema: z.ZodType | null;
+  readonly revision: 'integer' | 'updated_at' | null;
   readonly requestContentType: string;
   readonly responseName: string;
   readonly responseSchema: z.ZodType | null;
@@ -42,6 +43,7 @@ type ContractLike = {
   readonly permissions?: readonly string[];
   readonly policy: string;
   readonly querySchema?: z.ZodType | null;
+  readonly revision?: 'integer' | 'updated_at';
   readonly requestContentType?: string;
   readonly responseName: string;
   readonly responseSchema?: z.ZodType | null;
@@ -78,6 +80,8 @@ export const API_CONTRACTS: readonly ApiContractCatalogItem[] = Object.freeze(
         permission: contract.permission ?? contract.permissions?.join('|') ?? contract.policy,
         policy: contract.policy,
         querySchema: contract.querySchema ?? null,
+        revision:
+          contract.revision ?? (contract.idempotency.includes('version') ? 'integer' : null),
         requestContentType: contract.requestContentType ?? 'application/json',
         responseName: contract.responseName,
         responseSchema: contract.responseSchema ?? null,

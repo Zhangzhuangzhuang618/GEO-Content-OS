@@ -13,7 +13,7 @@ const executableBaseline = Object.freeze({
   frozenTableCount: 57,
   latestMigration: '0053_douyin_image_note_automation',
   previousMigration: '0052_wentian_geo_connector',
-  publicEndpointCount: 169,
+  publicEndpointCount: 170,
   skills: Object.freeze([
     'material-parser',
     'content-writer',
@@ -41,7 +41,7 @@ const commands = [
 
 assertStaticFreeze(manifest, commands);
 if (staticOnly) {
-  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T159.\n');
+  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T160.\n');
 } else {
   for (const [id, arguments_] of commands) runGate(id, arguments_);
   process.stdout.write(

@@ -304,6 +304,15 @@ describe('source upload', () => {
         summary_use_confirmed: true,
       },
     });
+    const incompleteCoverage = await authenticatedRequest(application, tokens)
+      .patch(`${API_PATH}/${sourceId}/validity`)
+      .set('If-Match', `"${String(detail.body.data.source.updated_at)}"`)
+      .send({
+        effective_from: '2026-02-01',
+        effective_to: null,
+        reason: 'insurance coverage cannot be open ended',
+      });
+    expectApiError(incompleteCoverage, 422, 'SCHEMA_VALIDATION_FAILED');
   });
 
   it('keeps insurance proof details contract-valid when an older ingest failure has internal retry metadata', async () => {
@@ -513,6 +522,70 @@ describe('source upload', () => {
       citation_count: 0,
       facts: [{ id: factId }],
     });
+    const initialRevision = String(detailedEvidence.body.data.source.updated_at);
+    const invalidValidity = await authenticatedRequest(application, manager)
+      .patch(`${API_PATH}/${sourceId}/validity`)
+      .set('If-Match', `"${initialRevision}"`)
+      .send({
+        effective_from: '2027-07-31',
+        effective_to: '2026-08-01',
+        reason: 'invalid reversed range',
+      });
+    expectApiError(invalidValidity, 422, 'SCHEMA_VALIDATION_FAILED');
+    const deniedValidity = await authenticatedRequest(application, viewer)
+      .patch(`${API_PATH}/${sourceId}/validity`)
+      .set('If-Match', `"${initialRevision}"`)
+      .send({
+        effective_from: '2026-08-01',
+        effective_to: '2027-07-31',
+        reason: 'viewer cannot update validity',
+      });
+    expectApiError(deniedValidity, 403, 'PERMISSION_DENIED');
+    const validity = await authenticatedRequest(application, manager)
+      .patch(`${API_PATH}/${sourceId}/validity`)
+      .set('If-Match', `"${initialRevision}"`)
+      .send({
+        effective_from: '2026-08-01',
+        effective_to: '2027-07-31',
+        reason: 'correct source validity',
+      });
+    expect(validity.status, JSON.stringify(validity.body)).toBe(200);
+    expect(validity.body.data).toMatchObject({
+      content_hash: sha256(body),
+      effective_from: '2026-08-01',
+      effective_to: '2027-07-31',
+      id: sourceId,
+    });
+    const staleValidity = await authenticatedRequest(application, manager)
+      .patch(`${API_PATH}/${sourceId}/validity`)
+      .set('If-Match', `"${initialRevision}"`)
+      .send({
+        effective_from: '2026-08-02',
+        effective_to: '2027-08-01',
+        reason: 'stale correction',
+      });
+    expectApiError(staleValidity, 409, 'VERSION_CONFLICT');
+    expect(
+      await database<
+        { afterFrom: string; beforeFrom: string | null; reason: string; jobs: number }[]
+      >`
+        SELECT
+          audit.before_json->>'effective_from' AS "beforeFrom",
+          audit.after_json->>'effective_from' AS "afterFrom",
+          audit.after_json->>'reason' AS reason,
+          (SELECT count(*)::integer FROM ingest_jobs WHERE source_document_id = ${sourceId}::uuid) AS jobs
+        FROM audit_events AS audit
+        WHERE audit.resource_id = ${sourceId}::uuid
+          AND audit.action = 'knowledge.source.validity_updated'
+      `,
+    ).toEqual([
+      {
+        afterFrom: '2026-08-01',
+        beforeFrom: null,
+        jobs: 1,
+        reason: 'correct source validity',
+      },
+    ]);
     const denied = await authenticatedRequest(application, viewer)
       .post(`${API_PATH}/${sourceId}/reindex`)
       .send({ expected_content_hash: sha256(body), reason: 'viewer cannot reindex' });
@@ -556,7 +629,7 @@ describe('source upload', () => {
           source.deleted_at IS NOT NULL AS deleted
         FROM source_documents AS source WHERE source.id = ${sourceId}::uuid
       `,
-    ).toEqual([{ audits: 3, deleted: true, events: 2, jobs: 2, sourceStatus: 'expired' }]);
+    ).toEqual([{ audits: 4, deleted: true, events: 2, jobs: 2, sourceStatus: 'expired' }]);
   });
 
   it('enforces content-hash and idempotency conflicts without duplicate side effects', async () => {
@@ -1251,6 +1324,7 @@ function authenticatedRequest(
   return {
     delete: (path: string) => authenticate(request(server).delete(path)),
     get: (path: string) => authenticate(request(server).get(path)),
+    patch: (path: string) => authenticate(request(server).patch(path)),
     post: (path: string) => authenticate(request(server).post(path)),
   };
 }

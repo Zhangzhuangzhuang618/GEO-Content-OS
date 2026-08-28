@@ -10,6 +10,7 @@ import {
   getSourceDetail,
   retrySource,
   SourceDetailRequestError,
+  updateSourceValidity,
 } from './source-detail-api';
 import type {
   Chunk,
@@ -40,8 +41,12 @@ type LoadState =
 
 export function SourceDetail() {
   const [state, setState] = useState<LoadState>({ status: 'loading' });
-  const [busy, setBusy] = useState<'retry' | 'expire' | null>(null);
+  const [busy, setBusy] = useState<'retry' | 'expire' | 'validity' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [validityDraft, setValidityDraft] = useState<{
+    readonly effectiveFrom: string;
+    readonly effectiveTo: string;
+  } | null>(null);
 
   useEffect(() => {
     const scope = readScope();
@@ -145,6 +150,48 @@ export function SourceDetail() {
     }
   }
 
+  async function saveValidity() {
+    if (!validityDraft || busy || detail.source.status === 'expired') return;
+    if (
+      validityDraft.effectiveFrom &&
+      validityDraft.effectiveTo &&
+      validityDraft.effectiveTo < validityDraft.effectiveFrom
+    ) {
+      setMessage('有效期结束日期不能早于开始日期。');
+      return;
+    }
+    if (detail.insurance_proof && (!validityDraft.effectiveFrom || !validityDraft.effectiveTo)) {
+      setMessage('保险证明必须填写完整的保障期间。');
+      return;
+    }
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) {
+      setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+      return;
+    }
+    setBusy('validity');
+    setMessage(null);
+    try {
+      const source = await updateSourceValidity(
+        detail.source,
+        validityDraft.effectiveFrom || null,
+        validityDraft.effectiveTo || null,
+        csrf,
+      );
+      setState({ detail: { ...detail, source }, role: readyRole, status: 'ready' });
+      setValidityDraft(null);
+      setMessage('有效期已更新，新检索将立即按修正后的日期判断资料是否有效。');
+    } catch (error) {
+      setMessage(
+        error instanceof SourceDetailRequestError && error.status === 409
+          ? '资料已被其他操作更新，请刷新页面后再修改。'
+          : '有效期修改失败，请检查日期后重试。',
+      );
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <section className="mt-8 space-y-5">
       <section className="rounded-2xl border border-line bg-white p-5 shadow-panel sm:p-7">
@@ -160,6 +207,19 @@ export function SourceDetail() {
           </div>
           {canManage && detail.source.status !== 'expired' ? (
             <div className="flex flex-wrap gap-2">
+              <button
+                className={secondaryButton}
+                disabled={busy !== null}
+                onClick={() =>
+                  setValidityDraft({
+                    effectiveFrom: detail.source.effective_from ?? '',
+                    effectiveTo: detail.source.effective_to ?? '',
+                  })
+                }
+                type="button"
+              >
+                修改有效期
+              </button>
               <button
                 className={secondaryButton}
                 disabled={busy !== null}
@@ -195,6 +255,67 @@ export function SourceDetail() {
           <Detail label="引用次数" value={String(detail.citation_count)} />
           <Detail label="更新时间" value={formatDateTime(detail.source.updated_at)} />
         </dl>
+        {validityDraft ? (
+          <section
+            aria-label="修改有效期"
+            className="mt-5 rounded-xl border border-line bg-surface-subtle p-4"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="text-sm font-semibold text-ink-700">
+                有效期开始
+                <input
+                  className={dateInput}
+                  onChange={(event) =>
+                    setValidityDraft({
+                      ...validityDraft,
+                      effectiveFrom: event.currentTarget.value,
+                    })
+                  }
+                  required={Boolean(detail.insurance_proof)}
+                  type="date"
+                  value={validityDraft.effectiveFrom}
+                />
+              </label>
+              <label className="text-sm font-semibold text-ink-700">
+                有效期结束
+                <input
+                  className={dateInput}
+                  min={validityDraft.effectiveFrom || undefined}
+                  onChange={(event) =>
+                    setValidityDraft({
+                      ...validityDraft,
+                      effectiveTo: event.currentTarget.value,
+                    })
+                  }
+                  required={Boolean(detail.insurance_proof)}
+                  type="date"
+                  value={validityDraft.effectiveTo}
+                />
+              </label>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-ink-500">
+              留空表示不限定开始日期或长期有效。保险证明必须填写完整的起止日期。
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                className={primaryButton}
+                disabled={busy !== null}
+                onClick={() => void saveValidity()}
+                type="button"
+              >
+                {busy === 'validity' ? '保存中…' : '保存有效期'}
+              </button>
+              <button
+                className={secondaryButton}
+                disabled={busy !== null}
+                onClick={() => setValidityDraft(null)}
+                type="button"
+              >
+                取消
+              </button>
+            </div>
+          </section>
+        ) : null}
         {detail.certificate ? (
           <section className="mt-5 rounded-xl border border-line bg-surface-subtle p-4">
             <h3 className="font-semibold text-ink-950">证照核验信息</h3>
@@ -532,5 +653,9 @@ function readCookie(name: string): string {
 
 const secondaryButton =
   'h-10 rounded-control border border-brand-600 px-4 text-sm font-semibold text-brand-700 disabled:opacity-60';
+const primaryButton =
+  'h-10 rounded-control bg-brand-600 px-4 text-sm font-semibold text-white disabled:opacity-60';
 const dangerButton =
   'h-10 rounded-control border border-red-300 px-4 text-sm font-semibold text-red-700 disabled:opacity-60';
+const dateInput =
+  'mt-2 block h-10 w-full rounded-control border border-line bg-white px-3 text-sm font-normal text-ink-950';

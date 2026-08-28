@@ -8,6 +8,7 @@ import {
   SourceIdSchema,
   SourceListQuerySchema,
   SourceScopeQuerySchema,
+  UpdateSourceValidityRequestSchema,
 } from '@geo-content-os/contracts';
 import {
   Body,
@@ -17,6 +18,7 @@ import {
   HttpStatus,
   Inject,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -122,6 +124,40 @@ export class KnowledgeSourceController {
         auditContext(request),
       );
       await reply.status(HttpStatus.ACCEPTED).send({ data: job, meta: { request_id: request.id } });
+    } catch (error) {
+      await sendKnowledgeError(reply, request.id, error);
+    }
+  }
+
+  @Patch(':id/validity')
+  @RequirePermissions('knowledge.sources.manage')
+  public async updateValidity(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedId = SourceIdSchema.safeParse(id);
+    const parsedBody = UpdateSourceValidityRequestSchema.safeParse(body);
+    const parsedRevision = parseStrongRevision(request.headers['if-match']);
+    if (!parsedId.success || !parsedBody.success || !parsedRevision.success) {
+      return sendSchemaError(reply, request.id, [
+        ...(parsedId.success ? [] : parsedId.error.issues),
+        ...(parsedBody.success ? [] : parsedBody.error.issues),
+        ...(parsedRevision.success ? [] : parsedRevision.error.issues),
+      ]);
+    }
+    try {
+      const policy = requireTenantPolicy(request);
+      const source = await this.knowledgeApiService.updateSourceValidity(
+        policy.tenantId,
+        policy.userId,
+        parsedId.data,
+        parsedRevision.data,
+        parsedBody.data,
+        auditContext(request),
+      );
+      await reply.status(HttpStatus.OK).send({ data: source, meta: { request_id: request.id } });
     } catch (error) {
       await sendKnowledgeError(reply, request.id, error);
     }

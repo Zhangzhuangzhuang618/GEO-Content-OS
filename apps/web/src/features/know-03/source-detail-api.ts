@@ -3,6 +3,7 @@ import { createRequestUuid } from '@/lib/request-uuid';
 import {
   IngestJobResponseSchema,
   SourceDetailResponseSchema,
+  SourceResponseSchema,
   type Source,
   type SourceDetailScope,
   type SourceDetailView,
@@ -53,6 +54,31 @@ export async function expireSource(source: Source, csrf: string): Promise<void> 
     method: 'DELETE',
   });
   if (!response.ok) throw new SourceDetailRequestError(response.status);
+}
+
+export async function updateSourceValidity(
+  source: Source,
+  effectiveFrom: string | null,
+  effectiveTo: string | null,
+  csrf: string,
+): Promise<Source> {
+  const response = await fetch(`${API_ORIGIN}/api/v1/sources/${source.id}/validity`, {
+    body: JSON.stringify({
+      effective_from: effectiveFrom,
+      effective_to: effectiveTo,
+      reason: '用户从资料详情修正有效期',
+    }),
+    credentials: 'include',
+    headers: {
+      ...writeHeaders(csrf, 'source-detail-validity'),
+      'if-match': `"${source.updated_at}"`,
+    },
+    method: 'PATCH',
+  });
+  if (!response.ok) throw new SourceDetailRequestError(response.status);
+  const parsed = SourceResponseSchema.safeParse(await response.json());
+  if (!parsed.success) throw new SourceDetailRequestError(502);
+  return parsed.data.data;
 }
 
 export class SourceDetailRequestError extends Error {

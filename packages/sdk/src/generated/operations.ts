@@ -1064,6 +1064,13 @@ export const operations = {
     permission: 'knowledge.sources.manage',
     security: 'session_csrf',
   },
+  source_validity_update: {
+    idempotency: 'resource+version',
+    method: 'PATCH',
+    path: '/sources/{id}/validity',
+    permission: 'knowledge.sources.manage',
+    security: 'session_csrf',
+  },
   source_batch_url_preview: {
     idempotency: '-',
     method: 'POST',

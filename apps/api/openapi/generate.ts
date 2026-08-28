@@ -68,9 +68,9 @@ function verifyCatalogAgainstControllers(): void {
       `Controller/contract drift. Missing controllers: ${missingControllers.join(', ') || '-'}; missing contracts: ${missingContracts.join(', ') || '-'}`,
     );
   }
-  if (catalogRoutes.length !== 169) {
+  if (catalogRoutes.length !== 170) {
     throw new Error(
-      `Expected the executable ADR baseline of 169 business endpoints, got ${catalogRoutes.length}`,
+      `Expected the executable ADR baseline of 170 business endpoints, got ${catalogRoutes.length}`,
     );
   }
 }
@@ -181,12 +181,19 @@ function headerParameters(contract: ApiContractCatalogItem): Record<string, unkn
       schema: { maxLength: 128, minLength: 8, type: 'string' },
     });
   }
-  if (contract.idempotency.includes('version')) {
+  if (contract.revision) {
     parameters.push({
       in: 'header',
       name: 'If-Match',
       required: true,
-      schema: { pattern: '^(?:"[1-9][0-9]*"|[1-9][0-9]*)$', type: 'string' },
+      schema:
+        contract.revision === 'updated_at'
+          ? {
+              description: 'Current updated_at as a strong revision, optionally quoted',
+              examples: ['"2026-08-28T08:00:00.000Z"'],
+              type: 'string',
+            }
+          : { pattern: '^(?:"[1-9][0-9]*"|[1-9][0-9]*)$', type: 'string' },
     });
   }
   return parameters;

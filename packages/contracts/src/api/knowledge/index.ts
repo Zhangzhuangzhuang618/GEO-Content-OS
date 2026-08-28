@@ -20,12 +20,14 @@ import {
   SourcePageSchema,
   SourceScopeQuerySchema,
   SourceUploadResponseSchema,
+  SourceResponseSchema,
+  UpdateSourceValidityRequestSchema,
   VerifyFactRequestSchema,
 } from './schemas.js';
 
 export * from './schemas.js';
 
-export type KnowledgeApiMethod = 'DELETE' | 'GET' | 'POST';
+export type KnowledgeApiMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
 export type KnowledgeIdempotency =
   '-' | 'key+content_hash' | 'resource+source_hash' | 'resource+version';
 
@@ -45,6 +47,7 @@ export interface KnowledgeApiContract {
     'tenant_member' | 'strategy_or_content_editor_or_admin' | 'reviewer_or_admin'
   >;
   readonly querySchema: z.ZodType | null;
+  readonly revision?: 'updated_at';
   readonly requestContentType?: 'application/json' | 'multipart/form-data';
   readonly requestName: string;
   readonly responseName: string;
@@ -135,6 +138,22 @@ const contracts = [
     responseSchema: IngestJobResponseSchema,
   },
   {
+    key: 'source.validity.update',
+    method: 'PATCH',
+    path: '/sources/{id}/validity',
+    policy: 'strategy_or_content_editor_or_admin',
+    permissions: ['knowledge.sources.manage'],
+    requestName: 'UpdateSourceValidityRequest',
+    responseName: 'SourceView',
+    revision: 'updated_at',
+    idempotency: 'resource+version',
+    successStatus: 200,
+    bodySchema: UpdateSourceValidityRequestSchema,
+    querySchema: null,
+    paramsSchema: SourceParamsSchema,
+    responseSchema: SourceResponseSchema,
+  },
+  {
     key: 'source.delete',
     method: 'DELETE',
     path: '/sources/{id}',
@@ -142,6 +161,7 @@ const contracts = [
     permissions: ['knowledge.sources.manage'],
     requestName: 'ReasonRequest',
     responseName: '-',
+    revision: 'updated_at',
     idempotency: 'resource+version',
     successStatus: 204,
     bodySchema: ReasonRequestSchema,

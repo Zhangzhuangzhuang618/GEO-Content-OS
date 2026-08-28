@@ -150,6 +150,13 @@ export const IngestJobResponseSchema = z
   })
   .strict();
 
+export const SourceResponseSchema = z
+  .object({
+    data: SourceSchema,
+    meta: z.object({ request_id: z.string().min(1) }).passthrough(),
+  })
+  .strict();
+
 export type Source = z.infer<typeof SourceSchema>;
 export type IngestJob = z.infer<typeof IngestJobSchema>;
 export type Chunk = z.infer<typeof ChunkSchema>;

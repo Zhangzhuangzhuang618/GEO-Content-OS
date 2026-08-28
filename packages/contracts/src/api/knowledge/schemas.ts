@@ -281,6 +281,23 @@ export const ReindexRequestSchema = z
   })
   .strict();
 
+export const UpdateSourceValidityRequestSchema = z
+  .object({
+    effective_from: IsoDateSchema.nullable(),
+    effective_to: IsoDateSchema.nullable(),
+    reason: z.string().trim().min(1).max(1_000),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.effective_from && value.effective_to && value.effective_to < value.effective_from) {
+      context.addIssue({
+        code: 'custom',
+        message: 'effective_to must be on or after effective_from',
+        path: ['effective_to'],
+      });
+    }
+  });
+
 export const SourceViewSchema = z
   .object({
     content_hash: Sha256Schema,
@@ -452,6 +469,7 @@ export type BatchUrlPreview = z.infer<typeof BatchUrlPreviewResponseSchema>['dat
 export type SourceScopeQuery = z.infer<typeof SourceScopeQuerySchema>;
 export type FactQuery = z.infer<typeof FactQuerySchema>;
 export type ReindexRequest = z.infer<typeof ReindexRequestSchema>;
+export type UpdateSourceValidityRequest = z.infer<typeof UpdateSourceValidityRequestSchema>;
 export type VerifyFactRequest = z.infer<typeof VerifyFactRequestSchema>;
 export type SourceView = z.infer<typeof SourceViewSchema>;
 export type CertificateSourceProfile = z.infer<typeof CertificateSourceProfileSchema>;

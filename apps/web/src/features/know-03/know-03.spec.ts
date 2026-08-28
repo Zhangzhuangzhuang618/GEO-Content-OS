@@ -165,6 +165,45 @@ test('retries parsing with exact source hash and expires with current revision',
   expect(expireHeaders?.['if-match']).toBe('"2026-07-15T01:00:00.000Z"');
 });
 
+test('updates the source validity with the current revision and refreshes the visible range', async ({
+  page,
+}) => {
+  let body: Record<string, unknown> | undefined;
+  let headers: Record<string, string> | undefined;
+  await page.route(`**/api/v1/sources/${sourceId}/validity`, async (route) => {
+    body = route.request().postDataJSON() as Record<string, unknown>;
+    headers = route.request().headers();
+    await route.fulfill({
+      body: JSON.stringify({
+        data: {
+          ...source(),
+          effective_from: '2026-08-01',
+          effective_to: '2027-07-31',
+          updated_at: '2026-08-28T08:00:00.000Z',
+        },
+        meta: { request_id: 'validity' },
+      }),
+      contentType: 'application/json',
+      status: 200,
+    });
+  });
+  await page.goto(pageUrl);
+  await page.getByRole('button', { name: '修改有效期' }).click();
+  await page.getByLabel('有效期开始').fill('2026-08-01');
+  await page.getByLabel('有效期结束').fill('2027-07-31');
+  await page.getByRole('button', { name: '保存有效期' }).click();
+  await expect(page.getByText('2026-08-01 — 2027-07-31')).toBeVisible();
+  await expect(
+    page.getByText('有效期已更新，新检索将立即按修正后的日期判断资料是否有效。'),
+  ).toBeVisible();
+  expect(body).toEqual({
+    effective_from: '2026-08-01',
+    effective_to: '2027-07-31',
+    reason: '用户从资料详情修正有效期',
+  });
+  expect(headers?.['if-match']).toBe('"2026-07-15T01:00:00.000Z"');
+});
+
 test('shows metadata, parse logs, facts and citation count on mobile without viewer writes', async ({
   page,
 }) => {

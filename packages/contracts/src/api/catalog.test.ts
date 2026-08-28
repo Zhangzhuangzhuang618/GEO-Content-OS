@@ -3,11 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { API_CONTRACTS } from './catalog.js';
 
 describe('API contract catalog', () => {
-  it('contains the 169-operation executable ADR baseline without duplicates', () => {
+  it('contains the 170-operation executable ADR baseline without duplicates', () => {
     const routes = API_CONTRACTS.map((contract) => `${contract.method} ${contract.path}`);
-    expect(routes).toHaveLength(169);
-    expect(new Set(routes).size).toBe(169);
-    expect(new Set(API_CONTRACTS.map((contract) => contract.key)).size).toBe(169);
+    expect(routes).toHaveLength(170);
+    expect(new Set(routes).size).toBe(170);
+    expect(new Set(API_CONTRACTS.map((contract) => contract.key)).size).toBe(170);
   });
 
   it('contains the tenant profile endpoints missing from the original task graph', () => {
@@ -20,6 +20,17 @@ describe('API contract catalog', () => {
     ).toEqual([
       { idempotency: '-', method: 'GET', policy: 'tenant_member' },
       { idempotency: 'key+version', method: 'PATCH', policy: 'tenant_owner' },
+    ]);
+  });
+
+  it('describes timestamp revisions for source writes that use updated_at', () => {
+    expect(
+      API_CONTRACTS.filter((contract) =>
+        ['source.delete', 'source.validity.update'].includes(contract.key),
+      ).map(({ key, revision }) => ({ key, revision })),
+    ).toEqual([
+      { key: 'source.delete', revision: 'updated_at' },
+      { key: 'source.validity.update', revision: 'updated_at' },
     ]);
   });
 

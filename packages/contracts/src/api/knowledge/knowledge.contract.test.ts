@@ -67,6 +67,15 @@ describe('knowledge API contract', () => {
         202,
       ),
       endpoint(
+        'PATCH',
+        '/sources/{id}/validity',
+        ['knowledge.sources.manage'],
+        'UpdateSourceValidityRequest',
+        'SourceView',
+        'resource+version',
+        200,
+      ),
+      endpoint(
         'DELETE',
         '/sources/{id}',
         ['knowledge.sources.manage'],
@@ -95,7 +104,7 @@ describe('knowledge API contract', () => {
         200,
       ),
     ]);
-    expect(new Set(KNOWLEDGE_API_CONTRACTS.map((contract) => contract.key)).size).toBe(9);
+    expect(new Set(KNOWLEDGE_API_CONTRACTS.map((contract) => contract.key)).size).toBe(10);
     expect(KNOWLEDGE_API_CONTRACTS.every((contract) => Object.isFrozen(contract))).toBe(true);
   });
 
@@ -277,7 +286,21 @@ describe('knowledge API contract', () => {
       KNOWLEDGE_API_CONTRACTS[2]?.querySchema?.safeParse({ workspace_id: id('2') }).success,
     ).toBe(false);
     expect(
-      KNOWLEDGE_API_CONTRACTS[8]?.bodySchema?.safeParse({
+      KNOWLEDGE_API_CONTRACTS[5]?.bodySchema?.safeParse({
+        effective_from: '2026-08-01',
+        effective_to: '2027-07-31',
+        reason: '修正录入错误',
+      }).success,
+    ).toBe(true);
+    expect(
+      KNOWLEDGE_API_CONTRACTS[5]?.bodySchema?.safeParse({
+        effective_from: '2027-07-31',
+        effective_to: '2026-08-01',
+        reason: '日期颠倒',
+      }).success,
+    ).toBe(false);
+    expect(
+      KNOWLEDGE_API_CONTRACTS[9]?.bodySchema?.safeParse({
         decision: 'verified',
         expected_updated_at: timestamp,
         reason: '证据一致',
