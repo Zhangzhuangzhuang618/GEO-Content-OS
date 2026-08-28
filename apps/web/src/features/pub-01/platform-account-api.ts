@@ -5,6 +5,8 @@ import {
   BaijiahaoAutomationPolicyResponseSchema,
   BaijiahaoBrowserLoginResponseSchema,
   BaijiahaoBrowserSessionResponseSchema,
+  DouyinBrowserLoginResponseSchema,
+  DouyinBrowserSessionResponseSchema,
   BrowserPlatformAutomationPolicyPageSchema,
   BrowserPlatformAutomationPolicyResponseSchema,
   CapabilityResponseSchema,
@@ -18,6 +20,7 @@ import {
   type PlatformAccountEdit,
   type PlatformAccountForm,
   type PlatformCode,
+  type DouyinBrowserLoginInput,
   type LiejuBrowserLoginInput,
   type SohuBrowserLoginInput,
 } from './platform-account.schema';
@@ -27,6 +30,8 @@ import type {
   BaijiahaoBrowserLogin,
   BaijiahaoBrowserSession,
   BrowserPlatformAutomationPolicy,
+  DouyinBrowserLogin,
+  DouyinBrowserSession,
 } from './platform-account.schema';
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN?.replace(/\/$/u, '') ?? '';
@@ -574,13 +579,13 @@ export async function getSohuBrowserSession(
 export async function getDouyinBrowserSession(
   accountId: string,
   signal?: AbortSignal,
-): Promise<BaijiahaoBrowserSession> {
+): Promise<DouyinBrowserSession> {
   const response = await fetch(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/douyin-browser-session`,
     { credentials: 'include', method: 'GET', ...(signal ? { signal } : {}) },
   );
   if (!response.ok) throw new PlatformAccountRequestError(response.status);
-  const parsed = BaijiahaoBrowserSessionResponseSchema.safeParse(await response.json());
+  const parsed = DouyinBrowserSessionResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PlatformAccountRequestError(502);
   return parsed.data.data;
 }
@@ -589,9 +594,10 @@ export async function startDouyinBrowserLogin(
   account: PlatformAccount,
   csrf: string,
   reauthenticate = false,
-): Promise<BaijiahaoBrowserLogin> {
+  input: DouyinBrowserLoginInput = { method: 'qr' },
+): Promise<DouyinBrowserLogin> {
   try {
-    return await requestDouyinBrowserLogin(account, csrf, reauthenticate);
+    return await requestDouyinBrowserLogin(account, csrf, reauthenticate, input);
   } catch (error) {
     if (
       !(error instanceof PlatformAccountRequestError) ||
@@ -606,7 +612,7 @@ export async function startDouyinBrowserLogin(
       })
     ).find(({ id }) => id === account.id);
     if (!latest) throw error;
-    return requestDouyinBrowserLogin(latest, csrf, reauthenticate);
+    return requestDouyinBrowserLogin(latest, csrf, reauthenticate, input);
   }
 }
 
@@ -614,18 +620,20 @@ async function requestDouyinBrowserLogin(
   account: PlatformAccount,
   csrf: string,
   reauthenticate: boolean,
-): Promise<BaijiahaoBrowserLogin> {
+  input: DouyinBrowserLoginInput,
+): Promise<DouyinBrowserLogin> {
   const action = reauthenticate ? 'reauth' : 'login';
   const response = await fetch(
     `${API_ORIGIN}/api/v1/platform-accounts/${account.id}/douyin-browser-session/${action}`,
     {
+      body: JSON.stringify(input),
       credentials: 'include',
-      headers: writeHeaders(csrf, account.version),
+      headers: { 'content-type': 'application/json', ...writeHeaders(csrf, account.version) },
       method: 'POST',
     },
   );
   if (!response.ok) throw await parseRequestError(response);
-  const parsed = BaijiahaoBrowserLoginResponseSchema.safeParse(await response.json());
+  const parsed = DouyinBrowserLoginResponseSchema.safeParse(await response.json());
   if (!parsed.success) throw new PlatformAccountRequestError(502);
   return parsed.data.data;
 }

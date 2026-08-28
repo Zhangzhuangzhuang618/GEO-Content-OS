@@ -379,6 +379,48 @@ export const BaijiahaoBrowserLoginViewSchema = BaijiahaoBrowserSessionViewSchema
     .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u)
     .optional(),
 }).strict();
+const PngDataUrlSchema = z.string().regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u);
+export const DouyinLoginVerificationSchema = z
+  .object({
+    available_methods: z.array(z.enum(['original_device_scan', 'sms_code'])).max(2),
+    captured_at: IsoDateTimeSchema,
+    challenge_type: z.enum([
+      'identity_choice',
+      'original_device_scan',
+      'sms_code',
+      'sms_send',
+      'unknown',
+      'visual_captcha',
+    ]),
+    diagnostic_image_data_url: PngDataUrlSchema.optional(),
+    has_code_input: z.boolean(),
+    page_origin: z.string().url().max(240),
+    page_path: z.string().startsWith('/').max(500),
+    page_signature: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .strict();
+export const DouyinBrowserSessionViewSchema = BaijiahaoBrowserSessionViewSchema.extend({
+  verification: DouyinLoginVerificationSchema.nullable().optional(),
+}).strict();
+export const DouyinBrowserLoginViewSchema = DouyinBrowserSessionViewSchema.extend({
+  qr_image_data_url: PngDataUrlSchema.optional(),
+}).strict();
+export const DouyinBrowserLoginRequestSchema = z
+  .discriminatedUnion('method', [
+    z.object({ method: z.literal('qr') }).strict(),
+    z.object({ method: z.literal('verification_device_qr') }).strict(),
+    z.object({ method: z.literal('verification_sms_send') }).strict(),
+    z
+      .object({
+        method: z.literal('verification_sms_verify'),
+        sms_code: z
+          .string()
+          .trim()
+          .regex(/^[0-9]{4,8}$/u),
+      })
+      .strict(),
+  ])
+  .default({ method: 'qr' });
 const LoginIdentifierSchema = z.string().trim().min(1).max(120);
 const LoginPasswordSchema = z.string().min(1).max(256);
 const MainlandMobileSchema = z.string().regex(/^1[3-9][0-9]{9}$/u);
@@ -556,6 +598,12 @@ export const BaijiahaoBrowserSessionResponseSchema = createDataResponseSchema(
 export const BaijiahaoBrowserLoginResponseSchema = createDataResponseSchema(
   BaijiahaoBrowserLoginViewSchema,
 );
+export const DouyinBrowserSessionResponseSchema = createDataResponseSchema(
+  DouyinBrowserSessionViewSchema,
+);
+export const DouyinBrowserLoginResponseSchema = createDataResponseSchema(
+  DouyinBrowserLoginViewSchema,
+);
 export const PlatformAccountPageSchema = z
   .object({
     data: z.array(PlatformAccountViewSchema),
@@ -599,5 +647,8 @@ export type BrowserPlatformAutomationPolicyView = z.infer<
 >;
 export type BaijiahaoBrowserSessionView = z.infer<typeof BaijiahaoBrowserSessionViewSchema>;
 export type BaijiahaoBrowserLoginView = z.infer<typeof BaijiahaoBrowserLoginViewSchema>;
+export type DouyinBrowserSessionView = z.infer<typeof DouyinBrowserSessionViewSchema>;
+export type DouyinBrowserLoginView = z.infer<typeof DouyinBrowserLoginViewSchema>;
+export type DouyinBrowserLoginRequest = z.infer<typeof DouyinBrowserLoginRequestSchema>;
 export type SohuBrowserLoginRequest = z.infer<typeof SohuBrowserLoginRequestSchema>;
 export type LiejuBrowserLoginRequest = z.infer<typeof LiejuBrowserLoginRequestSchema>;

@@ -5,6 +5,19 @@ import { z } from 'zod';
 import { safeBrowserError, toGatewayError, type DouyinBrowserService } from './service.js';
 
 const UuidSchema = z.string().uuid();
+const LoginRequestSchema = z
+  .discriminatedUnion('method', [
+    z.object({ method: z.literal('qr') }).strict(),
+    z.object({ method: z.literal('verification_device_qr') }).strict(),
+    z.object({ method: z.literal('verification_sms_send') }).strict(),
+    z
+      .object({
+        method: z.literal('verification_sms_verify'),
+        sms_code: z.string().regex(/^[0-9]{4,8}$/u),
+      })
+      .strict(),
+  ])
+  .default({ method: 'qr' });
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 export function createGatewayServer(service: DouyinBrowserService, isReady: () => boolean): Server {
@@ -34,11 +47,16 @@ async function route(
   }
   const loginId = sessionRoute(url.pathname, 'login');
   if (request.method === 'POST' && loginId) {
-    return send(response, 200, await service.startLogin(loginId), true);
+    return send(response, 200, await service.startLogin(loginId, await loginBody(request)), true);
   }
   const reauthId = sessionRoute(url.pathname, 'reauth');
   if (request.method === 'POST' && reauthId) {
-    return send(response, 200, await service.reauthenticate(reauthId), true);
+    return send(
+      response,
+      200,
+      await service.reauthenticate(reauthId, await loginBody(request)),
+      true,
+    );
   }
   const sessionId = /^\/sessions\/([^/]+)$/u.exec(url.pathname)?.[1];
   if (request.method === 'GET' && sessionId) {
@@ -101,6 +119,17 @@ async function deliveryBody(request: IncomingMessage): Promise<Readonly<Record<s
   });
 }
 
+async function loginBody(request: IncomingMessage) {
+  const parsed = LoginRequestSchema.safeParse((await jsonBody(request)) ?? undefined);
+  if (!parsed.success) {
+    throw Object.assign(new Error('Login request is invalid'), {
+      code: 'SCHEMA_INVALID',
+      statusCode: 400,
+    });
+  }
+  return parsed.data;
+}
+
 async function jsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -116,7 +145,8 @@ async function jsonBody(request: IncomingMessage): Promise<unknown> {
     chunks.push(bytes);
   }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    const value = Buffer.concat(chunks).toString('utf8').trim();
+    return value ? (JSON.parse(value) as unknown) : null;
   } catch {
     throw Object.assign(new Error('Request body is not valid JSON'), {
       code: 'SCHEMA_INVALID',

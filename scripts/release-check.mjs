@@ -41,7 +41,7 @@ const commands = [
 
 assertStaticFreeze(manifest, commands);
 if (staticOnly) {
-  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T160.\n');
+  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T161.\n');
 } else {
   for (const [id, arguments_] of commands) runGate(id, arguments_);
   process.stdout.write(

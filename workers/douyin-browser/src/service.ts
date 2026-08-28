@@ -20,6 +20,8 @@ import type {
   BrowserPublishInput,
   BrowserSession,
   DouyinPageDriver,
+  LoginVerificationDiagnostic,
+  LoginVerificationInput,
   PublicationClaim,
   RemotePublication,
 } from './types.js';
@@ -62,7 +64,11 @@ export class DouyinBrowserService {
     return Object.freeze({ get_status: true, metrics: false, publish: true });
   }
 
-  public async startLogin(accountId: string): Promise<Readonly<Record<string, unknown>>> {
+  public async startLogin(
+    accountId: string,
+    input: { readonly method: 'qr' } | LoginVerificationInput = { method: 'qr' },
+  ): Promise<Readonly<Record<string, unknown>>> {
+    if (input.method !== 'qr') return this.submitLoginVerification(accountId, input);
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
       try {
@@ -86,8 +92,15 @@ export class DouyinBrowserService {
             error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED'
               ? 'attention_required'
               : session.status;
+          const diagnostic =
+            status === 'attention_required'
+              ? await this.captureLoginDiagnostic(session, error.code).catch(() => null)
+              : null;
           await this.store.markSession(session, {
-            error: { code: error.code, schema_version: 'douyin-browser-error@1' },
+            error: diagnostic?.error ?? {
+              code: error.code,
+              schema_version: 'douyin-browser-error@1',
+            },
             qrExpiresAt: null,
             status,
           });
@@ -98,8 +111,11 @@ export class DouyinBrowserService {
     });
   }
 
-  public async reauthenticate(accountId: string): Promise<Readonly<Record<string, unknown>>> {
-    return this.startLogin(accountId);
+  public async reauthenticate(
+    accountId: string,
+    input: { readonly method: 'qr' } | LoginVerificationInput = { method: 'qr' },
+  ): Promise<Readonly<Record<string, unknown>>> {
+    return this.startLogin(accountId, input);
   }
 
   public async sessionStatus(accountId: string): Promise<Readonly<Record<string, unknown>>> {
@@ -109,6 +125,10 @@ export class DouyinBrowserService {
       const current = await this.store.getSession(accountId);
       if (!canVerifySession(current)) return sessionView(current);
       try {
+        if (current.status === 'attention_required') {
+          const live = await this.driver.inspectLoginVerification(accountId);
+          if (live) return sessionView(current, verificationView(live));
+        }
         const authenticated = await this.driver.verifyAuthenticated(
           accountId,
           this.profilePath(current),
@@ -116,7 +136,7 @@ export class DouyinBrowserService {
         );
         if (!authenticated) {
           return current.status === 'attention_required'
-            ? sessionView(current)
+            ? sessionView(current, await this.storedVerificationView(current))
             : sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
         }
         if (current.status === 'attention_required') {
@@ -147,6 +167,7 @@ export class DouyinBrowserService {
             error: { code, schema_version: 'douyin-browser-error@1' },
             status: 'attention_required',
           }),
+          await this.storedVerificationView(current),
         );
       }
     });
@@ -466,6 +487,154 @@ export class DouyinBrowserService {
     );
   }
 
+  private async submitLoginVerification(
+    accountId: string,
+    input: LoginVerificationInput,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    return this.locks.run(accountId, async () => {
+      const session = await this.store.getSession(accountId);
+      if (session.status !== 'attention_required') {
+        throw new BrowserGatewayError(
+          409,
+          'STATE_INVALID',
+          'Douyin login verification is not currently required',
+        );
+      }
+      try {
+        const diagnostic = await this.driver.submitLoginVerification(accountId, input);
+        if (!diagnostic) return sessionView(await this.persistAuthenticatedSession(session));
+        const captured = await this.persistLoginDiagnostic(session, 'CAPTCHA_REQUIRED', diagnostic);
+        const updated = await this.store.markSession(session, {
+          error: captured.error,
+          qrExpiresAt: null,
+          status: 'attention_required',
+        });
+        return Object.freeze({
+          ...sessionView(updated, verificationView(diagnostic)),
+          ...(diagnostic.qrPng
+            ? {
+                qr_image_data_url: `data:image/png;base64,${Buffer.from(diagnostic.qrPng).toString('base64')}`,
+              }
+            : {}),
+        });
+      } catch (error) {
+        if (!(error instanceof PageDriverError)) throw error;
+        const captured = await this.captureLoginDiagnostic(session, error.code).catch(() => null);
+        await this.store.markSession(session, {
+          error: captured?.error ?? {
+            code: error.code,
+            schema_version: 'douyin-browser-error@1',
+          },
+          qrExpiresAt: null,
+          status: 'attention_required',
+        });
+        throw new BrowserGatewayError(423, error.code, error.message);
+      }
+    });
+  }
+
+  private async captureLoginDiagnostic(
+    session: BrowserSession,
+    code: string,
+  ): Promise<{
+    readonly diagnostic: LoginVerificationDiagnostic;
+    readonly error: Readonly<Record<string, unknown>>;
+  } | null> {
+    const diagnostic = await this.driver.inspectLoginVerification(session.accountId);
+    return diagnostic ? this.persistLoginDiagnostic(session, code, diagnostic) : null;
+  }
+
+  private async persistLoginDiagnostic(
+    session: BrowserSession,
+    code: string,
+    diagnostic: LoginVerificationDiagnostic,
+  ): Promise<{
+    readonly diagnostic: LoginVerificationDiagnostic;
+    readonly error: Readonly<Record<string, unknown>>;
+  }> {
+    const contentHash = sha256(diagnostic.screenshotPng);
+    const key = `douyin-browser/${session.tenantId}/${session.accountId}/${session.id}/login-verification-${contentHash}.png`;
+    const object = await this.storage.putObject({
+      body: diagnostic.screenshotPng,
+      contentHash,
+      contentType: 'image/png',
+      key,
+      metadata: { kind: 'login_verification', session_id: session.id },
+    });
+    return Object.freeze({
+      diagnostic,
+      error: Object.freeze({
+        code,
+        schema_version: 'douyin-browser-error@1',
+        verification: Object.freeze({
+          available_methods: diagnostic.availableMethods,
+          captured_at: diagnostic.capturedAt.toISOString(),
+          challenge_type: diagnostic.challengeType,
+          content_hash: contentHash,
+          has_code_input: diagnostic.hasCodeInput,
+          object_uri: object.uri,
+          page_origin: diagnostic.pageOrigin,
+          page_path: diagnostic.pagePath,
+          page_signature: diagnostic.pageSignature,
+          schema_version: 'douyin-login-verification-diagnostic@1',
+        }),
+      }),
+    });
+  }
+
+  private async storedVerificationView(
+    session: BrowserSession,
+  ): Promise<Readonly<Record<string, unknown>> | null> {
+    const raw = session.lastError?.['verification'];
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const value = raw as Readonly<Record<string, unknown>>;
+    const availableMethods = Array.isArray(value['available_methods'])
+      ? value['available_methods'].filter(
+          (method): method is 'original_device_scan' | 'sms_code' =>
+            method === 'original_device_scan' || method === 'sms_code',
+        )
+      : [];
+    const challengeType = value['challenge_type'];
+    if (
+      typeof value['captured_at'] !== 'string' ||
+      !isLoginChallengeType(challengeType) ||
+      typeof value['content_hash'] !== 'string' ||
+      !/^[0-9a-f]{64}$/u.test(value['content_hash']) ||
+      typeof value['has_code_input'] !== 'boolean' ||
+      typeof value['object_uri'] !== 'string' ||
+      typeof value['page_origin'] !== 'string' ||
+      !isPageOrigin(value['page_origin']) ||
+      typeof value['page_path'] !== 'string' ||
+      !value['page_path'].startsWith('/') ||
+      value['page_path'].length > 500 ||
+      /[?#]/u.test(value['page_path']) ||
+      typeof value['page_signature'] !== 'string' ||
+      !/^[0-9a-f]{64}$/u.test(value['page_signature']) ||
+      !Number.isFinite(Date.parse(value['captured_at']))
+    ) {
+      return null;
+    }
+    let diagnosticImageDataUrl: string | undefined;
+    try {
+      const screenshot = await this.storage.getObject(storageKey(value['object_uri']));
+      if (sha256(screenshot) === value['content_hash']) {
+        diagnosticImageDataUrl = `data:image/png;base64,${Buffer.from(screenshot).toString('base64')}`;
+      }
+    } catch {
+      diagnosticImageDataUrl = undefined;
+    }
+    return Object.freeze({
+      available_methods: availableMethods,
+      captured_at: value['captured_at'],
+      challenge_type: challengeType,
+      ...(diagnosticImageDataUrl ? { diagnostic_image_data_url: diagnosticImageDataUrl } : {}),
+      has_code_input: value['has_code_input'],
+      page_origin: value['page_origin'],
+      page_path: value['page_path'],
+      page_signature: value['page_signature'],
+    });
+  }
+
   private async finishLogin(session: BrowserSession, expiresAt: Date): Promise<void> {
     try {
       const authenticated = await this.driver.waitForAuthentication(session.accountId, expiresAt);
@@ -491,8 +660,12 @@ export class DouyinBrowserService {
         await this.locks.run(session.accountId, async () => {
           const current = await this.store.getSession(session.accountId);
           if (!isCurrentQrAttempt(current, session, expiresAt)) return;
+          const captured = await this.captureLoginDiagnostic(
+            current,
+            loginVerificationErrorCode(error),
+          ).catch(() => null);
           await this.store.markSession(current, {
-            error: {
+            error: captured?.error ?? {
               code: loginVerificationErrorCode(error),
               schema_version: 'douyin-browser-error@1',
             },
@@ -579,14 +752,56 @@ export class DouyinBrowserService {
   }
 }
 
-function sessionView(session: BrowserSession): Readonly<Record<string, unknown>> {
+function isLoginChallengeType(
+  value: unknown,
+): value is LoginVerificationDiagnostic['challengeType'] {
+  return (
+    value === 'identity_choice' ||
+    value === 'original_device_scan' ||
+    value === 'sms_code' ||
+    value === 'sms_send' ||
+    value === 'unknown' ||
+    value === 'visual_captcha'
+  );
+}
+
+function isPageOrigin(value: string): boolean {
+  if (value.length > 240) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.origin === value && (parsed.protocol === 'https:' || parsed.protocol === 'http:');
+  } catch {
+    return false;
+  }
+}
+
+function sessionView(
+  session: BrowserSession,
+  verification?: Readonly<Record<string, unknown>> | null,
+): Readonly<Record<string, unknown>> {
   return Object.freeze({
     account_id: session.accountId,
     authenticated_at: session.authenticatedAt?.toISOString() ?? null,
     last_verified_at: session.lastVerifiedAt?.toISOString() ?? null,
     qr_expires_at: session.qrExpiresAt?.toISOString() ?? null,
     status: session.status,
+    ...(verification === undefined ? {} : { verification }),
     version: session.version,
+  });
+}
+
+function verificationView(
+  diagnostic: LoginVerificationDiagnostic,
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    available_methods: diagnostic.availableMethods,
+    captured_at: diagnostic.capturedAt.toISOString(),
+    challenge_type: diagnostic.challengeType,
+    diagnostic_image_data_url: `data:image/png;base64,${Buffer.from(diagnostic.screenshotPng).toString('base64')}`,
+    has_code_input: diagnostic.hasCodeInput,
+    page_origin: diagnostic.pageOrigin,
+    page_path: diagnostic.pagePath,
+    page_signature: diagnostic.pageSignature,
   });
 }
 

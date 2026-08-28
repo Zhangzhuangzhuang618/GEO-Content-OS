@@ -872,6 +872,105 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   expect(loginStartCount).toBe(0);
 });
 
+test('completes an explicit Douyin SMS secondary verification without echoing the code', async ({
+  page,
+}) => {
+  const actions: Record<string, unknown>[] = [];
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  const verification = {
+    available_methods: ['sms_code', 'original_device_scan'],
+    captured_at: '2026-08-28T07:36:24.000Z',
+    challenge_type: 'identity_choice',
+    diagnostic_image_data_url:
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    has_code_input: false,
+    page_origin: 'https://creator.douyin.com',
+    page_path: '/passport/safe/verify',
+    page_signature: 'a'.repeat(64),
+  } as const;
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`, (route) =>
+    json(route, {
+      data: {
+        account_id: ACCOUNT_ID,
+        authenticated_at: null,
+        last_verified_at: null,
+        qr_expires_at: null,
+        status: 'attention_required',
+        verification,
+        version: 2,
+      },
+      meta: { request_id: 'douyin-session' },
+    }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session/login`,
+    async (route) => {
+      const action = route.request().postDataJSON() as Record<string, unknown>;
+      actions.push(action);
+      const verified = action['method'] === 'verification_sms_verify';
+      await json(route, {
+        data: verified
+          ? {
+              account_id: ACCOUNT_ID,
+              authenticated_at: '2026-08-28T08:00:00.000Z',
+              last_verified_at: '2026-08-28T08:00:00.000Z',
+              qr_expires_at: null,
+              status: 'authenticated',
+              version: 4,
+            }
+          : {
+              account_id: ACCOUNT_ID,
+              authenticated_at: null,
+              last_verified_at: null,
+              qr_expires_at: null,
+              status: 'attention_required',
+              verification: {
+                ...verification,
+                available_methods: ['sms_code'],
+                challenge_type: 'sms_code',
+                has_code_input: true,
+              },
+              version: 3,
+            },
+        meta: { request_id: 'douyin-verification' },
+      });
+    },
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+  await expect(page.getByRole('heading', { name: '需要完成二次验证' })).toBeVisible();
+  await expect(page.getByRole('img', { name: '抖音二次验证脱敏诊断截图' })).toBeVisible();
+  await page.getByRole('button', { name: '发送短信验证码' }).click();
+  await expect(page.getByLabel('短信验证码')).toBeVisible();
+  await page.getByLabel('短信验证码').fill('654321');
+  await page.getByRole('button', { name: '提交验证码' }).click();
+
+  await expect(page.getByText('状态：已登录')).toBeVisible();
+  await expect(page.getByText('抖音二次验证已完成，登录快照已安全保存。')).toBeVisible();
+  expect(actions).toEqual([
+    { method: 'verification_sms_send' },
+    { method: 'verification_sms_verify', sms_code: '654321' },
+  ]);
+  await expect(page.getByText('654321', { exact: false })).toHaveCount(0);
+});
+
 test('retries a prerequisite-blocked Sohu daily batch after explicit confirmation', async ({
   page,
 }) => {

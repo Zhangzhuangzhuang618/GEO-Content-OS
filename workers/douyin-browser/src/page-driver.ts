@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -9,6 +10,8 @@ import type {
   DouyinPageDriver,
   DriverPublishInput,
   LoginStartResult,
+  LoginVerificationDiagnostic,
+  LoginVerificationInput,
   RemotePublication,
 } from './types.js';
 
@@ -30,6 +33,10 @@ const SELECTORS = Object.freeze({
   qr: '#douyin_login_comp_scan_code img[aria-label="二维码"], #animate_qrcode_container img[aria-label="二维码"], img[aria-label="二维码"][src^="data:image/"]',
   title:
     'input[placeholder*="作品标题"], input[placeholder*="标题"], textarea[placeholder*="作品标题"]',
+  verificationCode:
+    'input[placeholder*="短信验证码"], input[placeholder*="验证码"], input[autocomplete="one-time-code"]',
+  verificationQr:
+    'img[aria-label*="二维码"], img[src^="data:image/"][class*="qr"], img[class*="qr"], canvas[class*="qr"]',
 });
 
 const AUTHENTICATED_MARKER_SETS = Object.freeze([
@@ -141,6 +148,92 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     if (!context)
       throw new PageDriverError('AUTH_REQUIRED', 'Douyin browser context is unavailable');
     return JSON.stringify(await context.storageState());
+  }
+
+  public async inspectLoginVerification(
+    accountId: string,
+  ): Promise<LoginVerificationDiagnostic | null> {
+    const page = this.pages.get(accountId);
+    if (!page || page.isClosed()) return null;
+    return inspectLoginVerificationPage(page);
+  }
+
+  public async submitLoginVerification(
+    accountId: string,
+    input: LoginVerificationInput,
+  ): Promise<LoginVerificationDiagnostic | null> {
+    const page = this.pages.get(accountId);
+    if (!page || page.isClosed()) {
+      throw new PageDriverError('AUTH_REQUIRED', 'Douyin browser challenge is unavailable');
+    }
+    if (input.method === 'verification_device_qr') {
+      const control = await uniqueVisibleControl(page, ['使用原设备扫码', '原设备扫码']);
+      if (!control) {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Douyin original-device verification control was not found',
+        );
+      }
+      await control.click();
+      await waitForVerificationQr(page, this.config.navigationTimeoutMs);
+    } else if (input.method === 'verification_sms_send') {
+      const method = await uniqueVisibleControl(page, [
+        '发送短信验证',
+        '接收短信验证码',
+        '短信验证',
+      ]);
+      if (method) {
+        await method.click();
+        await page.waitForTimeout(300);
+        const codeInputVisible = await page
+          .locator(SELECTORS.verificationCode)
+          .first()
+          .isVisible()
+          .catch(() => false);
+        if (codeInputVisible) return inspectLoginVerificationPage(page);
+      }
+      const send = await uniqueVisibleControl(page, ['获取验证码', '发送验证码', '发送短信']);
+      if (!send) {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Douyin SMS verification send control was not found',
+        );
+      }
+      await send.click();
+      await page
+        .locator(SELECTORS.verificationCode)
+        .first()
+        .waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+    } else {
+      const code = page.locator(SELECTORS.verificationCode).first();
+      await code.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+      await code.fill(input.sms_code);
+      const submit = await uniqueVisibleControl(page, ['验证', '确定', '提交', '完成', '下一步']);
+      if (!submit) {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Douyin SMS verification submit control was not found',
+        );
+      }
+      await submit.click();
+      const deadline = Date.now() + this.config.navigationTimeoutMs;
+      while (Date.now() < deadline) {
+        if (!(await hasLoginVerificationIndicators(page)) && (await this.isAuthenticated(page))) {
+          return null;
+        }
+        await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
+      }
+      const diagnostic = await inspectLoginVerificationPage(page);
+      await code.fill('').catch(() => undefined);
+      if (!diagnostic) {
+        throw new PageDriverError(
+          'PAGE_SIGNATURE_CHANGED',
+          'Douyin SMS verification result could not be determined',
+        );
+      }
+      return diagnostic;
+    }
+    return inspectLoginVerificationPage(page);
   }
 
   public async submit(
@@ -489,6 +582,192 @@ async function hasVisibleSecurityChallenge(page: Page): Promise<boolean> {
     if (matches.every(Boolean)) return true;
   }
   return false;
+}
+
+async function uniqueVisibleControl(
+  page: Page,
+  labels: readonly string[],
+): Promise<Locator | null> {
+  for (const label of labels) {
+    const buttons = page.getByRole('button', { exact: true, name: label });
+    const visibleButtons: Locator[] = [];
+    for (let index = 0; index < Math.min(await buttons.count(), 10); index += 1) {
+      const candidate = buttons.nth(index);
+      if (await candidate.isVisible().catch(() => false)) visibleButtons.push(candidate);
+    }
+    if (visibleButtons.length > 1) {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Douyin verification control is ambiguous',
+      );
+    }
+    if (visibleButtons[0]) return visibleButtons[0];
+
+    const text = page.getByText(label, { exact: true });
+    const visibleText: Locator[] = [];
+    for (let index = 0; index < Math.min(await text.count(), 10); index += 1) {
+      const candidate = text.nth(index);
+      if (await candidate.isVisible().catch(() => false)) visibleText.push(candidate);
+    }
+    if (visibleText.length > 1) {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Douyin verification control is ambiguous',
+      );
+    }
+    if (visibleText[0]) return visibleText[0];
+  }
+  return null;
+}
+
+async function inspectLoginVerificationPage(
+  page: Page,
+): Promise<LoginVerificationDiagnostic | null> {
+  const hasSmsMethod = Boolean(
+    await uniqueVisibleControl(page, ['发送短信验证', '接收短信验证码', '短信验证']),
+  );
+  const hasDeviceMethod = Boolean(
+    await uniqueVisibleControl(page, ['使用原设备扫码', '原设备扫码']),
+  );
+  const codeInput = page.locator(SELECTORS.verificationCode).first();
+  const hasCodeInput = await codeInput.isVisible().catch(() => false);
+  const hasVisualCaptcha = await page
+    .locator(SELECTORS.captcha)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  const hasChallengeMarkers = await hasVisibleSecurityChallenge(page);
+  if (
+    !hasSmsMethod &&
+    !hasDeviceMethod &&
+    !hasCodeInput &&
+    !hasVisualCaptcha &&
+    !hasChallengeMarkers
+  ) {
+    return null;
+  }
+
+  const availableMethods = Object.freeze([
+    ...(hasSmsMethod || hasCodeInput ? (['sms_code'] as const) : []),
+    ...(hasDeviceMethod ? (['original_device_scan'] as const) : []),
+  ]);
+  const qr = await visibleVerificationQr(page);
+  const qrPng = qr ? await qr.screenshot({ type: 'png' }) : null;
+  const masked = page.locator(
+    [
+      'input',
+      'img',
+      'canvas',
+      'iframe',
+      'svg',
+      'video',
+      '[class*="avatar"]',
+      '[class*="Avatar"]',
+      '[class*="phone"]',
+      '[class*="mobile"]',
+      '[class*="account"]',
+      '[class*="user"]',
+      '[class*="name"]',
+    ].join(','),
+  );
+  const sensitiveText = page.getByText(
+    /(?:1[3-9][0-9]{9}|1[3-9][0-9]{2}\*{2,}[0-9]{2,4}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
+  );
+  const screenshotPng = await page.screenshot({
+    animations: 'disabled',
+    caret: 'hide',
+    mask: [masked, sensitiveText],
+    maskColor: '#111827',
+    style: `
+      *, *::before, *::after {
+        background-image: none !important;
+        color: transparent !important;
+        text-shadow: none !important;
+      }
+    `,
+    type: 'png',
+  });
+  const current = new URL(page.url());
+  const challengeType = hasCodeInput
+    ? 'sms_code'
+    : qrPng
+      ? 'original_device_scan'
+      : hasSmsMethod && hasDeviceMethod
+        ? 'identity_choice'
+        : hasSmsMethod
+          ? 'sms_send'
+          : hasVisualCaptcha
+            ? 'visual_captcha'
+            : 'unknown';
+  const pageSignature = createHash('sha256')
+    .update(
+      JSON.stringify({
+        available_methods: availableMethods,
+        challenge_type: challengeType,
+        has_code_input: hasCodeInput,
+        page_origin: current.origin,
+        page_path: current.pathname,
+      }),
+    )
+    .digest('hex');
+  return Object.freeze({
+    availableMethods,
+    capturedAt: new Date(),
+    challengeType,
+    hasCodeInput,
+    pageOrigin: current.origin,
+    pagePath: current.pathname,
+    pageSignature,
+    qrPng,
+    screenshotPng,
+  });
+}
+
+async function hasLoginVerificationIndicators(page: Page): Promise<boolean> {
+  const codeInputVisible = await page
+    .locator(SELECTORS.verificationCode)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  const visualChallengeVisible = await page
+    .locator(SELECTORS.captcha)
+    .first()
+    .isVisible()
+    .catch(() => false);
+  return codeInputVisible || visualChallengeVisible || (await hasVisibleSecurityChallenge(page));
+}
+
+async function waitForVerificationQr(page: Page, timeoutMs: number): Promise<Locator> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const qr = await visibleVerificationQr(page);
+    if (qr) return qr;
+    await page.waitForTimeout(Math.min(200, Math.max(1, deadline - Date.now())));
+  }
+  throw new PageDriverError(
+    'PAGE_SIGNATURE_CHANGED',
+    'Douyin original-device verification QR was not shown',
+  );
+}
+
+async function visibleVerificationQr(page: Page): Promise<Locator | null> {
+  const candidates = page.locator(SELECTORS.verificationQr);
+  const visible: Locator[] = [];
+  for (let index = 0; index < Math.min(await candidates.count(), 20); index += 1) {
+    const candidate = candidates.nth(index);
+    if (!(await candidate.isVisible().catch(() => false))) continue;
+    const initialLoginQr = await candidate
+      .evaluate((element) => Boolean(element.closest('#douyin_login_comp_scan_code')))
+      .catch(() => false);
+    if (!initialLoginQr) visible.push(candidate);
+  }
+  if (visible.length > 1) {
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Douyin original-device verification QR is ambiguous',
+    );
+  }
+  return visible[0] ?? null;
 }
 
 async function waitForVisibleSecurityChallenge(page: Page, timeoutMs: number): Promise<void> {

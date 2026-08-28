@@ -7,6 +7,7 @@ import {
   CreatePlatformAccountRequestSchema,
   CreatePublishJobRequestSchema,
   DisablePlatformAccountRequestSchema,
+  DouyinBrowserLoginRequestSchema,
   ERROR_DEFINITIONS,
   GeneratePublishMediaRequestSchema,
   LiejuBrowserLoginRequestSchema,
@@ -720,15 +721,20 @@ export class PlatformAccountController {
   @RequirePermissions('publishing.manage')
   public async startDouyinBrowserLogin(
     @Param() params: unknown,
+    @Body() raw: unknown,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const parsed = PlatformAccountParamsSchema.safeParse(params);
-    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    const parsedBody = DouyinBrowserLoginRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
     try {
       const data = await this.douyinBrowser.login(
         requireScope(request),
         parsed.data.id,
+        parsedBody.data,
         parseIfMatch(request.headers['if-match']),
       );
       await sendData(reply, request.id, data, data.version);
@@ -741,15 +747,20 @@ export class PlatformAccountController {
   @RequirePermissions('publishing.manage')
   public async reauthenticateDouyinBrowser(
     @Param() params: unknown,
+    @Body() raw: unknown,
     @Req() request: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     const parsed = PlatformAccountParamsSchema.safeParse(params);
-    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    const parsedBody = DouyinBrowserLoginRequestSchema.safeParse(raw);
+    if (!parsed.success || !parsedBody.success) {
+      return sendSchemaError(reply, request.id, issues(parsed, parsedBody));
+    }
     try {
       const data = await this.douyinBrowser.reauthenticate(
         requireScope(request),
         parsed.data.id,
+        parsedBody.data,
         parseIfMatch(request.headers['if-match']),
       );
       await sendData(reply, request.id, data, data.version);

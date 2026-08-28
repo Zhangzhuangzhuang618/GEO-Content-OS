@@ -77,4 +77,46 @@ describe('Douyin browser gateway configuration', () => {
       details: { reason: 'BROWSER_GATEWAY_UNAVAILABLE', upstream_status: 503 },
     });
   });
+
+  it('sends an ephemeral verification action and accepts only allowlisted diagnostics', async () => {
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            account_id: ACCOUNT_ID,
+            authenticated_at: null,
+            last_verified_at: null,
+            qr_expires_at: null,
+            status: 'attention_required',
+            verification: {
+              available_methods: ['sms_code'],
+              captured_at: '2026-08-28T07:36:24.000Z',
+              challenge_type: 'sms_code',
+              diagnostic_image_data_url: 'data:image/png;base64,bWFza2Vk',
+              has_code_input: true,
+              page_origin: 'https://creator.douyin.com',
+              page_path: '/passport/safe/verify',
+              page_signature: 'a'.repeat(64),
+            },
+            version: 2,
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      new DouyinBrowserGatewayClient(ENVIRONMENT).login(ACCOUNT_ID, {
+        method: 'verification_sms_verify',
+        sms_code: '654321',
+      }),
+    ).resolves.toMatchObject({
+      status: 'attention_required',
+      verification: { challenge_type: 'sms_code', has_code_input: true },
+    });
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      body: JSON.stringify({ method: 'verification_sms_verify', sms_code: '654321' }),
+      method: 'POST',
+    });
+  });
 });

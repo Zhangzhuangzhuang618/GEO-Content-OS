@@ -9,8 +9,9 @@ import {
   startDouyinBrowserLogin,
 } from './platform-account-api';
 import type {
-  BaijiahaoBrowserLogin,
-  BaijiahaoBrowserSession,
+  DouyinBrowserLogin,
+  DouyinBrowserLoginInput,
+  DouyinBrowserSession,
   PlatformAccount,
 } from './platform-account.schema';
 import { BrowserPlatformAutomationPanel } from './browser-platform-automation-panel';
@@ -22,8 +23,9 @@ export function DouyinBrowserPanel({
   readonly account: PlatformAccount;
   readonly onClose: () => void;
 }) {
-  const [session, setSession] = useState<BaijiahaoBrowserSession | null>(null);
-  const [login, setLogin] = useState<BaijiahaoBrowserLogin | null>(null);
+  const [session, setSession] = useState<DouyinBrowserSession | null>(null);
+  const [login, setLogin] = useState<DouyinBrowserLogin | null>(null);
+  const [smsCode, setSmsCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -49,7 +51,12 @@ export function DouyinBrowserPanel({
   }, [account.id]);
 
   useEffect(() => {
-    if (session?.status !== 'qr_ready') return;
+    const waitingForPrimaryQr = session?.status === 'qr_ready';
+    const waitingForOriginalDeviceQr =
+      session?.status === 'attention_required' &&
+      login?.verification?.challenge_type === 'original_device_scan' &&
+      Boolean(login.qr_image_data_url);
+    if (!waitingForPrimaryQr && !waitingForOriginalDeviceQr) return;
     const timer = setInterval(() => {
       void getDouyinBrowserSession(account.id)
         .then((next) => {
@@ -58,13 +65,14 @@ export function DouyinBrowserPanel({
             setLogin(null);
             setMessage('抖音扫码登录已确认。');
           } else if (next.status === 'attention_required') {
-            setMessage('抖音要求额外身份验证，请在外置托管浏览器中完成。');
+            if (next.verification?.challenge_type !== 'original_device_scan') setLogin(null);
+            setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
           }
         })
         .catch(() => undefined);
     }, 3_000);
     return () => clearInterval(timer);
-  }, [account.id, session?.status]);
+  }, [account.id, login?.qr_image_data_url, login?.verification?.challenge_type, session?.status]);
 
   async function beginLogin() {
     if (inFlight.current) return;
@@ -79,10 +87,12 @@ export function DouyinBrowserPanel({
       setLogin(next);
       setMessage(next.status === 'authenticated' ? '抖音登录已确认。' : '请使用抖音扫描二维码。');
     } catch (error) {
+      const latest = await getDouyinBrowserSession(account.id).catch(() => null);
+      if (latest) setSession(latest);
       setMessage(
         error instanceof PlatformAccountRequestError &&
           (error.status === 423 || error.details?.['reason'] === 'CAPTCHA_REQUIRED')
-          ? '抖音要求额外人工安全验证，请在托管浏览器中完成。'
+          ? '抖音要求二次验证，请核验下方脱敏诊断后继续。'
           : error instanceof PlatformAccountRequestError &&
               error.code === 'PLATFORM_ACCOUNT_VERSION_CONFLICT'
             ? '账号状态刚刚发生变化，请再次点击生成二维码。'
@@ -92,6 +102,42 @@ export function DouyinBrowserPanel({
       inFlight.current = false;
       setBusy(false);
       setLoading(false);
+    }
+  }
+
+  async function continueVerification(input: DouyinBrowserLoginInput) {
+    if (inFlight.current) return;
+    const csrf = readCookie('geo_csrf');
+    if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+    inFlight.current = true;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const next = await startDouyinBrowserLogin(account, csrf, account.status === 'reauth', input);
+      setSession(next);
+      setLogin(next);
+      if (next.status === 'authenticated') {
+        setSmsCode('');
+        setLogin(null);
+        setMessage('抖音二次验证已完成，登录快照已安全保存。');
+      } else if (input.method === 'verification_sms_send') {
+        setMessage('短信验证码已按你的操作发送，请输入收到的验证码。');
+      } else if (input.method === 'verification_device_qr') {
+        setMessage('请使用原设备扫描下方二次验证二维码。');
+      } else {
+        setMessage('验证码尚未通过，请核对后重试。');
+      }
+    } catch (error) {
+      const latest = await getDouyinBrowserSession(account.id).catch(() => null);
+      if (latest) setSession(latest);
+      setMessage(
+        error instanceof PlatformAccountRequestError && error.status === 423
+          ? '二次验证页面未完成或页面结构已变化，请先核验最新诊断。'
+          : '二次验证操作失败，请稍后重试。',
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
     }
   }
 
@@ -158,6 +204,87 @@ export function DouyinBrowserPanel({
             />
           </div>
         ) : null}
+        {session?.status === 'attention_required' && session.verification ? (
+          <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <h3 className="font-semibold text-ink-900">需要完成二次验证</h3>
+            <p className="mt-1 text-sm leading-6 text-ink-700">
+              类型：{verificationLabel(session.verification.challenge_type)}；页面：
+              {session.verification.page_origin}
+              {session.verification.page_path}
+            </p>
+            <p className="mt-1 text-xs text-ink-500">
+              诊断截图已隐藏页面文字与背景图，并遮盖输入框、二维码、头像和账号区域。
+            </p>
+            {session.verification.diagnostic_image_data_url ? (
+              <div className="mt-4 overflow-hidden rounded-xl border border-line bg-white p-2">
+                <Image
+                  alt="抖音二次验证脱敏诊断截图"
+                  className="h-auto max-h-[420px] w-full object-contain"
+                  height={480}
+                  src={session.verification.diagnostic_image_data_url}
+                  unoptimized
+                  width={720}
+                />
+              </div>
+            ) : null}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {session.verification.available_methods.includes('original_device_scan') ? (
+                <button
+                  className={secondaryButton}
+                  disabled={busy}
+                  onClick={() => void continueVerification({ method: 'verification_device_qr' })}
+                  type="button"
+                >
+                  获取原设备验证二维码
+                </button>
+              ) : null}
+              {session.verification.available_methods.includes('sms_code') &&
+              !session.verification.has_code_input ? (
+                <button
+                  className={secondaryButton}
+                  disabled={busy}
+                  onClick={() => void continueVerification({ method: 'verification_sms_send' })}
+                  type="button"
+                >
+                  发送短信验证码
+                </button>
+              ) : null}
+            </div>
+            {session.verification.has_code_input ? (
+              <div className="mt-4 flex flex-wrap items-end gap-2">
+                <label className="grid gap-1 text-sm font-medium text-ink-800">
+                  短信验证码
+                  <input
+                    autoComplete="one-time-code"
+                    className="h-10 w-48 rounded-control border border-line bg-white px-3"
+                    inputMode="numeric"
+                    maxLength={8}
+                    onChange={(event) => setSmsCode(event.target.value.replace(/\D/gu, ''))}
+                    value={smsCode}
+                  />
+                </label>
+                <button
+                  className={primaryButton}
+                  disabled={busy || !/^[0-9]{4,8}$/u.test(smsCode)}
+                  onClick={() =>
+                    void continueVerification({
+                      method: 'verification_sms_verify',
+                      sms_code: smsCode,
+                    })
+                  }
+                  type="button"
+                >
+                  提交验证码
+                </button>
+              </div>
+            ) : null}
+            {session.verification.challenge_type === 'visual_captcha' ? (
+              <p className="mt-4 text-sm leading-6 text-amber-900">
+                当前页面是交互式验证码，系统不会识别、破解或绕过。请重新扫码，或在页面提供短信/原设备方式后再继续。
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <p aria-live="polite" className="mt-4 text-sm text-ink-700">
           {message}
         </p>
@@ -167,7 +294,7 @@ export function DouyinBrowserPanel({
   );
 }
 
-function sessionLabel(status: BaijiahaoBrowserSession['status']) {
+function sessionLabel(status: DouyinBrowserSession['status']) {
   return {
     attention_required: '需要人工处理',
     authenticated: '已登录',
@@ -176,6 +303,19 @@ function sessionLabel(status: BaijiahaoBrowserSession['status']) {
     qr_ready: '等待扫码',
     reauth: '登录已失效',
   }[status];
+}
+
+function verificationLabel(
+  type: NonNullable<DouyinBrowserSession['verification']>['challenge_type'],
+) {
+  return {
+    identity_choice: '身份验证方式选择',
+    original_device_scan: '原设备扫码',
+    sms_code: '短信验证码',
+    sms_send: '短信验证',
+    unknown: '未知安全验证',
+    visual_captcha: '交互式验证码',
+  }[type];
 }
 
 function formatDateTime(value: string | null | undefined) {

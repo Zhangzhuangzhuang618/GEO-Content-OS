@@ -1,6 +1,7 @@
 import type {
-  BaijiahaoBrowserLoginView,
-  BaijiahaoBrowserSessionView,
+  DouyinBrowserLoginRequest,
+  DouyinBrowserLoginView,
+  DouyinBrowserSessionView,
 } from '@geo-content-os/contracts';
 
 import { resolveDatabaseClient, type DatabaseClientSource } from '../../../database/index.js';
@@ -21,7 +22,7 @@ export class DouyinBrowserSessionService {
   public async status(
     scope: PlatformAccountScope,
     accountId: string,
-  ): Promise<BaijiahaoBrowserSessionView> {
+  ): Promise<DouyinBrowserSessionView> {
     await this.requireAccount(scope, accountId);
     return this.gateway.status(accountId);
   }
@@ -29,21 +30,23 @@ export class DouyinBrowserSessionService {
   public async login(
     scope: PlatformAccountScope,
     accountId: string,
+    input: DouyinBrowserLoginRequest,
     expectedVersion: number,
-  ): Promise<BaijiahaoBrowserLoginView> {
+  ): Promise<DouyinBrowserLoginView> {
     const account = await this.requireAccount(scope, accountId);
     requireMutable(account, expectedVersion);
-    return this.gateway.login(accountId);
+    return this.gateway.login(accountId, input);
   }
 
   public async reauthenticate(
     scope: PlatformAccountScope,
     accountId: string,
+    input: DouyinBrowserLoginRequest,
     expectedVersion: number,
-  ): Promise<BaijiahaoBrowserLoginView> {
+  ): Promise<DouyinBrowserLoginView> {
     const account = await this.requireAccount(scope, accountId);
     requireMutable(account, expectedVersion);
-    return this.gateway.reauthenticate(accountId);
+    return this.gateway.reauthenticate(accountId, input);
   }
 
   private async requireAccount(scope: PlatformAccountScope, accountId: string) {

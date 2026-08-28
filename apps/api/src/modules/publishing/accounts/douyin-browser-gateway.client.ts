@@ -1,8 +1,9 @@
 import {
-  BaijiahaoBrowserLoginViewSchema,
-  BaijiahaoBrowserSessionViewSchema,
-  type BaijiahaoBrowserLoginView,
-  type BaijiahaoBrowserSessionView,
+  DouyinBrowserLoginViewSchema,
+  DouyinBrowserSessionViewSchema,
+  type DouyinBrowserLoginRequest,
+  type DouyinBrowserLoginView,
+  type DouyinBrowserSessionView,
 } from '@geo-content-os/contracts';
 
 import { PlatformAccountError } from './platform-account.errors.js';
@@ -19,16 +20,22 @@ export class DouyinBrowserGatewayClient {
     this.timeoutMs = readGatewayTimeout(environment);
   }
 
-  public login(accountId: string): Promise<BaijiahaoBrowserLoginView> {
-    return this.write(accountId, 'login');
+  public login(
+    accountId: string,
+    input: DouyinBrowserLoginRequest = { method: 'qr' },
+  ): Promise<DouyinBrowserLoginView> {
+    return this.write(accountId, 'login', input);
   }
 
-  public reauthenticate(accountId: string): Promise<BaijiahaoBrowserLoginView> {
-    return this.write(accountId, 'reauth');
+  public reauthenticate(
+    accountId: string,
+    input: DouyinBrowserLoginRequest = { method: 'qr' },
+  ): Promise<DouyinBrowserLoginView> {
+    return this.write(accountId, 'reauth', input);
   }
 
-  public async status(accountId: string): Promise<BaijiahaoBrowserSessionView> {
-    const parsed = BaijiahaoBrowserSessionViewSchema.safeParse(
+  public async status(accountId: string): Promise<DouyinBrowserSessionView> {
+    const parsed = DouyinBrowserSessionViewSchema.safeParse(
       await this.request(`/sessions/${encodeURIComponent(accountId)}`, 'GET'),
     );
     if (!parsed.success) throw unavailable();
@@ -38,15 +45,20 @@ export class DouyinBrowserGatewayClient {
   private async write(
     accountId: string,
     action: 'login' | 'reauth',
-  ): Promise<BaijiahaoBrowserLoginView> {
-    const parsed = BaijiahaoBrowserLoginViewSchema.safeParse(
-      await this.request(`/sessions/${encodeURIComponent(accountId)}/${action}`, 'POST'),
+    input: DouyinBrowserLoginRequest,
+  ): Promise<DouyinBrowserLoginView> {
+    const parsed = DouyinBrowserLoginViewSchema.safeParse(
+      await this.request(`/sessions/${encodeURIComponent(accountId)}/${action}`, 'POST', input),
     );
     if (!parsed.success) throw unavailable();
     return parsed.data;
   }
 
-  private async request(path: string, method: 'GET' | 'POST'): Promise<unknown> {
+  private async request(
+    path: string,
+    method: 'GET' | 'POST',
+    body?: DouyinBrowserLoginRequest,
+  ): Promise<unknown> {
     if (!this.token || this.token.length < 32) {
       throw new PlatformAccountError(
         'PLATFORM_ACCOUNT_STATE_INVALID',
@@ -57,7 +69,11 @@ export class DouyinBrowserGatewayClient {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await fetch(new URL(path, this.baseUrl), {
-        headers: { authorization: `Bearer ${this.token}` },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          ...(body ? { 'content-type': 'application/json' } : {}),
+        },
         method,
         signal: controller.signal,
       });

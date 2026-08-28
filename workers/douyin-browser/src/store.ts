@@ -105,7 +105,7 @@ export class PostgresDouyinBrowserStore {
         profile_key AS "profileKey", storage_state_ciphertext AS "storageStateCiphertext",
         storage_state_key_version AS "storageStateKeyVersion",
         qr_expires_at AS "qrExpiresAt", authenticated_at AS "authenticatedAt",
-        last_verified_at AS "lastVerifiedAt", version
+        last_verified_at AS "lastVerifiedAt", last_error_json AS "lastError", version
     `;
     const updated = rows[0];
     if (!updated) throw conflict('Douyin browser session changed concurrently');
@@ -325,7 +325,8 @@ function selectSession(
     SELECT id, tenant_id AS "tenantId", account_id AS "accountId", status,
       profile_key AS "profileKey", storage_state_ciphertext AS "storageStateCiphertext",
       storage_state_key_version AS "storageStateKeyVersion", qr_expires_at AS "qrExpiresAt",
-      authenticated_at AS "authenticatedAt", last_verified_at AS "lastVerifiedAt", version
+      authenticated_at AS "authenticatedAt", last_verified_at AS "lastVerifiedAt",
+      last_error_json AS "lastError", version
     FROM douyin_browser_sessions WHERE account_id=${accountId}::uuid
     ${lock ? sql`FOR UPDATE` : sql``}
   `;

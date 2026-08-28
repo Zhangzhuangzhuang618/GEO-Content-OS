@@ -306,6 +306,49 @@ describe('Douyin local browser simulator', () => {
           code: 'CAPTCHA_REQUIRED',
         },
       );
+      const diagnostic = await driver.inspectLoginVerification(ACCOUNT_ID);
+      expect(diagnostic).toMatchObject({
+        availableMethods: ['sms_code', 'original_device_scan'],
+        challengeType: 'identity_choice',
+        hasCodeInput: false,
+        pagePath: '/login',
+      });
+      expect(diagnostic?.screenshotPng.byteLength).toBeGreaterThan(0);
+
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({ challengeType: 'sms_code', hasCodeInput: true });
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, {
+          method: 'verification_sms_verify',
+          sms_code: '654321',
+        }),
+      ).resolves.toBeNull();
+      const storageState = await driver.exportStorageState(ACCOUNT_ID);
+      expect(storageState).toContain('douyin-auth');
+      expect(storageState).not.toContain('654321');
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('returns a scannable original-device verification QR without exposing it in diagnostics', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({ ...config(baseUrl, profileRoot), loginUrl: `${baseUrl}/login?sms=1` }),
+    );
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, join(profileRoot, `${ACCOUNT_ID}-device`));
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        {
+          code: 'CAPTCHA_REQUIRED',
+        },
+      );
+      const diagnostic = await driver.submitLoginVerification(ACCOUNT_ID, {
+        method: 'verification_device_qr',
+      });
+      expect(diagnostic).toMatchObject({ challengeType: 'original_device_scan' });
+      expect(diagnostic?.qrPng?.byteLength).toBeGreaterThan(0);
+      expect(diagnostic?.screenshotPng.byteLength).toBeGreaterThan(0);
     } finally {
       await driver.close();
     }
@@ -369,7 +412,22 @@ async function route(
   }
   if (url.pathname === '/login') {
     const loginScript = url.searchParams.has('sms')
-      ? `setTimeout(()=>{document.body.insertAdjacentHTML('beforeend','<section><h2>身份验证</h2><p>接收短信验证码</p><button>发送短信验证</button></section>')},200)`
+      ? `setTimeout(()=>{
+           document.body.insertAdjacentHTML('beforeend','<div class="user-info">发布作品 作品管理</div><section id="security-challenge"><h2>身份验证</h2><p>接收短信验证码</p><button id="sms-method">发送短信验证</button><button id="device-method">使用原设备扫码</button></section>');
+           document.querySelector('#sms-method').onclick=()=>{
+             document.querySelector('#security-challenge').innerHTML='<h2>接收短信验证码</h2><p class="mobile-value">138****5678</p><button id="send-code">获取验证码</button>';
+             document.querySelector('#send-code').onclick=()=>{
+               document.querySelector('#security-challenge').insertAdjacentHTML('beforeend','<input placeholder="短信验证码" autocomplete="one-time-code"><button id="verify-code">验证</button>');
+               document.querySelector('#verify-code').onclick=()=>{
+                 if(document.querySelector('input').value!=='654321')return;
+                 document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
+               };
+             };
+           };
+           document.querySelector('#device-method').onclick=()=>{
+             document.querySelector('#security-challenge').innerHTML='<h2>使用原设备扫码</h2><img class="verification-qr" aria-label="二次验证二维码" src="/qrcode.svg">';
+           };
+         },200)`
       : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
          setTimeout(()=>{document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>'},1200)`;
     return html(

@@ -7,9 +7,10 @@ import type { CredentialEnvelopeService } from '@geo-content-os/security/credent
 import { describe, expect, it, vi } from 'vitest';
 
 import type { DouyinBrowserConfig } from './config.js';
+import { PageDriverError } from './page-driver.js';
 import { DouyinBrowserService } from './service.js';
 import type { PostgresDouyinBrowserStore, PublicationRow } from './store.js';
-import type { BrowserSession, DouyinPageDriver } from './types.js';
+import type { BrowserSession, DouyinPageDriver, LoginVerificationDiagnostic } from './types.js';
 
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000158';
 const CONTENT_VERSION_ID = '00000000-0000-4000-8000-000000000159';
@@ -192,6 +193,80 @@ describe('Douyin browser service', () => {
     });
   });
 
+  it('stores only a redacted diagnostic when QR authorization reaches a security challenge', async () => {
+    const initial = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      status: 'login_required' as const,
+    });
+    const pending = Object.freeze({
+      ...initial,
+      qrExpiresAt: new Date(Date.now() + 60_000),
+      status: 'qr_ready' as const,
+      version: 2,
+    });
+    const attention = Object.freeze({
+      ...pending,
+      qrExpiresAt: null,
+      status: 'attention_required' as const,
+      version: 3,
+    });
+    const markSession = vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce(attention);
+    const diagnostic = loginVerificationDiagnostic();
+    const putObject = vi.fn(async ({ key }: { key: string }) => ({
+      uri: `memory://geo/${key}`,
+    }));
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getOrCreateSession: vi.fn(async () => initial),
+        getSession: vi.fn(async () => pending),
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification: vi.fn(async () => diagnostic),
+        startLogin: vi.fn(async () => ({
+          expiresAt: pending.qrExpiresAt!,
+          qrPng: Buffer.from('login-qr'),
+        })),
+        waitForAuthentication: vi.fn(async () => {
+          throw new PageDriverError('CAPTCHA_REQUIRED', 'security challenge');
+        }),
+      } as unknown as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      { putObject } as unknown as ObjectStorageAdapter,
+    );
+
+    await expect(service.startLogin(ACCOUNT_ID)).resolves.toMatchObject({ status: 'qr_ready' });
+    await vi.waitFor(() => expect(markSession).toHaveBeenCalledTimes(2));
+
+    const persisted = markSession.mock.calls[1]?.[1];
+    expect(persisted).toMatchObject({
+      error: {
+        code: 'CAPTCHA_REQUIRED',
+        verification: {
+          available_methods: ['sms_code', 'original_device_scan'],
+          challenge_type: 'identity_choice',
+          page_origin: 'https://creator.douyin.com',
+          page_path: '/passport/safe/verify',
+          schema_version: 'douyin-login-verification-diagnostic@1',
+        },
+      },
+      qrExpiresAt: null,
+      status: 'attention_required',
+    });
+    expect(JSON.stringify(persisted)).not.toContain('13800138000');
+    expect(JSON.stringify(persisted)).not.toContain('654321');
+    expect(JSON.stringify(persisted)).not.toContain('diagnostic-png');
+    expect(putObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: diagnostic.screenshotPng,
+        contentType: 'image/png',
+        metadata: { kind: 'login_verification', session_id: SESSION_ID },
+      }),
+    );
+  });
+
   it('does not let an older QR attempt overwrite a newer login attempt', async () => {
     const initial = Object.freeze({
       ...browserSession(),
@@ -255,6 +330,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        inspectLoginVerification: vi.fn(async () => null),
         verifyAuthenticated: vi.fn(async () => false),
       } as unknown as DouyinPageDriver,
       {} as CredentialEnvelopeService,
@@ -266,6 +342,143 @@ describe('Douyin browser service', () => {
     });
     expect(markSession).not.toHaveBeenCalled();
     expect(markAccountReauth).not.toHaveBeenCalled();
+  });
+
+  it('returns a live security challenge without navigating away during status polling', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      lastVerifiedAt: null,
+      status: 'attention_required' as const,
+      storageStateCiphertext: null,
+      storageStateKeyVersion: null,
+    });
+    const diagnostic = loginVerificationDiagnostic();
+    const verifyAuthenticated = vi.fn();
+    const service = new DouyinBrowserService(
+      config(),
+      { getSession: vi.fn(async () => attention) } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification: vi.fn(async () => diagnostic),
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+      verification: {
+        available_methods: ['sms_code', 'original_device_scan'],
+        challenge_type: 'identity_choice',
+        diagnostic_image_data_url: `data:image/png;base64,${Buffer.from(
+          diagnostic.screenshotPng,
+        ).toString('base64')}`,
+      },
+    });
+    expect(verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('returns the last verified redacted diagnostic after the browser page is no longer live', async () => {
+    const screenshot = Buffer.from('stored-redacted-diagnostic');
+    const contentHash = createHash('sha256').update(screenshot).digest('hex');
+    const attention = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      lastError: {
+        code: 'CAPTCHA_REQUIRED',
+        verification: {
+          available_methods: ['sms_code'],
+          captured_at: '2026-08-28T07:36:24.000Z',
+          challenge_type: 'sms_code',
+          content_hash: contentHash,
+          has_code_input: true,
+          object_uri: 'memory://geo/douyin-browser/redacted.png',
+          page_origin: 'https://creator.douyin.com',
+          page_path: '/passport/safe/verify',
+          page_signature: 'a'.repeat(64),
+          schema_version: 'douyin-login-verification-diagnostic@1',
+        },
+      },
+      lastVerifiedAt: null,
+      status: 'attention_required' as const,
+      storageStateCiphertext: null,
+      storageStateKeyVersion: null,
+    });
+    const getObject = vi.fn(async () => screenshot);
+    const service = new DouyinBrowserService(
+      config(),
+      { getSession: vi.fn(async () => attention) } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification: vi.fn(async () => null),
+        verifyAuthenticated: vi.fn(async () => false),
+      } as unknown as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      { getObject } as unknown as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+      verification: {
+        challenge_type: 'sms_code',
+        diagnostic_image_data_url: `data:image/png;base64,${screenshot.toString('base64')}`,
+        has_code_input: true,
+      },
+    });
+    expect(getObject).toHaveBeenCalledWith('douyin-browser/redacted.png');
+  });
+
+  it('persists the authenticated session after SMS verification without persisting the code', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      lastVerifiedAt: null,
+      status: 'attention_required' as const,
+      storageStateCiphertext: null,
+      storageStateKeyVersion: null,
+    });
+    const authenticated = Object.freeze({
+      ...attention,
+      authenticatedAt: new Date('2026-08-28T08:00:00.000Z'),
+      lastVerifiedAt: new Date('2026-08-28T08:00:00.000Z'),
+      status: 'authenticated' as const,
+      storageStateCiphertext: 'new-ciphertext',
+      storageStateKeyVersion: 'local-v2',
+      version: 2,
+    });
+    const markSession = vi.fn(async () => authenticated);
+    const submitLoginVerification = vi.fn(async () => null);
+    const encrypt = vi.fn(async () => ({
+      credentialCiphertext: 'new-ciphertext',
+      credentialKeyVersion: 'local-v2',
+    }));
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getSession: vi.fn(async () => attention),
+        markAccountActive: vi.fn(async () => undefined),
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        exportStorageState: vi.fn(async () => '{"cookies":[{"name":"sid","value":"safe"}]}'),
+        submitLoginVerification,
+      } as unknown as DouyinPageDriver,
+      { encrypt } as unknown as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(
+      service.startLogin(ACCOUNT_ID, {
+        method: 'verification_sms_verify',
+        sms_code: '654321',
+      }),
+    ).resolves.toMatchObject({ status: 'authenticated' });
+    expect(submitLoginVerification).toHaveBeenCalledWith(ACCOUNT_ID, {
+      method: 'verification_sms_verify',
+      sms_code: '654321',
+    });
+    expect(encrypt).toHaveBeenCalledWith('{"cookies":[{"name":"sid","value":"safe"}]}');
+    expect(JSON.stringify(markSession.mock.calls)).not.toContain('654321');
   });
 
   it('persists credentials and reactivates the account after a security challenge succeeds', async () => {
@@ -297,6 +510,7 @@ describe('Douyin browser service', () => {
       } as unknown as PostgresDouyinBrowserStore,
       {
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
+        inspectLoginVerification: vi.fn(async () => null),
         verifyAuthenticated: vi.fn(async () => true),
       } as unknown as DouyinPageDriver,
       {
@@ -531,6 +745,7 @@ function browserSession(): BrowserSession {
     accountId: ACCOUNT_ID,
     authenticatedAt: new Date('2026-08-26T00:00:00.000Z'),
     id: SESSION_ID,
+    lastError: null,
     lastVerifiedAt: new Date('2026-08-26T00:00:00.000Z'),
     profileKey: `douyin/${TENANT_ID}/${ACCOUNT_ID}`,
     qrExpiresAt: null,
@@ -539,6 +754,20 @@ function browserSession(): BrowserSession {
     storageStateKeyVersion: 'local-v1',
     tenantId: TENANT_ID,
     version: 1,
+  });
+}
+
+function loginVerificationDiagnostic(): LoginVerificationDiagnostic {
+  return Object.freeze({
+    availableMethods: Object.freeze(['sms_code', 'original_device_scan'] as const),
+    capturedAt: new Date('2026-08-28T07:36:24.000Z'),
+    challengeType: 'identity_choice',
+    hasCodeInput: false,
+    pageOrigin: 'https://creator.douyin.com',
+    pagePath: '/passport/safe/verify',
+    pageSignature: 'a'.repeat(64),
+    qrPng: null,
+    screenshotPng: Buffer.from('diagnostic-png'),
   });
 }
 

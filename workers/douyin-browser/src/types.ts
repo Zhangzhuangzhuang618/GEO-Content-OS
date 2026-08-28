@@ -8,6 +8,7 @@ export interface BrowserSession {
   readonly authenticatedAt: Date | null;
   readonly id: string;
   readonly lastVerifiedAt: Date | null;
+  readonly lastError: Readonly<Record<string, unknown>> | null;
   readonly profileKey: string;
   readonly qrExpiresAt: Date | null;
   readonly status: BrowserSessionStatus;
@@ -16,6 +17,31 @@ export interface BrowserSession {
   readonly tenantId: string;
   readonly version: number;
 }
+
+export type LoginVerificationMethod = 'original_device_scan' | 'sms_code';
+
+export interface LoginVerificationDiagnostic {
+  readonly availableMethods: readonly LoginVerificationMethod[];
+  readonly capturedAt: Date;
+  readonly challengeType:
+    | 'identity_choice'
+    | 'original_device_scan'
+    | 'sms_code'
+    | 'sms_send'
+    | 'unknown'
+    | 'visual_captcha';
+  readonly hasCodeInput: boolean;
+  readonly pageOrigin: string;
+  readonly pagePath: string;
+  readonly pageSignature: string;
+  readonly qrPng: Uint8Array | null;
+  readonly screenshotPng: Uint8Array;
+}
+
+export type LoginVerificationInput =
+  | { readonly method: 'verification_device_qr' }
+  | { readonly method: 'verification_sms_send' }
+  | { readonly method: 'verification_sms_verify'; readonly sms_code: string };
 
 export interface PublicationClaim {
   readonly accountId: string;
@@ -82,6 +108,7 @@ export interface DouyinPageDriver {
   capture(accountId: string): Promise<Uint8Array>;
   close(): Promise<void>;
   exportStorageState(accountId: string): Promise<string>;
+  inspectLoginVerification(accountId: string): Promise<LoginVerificationDiagnostic | null>;
   reconcile(
     accountId: string,
     profilePath: string,
@@ -93,6 +120,10 @@ export interface DouyinPageDriver {
     storageStateJson: string | null,
   ): Promise<RemotePublication | null>;
   startLogin(accountId: string, profilePath: string): Promise<LoginStartResult>;
+  submitLoginVerification(
+    accountId: string,
+    input: LoginVerificationInput,
+  ): Promise<LoginVerificationDiagnostic | null>;
   submit(
     input: DriverPublishInput,
     beforeSubmit: (png: Uint8Array) => Promise<void>,

@@ -153,6 +153,7 @@ describe('Douyin browser login API', () => {
       `platform_code=douyin&workspace_id=${account.workspace_id}`,
     );
     expect(fetchMock.mock.calls[2]?.[1]?.headers).toMatchObject({ 'if-match': '"3"' });
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({ method: 'qr' }));
   });
 
   it('uses the isolated Douyin session route and keeps safe diagnostics', async () => {
@@ -182,6 +183,55 @@ describe('Douyin browser login API', () => {
     );
     expect(fetchMock.mock.calls[0]?.[0]).toContain(
       `/platform-accounts/${ACCOUNT.id}/douyin-browser-session/login`,
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ method: 'qr' }));
+  });
+
+  it('sends a secondary verification action only to the isolated Douyin route', async () => {
+    const account = {
+      ...LIEJU_ACCOUNT,
+      id: '00000000-0000-4000-8000-000000000158',
+      platform_code: 'douyin' as const,
+      version: 2,
+    } satisfies PlatformAccount;
+    const fetchMock = vi.fn<typeof fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              account_id: account.id,
+              authenticated_at: null,
+              last_verified_at: null,
+              qr_expires_at: null,
+              status: 'attention_required',
+              verification: {
+                available_methods: ['sms_code'],
+                captured_at: '2026-08-28T07:36:24.000Z',
+                challenge_type: 'sms_code',
+                has_code_input: true,
+                page_origin: 'https://creator.douyin.com',
+                page_path: '/passport/safe/verify',
+                page_signature: 'a'.repeat(64),
+              },
+              version: 2,
+            },
+            meta: { request_id: '00000000-0000-4000-8000-000000000161' },
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(
+      startDouyinBrowserLogin(account, 'csrf-token', false, {
+        method: 'verification_sms_send',
+      }),
+    ).resolves.toMatchObject({
+      status: 'attention_required',
+      verification: { challenge_type: 'sms_code' },
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ method: 'verification_sms_send' }),
     );
   });
 });

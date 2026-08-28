@@ -36,7 +36,55 @@ describe('Douyin browser gateway routes', () => {
       method: 'POST',
     });
     expect(response.status).toBe(200);
-    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID);
+    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID, { method: 'qr' });
+  });
+
+  it('forwards an explicitly submitted SMS code without returning it in the response', async () => {
+    const startLogin = vi.fn(async () => ({
+      account_id: ACCOUNT_ID,
+      authenticated_at: '2026-08-28T08:00:00.000Z',
+      last_verified_at: '2026-08-28T08:00:00.000Z',
+      qr_expires_at: null,
+      status: 'authenticated',
+      version: 2,
+    }));
+    const baseUrl = await listen(fakeService({ startLogin }));
+    const response = await fetch(`${baseUrl}/sessions/${ACCOUNT_ID}/login`, {
+      body: JSON.stringify({ method: 'verification_sms_verify', sms_code: '654321' }),
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store, private');
+    expect(startLogin).toHaveBeenCalledWith(ACCOUNT_ID, {
+      method: 'verification_sms_verify',
+      sms_code: '654321',
+    });
+    expect(await response.text()).not.toContain('654321');
+  });
+
+  it('rejects extra credential fields in secondary verification requests', async () => {
+    const startLogin = vi.fn();
+    const baseUrl = await listen(fakeService({ startLogin }));
+    const response = await fetch(`${baseUrl}/sessions/${ACCOUNT_ID}/login`, {
+      body: JSON.stringify({
+        method: 'verification_sms_verify',
+        password: 'must-not-be-accepted',
+        sms_code: '654321',
+      }),
+      headers: {
+        authorization: `Bearer ${TOKEN}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    });
+
+    expect(response.status).toBe(400);
+    expect(startLogin).not.toHaveBeenCalled();
   });
 
   it('passes the idempotency key into the frozen publish request', async () => {

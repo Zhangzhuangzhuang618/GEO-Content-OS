@@ -7,6 +7,8 @@ import {
   BrowserPlatformDailyBatchRetryRequestSchema,
   BrowserPlatformDailyBatchSummarySchema,
   CreatePlatformAccountRequestSchema,
+  DouyinBrowserLoginRequestSchema,
+  DouyinBrowserSessionViewSchema,
   OfficialSiteDailyBatchCancelRequestSchema,
   OfficialSiteDailyBatchRestartRequestSchema,
   PUBLISHING_API_CONTRACTS,
@@ -199,6 +201,57 @@ describe('Publishing API frozen contract', () => {
     expect(
       LiejuBrowserLoginRequestSchema.safeParse({ method: 'sms_prepare', mobile: '13800138000' })
         .success,
+    ).toBe(false);
+  });
+
+  it('keeps Douyin secondary verification inputs ephemeral and diagnostics allowlisted', () => {
+    expect(
+      DouyinBrowserLoginRequestSchema.safeParse({ method: 'verification_sms_send' }).success,
+    ).toBe(true);
+    expect(
+      DouyinBrowserLoginRequestSchema.safeParse({
+        method: 'verification_sms_verify',
+        sms_code: '654321',
+      }).success,
+    ).toBe(true);
+    expect(
+      DouyinBrowserLoginRequestSchema.safeParse({
+        method: 'verification_sms_verify',
+        password: 'must-not-be-accepted',
+        sms_code: '654321',
+      }).success,
+    ).toBe(false);
+    expect(
+      DouyinBrowserLoginRequestSchema.safeParse({
+        method: 'verification_sms_verify',
+        sms_code: 'code-654321',
+      }).success,
+    ).toBe(false);
+
+    const safeSession = {
+      account_id: crypto.randomUUID(),
+      authenticated_at: null,
+      last_verified_at: null,
+      qr_expires_at: null,
+      status: 'attention_required',
+      verification: {
+        available_methods: ['sms_code', 'original_device_scan'],
+        captured_at: '2026-08-28T07:36:24.000Z',
+        challenge_type: 'identity_choice',
+        diagnostic_image_data_url: 'data:image/png;base64,bWFza2Vk',
+        has_code_input: false,
+        page_origin: 'https://creator.douyin.com',
+        page_path: '/passport/safe/verify',
+        page_signature: 'a'.repeat(64),
+      },
+      version: 2,
+    };
+    expect(DouyinBrowserSessionViewSchema.safeParse(safeSession).success).toBe(true);
+    expect(
+      DouyinBrowserSessionViewSchema.safeParse({
+        ...safeSession,
+        verification: { ...safeSession.verification, mobile: '13800138000' },
+      }).success,
     ).toBe(false);
   });
 

@@ -162,6 +162,37 @@ export const BaijiahaoBrowserLoginSchema = BaijiahaoBrowserSessionSchema.extend(
   login_stage: z.enum(['captcha_required', 'sms_code_required']).optional(),
   qr_image_data_url: z.string().startsWith('data:image/png;base64,').optional(),
 }).strict();
+export const DouyinLoginVerificationSchema = z
+  .object({
+    available_methods: z.array(z.enum(['original_device_scan', 'sms_code'])).max(2),
+    captured_at: z.iso.datetime(),
+    challenge_type: z.enum([
+      'identity_choice',
+      'original_device_scan',
+      'sms_code',
+      'sms_send',
+      'unknown',
+      'visual_captcha',
+    ]),
+    diagnostic_image_data_url: z
+      .string()
+      .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u)
+      .optional(),
+    has_code_input: z.boolean(),
+    page_origin: z.url().max(240),
+    page_path: z.string().startsWith('/').max(500),
+    page_signature: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .strict();
+export const DouyinBrowserSessionSchema = BaijiahaoBrowserSessionSchema.extend({
+  verification: DouyinLoginVerificationSchema.nullable().optional(),
+}).strict();
+export const DouyinBrowserLoginSchema = DouyinBrowserSessionSchema.extend({
+  qr_image_data_url: z
+    .string()
+    .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u)
+    .optional(),
+}).strict();
 export const BaijiahaoAutomationPolicySchema = z
   .object({
     account_id: z.string().uuid(),
@@ -358,6 +389,12 @@ export const BaijiahaoBrowserSessionResponseSchema = z
   .strict();
 export const BaijiahaoBrowserLoginResponseSchema = z
   .object({ data: BaijiahaoBrowserLoginSchema, meta: ResponseMetaSchema })
+  .strict();
+export const DouyinBrowserSessionResponseSchema = z
+  .object({ data: DouyinBrowserSessionSchema, meta: ResponseMetaSchema })
+  .strict();
+export const DouyinBrowserLoginResponseSchema = z
+  .object({ data: DouyinBrowserLoginSchema, meta: ResponseMetaSchema })
   .strict();
 
 const LIEJU_MOBILE_PHONE_PATTERN = /^(?:[0-9]{6,12}|[0-9]{3,4}-[0-9]{6,8}(?:-[0-9]{1,6})?)$/u;
@@ -625,6 +662,13 @@ export type BaijiahaoAutomationPolicy = z.infer<typeof BaijiahaoAutomationPolicy
 export type BrowserPlatformAutomationPolicy = z.infer<typeof BrowserPlatformAutomationPolicySchema>;
 export type BaijiahaoBrowserSession = z.infer<typeof BaijiahaoBrowserSessionSchema>;
 export type BaijiahaoBrowserLogin = z.infer<typeof BaijiahaoBrowserLoginSchema>;
+export type DouyinBrowserSession = z.infer<typeof DouyinBrowserSessionSchema>;
+export type DouyinBrowserLogin = z.infer<typeof DouyinBrowserLoginSchema>;
+export type DouyinBrowserLoginInput =
+  | { readonly method: 'qr' }
+  | { readonly method: 'verification_device_qr' }
+  | { readonly method: 'verification_sms_send' }
+  | { readonly method: 'verification_sms_verify'; readonly sms_code: string };
 export type SohuBrowserLoginInput =
   | { readonly method: 'wechat' }
   | {

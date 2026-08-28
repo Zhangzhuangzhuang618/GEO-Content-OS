@@ -31100,6 +31100,66 @@
                           "type": "integer",
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
+                        },
+                        "verification": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "available_methods": {
+                                  "maxItems": 2,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "enum": ["original_device_scan", "sms_code"]
+                                  }
+                                },
+                                "captured_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "challenge_type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "identity_choice",
+                                    "original_device_scan",
+                                    "sms_code",
+                                    "sms_send",
+                                    "unknown",
+                                    "visual_captcha"
+                                  ]
+                                },
+                                "diagnostic_image_data_url": {
+                                  "type": "string",
+                                  "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                                },
+                                "has_code_input": { "type": "boolean" },
+                                "page_origin": {
+                                  "type": "string",
+                                  "maxLength": 240,
+                                  "format": "uri"
+                                },
+                                "page_path": {
+                                  "type": "string",
+                                  "maxLength": 500,
+                                  "pattern": "^\\/.*"
+                                },
+                                "page_signature": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                              },
+                              "required": [
+                                "available_methods",
+                                "captured_at",
+                                "challenge_type",
+                                "has_code_input",
+                                "page_origin",
+                                "page_path",
+                                "page_signature"
+                              ],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
                         }
                       },
                       "required": [
@@ -31141,7 +31201,7 @@
                 }
               }
             },
-            "description": "BaijiahaoBrowserSessionView"
+            "description": "DouyinBrowserSessionView"
           },
           "default": {
             "content": {
@@ -31236,6 +31296,49 @@
             "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": { "method": "qr" },
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "method": { "type": "string", "const": "qr" } },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "verification_device_qr" }
+                    },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "verification_sms_send" }
+                    },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "verification_sms_verify" },
+                      "sms_code": { "type": "string", "pattern": "^[0-9]{4,8}$" }
+                    },
+                    "required": ["method", "sms_code"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -31297,13 +31400,65 @@
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
                         },
-                        "captcha_image_data_url": {
-                          "type": "string",
-                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
-                        },
-                        "login_stage": {
-                          "type": "string",
-                          "enum": ["captcha_required", "sms_code_required"]
+                        "verification": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "available_methods": {
+                                  "maxItems": 2,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "enum": ["original_device_scan", "sms_code"]
+                                  }
+                                },
+                                "captured_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "challenge_type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "identity_choice",
+                                    "original_device_scan",
+                                    "sms_code",
+                                    "sms_send",
+                                    "unknown",
+                                    "visual_captcha"
+                                  ]
+                                },
+                                "diagnostic_image_data_url": {
+                                  "type": "string",
+                                  "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                                },
+                                "has_code_input": { "type": "boolean" },
+                                "page_origin": {
+                                  "type": "string",
+                                  "maxLength": 240,
+                                  "format": "uri"
+                                },
+                                "page_path": {
+                                  "type": "string",
+                                  "maxLength": 500,
+                                  "pattern": "^\\/.*"
+                                },
+                                "page_signature": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                              },
+                              "required": [
+                                "available_methods",
+                                "captured_at",
+                                "challenge_type",
+                                "has_code_input",
+                                "page_origin",
+                                "page_path",
+                                "page_signature"
+                              ],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
                         },
                         "qr_image_data_url": {
                           "type": "string",
@@ -31349,7 +31504,7 @@
                 }
               }
             },
-            "description": "BaijiahaoBrowserLoginView"
+            "description": "DouyinBrowserLoginView"
           },
           "default": {
             "content": {
@@ -31444,6 +31599,49 @@
             "schema": { "pattern": "^(?:\"[1-9][0-9]*\"|[1-9][0-9]*)$", "type": "string" }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "default": { "method": "qr" },
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": { "method": { "type": "string", "const": "qr" } },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "verification_device_qr" }
+                    },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "verification_sms_send" }
+                    },
+                    "required": ["method"],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "method": { "type": "string", "const": "verification_sms_verify" },
+                      "sms_code": { "type": "string", "pattern": "^[0-9]{4,8}$" }
+                    },
+                    "required": ["method", "sms_code"],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -31505,13 +31703,65 @@
                           "exclusiveMinimum": 0,
                           "maximum": 9007199254740991
                         },
-                        "captcha_image_data_url": {
-                          "type": "string",
-                          "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
-                        },
-                        "login_stage": {
-                          "type": "string",
-                          "enum": ["captcha_required", "sms_code_required"]
+                        "verification": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "available_methods": {
+                                  "maxItems": 2,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "enum": ["original_device_scan", "sms_code"]
+                                  }
+                                },
+                                "captured_at": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                },
+                                "challenge_type": {
+                                  "type": "string",
+                                  "enum": [
+                                    "identity_choice",
+                                    "original_device_scan",
+                                    "sms_code",
+                                    "sms_send",
+                                    "unknown",
+                                    "visual_captcha"
+                                  ]
+                                },
+                                "diagnostic_image_data_url": {
+                                  "type": "string",
+                                  "pattern": "^data:image\\/png;base64,[A-Za-z0-9+/]+={0,2}$"
+                                },
+                                "has_code_input": { "type": "boolean" },
+                                "page_origin": {
+                                  "type": "string",
+                                  "maxLength": 240,
+                                  "format": "uri"
+                                },
+                                "page_path": {
+                                  "type": "string",
+                                  "maxLength": 500,
+                                  "pattern": "^\\/.*"
+                                },
+                                "page_signature": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                              },
+                              "required": [
+                                "available_methods",
+                                "captured_at",
+                                "challenge_type",
+                                "has_code_input",
+                                "page_origin",
+                                "page_path",
+                                "page_signature"
+                              ],
+                              "additionalProperties": false
+                            },
+                            { "type": "null" }
+                          ]
                         },
                         "qr_image_data_url": {
                           "type": "string",
@@ -31557,7 +31807,7 @@
                 }
               }
             },
-            "description": "BaijiahaoBrowserLoginView"
+            "description": "DouyinBrowserLoginView"
           },
           "default": {
             "content": {
