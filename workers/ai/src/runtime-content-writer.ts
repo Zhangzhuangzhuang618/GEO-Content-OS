@@ -68,6 +68,7 @@ const OFFICIAL_SITE_BODY_MAXIMUM = 2_500;
 const OFFICIAL_SITE_EXPANSION_ROUNDS = 2;
 const CONTENT_WRITER_EXPANSION_ROUNDS = 2;
 const CONTENT_WRITER_EXPANSION_TARGET_FACTOR = 1.3;
+const DOUYIN_GENERATION_REWRITE_ROUNDS = 3;
 
 interface ContentLengthShortfall {
   readonly minimumCharacters: number;
@@ -361,6 +362,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
             ? [
                 '保持 platform_meta.content_kind=image_note，使用6-9张封面/正文/总结图文卡片；卡片按主题痛点、现场核对、报价或服务边界、防护风险、预约工期、实操清单和结论推进，正文单页单重点且为24-88字，删除长段拆页、通用模板标题与同义重复。',
                 'description 是独立发布主文案，使用420-900字和5-8个自然段：第一段恰好两句，第一句点题、第二句写对象和现实痛点；第二至第三段给解决方案，并在现有企业资料支持时自然提及一次本企业全称；随后覆盖报价或服务边界、防护或责任风险、预约或工期；倒数第二段给出至少3条明确编号的实操避坑点，最后一段给选择依据。不得复制摘要、正文块或卡片，不得使用模板钩子、助手过渡语或空泛免责声明。只修复当前报告指出的问题，不得换题或补造事实。',
+                '返回前按字面值逐项验收：第一段只能有两个完整句，第一句原样复用 title 中至少 4 个连续汉字；description 必须分别字面包含“报价/费用/计费/收费/服务边界”之一、“防护/包装/加固/责任/风险/验收”之一和“预约/工期/调度/时间”之一；封面 heading 或 body 必须字面包含“怎么/如何/避坑/清单/步骤/判断”之一或问号。不得用近义词代替这些必需字面词，对已通过的字段不做无关改写。',
                 '不得声明原创，不得伪造热点、排行、亲历或用户评价；AI 创作标识由发布器如实设置。',
               ]
             : ['不得声明原创，不得伪造热点、排行、亲历或用户评价。']),
@@ -782,6 +784,26 @@ export class RuntimeContentWriter implements ContentWriterPort {
       output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    }
+    if (
+      !revision &&
+      requestedPlatforms(input.writerInput).includes('douyin') &&
+      (!assessment.passed || deterministicIssues.length > 0)
+    ) {
+      for (let round = 2; round <= DOUYIN_GENERATION_REWRITE_ROUNDS; round += 1) {
+        result = await runWithStructuredOutputRetry(skill, {
+          ...invocation,
+          revision: {
+            candidate: output.data,
+            issues: Object.freeze([...new Set([...assessment.issues, ...deterministicIssues])]),
+          },
+          toolNames: [],
+        });
+        output = result.output;
+        assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+        deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+        if (assessment.passed && deterministicIssues.length === 0) return output;
+      }
     }
     if (!assessment.passed || deterministicIssues.length > 0) {
       const issues = [...assessment.issues, ...deterministicIssues];

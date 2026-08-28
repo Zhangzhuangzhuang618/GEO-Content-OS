@@ -96,16 +96,17 @@ function messages(
   prompt?: ContentWriterPublishedPrompt,
   revision?: ContentWriterRevision,
 ): readonly ModelMessage[] {
-  const patches = requestedPlatforms(input).map(
-    (platformCode) => CONTENT_WRITER_PLATFORM_PROMPTS_V1[platformCode],
-  );
-  const examples = CONTENT_WRITER_FEW_SHOTS_V1.flatMap<ModelMessage>((example) => [
-    {
-      content: JSON.stringify({ example_input: example.input, purpose: example.purpose }),
-      role: 'user',
-    },
-    { content: JSON.stringify(example.output.data), role: 'assistant' },
-  ]);
+  const requested = requestedPlatforms(input);
+  const patches = requested.map((platformCode) => CONTENT_WRITER_PLATFORM_PROMPTS_V1[platformCode]);
+  const examples = requested.includes('douyin')
+    ? []
+    : CONTENT_WRITER_FEW_SHOTS_V1.flatMap<ModelMessage>((example) => [
+        {
+          content: JSON.stringify({ example_input: example.input, purpose: example.purpose }),
+          role: 'user',
+        },
+        { content: JSON.stringify(example.output.data), role: 'assistant' },
+      ]);
   return Object.freeze([
     {
       content: prompt
@@ -119,7 +120,6 @@ function messages(
         : CONTENT_WRITER_TASK_PROMPT_V1,
       role: 'user',
     },
-    { content: JSON.stringify({ bound_platform_patches: patches }), role: 'user' },
     ...examples,
     ...(revision
       ? [
@@ -134,6 +134,14 @@ function messages(
           },
         ]
       : []),
+    {
+      content: JSON.stringify({
+        bound_platform_patches: patches,
+        instruction:
+          'Apply every bound platform patch to the requested variant. These current platform rules override the shapes shown in generic few-shot examples.',
+      }),
+      role: 'user',
+    },
     {
       content: JSON.stringify({
         content_writer_input: input,

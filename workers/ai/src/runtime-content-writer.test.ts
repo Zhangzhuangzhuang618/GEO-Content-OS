@@ -145,8 +145,65 @@ describe('AI Worker runtime wiring', () => {
 
     expect(adapter.requests).toHaveLength(2);
     expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
-      'platform_meta.description 必须为 420–900 个字符',
+      '/variants/0/platform_meta/description',
     );
+    expect((variant.platform_meta as JsonObject)['description']).toBe(DOUYIN_NARRATIVE_DESCRIPTION);
+  });
+
+  it('allows up to three report-guided Douyin rewrites before rejecting generation', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const repaired = multiPlatformContentData(['douyin'], new Set());
+    const repairedPlatformMeta = repaired.variants[0]!.platform_meta as JsonObject;
+    const invalidDescription = DOUYIN_NARRATIVE_DESCRIPTION.replace(/\n+/gu, '');
+    const invalid = {
+      ...repaired,
+      variants: [
+        {
+          ...repaired.variants[0]!,
+          platform_meta: {
+            ...repairedPlatformMeta,
+            cards: (repairedPlatformMeta['cards'] as readonly JsonObject[]).map((card, index) =>
+              index === 0 ? { ...card, heading: '工厂搬迁准备' } : card,
+            ),
+            description: invalidDescription,
+          },
+        },
+      ],
+    };
+    const stillInvalid = {
+      ...invalid,
+      variants: [{ ...invalid.variants[0]!, summary: '第二次修订仍未完成段落与封面要求。' }],
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(invalid) },
+        { text: JSON.stringify(stillInvalid) },
+        { text: JSON.stringify(repaired) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['douyin']);
+    const masterContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-three-rewrites-master-0061',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-three-rewrites-variant-0061',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(3);
     expect((variant.platform_meta as JsonObject)['description']).toBe(DOUYIN_NARRATIVE_DESCRIPTION);
   });
 

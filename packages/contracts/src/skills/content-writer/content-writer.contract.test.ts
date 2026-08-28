@@ -87,6 +87,44 @@ describe('content-writer contract v1.0.0', () => {
     }
   });
 
+  it('rejects legacy Douyin payloads before they reach the editorial gate', () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const source = fixture.output.data.variants[0]!;
+    const legacy = {
+      ...fixture.output.data,
+      variants: [
+        {
+          ...source,
+          platform_code: 'douyin',
+          platform_meta: { note_type: '图文' },
+          title: '抖音图文结构示例',
+        },
+      ],
+    };
+    const valid = {
+      ...legacy,
+      variants: [
+        {
+          ...legacy.variants[0],
+          platform_meta: {
+            cards: Array.from({ length: 6 }, (_, index) => ({
+              body: `第${index + 1}张卡片提供一个可以单独核对的具体判断或执行动作。`,
+              card_key: `card-${index + 1}`,
+              heading: `核对事项${index + 1}`,
+              kind: index === 0 ? 'cover' : index === 5 ? 'summary' : 'body',
+            })),
+            content_kind: 'image_note',
+            description: '说明'.repeat(210),
+            topics: ['广州搬迁', '设备搬运', '工厂搬迁'],
+          },
+        },
+      ],
+    };
+
+    expect(guard.check(CONTENT_WRITER_DATA_SCHEMA, legacy)).toMatchObject({ valid: false });
+    expect(guard.check(CONTENT_WRITER_DATA_SCHEMA, valid)).toMatchObject({ valid: true });
+  });
+
   it('requires every emitted citation mapping to reference supplied evidence', () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const invalid = {

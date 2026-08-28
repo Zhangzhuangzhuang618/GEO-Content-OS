@@ -147,6 +147,17 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
       required: ['claim_key', 'claim_text', 'citation_ids'],
       type: 'object',
     },
+    douyin_card: {
+      additionalProperties: false,
+      properties: {
+        body: { maxLength: 96, minLength: 12, type: 'string' },
+        card_key: { pattern: '^[a-z0-9_-]{1,80}$', type: 'string' },
+        heading: { maxLength: 22, minLength: 4, type: 'string' },
+        kind: { enum: ['cover', 'body', 'summary'] },
+      },
+      required: ['card_key', 'kind', 'heading', 'body'],
+      type: 'object',
+    },
     content: {
       additionalProperties: false,
       allOf: [
@@ -173,6 +184,37 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
         {
           if: { properties: { platform_code: { const: 'xiaohongshu' } } },
           then: { properties: { title: { maxLength: 20, type: 'string' } } },
+        },
+        {
+          if: { properties: { platform_code: { const: 'douyin' } } },
+          then: {
+            properties: {
+              blocks: { items: { $ref: '#/$defs/block' }, minItems: 8, type: 'array' },
+              platform_meta: {
+                additionalProperties: false,
+                properties: {
+                  cards: {
+                    items: { $ref: '#/$defs/douyin_card' },
+                    maxItems: 9,
+                    minItems: 6,
+                    type: 'array',
+                  },
+                  content_kind: { const: 'image_note' },
+                  description: { maxLength: 900, minLength: 420, type: 'string' },
+                  topics: {
+                    items: { maxLength: 40, minLength: 1, type: 'string' },
+                    maxItems: 8,
+                    minItems: 3,
+                    type: 'array',
+                    uniqueItems: true,
+                  },
+                },
+                required: ['content_kind', 'description', 'topics', 'cards'],
+                type: 'object',
+              },
+              title: { maxLength: 26, minLength: 6, type: 'string' },
+            },
+          },
         },
         {
           if: { properties: { platform_code: { const: 'wechat_mp' } } },

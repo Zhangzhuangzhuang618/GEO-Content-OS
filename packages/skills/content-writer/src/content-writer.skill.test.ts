@@ -39,13 +39,22 @@ afterEach(async () => {
 
 describe('ContentWriterSkill', () => {
   it('publishes the Lieju question-title and literal-contact boundary', () => {
-    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.11');
+    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.12');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('content_kind=image_note');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('6-9 张');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('420-900 字');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('第一句点明具体主题');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('自然提及一次本企业全称');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('同义重复');
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain(
+      '第一句必须原样复用 title 中至少 4 个连续汉字',
+    );
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain(
+      '报价/费用/计费/收费/服务边界',
+    );
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain(
+      '怎么/如何/避坑/清单/步骤/判断',
+    );
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.lieju).toContain(
       '自然使用“如何、怎么、指南、方法、哪些”等问法之一',
     );
@@ -95,6 +104,59 @@ describe('ContentWriterSkill', () => {
     ]);
     expect(JSON.stringify(generate.mock.calls[0]?.[0].messages)).toContain('小红书 xiaohongshu');
     expect(JSON.stringify(generate.mock.calls[0]?.[0].messages)).not.toContain(context.runId);
+  });
+
+  it('places the Douyin patch after generic examples so they cannot override its shape', async () => {
+    const source = fixture.output.data.variants[0]!;
+    const platformRules = fixture.input['platform_rules_by_code'] as Readonly<
+      Record<string, unknown>
+    >;
+    const input = {
+      ...fixture.input,
+      brief: {
+        ...(fixture.input['brief'] as Readonly<Record<string, unknown>>),
+        platform_codes: ['douyin'],
+      },
+      platform_rules_by_code: { douyin: platformRules['xiaohongshu'] },
+    };
+    const data = {
+      ...fixture.output.data,
+      variants: [
+        {
+          ...source,
+          platform_code: 'douyin',
+          platform_meta: {
+            cards: Array.from({ length: 6 }, (_, index) => ({
+              body: `第${index + 1}张卡片提供一个可以单独核对的具体判断或执行动作。`,
+              card_key: `card-${index + 1}`,
+              heading: `核对事项${index + 1}`,
+              kind: index === 0 ? 'cover' : index === 5 ? 'summary' : 'body',
+            })),
+            content_kind: 'image_note',
+            description: '说明'.repeat(210),
+            topics: ['广州搬迁', '设备搬运', '工厂搬迁'],
+          },
+          title: '抖音图文结构示例',
+        },
+      ],
+    };
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(data) }],
+    });
+    const generate = vi.spyOn(adapter, 'generate');
+
+    await expect(
+      skill(adapter).run({ context, input, recordUsage: () => undefined }),
+    ).resolves.toMatchObject({ output: { data } });
+
+    const messages = generate.mock.calls[0]?.[0].messages ?? [];
+    expect(messages.some((message) => message.content?.includes('example_input') ?? false)).toBe(
+      false,
+    );
+    expect(messages.at(-2)?.content).toContain('bound_platform_patches');
+    expect(messages.at(-2)?.content).toContain('content_kind=image_note');
+    expect(messages.at(-1)?.content).toContain('content_writer_input');
   });
 
   it('executes an authorized tool call through the server-owned registry', async () => {

@@ -32,6 +32,7 @@ const PNG = Buffer.from(
 describe('Douyin local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
+  let insertEditorZeroWidthSeparators = false;
   let postSubmitChallenge = false;
   let profileRoot = '';
   let realisticRows = false;
@@ -40,6 +41,7 @@ describe('Douyin local browser simulator', () => {
 
   beforeEach(async () => {
     duplicateRows = false;
+    insertEditorZeroWidthSeparators = false;
     postSubmitChallenge = false;
     realisticRows = false;
     submitted = null;
@@ -50,6 +52,7 @@ describe('Douyin local browser simulator', () => {
         response,
         () => submitted,
         () => duplicateRows,
+        () => insertEditorZeroWidthSeparators,
         () => postSubmitChallenge,
         () => realisticRows,
         (value) => {
@@ -165,6 +168,36 @@ describe('Douyin local browser simulator', () => {
           await driver.exportStorageState(ACCOUNT_ID),
         ),
       ).rejects.toMatchObject({ code: 'MULTIPLE_MATCHES' });
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('accepts zero-width separators inserted by the editor before submit verification', async () => {
+    insertEditorZeroWidthSeparators = true;
+    const driver = new PlaywrightDouyinPageDriver(config(baseUrl, profileRoot));
+    const profilePath = join(profileRoot, ACCOUNT_ID);
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, profilePath);
+      expect(await driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).toBe(true);
+      await expect(
+        driver.submit(
+          {
+            accountId: ACCOUNT_ID,
+            contentFingerprint: CONTENT_FINGERPRINT,
+            images: IMAGE_IDS.map((assetId) => ({
+              assetId,
+              body: PNG,
+              mimeType: 'image/png' as const,
+            })),
+            payload: payload(),
+            profilePath,
+            storageStateJson: await driver.exportStorageState(ACCOUNT_ID),
+          },
+          async () => undefined,
+        ),
+      ).resolves.toMatchObject({ status: 'processing' });
+      expect(submitted?.description).toContain('\u200B');
     } finally {
       await driver.close();
     }
@@ -321,6 +354,7 @@ async function route(
   response: ServerResponse,
   readSubmitted: () => SubmittedPublication | null,
   readDuplicateRows: () => boolean,
+  readInsertEditorZeroWidthSeparators: () => boolean,
   readPostSubmitChallenge: () => boolean,
   readRealisticRows: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
@@ -337,7 +371,7 @@ async function route(
     const loginScript = url.searchParams.has('sms')
       ? `setTimeout(()=>{document.body.insertAdjacentHTML('beforeend','<section><h2>身份验证</h2><p>接收短信验证码</p><button>发送短信验证</button></section>')},200)`
       : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
-         setTimeout(()=>{document.cookie='douyin-auth=yes; path=/';document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>'},1200)`;
+         setTimeout(()=>{document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>'},1200)`;
     return html(
       response,
       `<div id="douyin_login_landing_flat_container">
@@ -388,6 +422,11 @@ async function route(
          images.onchange=()=>{
            document.querySelector('#upload-count').textContent='已添加'+images.files.length+'张图片';
          };
+         document.querySelector('#description').addEventListener('input',(event)=>{
+           if(!${JSON.stringify(readInsertEditorZeroWidthSeparators())})return;
+           const field=event.currentTarget;
+           field.value=field.value.replaceAll('\\n','\\u200B\\n');
+         });
          const declarationDialog=document.querySelector('#declaration-dialog');
          const declarationTrigger=document.querySelector('#declaration-trigger');
          declarationTrigger.onclick=()=>{declarationDialog.style.display='block'};

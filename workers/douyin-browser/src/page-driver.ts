@@ -1070,7 +1070,15 @@ function failureReason(value: string): string | null {
 }
 
 function normalizeText(value: string): string {
-  return value.normalize('NFKC').replace(/\s+/gu, '').trim();
+  return value
+    .normalize('NFKC')
+    .replace(/\s+/gu, '')
+    .replaceAll('\u200B', '')
+    .replaceAll('\u200C', '')
+    .replaceAll('\u200D', '')
+    .replaceAll('\u2060', '')
+    .replaceAll('\uFEFF', '')
+    .trim();
 }
 
 function matchesExpectedTitle(value: string, expected: string): boolean {
