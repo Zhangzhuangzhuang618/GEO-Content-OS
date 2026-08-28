@@ -1,11 +1,28 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
+const staticOnly = process.argv.includes('--static-only');
+const executableBaseline = Object.freeze({
+  currentTableCount: 92,
+  frozenPageCount: 32,
+  frozenTableCount: 57,
+  latestMigration: '0053_douyin_image_note_automation',
+  previousMigration: '0052_wentian_geo_connector',
+  publicEndpointCount: 169,
+  skills: Object.freeze([
+    'material-parser',
+    'content-writer',
+    'fact-checker',
+    'topic-planner',
+    'geo-optimizer',
+    'quality-checker',
+  ]),
+});
 const manifest = readJson(join(root, 'docs/release/release-manifest.json'));
 const commands = [
   ['feature_flags', ['feature-flags:check']],
@@ -23,8 +40,14 @@ const commands = [
 ];
 
 assertStaticFreeze(manifest, commands);
-for (const [id, arguments_] of commands) runGate(id, arguments_);
-process.stdout.write(`[RELEASE_CHECK_PASSED] ${commands.length} release gates passed for v2.1.\n`);
+if (staticOnly) {
+  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T159.\n');
+} else {
+  for (const [id, arguments_] of commands) runGate(id, arguments_);
+  process.stdout.write(
+    `[RELEASE_CHECK_PASSED] ${commands.length} release gates passed for v2.1.\n`,
+  );
+}
 
 function assertStaticFreeze(value, expectedCommands) {
   if (
@@ -64,22 +87,101 @@ function assertStaticFreeze(value, expectedCommands) {
     }
   }
 
-  const context = readFileSync(join(root, 'PROJECT_CONTEXT.md'), 'utf8');
-  for (const invariant of [
-    '冻结表数：57',
-    '冻结页面数：32',
-    '当前可执行端点数为 121',
-    '任务固定 T001-T144，共 144 个',
-    'material-parser',
-    'content-writer',
-    'fact-checker',
-    'topic-planner',
-    'geo-optimizer',
-    'quality-checker',
-  ]) {
-    if (!context.includes(invariant)) fail(`PROJECT_CONTEXT invariant missing: ${invariant}`);
+  assertMigrationBaseline();
+  assertApiBaseline();
+  assertPageBaseline();
+  assertSkillBaseline();
+  process.stdout.write(
+    '[RELEASE_STATIC_VALID] Frozen hashes, scope, executable baselines and gate manifest match.\n',
+  );
+}
+
+function assertMigrationBaseline() {
+  const migrationsDirectory = join(root, 'apps/api/src/database/migrations');
+  const migrationFiles = readdirSync(migrationsDirectory)
+    .filter((name) => /^\d{4}_.+\.sql$/u.test(name))
+    .sort();
+  const journal = readJson(join(migrationsDirectory, 'meta/_journal.json'));
+  const entries = Array.isArray(journal.entries) ? journal.entries : [];
+  const journalTags = entries.map((entry, index) => {
+    if (!record(entry) || entry.idx !== index || typeof entry.tag !== 'string') {
+      fail('migration journal order or index is invalid');
+    }
+    return entry.tag;
+  });
+  const fileTags = migrationFiles.map((name) => name.replace(/\.sql$/u, ''));
+  if (JSON.stringify(journalTags) !== JSON.stringify(fileTags)) {
+    fail('migration files and journal are out of sync');
   }
-  process.stdout.write('[RELEASE_STATIC_VALID] Frozen hashes, scope and gate manifest match.\n');
+
+  const latestTags = journalTags.slice(-2);
+  if (
+    latestTags[0] !== executableBaseline.previousMigration ||
+    latestTags[1] !== executableBaseline.latestMigration
+  ) {
+    fail('current migration baseline must end with 0052 followed by 0053');
+  }
+
+  const frozenMigrationIndex = migrationFiles.indexOf('0030_freeze_v21.sql');
+  if (frozenMigrationIndex < 0) fail('frozen v2.1 migration 0030 is missing');
+  const frozenTableCount = countCreatedTables(
+    migrationsDirectory,
+    migrationFiles.slice(0, frozenMigrationIndex + 1),
+  );
+  const currentTableCount = countCreatedTables(migrationsDirectory, migrationFiles);
+  if (frozenTableCount !== executableBaseline.frozenTableCount) {
+    fail(`frozen database baseline must create ${executableBaseline.frozenTableCount} tables`);
+  }
+  if (currentTableCount !== executableBaseline.currentTableCount) {
+    fail(`current database baseline must create ${executableBaseline.currentTableCount} tables`);
+  }
+}
+
+function countCreatedTables(directory, migrationFiles) {
+  return migrationFiles.reduce((count, name) => {
+    const migration = readFileSync(join(directory, name), 'utf8');
+    const createTableStatements =
+      migration.match(/^\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?/gimu) ?? [];
+    return count + createTableStatements.length;
+  }, 0);
+}
+
+function assertApiBaseline() {
+  const openapi = readJson(join(root, 'apps/api/openapi/openapi.json'));
+  const paths = record(openapi.paths) ? openapi.paths : {};
+  const methods = new Set(['delete', 'get', 'head', 'options', 'patch', 'post', 'put', 'trace']);
+  let operationCount = 0;
+  for (const pathItem of Object.values(paths)) {
+    if (!record(pathItem)) continue;
+    operationCount += Object.keys(pathItem).filter((key) => methods.has(key)).length;
+  }
+  if (operationCount !== executableBaseline.publicEndpointCount) {
+    fail(
+      `current OpenAPI baseline must expose ${executableBaseline.publicEndpointCount} endpoints`,
+    );
+  }
+}
+
+function assertPageBaseline() {
+  const source = readFileSync(join(root, 'apps/web/test/a11y/core-pages.ts'), 'utf8');
+  const pageCodes = [...source.matchAll(/\bcode:\s*'([A-Z]+-\d{2})'/gu)].map((match) => match[1]);
+  if (
+    pageCodes.length !== executableBaseline.frozenPageCount ||
+    new Set(pageCodes).size !== executableBaseline.frozenPageCount
+  ) {
+    fail(`frozen page baseline must contain ${executableBaseline.frozenPageCount} unique pages`);
+  }
+}
+
+function assertSkillBaseline() {
+  for (const skill of executableBaseline.skills) {
+    if (
+      !existsSync(join(root, 'packages/contracts/src/skills', skill)) ||
+      !existsSync(join(root, 'packages/skills', skill))
+    ) {
+      fail(`frozen skill baseline is missing: ${skill}`);
+    }
+  }
 }
 
 function runGate(id, arguments_) {

@@ -2,6 +2,7 @@
 param(
     [switch]$MockAi,
     [switch]$SkipBuild,
+    [switch]$SkipSeed,
     [switch]$SkipOwnerBootstrap,
     [switch]$NoOpenBrowser,
     [string]$OwnerEmail = "",
@@ -16,6 +17,7 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $EnvPath = Join-Path $ProjectRoot ".env"
 $EnvExamplePath = Join-Path $ProjectRoot ".env.example"
 $ComposePath = Join-Path $ProjectRoot "infra\compose.yaml"
+$ComposeOverridePath = Join-Path $ProjectRoot "infra\compose.override.yaml"
 $ProjectName = "geo-content-os"
 $Services = @(
     "postgres",
@@ -30,11 +32,17 @@ $Services = @(
     "baijiahao-browser",
     "sohu-browser",
     "lieju-browser",
+    "douyin-browser",
     "ai-worker",
     "knowledge-worker"
 )
 
 Set-Location $ProjectRoot
+
+$ComposeFileArguments = @("-f", $ComposePath)
+if (Test-Path $ComposeOverridePath) {
+    $ComposeFileArguments += @("-f", $ComposeOverridePath)
+}
 
 function Write-Step {
     param([string]$Message)
@@ -150,8 +158,8 @@ function Wait-ServiceHealthy {
     while ((Get-Date) -lt $Deadline) {
         $IdArguments = @(
             "compose", "--env-file", $EnvPath,
-            "-p", $ProjectName,
-            "-f", $ComposePath,
+            "-p", $ProjectName
+        ) + $ComposeFileArguments + @(
             "ps", "-q", $Service
         )
         $ContainerId = (& docker @IdArguments | Select-Object -First 1)
@@ -204,6 +212,9 @@ if (-not (Get-EnvValue "SOHU_BROWSER_GATEWAY_TOKEN")) {
 if (-not (Get-EnvValue "LIEJU_BROWSER_GATEWAY_TOKEN")) {
     Set-EnvValue "LIEJU_BROWSER_GATEWAY_TOKEN" (New-RandomHex 32)
 }
+if (-not (Get-EnvValue "DOUYIN_BROWSER_GATEWAY_TOKEN")) {
+    Set-EnvValue "DOUYIN_BROWSER_GATEWAY_TOKEN" (New-RandomHex 32)
+}
 
 if ($MockAi) {
     Set-EnvValue "AI_MODEL_DRIVER" "mock"
@@ -235,8 +246,8 @@ if ($PublishingKeyBytes.Length -ne 32) {
 Write-Step "构建并启动核心服务"
 $UpArguments = @(
     "compose", "--env-file", $EnvPath,
-    "-p", $ProjectName,
-    "-f", $ComposePath,
+    "-p", $ProjectName
+) + $ComposeFileArguments + @(
     "up", "-d"
 )
 if (-not $SkipBuild) {
@@ -246,17 +257,19 @@ $UpArguments += $Services
 Invoke-Docker $UpArguments
 
 Write-Step "等待服务健康"
-foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "baijiahao-browser", "sohu-browser", "lieju-browser", "ai-worker", "knowledge-worker")) {
+foreach ($Service in @("postgres", "redis", "minio", "clamav", "api", "web", "outbox-relay", "publisher-worker", "baijiahao-browser", "sohu-browser", "lieju-browser", "douyin-browser", "ai-worker", "knowledge-worker")) {
     Wait-ServiceHealthy $Service
 }
 
-Write-Step "写入可重复执行的演示基线数据"
 $ComposePrefix = @(
     "compose", "--env-file", $EnvPath,
-    "-p", $ProjectName,
-    "-f", $ComposePath
-)
-Invoke-Docker ($ComposePrefix + @("exec", "-T", "api", "node", "apps/api/dist/database/seeds/cli.js"))
+    "-p", $ProjectName
+) + $ComposeFileArguments
+
+if (-not $SkipSeed) {
+    Write-Step "写入可重复执行的演示基线数据"
+    Invoke-Docker ($ComposePrefix + @("exec", "-T", "api", "node", "apps/api/dist/database/seeds/cli.js"))
+}
 
 if (-not $SkipOwnerBootstrap) {
     Write-Step "初始化租户 Owner"

@@ -45,6 +45,9 @@ const REQUIRED_HISTORY_TRIGGERS = [
 const LATEST_MIGRATION = fileURLToPath(
   new URL('../../src/database/migrations/0030_freeze_v21.sql', import.meta.url),
 );
+const MIGRATION_JOURNAL = fileURLToPath(
+  new URL('../../src/database/migrations/meta/_journal.json', import.meta.url),
+);
 
 async function expectDatabaseRejection(query: Promise<unknown>, message: RegExp): Promise<void> {
   await expect(query).rejects.toThrow(message);
@@ -88,9 +91,12 @@ describe('freeze v2.1 database verification', () => {
     const migrationRows = await client<{ count: number }[]>`
       SELECT count(*)::integer AS count FROM public.__drizzle_migrations
     `;
-    const migrationFiles = (await readdir(migrationsFolder)).filter((file) =>
-      file.endsWith('.sql'),
-    );
+    const migrationFiles = (await readdir(migrationsFolder))
+      .filter((file) => file.endsWith('.sql'))
+      .sort();
+    const migrationJournal = JSON.parse(await readFile(MIGRATION_JOURNAL, 'utf8')) as {
+      readonly entries: readonly { readonly idx: number; readonly tag: string }[];
+    };
 
     expect(tables).toHaveLength(FREEZE_TABLE_COUNT);
     expect(tables.map(({ tablename }) => tablename)).toEqual(
@@ -135,6 +141,16 @@ describe('freeze v2.1 database verification', () => {
       ]),
     );
     expect(migrationRows[0]?.count).toBe(migrationFiles.length);
+    expect(migrationJournal.entries.map(({ idx }) => idx)).toEqual(
+      migrationJournal.entries.map((_, index) => index),
+    );
+    expect(migrationJournal.entries.map(({ tag }) => tag)).toEqual(
+      migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
+    );
+    expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
+      '0052_wentian_geo_connector',
+      '0053_douyin_image_note_automation',
+    ]);
   });
 
   it('creates an idempotent and coherent demo seed', async () => {
