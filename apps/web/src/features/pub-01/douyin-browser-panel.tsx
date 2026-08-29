@@ -55,29 +55,44 @@ export function DouyinBrowserPanel({
     const waitingForPrimaryQr = session?.status === 'qr_ready';
     const waitingForAttentionResolution = session?.status === 'attention_required';
     if (!waitingForPrimaryQr && !waitingForAttentionResolution) return;
-    const timer = setInterval(() => {
-      void getDouyinBrowserSession(account.id)
-        .then((next) => {
-          setSession(next);
-          if (next.status === 'authenticated') {
-            setLogin(null);
-            setMessage('抖音扫码登录已确认。');
-          } else if (next.status === 'attention_required') {
-            if (next.verification?.challenge_type !== 'original_device_scan') setLogin(null);
-            if (!waitingForAttentionResolution) {
-              setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
-            }
-          } else {
-            const expiryMessage = douyinQrExpiryMessage(waitingForPrimaryQr, next.status);
-            if (expiryMessage) {
-              setLogin(null);
-              setMessage(expiryMessage);
-            }
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const next = await getDouyinBrowserSession(account.id, controller.signal);
+        if (controller.signal.aborted) return;
+        setSession(next);
+        if (next.status === 'authenticated') {
+          setLogin(null);
+          setMessage('抖音扫码登录已确认。');
+        } else if (next.status === 'attention_required') {
+          if (next.verification?.challenge_type !== 'original_device_scan') setLogin(null);
+          if (!waitingForAttentionResolution) {
+            setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
           }
-        })
-        .catch(() => undefined);
-    }, 3_000);
-    return () => clearInterval(timer);
+        } else {
+          const expiryMessage = douyinQrExpiryMessage(waitingForPrimaryQr, next.status);
+          if (expiryMessage) {
+            setLogin(null);
+            setMessage(expiryMessage);
+          }
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setMessage(
+          error instanceof PlatformAccountRequestError
+            ? `抖音登录状态读取失败（HTTP ${error.status}），系统将自动重试。`
+            : '抖音登录状态读取失败，系统将自动重试。',
+        );
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 3_000);
+      }
+    };
+    timer = setTimeout(() => void poll(), 3_000);
+    return () => {
+      controller.abort();
+      if (timer) clearTimeout(timer);
+    };
   }, [account.id, session?.status]);
 
   async function beginLogin(restartContext?: 'qr' | 'verification') {

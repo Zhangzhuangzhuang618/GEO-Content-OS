@@ -950,6 +950,74 @@ test('requires explicit confirmation before replacing an active Douyin login QR'
   expect(loginActions).toEqual([{ method: 'qr' }, { method: 'qr' }]);
 });
 
+test('serializes slow Douyin session polling and reports proxy failures', async ({ page }) => {
+  let activePolls = 0;
+  let maxActivePolls = 0;
+  let sessionReads = 0;
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`,
+    async (route) => {
+      sessionReads += 1;
+      if (sessionReads === 1) {
+        await json(route, {
+          data: {
+            account_id: ACCOUNT_ID,
+            authenticated_at: null,
+            last_verified_at: null,
+            qr_expires_at: '2099-08-30T02:00:00.000Z',
+            status: 'qr_ready',
+            version: 2,
+          },
+          meta: { request_id: 'douyin-session-initial' },
+        });
+        return;
+      }
+      activePolls += 1;
+      maxActivePolls = Math.max(maxActivePolls, activePolls);
+      await new Promise((resolve) => setTimeout(resolve, 4_000));
+      activePolls -= 1;
+      await json(
+        route,
+        {
+          error: {
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'Internal Server Error',
+            request_id: 'douyin-session-proxy-failure',
+          },
+        },
+        500,
+      );
+    },
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+
+  await expect(page.getByText('状态：等待扫码')).toBeVisible();
+  await expect(page.getByText('抖音登录状态读取失败（HTTP 500），系统将自动重试。')).toBeVisible({
+    timeout: 9_000,
+  });
+  expect(maxActivePolls).toBe(1);
+  expect(sessionReads).toBe(2);
+});
+
 test('completes an explicit Douyin SMS secondary verification without echoing the code', async ({
   page,
 }) => {
