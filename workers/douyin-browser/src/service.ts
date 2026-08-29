@@ -688,24 +688,24 @@ export class DouyinBrowserService {
       });
     } catch (error) {
       const errorCode = loginVerificationErrorCode(error);
-      if (
-        error instanceof PageDriverError &&
-        (error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED')
-      ) {
-        console.warn('Douyin browser login requires additional verification', {
-          account_id: session.accountId,
-          error_code: errorCode,
-        });
-      } else {
-        console.error('Douyin browser login verification failed', {
-          account_id: session.accountId,
-          error: safeBrowserError(error),
-        });
-      }
       try {
         await this.locks.run(session.accountId, async () => {
           const current = await this.store.getSession(session.accountId);
           if (!isCurrentQrAttempt(current, session, expiresAt)) return;
+          if (
+            error instanceof PageDriverError &&
+            (error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED')
+          ) {
+            console.warn('Douyin browser login requires additional verification', {
+              account_id: session.accountId,
+              error_code: errorCode,
+            });
+          } else {
+            console.error('Douyin browser login verification failed', {
+              account_id: session.accountId,
+              error: safeBrowserError(error),
+            });
+          }
           const captured = await this.captureLoginDiagnostic(current, errorCode).catch(() => null);
           await this.store.markSession(current, {
             error: captured?.error ?? {

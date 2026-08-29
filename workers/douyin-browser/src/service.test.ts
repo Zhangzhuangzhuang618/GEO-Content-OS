@@ -327,6 +327,8 @@ describe('Douyin browser service', () => {
   });
 
   it('does not let an older QR attempt overwrite a newer login attempt', async () => {
+    const attentionLog = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failureLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const initial = Object.freeze({
       ...browserSession(),
       authenticatedAt: null,
@@ -368,6 +370,10 @@ describe('Douyin browser service', () => {
     await expect(service.startLogin(ACCOUNT_ID)).resolves.toMatchObject({ status: 'qr_ready' });
     await vi.waitFor(() => expect(getSession).toHaveBeenCalledOnce());
     expect(markSession).toHaveBeenCalledOnce();
+    expect(attentionLog).not.toHaveBeenCalled();
+    expect(failureLog).not.toHaveBeenCalled();
+    attentionLog.mockRestore();
+    failureLog.mockRestore();
   });
 
   it('keeps a pending security challenge recoverable while authentication is incomplete', async () => {

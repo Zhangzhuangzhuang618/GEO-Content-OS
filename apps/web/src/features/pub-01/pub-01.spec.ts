@@ -872,6 +872,84 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   expect(loginStartCount).toBe(0);
 });
 
+test('requires explicit confirmation before replacing an active Douyin login QR', async ({
+  page,
+}) => {
+  const loginActions: Record<string, unknown>[] = [];
+  let session: {
+    account_id: string;
+    authenticated_at: string | null;
+    last_verified_at: string | null;
+    qr_expires_at: string | null;
+    status: 'login_required' | 'qr_ready';
+    version: number;
+  } = {
+    account_id: ACCOUNT_ID,
+    authenticated_at: null,
+    last_verified_at: null,
+    qr_expires_at: null,
+    status: 'login_required',
+    version: 1,
+  };
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`, (route) =>
+    json(route, { data: session, meta: { request_id: 'douyin-session' } }),
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session/login`,
+    async (route) => {
+      loginActions.push(route.request().postDataJSON() as Record<string, unknown>);
+      session = {
+        ...session,
+        qr_expires_at: '2099-08-30T02:00:00.000Z',
+        status: 'qr_ready',
+        version: session.version + 1,
+      };
+      await json(route, {
+        data: {
+          ...session,
+          qr_image_data_url:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        },
+        meta: { request_id: `douyin-login-${loginActions.length}` },
+      });
+    },
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+  await page.getByRole('button', { name: '生成登录二维码' }).click();
+
+  await expect(page.getByRole('img', { name: '抖音登录二维码' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '生成登录二维码' })).toHaveCount(0);
+  const replaceButton = page.getByRole('button', { name: '放弃当前二维码并重新生成' });
+  await expect(replaceButton).toBeVisible();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await replaceButton.click();
+  expect(loginActions).toEqual([{ method: 'qr' }]);
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await replaceButton.click();
+  await expect.poll(() => loginActions.length).toBe(2);
+  expect(loginActions).toEqual([{ method: 'qr' }, { method: 'qr' }]);
+});
+
 test('completes an explicit Douyin SMS secondary verification without echoing the code', async ({
   page,
 }) => {

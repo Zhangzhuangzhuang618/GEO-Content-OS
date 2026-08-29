@@ -80,11 +80,15 @@ export function DouyinBrowserPanel({
     return () => clearInterval(timer);
   }, [account.id, session?.status]);
 
-  async function beginLogin(confirmRestart = false) {
+  async function beginLogin(restartContext?: 'qr' | 'verification') {
     if (inFlight.current) return;
     if (
-      confirmRestart &&
-      !window.confirm('这会放弃当前二次验证并生成新的登录二维码。确定重新扫码吗？')
+      restartContext &&
+      !window.confirm(
+        restartContext === 'verification'
+          ? '这会放弃当前二次验证并生成新的登录二维码。确定重新扫码吗？'
+          : '这会放弃当前登录二维码并生成新二维码。确定继续吗？',
+      )
     ) {
       return;
     }
@@ -203,7 +207,8 @@ export function DouyinBrowserPanel({
           最近核验：{formatDateTime(session?.last_verified_at)}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          {session?.status !== 'attention_required' || !session.verification ? (
+          {session?.status !== 'qr_ready' &&
+          (session?.status !== 'attention_required' || !session.verification) ? (
             <button
               className={primaryButton}
               disabled={busy}
@@ -235,6 +240,23 @@ export function DouyinBrowserPanel({
               unoptimized
               width={240}
             />
+          </div>
+        ) : null}
+        {session?.status === 'qr_ready' ? (
+          <div className="mt-4">
+            {!login?.qr_image_data_url ? (
+              <p className="mb-2 text-sm leading-6 text-ink-700">
+                当前二维码无法在刷新后恢复；如需继续登录，请明确重新生成。
+              </p>
+            ) : null}
+            <button
+              className={secondaryButton}
+              disabled={busy}
+              onClick={() => void beginLogin('qr')}
+              type="button"
+            >
+              {login?.qr_image_data_url ? '放弃当前二维码并重新生成' : '重新生成登录二维码'}
+            </button>
           </div>
         ) : null}
         {session?.status === 'attention_required' && session.verification ? (
@@ -333,7 +355,7 @@ export function DouyinBrowserPanel({
             <button
               className={`${secondaryButton} mt-4`}
               disabled={busy}
-              onClick={() => void beginLogin(true)}
+              onClick={() => void beginLogin('verification')}
               type="button"
             >
               放弃当前验证并重新扫码
