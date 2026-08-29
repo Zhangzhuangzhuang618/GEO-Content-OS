@@ -22,12 +22,21 @@ export type LoginVerificationMethod = 'original_device_scan' | 'sms_code';
 
 export interface LoginVerificationControlEvidence {
   readonly codeInputActionable: boolean;
+  readonly codeInputEditable: boolean;
+  readonly codeInputEnabled: boolean;
+  readonly codeInputHitTarget: boolean;
+  readonly codeInputStepActionable: boolean;
   readonly codeInputVisible: boolean;
   readonly faceVerificationOptionVisible: boolean;
   readonly foregroundDialogVisible: boolean;
   readonly originalDeviceOptionVisible: boolean;
   readonly receiveSmsOptionVisible: boolean;
   readonly sendSmsOptionVisible: boolean;
+  readonly submitControlActionable: boolean;
+  readonly submitControlEnabled: boolean;
+  readonly submitControlHitTarget: boolean;
+  readonly submitControlVisible: boolean;
+  readonly visualCaptchaVisible: boolean;
 }
 
 export interface LoginVerificationDiagnostic {

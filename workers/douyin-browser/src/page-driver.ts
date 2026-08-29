@@ -81,6 +81,7 @@ const SMS_SEND_CONTROL_LABELS = Object.freeze([
   '重新获取',
 ]);
 const SMS_VERIFY_CONTROL_LABELS = Object.freeze(['验证', '确定', '提交', '完成', '下一步']);
+const SMS_VERIFICATION_TRANSITION_TIMEOUT_MS = 5_000;
 
 interface WorkListEvidence {
   readonly externalId: string;
@@ -209,19 +210,18 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     } else if (input.method === 'verification_sms_send') {
       let dialog = await visibleVerificationDialog(page);
       let codeInput = verificationCodeInput(page, dialog);
-      const codeInputWasActionable = await isVerificationCodeStepActionable(
-        page,
-        codeInput,
-        dialog,
-      );
-      if (!codeInputWasActionable) {
+      const codeInputWasReady = await isVerificationCodeInputReady(codeInput);
+      if (!codeInputWasReady) {
         const method = await uniqueVisibleControl(page, RECEIVE_SMS_METHOD_LABELS, dialog);
         if (method) {
           await clickSmsVerificationControl(
             method,
             'Douyin SMS verification method is temporarily unavailable',
           );
-          await page.waitForTimeout(300);
+          await waitForSmsVerificationTransition(
+            page,
+            Math.min(this.config.navigationTimeoutMs, SMS_VERIFICATION_TRANSITION_TIMEOUT_MS),
+          );
           dialog = await visibleVerificationDialog(page);
           codeInput = verificationCodeInput(page, dialog);
         } else {
@@ -243,24 +243,18 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       }
       const send = await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS, dialog);
       if (!send) {
-        if (
-          !codeInputWasActionable &&
-          (await isVerificationCodeStepActionable(page, codeInput, dialog))
-        ) {
+        if (!codeInputWasReady && (await isVerificationCodeInputReady(codeInput))) {
           return inspectLoginVerificationPage(page);
         }
         throw new PageDriverError(
-          codeInputWasActionable ? 'CAPTCHA_REQUIRED' : 'PAGE_SIGNATURE_CHANGED',
-          codeInputWasActionable
+          codeInputWasReady ? 'CAPTCHA_REQUIRED' : 'PAGE_SIGNATURE_CHANGED',
+          codeInputWasReady
             ? 'Douyin SMS verification resend is not available yet'
             : 'Douyin SMS verification send control was not found',
         );
       }
       if (!(await send.isEnabled().catch(() => false))) {
-        if (
-          !codeInputWasActionable &&
-          (await isVerificationCodeStepActionable(page, codeInput, dialog))
-        ) {
+        if (!codeInputWasReady && (await isVerificationCodeInputReady(codeInput))) {
           return inspectLoginVerificationPage(page);
         }
         throw new PageDriverError(
@@ -270,12 +264,11 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       }
       await clickSmsVerificationControl(
         send,
-        codeInputWasActionable
+        codeInputWasReady
           ? 'Douyin SMS verification resend is temporarily blocked'
           : 'Douyin SMS verification send is temporarily blocked',
       );
-      await waitForActionableVerificationCodeInput(page, this.config.navigationTimeoutMs);
-      await page.waitForTimeout(300);
+      await waitForVerificationCodeInputReady(page, this.config.navigationTimeoutMs);
     } else {
       const dialog = await visibleVerificationDialog(page);
       const code = verificationCodeInput(page, dialog);
@@ -298,8 +291,16 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
           'Douyin SMS verification submit control is covered by another security challenge',
         );
       }
-      await code.fill(input.sms_code);
-      await submit.click();
+      try {
+        await code.fill(input.sms_code);
+        await submit.click();
+      } catch {
+        await code.fill('').catch(() => undefined);
+        throw new PageDriverError(
+          'CAPTCHA_REQUIRED',
+          'Douyin SMS verification controls changed before submission',
+        );
+      }
       const deadline = Date.now() + this.config.navigationTimeoutMs;
       while (Date.now() < deadline) {
         if (!(await hasLoginVerificationIndicators(page)) && (await this.isAuthenticated(page))) {
@@ -776,17 +777,25 @@ function verificationCodeInput(page: Page, dialog: Locator | null): Locator {
     : page.locator(SELECTORS.verificationCode).first();
 }
 
-async function waitForActionableVerificationCodeInput(
-  page: Page,
-  timeoutMs: number,
-): Promise<void> {
+async function waitForSmsVerificationTransition(page: Page, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const dialog = await visibleVerificationDialog(page);
+    const input = verificationCodeInput(page, dialog);
+    if (await isVerificationCodeInputReady(input)) return;
+    if (await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS, dialog)) return;
+    await page.waitForTimeout(Math.min(200, Math.max(1, deadline - Date.now())));
+  }
+}
+
+async function waitForVerificationCodeInputReady(page: Page, timeoutMs: number): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let inputVisible = false;
   while (Date.now() < deadline) {
     const dialog = await visibleVerificationDialog(page);
     const input = verificationCodeInput(page, dialog);
     inputVisible ||= await input.isVisible().catch(() => false);
-    if (await isVerificationCodeStepActionable(page, input, dialog)) return;
+    if (await isVerificationCodeInputReady(input)) return;
     await page.waitForTimeout(Math.min(200, Math.max(1, deadline - Date.now())));
   }
   throw new PageDriverError(
@@ -856,9 +865,25 @@ async function inspectLoginVerificationPage(
   );
   const codeInput = verificationCodeInput(page, dialog);
   const codeInputVisible = await codeInput.isVisible().catch(() => false);
-  const codeInputActionable = await isVerificationCodeInputActionable(codeInput);
-  const hasCodeInput = await isVerificationCodeStepActionable(page, codeInput, dialog);
-  const smsSendControl = hasCodeInput
+  const codeInputEnabled = await codeInput.isEnabled().catch(() => false);
+  const codeInputEditable = await codeInput.isEditable().catch(() => false);
+  const codeInputHitTarget = await isLocatorHitTarget(codeInput);
+  const codeInputActionable =
+    codeInputVisible && codeInputEnabled && codeInputEditable && codeInputHitTarget;
+  const hasCodeInput = codeInputVisible && codeInputEnabled && codeInputEditable;
+  const submitControl = codeInputVisible
+    ? await uniqueVisibleControl(page, SMS_VERIFY_CONTROL_LABELS, dialog)
+    : null;
+  const submitControlVisible = Boolean(submitControl);
+  const submitControlEnabled = Boolean(
+    submitControl && (await submitControl.isEnabled().catch(() => false)),
+  );
+  const submitControlHitTarget = Boolean(
+    submitControl && (await isLocatorHitTarget(submitControl)),
+  );
+  const submitControlActionable = submitControlEnabled && submitControlHitTarget;
+  const codeInputStepActionable = hasCodeInput && (codeInputActionable || submitControlActionable);
+  const smsSendControl = codeInputVisible
     ? await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS, dialog)
     : null;
   const smsResendAvailable = Boolean(
@@ -889,12 +914,21 @@ async function inspectLoginVerificationPage(
   ]);
   const controlEvidence = Object.freeze({
     codeInputActionable,
+    codeInputEditable,
+    codeInputEnabled,
+    codeInputHitTarget,
+    codeInputStepActionable,
     codeInputVisible,
     faceVerificationOptionVisible: hasFaceVerificationMethod,
     foregroundDialogVisible: Boolean(dialog),
     originalDeviceOptionVisible: hasDeviceMethod,
     receiveSmsOptionVisible: hasReceiveSmsMethod,
     sendSmsOptionVisible: hasSendSmsMethod,
+    submitControlActionable,
+    submitControlEnabled,
+    submitControlHitTarget,
+    submitControlVisible,
+    visualCaptchaVisible: hasVisualCaptcha,
   });
   const qr = await visibleVerificationQr(page);
   const qrPng = qr ? await qr.screenshot({ type: 'png' }) : null;
@@ -904,44 +938,7 @@ async function inspectLoginVerificationPage(
       .innerText()
       .catch(() => ''),
   );
-  const masked = page.locator(
-    [
-      'input',
-      'img',
-      'canvas',
-      'iframe',
-      'svg',
-      'video',
-      '[class*="avatar"]',
-      '[class*="Avatar"]',
-      '[class*="phone"]',
-      '[class*="mobile"]',
-      '[class*="account"]',
-      '[class*="user"]',
-      '[class*="name"]',
-    ].join(','),
-  );
-  const sensitiveText = page.getByText(
-    /(?:1[3-9][0-9]{9}|1[3-9][0-9](?:\s*[*＊•·xX]){2,8}\s*[0-9]{2,4}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
-  );
-  const screenshotPng = await page.screenshot({
-    animations: 'disabled',
-    caret: 'hide',
-    mask: [masked, sensitiveText],
-    maskColor: '#111827',
-    style: `
-      *, *::before, *::after {
-        background-image: none !important;
-        color: transparent !important;
-        text-shadow: none !important;
-      }
-      #uc-second-verify, [role="dialog"], [${VERIFICATION_DIALOG_MARK_ATTRIBUTE}="active"] {
-        outline: 4px solid #f59e0b !important;
-        outline-offset: -4px !important;
-      }
-    `,
-    type: 'png',
-  });
+  const screenshotPng = await captureLoginVerificationScreenshot(page, dialog, controlEvidence);
   const current = new URL(page.url());
   const challengeType = hasCodeInput
     ? 'sms_code'
@@ -983,6 +980,80 @@ async function inspectLoginVerificationPage(
   });
 }
 
+async function captureLoginVerificationScreenshot(
+  page: Page,
+  dialog: Locator | null,
+  evidence: LoginVerificationDiagnostic['controlEvidence'],
+): Promise<Uint8Array> {
+  const scope = dialog ?? page.locator('body').first();
+  const summary = [
+    `验证码输入：${evidence.codeInputVisible ? '可见' : '不可见'}`,
+    `启用：${evidence.codeInputEnabled ? '是' : '否'}`,
+    `可编辑：${evidence.codeInputEditable ? '是' : '否'}`,
+    `点击目标：${evidence.codeInputHitTarget ? '正常' : '被遮挡或不存在'}`,
+    `提交控件：${evidence.submitControlVisible ? '可见' : '不可见'}`,
+    `提交点击目标：${evidence.submitControlHitTarget ? '正常' : '被遮挡或不存在'}`,
+    `图形验证码：${evidence.visualCaptchaVisible ? '可见' : '未检出'}`,
+  ].join(' ｜ ');
+  const summaryAttribute = 'data-geo-douyin-diagnostic-summary';
+  await scope
+    .evaluate((element, input) => element.setAttribute(input.attribute, input.summary), {
+      attribute: summaryAttribute,
+      summary,
+    })
+    .catch(() => undefined);
+  const masked = scope.locator(
+    'input, textarea, [contenteditable="true"], img, canvas, iframe, svg, video',
+  );
+  const options = {
+    animations: 'disabled' as const,
+    caret: 'hide' as const,
+    mask: [masked],
+    maskColor: '#334155',
+    style: `
+      *, *::before, *::after {
+        background-image: none !important;
+        color: transparent !important;
+        text-shadow: none !important;
+      }
+      [${summaryAttribute}] {
+        position: relative !important;
+      }
+      [${summaryAttribute}]::before {
+        background: #ffffff !important;
+        border: 2px solid #2563eb !important;
+        border-radius: 8px !important;
+        color: #0f172a !important;
+        content: "抖音二次验证安全诊断\\A" attr(${summaryAttribute}) !important;
+        display: block !important;
+        font: 600 14px/1.6 sans-serif !important;
+        left: 12px !important;
+        max-width: calc(100% - 48px) !important;
+        padding: 8px 12px !important;
+        position: absolute !important;
+        text-shadow: none !important;
+        top: 12px !important;
+        white-space: pre-wrap !important;
+        z-index: 2147483647 !important;
+      }
+      #uc-second-verify, [role="dialog"], [${VERIFICATION_DIALOG_MARK_ATTRIBUTE}="active"] {
+        outline: 4px solid #f59e0b !important;
+        outline-offset: -4px !important;
+      }
+    `,
+    type: 'png' as const,
+  };
+  try {
+    return dialog
+      ? await dialog.screenshot(options)
+      : await page.screenshot({ ...options, fullPage: true });
+  } finally {
+    await scope
+      .evaluate((element, attribute) => element.removeAttribute(attribute), summaryAttribute)
+      .catch(() => undefined);
+  }
+}
+
 async function clickSmsVerificationControl(control: Locator, message: string): Promise<void> {
   try {
     await control.click();
@@ -993,19 +1064,32 @@ async function clickSmsVerificationControl(control: Locator, message: string): P
 
 async function isVerificationControlActionable(control: Locator): Promise<boolean> {
   if (!(await control.isEnabled().catch(() => false))) return false;
-  return control
-    .click({ timeout: 250, trial: true })
-    .then(() => true)
-    .catch(() => false);
+  return isLocatorHitTarget(control);
 }
 
 async function isVerificationCodeInputActionable(input: Locator): Promise<boolean> {
+  if (!(await isVerificationCodeInputReady(input))) return false;
+  return isLocatorHitTarget(input);
+}
+
+async function isVerificationCodeInputReady(input: Locator): Promise<boolean> {
   if (!(await input.isVisible().catch(() => false))) return false;
   if (!(await input.isEnabled().catch(() => false))) return false;
-  if (!(await input.isEditable().catch(() => false))) return false;
-  return input
-    .click({ timeout: 250, trial: true })
-    .then(() => true)
+  return input.isEditable().catch(() => false);
+}
+
+async function isLocatorHitTarget(locator: Locator): Promise<boolean> {
+  if (!(await locator.isVisible().catch(() => false))) return false;
+  return locator
+    .evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      if (box.width <= 0 || box.height <= 0) return false;
+      const target = element.ownerDocument.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      return target === element || (target !== null && element.contains(target));
+    })
     .catch(() => false);
 }
 

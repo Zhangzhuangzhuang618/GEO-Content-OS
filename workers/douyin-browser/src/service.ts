@@ -603,7 +603,7 @@ export class DouyinBrowserService {
           page_origin: diagnostic.pageOrigin,
           page_path: diagnostic.pagePath,
           page_signature: diagnostic.pageSignature,
-          schema_version: 'douyin-login-verification-diagnostic@2',
+          schema_version: 'douyin-login-verification-diagnostic@3',
         }),
       }),
     });
@@ -845,12 +845,21 @@ function verificationControlEvidenceView(
 ): Readonly<Record<string, boolean>> {
   return Object.freeze({
     code_input_actionable: diagnostic.controlEvidence.codeInputActionable,
+    code_input_editable: diagnostic.controlEvidence.codeInputEditable,
+    code_input_enabled: diagnostic.controlEvidence.codeInputEnabled,
+    code_input_hit_target: diagnostic.controlEvidence.codeInputHitTarget,
+    code_input_step_actionable: diagnostic.controlEvidence.codeInputStepActionable,
     code_input_visible: diagnostic.controlEvidence.codeInputVisible,
     face_verification_option_visible: diagnostic.controlEvidence.faceVerificationOptionVisible,
     foreground_dialog_visible: diagnostic.controlEvidence.foregroundDialogVisible,
     original_device_option_visible: diagnostic.controlEvidence.originalDeviceOptionVisible,
     receive_sms_option_visible: diagnostic.controlEvidence.receiveSmsOptionVisible,
     send_sms_option_visible: diagnostic.controlEvidence.sendSmsOptionVisible,
+    submit_control_actionable: diagnostic.controlEvidence.submitControlActionable,
+    submit_control_enabled: diagnostic.controlEvidence.submitControlEnabled,
+    submit_control_hit_target: diagnostic.controlEvidence.submitControlHitTarget,
+    submit_control_visible: diagnostic.controlEvidence.submitControlVisible,
+    visual_captcha_visible: diagnostic.controlEvidence.visualCaptchaVisible,
   });
 }
 

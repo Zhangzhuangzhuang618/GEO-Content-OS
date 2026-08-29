@@ -984,6 +984,60 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
   await expect(page.getByText('654321', { exact: false })).toHaveCount(0);
 });
 
+test('keeps polling a Douyin verification page until its SMS input becomes ready', async ({
+  page,
+}) => {
+  let sessionReads = 0;
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`, (route) => {
+    sessionReads += 1;
+    const ready = sessionReads >= 2;
+    return json(route, {
+      data: {
+        account_id: ACCOUNT_ID,
+        authenticated_at: null,
+        last_verified_at: null,
+        qr_expires_at: null,
+        status: 'attention_required',
+        verification: {
+          available_methods: ['sms_code'],
+          captured_at: '2026-08-30T00:00:00.000Z',
+          challenge_type: ready ? 'sms_code' : 'identity_choice',
+          has_code_input: ready,
+          page_origin: 'https://creator.douyin.com',
+          page_path: '/',
+          page_signature: (ready ? 'b' : 'a').repeat(64),
+          sms_resend_available: false,
+        },
+        version: 2,
+      },
+      meta: { request_id: `douyin-session-${sessionReads}` },
+    });
+  });
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+  await expect(page.getByRole('heading', { name: '需要完成二次验证' })).toBeVisible();
+  await expect(page.getByLabel('短信验证码')).toBeVisible({ timeout: 7_000 });
+  expect(sessionReads).toBeGreaterThanOrEqual(2);
+});
+
 test('retries a prerequisite-blocked Sohu daily batch after explicit confirmation', async ({
   page,
 }) => {

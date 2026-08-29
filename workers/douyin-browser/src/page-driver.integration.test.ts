@@ -323,6 +323,9 @@ describe('Douyin local browser simulator', () => {
         pagePath: '/login',
       });
       expect(diagnostic?.screenshotPng.byteLength).toBeGreaterThan(0);
+      const diagnosticPng = Buffer.from(diagnostic!.screenshotPng);
+      expect(diagnosticPng.readUInt32BE(16)).toBeLessThan(1_440);
+      expect(diagnosticPng.readUInt32BE(20)).toBeLessThan(960);
 
       await expect(
         driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
@@ -395,6 +398,37 @@ describe('Douyin local browser simulator', () => {
     }
   });
 
+  it('waits for a delayed transition from the identity choice to the SMS code step', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?sms=delayed`,
+        navigationTimeoutMs: 2_000,
+      }),
+    );
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, join(profileRoot, `${ACCOUNT_ID}-delayed`));
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        { code: 'CAPTCHA_REQUIRED' },
+      );
+
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({
+        challengeType: 'sms_code',
+        controlEvidence: {
+          codeInputEditable: true,
+          codeInputEnabled: true,
+          codeInputVisible: true,
+        },
+        hasCodeInput: true,
+        maskedMobile: '138****5678',
+      });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('accepts a fillable SMS input when only the input click target is covered', async () => {
     const driver = new PlaywrightDouyinPageDriver(
       Object.freeze({
@@ -414,8 +448,15 @@ describe('Douyin local browser simulator', () => {
         challengeType: 'sms_code',
         controlEvidence: {
           codeInputActionable: false,
+          codeInputEditable: true,
+          codeInputEnabled: true,
+          codeInputHitTarget: false,
+          codeInputStepActionable: true,
           codeInputVisible: true,
           foregroundDialogVisible: true,
+          submitControlActionable: true,
+          submitControlHitTarget: true,
+          submitControlVisible: true,
         },
         hasCodeInput: true,
         maskedMobile: '138****5678',
@@ -449,12 +490,18 @@ describe('Douyin local browser simulator', () => {
         driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
       ).rejects.toMatchObject({ code: 'CAPTCHA_REQUIRED' });
       await expect(driver.inspectLoginVerification(ACCOUNT_ID)).resolves.toMatchObject({
+        challengeType: 'sms_code',
         controlEvidence: {
           codeInputActionable: false,
+          codeInputEditable: true,
+          codeInputEnabled: true,
+          codeInputHitTarget: false,
+          codeInputStepActionable: false,
           codeInputVisible: true,
           foregroundDialogVisible: true,
+          submitControlVisible: false,
         },
-        hasCodeInput: false,
+        hasCodeInput: true,
         smsResendAvailable: false,
       });
     } finally {
@@ -543,6 +590,7 @@ async function route(
   if (url.pathname === '/login') {
     const smsMode = url.searchParams.get('sms');
     const smsBlocked = smsMode === 'blocked';
+    const smsDelayed = smsMode === 'delayed';
     const smsDirect = smsMode === 'direct';
     const verificationContainerId = smsMode === 'unmarked' ? 'identity-choice' : 'uc-second-verify';
     const verificationContainerAttributes =
@@ -554,25 +602,29 @@ async function route(
            document.body.insertAdjacentHTML('beforeend','<div class="user-info">发布作品 作品管理</div><input id="background-code" placeholder="验证码"><section ${verificationContainerAttributes} style="position:fixed;inset:20px;z-index:5;background:white"><h2>身份验证</h2><button id="sms-method">接收短信验证码</button><button id="face-method">手机刷脸验证</button><button id="outbound-sms-method">发送短信验证</button><button id="device-method">使用原设备扫码</button></section>');
            document.querySelector('#outbound-sms-method').onclick=()=>{document.body.dataset.outboundSmsSelected='true'};
            document.querySelector('#sms-method').onclick=()=>{
-             if(${JSON.stringify(smsDirect)}){
+             const showSmsStep=()=>{
+              if(${JSON.stringify(smsDirect)}){
                document.querySelector('#${verificationContainerId}').innerHTML='<h2>短信验证码</h2><div style="position:relative;width:200px;height:40px"><input id="verification-code" style="width:200px;height:40px" placeholder="短信验证码" autocomplete="one-time-code"><span style="position:absolute;inset:0;z-index:2"></span></div><p class="mobile-value">138****5678</p><button id="verify-code">验证</button>';
                document.querySelector('#verify-code').onclick=()=>{
                  if(document.querySelector('#verification-code').value!=='654321')return;
                  document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
                };
                return;
-             }
-             document.querySelector('#${verificationContainerId}').innerHTML='<h2>短信验证码</h2><input id="verification-code" placeholder="短信验证码" autocomplete="one-time-code"><button id="send-code">获取验证码</button>${smsBlocked ? '<div class="second_verify_mask" style="position:fixed;inset:0;z-index:10"></div>' : ''}';
-             document.querySelector('#send-code').onclick=()=>{
-               const send=document.querySelector('#send-code');
-               send.disabled=true;send.textContent='60秒后重新发送';
-               if(!document.querySelector('.mobile-value'))document.querySelector('#${verificationContainerId}').insertAdjacentHTML('beforeend','<p class="mobile-value">138****5678</p><button id="verify-code">验证</button>');
-               document.querySelector('#verify-code').onclick=()=>{
-                 if(document.querySelector('#verification-code').value!=='654321')return;
-                 document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
-               };
-               setTimeout(()=>{send.disabled=false;send.textContent='重新发送验证码'},1000);
+              }
+              document.querySelector('#${verificationContainerId}').innerHTML='<h2>短信验证码</h2><input id="verification-code" placeholder="短信验证码" autocomplete="one-time-code"><button id="send-code">获取验证码</button>${smsBlocked ? '<div class="second_verify_mask" style="position:fixed;inset:0;z-index:10"></div>' : ''}';
+              document.querySelector('#send-code').onclick=()=>{
+                const send=document.querySelector('#send-code');
+                send.disabled=true;send.textContent='60秒后重新发送';
+                if(!document.querySelector('.mobile-value'))document.querySelector('#${verificationContainerId}').insertAdjacentHTML('beforeend','<p class="mobile-value">138****5678</p><button id="verify-code">验证</button>');
+                document.querySelector('#verify-code').onclick=()=>{
+                  if(document.querySelector('#verification-code').value!=='654321')return;
+                  document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
+                };
+                setTimeout(()=>{send.disabled=false;send.textContent='重新发送验证码'},1000);
+              };
              };
+             if(${JSON.stringify(smsDelayed)}){setTimeout(showSmsStep,800);return;}
+             showSmsStep();
            };
            document.querySelector('#device-method').onclick=()=>{
              document.querySelector('#${verificationContainerId}').innerHTML='<h2>使用原设备扫码</h2><img class="verification-qr" aria-label="二次验证二维码" src="/qrcode.svg">';

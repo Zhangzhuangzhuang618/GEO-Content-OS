@@ -53,13 +53,8 @@ export function DouyinBrowserPanel({
 
   useEffect(() => {
     const waitingForPrimaryQr = session?.status === 'qr_ready';
-    const waitingForOriginalDeviceQr =
-      session?.status === 'attention_required' &&
-      login?.verification?.challenge_type === 'original_device_scan' &&
-      Boolean(login.qr_image_data_url);
-    const waitingForSms =
-      session?.status === 'attention_required' && Boolean(session.verification?.has_code_input);
-    if (!waitingForPrimaryQr && !waitingForOriginalDeviceQr && !waitingForSms) return;
+    const waitingForAttentionResolution = session?.status === 'attention_required';
+    if (!waitingForPrimaryQr && !waitingForAttentionResolution) return;
     const timer = setInterval(() => {
       void getDouyinBrowserSession(account.id)
         .then((next) => {
@@ -69,7 +64,7 @@ export function DouyinBrowserPanel({
             setMessage('抖音扫码登录已确认。');
           } else if (next.status === 'attention_required') {
             if (next.verification?.challenge_type !== 'original_device_scan') setLogin(null);
-            if (!waitingForSms) {
+            if (!waitingForAttentionResolution) {
               setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
             }
           } else {
@@ -83,13 +78,7 @@ export function DouyinBrowserPanel({
         .catch(() => undefined);
     }, 3_000);
     return () => clearInterval(timer);
-  }, [
-    account.id,
-    login?.qr_image_data_url,
-    login?.verification?.challenge_type,
-    session?.status,
-    session?.verification?.has_code_input,
-  ]);
+  }, [account.id, session?.status]);
 
   async function beginLogin() {
     if (inFlight.current) return;
