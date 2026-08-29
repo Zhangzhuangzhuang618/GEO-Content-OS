@@ -195,11 +195,11 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
           '短信验证',
         ]);
         if (method) {
-          await method.click();
+          await clickSmsVerificationControl(
+            method,
+            'Douyin SMS verification method is temporarily unavailable',
+          );
           await page.waitForTimeout(300);
-          if (await codeInput.isVisible().catch(() => false)) {
-            return inspectLoginVerificationPage(page);
-          }
         }
       }
       const send = await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS);
@@ -217,8 +217,14 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
           'Douyin SMS verification resend is not available yet',
         );
       }
-      await send.click();
+      await clickSmsVerificationControl(
+        send,
+        codeInputWasVisible
+          ? 'Douyin SMS verification resend is temporarily blocked'
+          : 'Douyin SMS verification send is temporarily blocked',
+      );
       await codeInput.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+      await page.waitForTimeout(300);
     } else {
       const code = page.locator(SELECTORS.verificationCode).first();
       await code.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
@@ -657,7 +663,7 @@ async function inspectLoginVerificationPage(
     ? await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS)
     : null;
   const smsResendAvailable = Boolean(
-    smsSendControl && (await smsSendControl.isEnabled().catch(() => false)),
+    smsSendControl && (await isVerificationControlActionable(smsSendControl)),
   );
   const hasVisualCaptcha = await page
     .locator(SELECTORS.captcha)
@@ -757,6 +763,22 @@ async function inspectLoginVerificationPage(
     screenshotPng,
     smsResendAvailable,
   });
+}
+
+async function clickSmsVerificationControl(control: Locator, message: string): Promise<void> {
+  try {
+    await control.click();
+  } catch {
+    throw new PageDriverError('CAPTCHA_REQUIRED', message);
+  }
+}
+
+async function isVerificationControlActionable(control: Locator): Promise<boolean> {
+  if (!(await control.isEnabled().catch(() => false))) return false;
+  return control
+    .click({ timeout: 250, trial: true })
+    .then(() => true)
+    .catch(() => false);
 }
 
 function extractMaskedMobile(text: string): string | null {

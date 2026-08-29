@@ -15,6 +15,7 @@ import type {
   PlatformAccount,
 } from './platform-account.schema';
 import { BrowserPlatformAutomationPanel } from './browser-platform-automation-panel';
+import { douyinQrExpiryMessage, isDouyinVerificationBlocked } from './douyin-browser-feedback';
 
 export function DouyinBrowserPanel({
   account,
@@ -70,6 +71,12 @@ export function DouyinBrowserPanel({
             if (next.verification?.challenge_type !== 'original_device_scan') setLogin(null);
             if (!waitingForSms) {
               setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
+            }
+          } else {
+            const expiryMessage = douyinQrExpiryMessage(waitingForPrimaryQr, next.status);
+            if (expiryMessage) {
+              setLogin(null);
+              setMessage(expiryMessage);
             }
           }
         })
@@ -149,12 +156,13 @@ export function DouyinBrowserPanel({
     } catch (error) {
       const latest = await getDouyinBrowserSession(account.id).catch(() => null);
       if (latest) setSession(latest);
+      const verificationBlocked = isDouyinVerificationBlocked(error);
       setMessage(
-        error instanceof PlatformAccountRequestError &&
-          error.status === 423 &&
-          input.method === 'verification_sms_send'
-          ? '抖音暂未开放重新发送，请等待页面倒计时结束。'
-          : error instanceof PlatformAccountRequestError && error.status === 423
+        verificationBlocked && input.method === 'verification_sms_send'
+          ? isResend
+            ? '抖音暂未开放重新发送，请等待页面倒计时或遮罩结束。'
+            : '抖音短信发送控件暂不可用，请稍后重试。'
+          : verificationBlocked
             ? '二次验证页面未完成或页面结构已变化，请先核验最新诊断。'
             : '二次验证操作失败，请稍后重试。',
       );
