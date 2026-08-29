@@ -20,6 +20,16 @@ export interface BrowserSession {
 
 export type LoginVerificationMethod = 'original_device_scan' | 'sms_code';
 
+export interface LoginVerificationControlEvidence {
+  readonly codeInputActionable: boolean;
+  readonly codeInputVisible: boolean;
+  readonly faceVerificationOptionVisible: boolean;
+  readonly foregroundDialogVisible: boolean;
+  readonly originalDeviceOptionVisible: boolean;
+  readonly receiveSmsOptionVisible: boolean;
+  readonly sendSmsOptionVisible: boolean;
+}
+
 export interface LoginVerificationDiagnostic {
   readonly availableMethods: readonly LoginVerificationMethod[];
   readonly capturedAt: Date;
@@ -30,6 +40,7 @@ export interface LoginVerificationDiagnostic {
     | 'sms_send'
     | 'unknown'
     | 'visual_captcha';
+  readonly controlEvidence: LoginVerificationControlEvidence;
   readonly hasCodeInput: boolean;
   readonly maskedMobile?: string;
   readonly pageOrigin: string;

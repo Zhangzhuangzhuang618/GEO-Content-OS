@@ -141,12 +141,12 @@ export function DouyinBrowserPanel({
         setMessage('抖音二次验证已完成，登录快照已安全保存。');
       } else if (input.method === 'verification_sms_send') {
         const destination = next.verification?.masked_mobile
-          ? `至 ${next.verification.masked_mobile}`
+          ? `，接收手机：${next.verification.masked_mobile}`
           : '';
         setMessage(
           isResend
             ? `短信验证码已重新发送${destination}。`
-            : `短信验证码已发送${destination}，请输入收到的验证码。`,
+            : `已进入短信验证码步骤${destination}。请查收验证码；若未收到，请等待重发按钮可用后再试。`,
         );
       } else if (input.method === 'verification_device_qr') {
         setMessage('请使用原设备扫描下方二次验证二维码。');

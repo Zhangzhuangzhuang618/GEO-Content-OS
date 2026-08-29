@@ -213,6 +213,7 @@ describe('Douyin browser service', () => {
     });
     const markSession = vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce(attention);
     const diagnostic = loginVerificationDiagnostic();
+    const diagnosticLog = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const putObject = vi.fn(async ({ key }: { key: string }) => ({
       uri: `memory://geo/${key}`,
     }));
@@ -247,9 +248,18 @@ describe('Douyin browser service', () => {
         verification: {
           available_methods: ['sms_code', 'original_device_scan'],
           challenge_type: 'identity_choice',
+          control_evidence: {
+            code_input_actionable: false,
+            code_input_visible: false,
+            face_verification_option_visible: true,
+            foreground_dialog_visible: true,
+            original_device_option_visible: true,
+            receive_sms_option_visible: true,
+            send_sms_option_visible: true,
+          },
           page_origin: 'https://creator.douyin.com',
           page_path: '/passport/safe/verify',
-          schema_version: 'douyin-login-verification-diagnostic@1',
+          schema_version: 'douyin-login-verification-diagnostic@2',
         },
       },
       qrExpiresAt: null,
@@ -265,6 +275,27 @@ describe('Douyin browser service', () => {
         metadata: { kind: 'login_verification', session_id: SESSION_ID },
       }),
     );
+    expect(diagnosticLog).toHaveBeenCalledWith(
+      'Douyin login verification diagnostic captured',
+      expect.objectContaining({
+        account_id: ACCOUNT_ID,
+        challenge_type: 'identity_choice',
+        code: 'CAPTCHA_REQUIRED',
+        control_evidence: expect.objectContaining({
+          code_input_actionable: false,
+          foreground_dialog_visible: true,
+          receive_sms_option_visible: true,
+          send_sms_option_visible: true,
+        }),
+        screenshot_content_hash: createHash('sha256')
+          .update(diagnostic.screenshotPng)
+          .digest('hex'),
+        screenshot_object_uri: expect.stringContaining('login-verification-'),
+      }),
+    );
+    expect(JSON.stringify(diagnosticLog.mock.calls)).not.toContain('13800138000');
+    expect(JSON.stringify(diagnosticLog.mock.calls)).not.toContain('654321');
+    diagnosticLog.mockRestore();
   });
 
   it('does not let an older QR attempt overwrite a newer login attempt', async () => {
@@ -762,6 +793,15 @@ function loginVerificationDiagnostic(): LoginVerificationDiagnostic {
     availableMethods: Object.freeze(['sms_code', 'original_device_scan'] as const),
     capturedAt: new Date('2026-08-28T07:36:24.000Z'),
     challengeType: 'identity_choice',
+    controlEvidence: Object.freeze({
+      codeInputActionable: false,
+      codeInputVisible: false,
+      faceVerificationOptionVisible: true,
+      foregroundDialogVisible: true,
+      originalDeviceOptionVisible: true,
+      receiveSmsOptionVisible: true,
+      sendSmsOptionVisible: true,
+    }),
     hasCodeInput: false,
     pageOrigin: 'https://creator.douyin.com',
     pagePath: '/passport/safe/verify',

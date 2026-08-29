@@ -571,6 +571,21 @@ export class DouyinBrowserService {
       key,
       metadata: { kind: 'login_verification', session_id: session.id },
     });
+    const controlEvidence = verificationControlEvidenceView(diagnostic);
+    console.warn('Douyin login verification diagnostic captured', {
+      account_id: session.accountId,
+      available_methods: diagnostic.availableMethods,
+      captured_at: diagnostic.capturedAt.toISOString(),
+      challenge_type: diagnostic.challengeType,
+      code,
+      control_evidence: controlEvidence,
+      page_origin: diagnostic.pageOrigin,
+      page_path: diagnostic.pagePath,
+      page_signature: diagnostic.pageSignature,
+      screenshot_content_hash: contentHash,
+      screenshot_object_uri: object.uri,
+      session_id: session.id,
+    });
     return Object.freeze({
       diagnostic,
       error: Object.freeze({
@@ -581,13 +596,14 @@ export class DouyinBrowserService {
           captured_at: diagnostic.capturedAt.toISOString(),
           challenge_type: diagnostic.challengeType,
           content_hash: contentHash,
+          control_evidence: controlEvidence,
           has_code_input: diagnostic.hasCodeInput,
           ...(diagnostic.maskedMobile ? { masked_mobile: diagnostic.maskedMobile } : {}),
           object_uri: object.uri,
           page_origin: diagnostic.pageOrigin,
           page_path: diagnostic.pagePath,
           page_signature: diagnostic.pageSignature,
-          schema_version: 'douyin-login-verification-diagnostic@1',
+          schema_version: 'douyin-login-verification-diagnostic@2',
         }),
       }),
     });
@@ -821,6 +837,20 @@ function verificationView(
     ...(diagnostic.smsResendAvailable === undefined
       ? {}
       : { sms_resend_available: diagnostic.smsResendAvailable }),
+  });
+}
+
+function verificationControlEvidenceView(
+  diagnostic: LoginVerificationDiagnostic,
+): Readonly<Record<string, boolean>> {
+  return Object.freeze({
+    code_input_actionable: diagnostic.controlEvidence.codeInputActionable,
+    code_input_visible: diagnostic.controlEvidence.codeInputVisible,
+    face_verification_option_visible: diagnostic.controlEvidence.faceVerificationOptionVisible,
+    foreground_dialog_visible: diagnostic.controlEvidence.foregroundDialogVisible,
+    original_device_option_visible: diagnostic.controlEvidence.originalDeviceOptionVisible,
+    receive_sms_option_visible: diagnostic.controlEvidence.receiveSmsOptionVisible,
+    send_sms_option_visible: diagnostic.controlEvidence.sendSmsOptionVisible,
   });
 }
 

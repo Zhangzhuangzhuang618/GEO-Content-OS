@@ -963,6 +963,11 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
   ).toBeVisible();
   await expect(page.getByRole('img', { name: '抖音二次验证脱敏诊断截图' })).toHaveCount(0);
   await page.getByRole('button', { name: '发送短信验证码' }).click();
+  await expect(
+    page.getByText(
+      '已进入短信验证码步骤，接收手机：138****5678。请查收验证码；若未收到，请等待重发按钮可用后再试。',
+    ),
+  ).toBeVisible();
   await expect(page.getByText('验证码接收手机：138****5678')).toBeVisible();
   await expect(page.getByLabel('短信验证码')).toBeVisible();
   await page.getByRole('button', { name: '重新发送验证码' }).click();
