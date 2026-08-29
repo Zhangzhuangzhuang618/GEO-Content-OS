@@ -56,7 +56,9 @@ export function DouyinBrowserPanel({
       session?.status === 'attention_required' &&
       login?.verification?.challenge_type === 'original_device_scan' &&
       Boolean(login.qr_image_data_url);
-    if (!waitingForPrimaryQr && !waitingForOriginalDeviceQr) return;
+    const waitingForSms =
+      session?.status === 'attention_required' && Boolean(session.verification?.has_code_input);
+    if (!waitingForPrimaryQr && !waitingForOriginalDeviceQr && !waitingForSms) return;
     const timer = setInterval(() => {
       void getDouyinBrowserSession(account.id)
         .then((next) => {
@@ -66,13 +68,21 @@ export function DouyinBrowserPanel({
             setMessage('抖音扫码登录已确认。');
           } else if (next.status === 'attention_required') {
             if (next.verification?.challenge_type !== 'original_device_scan') setLogin(null);
-            setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
+            if (!waitingForSms) {
+              setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
+            }
           }
         })
         .catch(() => undefined);
     }, 3_000);
     return () => clearInterval(timer);
-  }, [account.id, login?.qr_image_data_url, login?.verification?.challenge_type, session?.status]);
+  }, [
+    account.id,
+    login?.qr_image_data_url,
+    login?.verification?.challenge_type,
+    session?.status,
+    session?.verification?.has_code_input,
+  ]);
 
   async function beginLogin() {
     if (inFlight.current) return;
@@ -112,6 +122,8 @@ export function DouyinBrowserPanel({
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
+    const isResend =
+      input.method === 'verification_sms_send' && Boolean(session?.verification?.has_code_input);
     try {
       const next = await startDouyinBrowserLogin(account, csrf, account.status === 'reauth', input);
       setSession(next);
@@ -121,7 +133,14 @@ export function DouyinBrowserPanel({
         setLogin(null);
         setMessage('抖音二次验证已完成，登录快照已安全保存。');
       } else if (input.method === 'verification_sms_send') {
-        setMessage('短信验证码已按你的操作发送，请输入收到的验证码。');
+        const destination = next.verification?.masked_mobile
+          ? `至 ${next.verification.masked_mobile}`
+          : '';
+        setMessage(
+          isResend
+            ? `短信验证码已重新发送${destination}。`
+            : `短信验证码已发送${destination}，请输入收到的验证码。`,
+        );
       } else if (input.method === 'verification_device_qr') {
         setMessage('请使用原设备扫描下方二次验证二维码。');
       } else {
@@ -131,9 +150,13 @@ export function DouyinBrowserPanel({
       const latest = await getDouyinBrowserSession(account.id).catch(() => null);
       if (latest) setSession(latest);
       setMessage(
-        error instanceof PlatformAccountRequestError && error.status === 423
-          ? '二次验证页面未完成或页面结构已变化，请先核验最新诊断。'
-          : '二次验证操作失败，请稍后重试。',
+        error instanceof PlatformAccountRequestError &&
+          error.status === 423 &&
+          input.method === 'verification_sms_send'
+          ? '抖音暂未开放重新发送，请等待页面倒计时结束。'
+          : error instanceof PlatformAccountRequestError && error.status === 423
+            ? '二次验证页面未完成或页面结构已变化，请先核验最新诊断。'
+            : '二次验证操作失败，请稍后重试。',
       );
     } finally {
       inFlight.current = false;
@@ -215,6 +238,13 @@ export function DouyinBrowserPanel({
             <p className="mt-1 text-xs text-ink-500">
               二次验证诊断证据已安全保存；页面截图不作为操作画面展示，请使用下方验证方式继续。
             </p>
+            {session.verification.available_methods.includes('sms_code') ? (
+              <p className="mt-2 text-sm font-medium text-ink-800">
+                {session.verification.masked_mobile
+                  ? `验证码接收手机：${session.verification.masked_mobile}`
+                  : '抖音页面未显示可安全展示的脱敏手机号，请在该账号绑定手机上查收。'}
+              </p>
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
               {session.verification.available_methods.includes('original_device_scan') ? (
                 <button
@@ -264,7 +294,21 @@ export function DouyinBrowserPanel({
                 >
                   提交验证码
                 </button>
+                <button
+                  className={secondaryButton}
+                  disabled={busy || session.verification.sms_resend_available !== true}
+                  onClick={() => void continueVerification({ method: 'verification_sms_send' })}
+                  type="button"
+                >
+                  重新发送验证码
+                </button>
               </div>
+            ) : null}
+            {session.verification.has_code_input &&
+            session.verification.sms_resend_available !== true ? (
+              <p className="mt-2 text-xs text-ink-500">
+                抖音页面的重发倒计时尚未结束；系统会自动刷新，按钮可用后再点击。
+              </p>
             ) : null}
             {session.verification.challenge_type === 'visual_captcha' ? (
               <p className="mt-4 text-sm leading-6 text-amber-900">

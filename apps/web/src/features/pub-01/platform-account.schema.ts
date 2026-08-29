@@ -179,9 +179,14 @@ export const DouyinLoginVerificationSchema = z
       .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/u)
       .optional(),
     has_code_input: z.boolean(),
+    masked_mobile: z
+      .string()
+      .regex(/^1[3-9][0-9]\*{4}[0-9]{2,4}$/u)
+      .optional(),
     page_origin: z.url().max(240),
     page_path: z.string().startsWith('/').max(500),
     page_signature: z.string().regex(/^[0-9a-f]{64}$/u),
+    sms_resend_available: z.boolean().optional(),
   })
   .strict();
 export const DouyinBrowserSessionSchema = BaijiahaoBrowserSessionSchema.extend({

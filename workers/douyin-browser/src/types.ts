@@ -31,11 +31,13 @@ export interface LoginVerificationDiagnostic {
     | 'unknown'
     | 'visual_captcha';
   readonly hasCodeInput: boolean;
+  readonly maskedMobile?: string;
   readonly pageOrigin: string;
   readonly pagePath: string;
   readonly pageSignature: string;
   readonly qrPng: Uint8Array | null;
   readonly screenshotPng: Uint8Array;
+  readonly smsResendAvailable?: boolean;
 }
 
 export type LoginVerificationInput =

@@ -240,9 +240,11 @@ describe('Publishing API frozen contract', () => {
         challenge_type: 'identity_choice',
         diagnostic_image_data_url: 'data:image/png;base64,bWFza2Vk',
         has_code_input: false,
+        masked_mobile: '138****5678',
         page_origin: 'https://creator.douyin.com',
         page_path: '/passport/safe/verify',
         page_signature: 'a'.repeat(64),
+        sms_resend_available: false,
       },
       version: 2,
     };
@@ -251,6 +253,12 @@ describe('Publishing API frozen contract', () => {
       DouyinBrowserSessionViewSchema.safeParse({
         ...safeSession,
         verification: { ...safeSession.verification, mobile: '13800138000' },
+      }).success,
+    ).toBe(false);
+    expect(
+      DouyinBrowserSessionViewSchema.safeParse({
+        ...safeSession,
+        verification: { ...safeSession.verification, masked_mobile: '13800138000' },
       }).success,
     ).toBe(false);
   });

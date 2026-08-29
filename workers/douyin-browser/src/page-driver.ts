@@ -52,6 +52,15 @@ const SECURITY_CHALLENGE_MARKER_SETS = Object.freeze([
   Object.freeze(['接收短信验证码']),
   Object.freeze(['使用原设备扫码']),
 ]);
+const SMS_SEND_CONTROL_LABELS = Object.freeze([
+  '获取验证码',
+  '发送验证码',
+  '发送短信',
+  '重新发送验证码',
+  '重新发送',
+  '重新获取验证码',
+  '重新获取',
+]);
 
 interface WorkListEvidence {
   readonly externalId: string;
@@ -177,33 +186,39 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       await control.click();
       await waitForVerificationQr(page, this.config.navigationTimeoutMs);
     } else if (input.method === 'verification_sms_send') {
-      const method = await uniqueVisibleControl(page, [
-        '发送短信验证',
-        '接收短信验证码',
-        '短信验证',
-      ]);
-      if (method) {
-        await method.click();
-        await page.waitForTimeout(300);
-        const codeInputVisible = await page
-          .locator(SELECTORS.verificationCode)
-          .first()
-          .isVisible()
-          .catch(() => false);
-        if (codeInputVisible) return inspectLoginVerificationPage(page);
+      const codeInput = page.locator(SELECTORS.verificationCode).first();
+      const codeInputWasVisible = await codeInput.isVisible().catch(() => false);
+      if (!codeInputWasVisible) {
+        const method = await uniqueVisibleControl(page, [
+          '发送短信验证',
+          '接收短信验证码',
+          '短信验证',
+        ]);
+        if (method) {
+          await method.click();
+          await page.waitForTimeout(300);
+          if (await codeInput.isVisible().catch(() => false)) {
+            return inspectLoginVerificationPage(page);
+          }
+        }
       }
-      const send = await uniqueVisibleControl(page, ['获取验证码', '发送验证码', '发送短信']);
+      const send = await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS);
       if (!send) {
         throw new PageDriverError(
-          'PAGE_SIGNATURE_CHANGED',
-          'Douyin SMS verification send control was not found',
+          codeInputWasVisible ? 'CAPTCHA_REQUIRED' : 'PAGE_SIGNATURE_CHANGED',
+          codeInputWasVisible
+            ? 'Douyin SMS verification resend is not available yet'
+            : 'Douyin SMS verification send control was not found',
+        );
+      }
+      if (!(await send.isEnabled().catch(() => false))) {
+        throw new PageDriverError(
+          'CAPTCHA_REQUIRED',
+          'Douyin SMS verification resend is not available yet',
         );
       }
       await send.click();
-      await page
-        .locator(SELECTORS.verificationCode)
-        .first()
-        .waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
+      await codeInput.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
     } else {
       const code = page.locator(SELECTORS.verificationCode).first();
       await code.waitFor({ state: 'visible', timeout: this.config.navigationTimeoutMs });
@@ -638,6 +653,12 @@ async function inspectLoginVerificationPage(
   );
   const codeInput = page.locator(SELECTORS.verificationCode).first();
   const hasCodeInput = await codeInput.isVisible().catch(() => false);
+  const smsSendControl = hasCodeInput
+    ? await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS)
+    : null;
+  const smsResendAvailable = Boolean(
+    smsSendControl && (await smsSendControl.isEnabled().catch(() => false)),
+  );
   const hasVisualCaptcha = await page
     .locator(SELECTORS.captcha)
     .first()
@@ -660,6 +681,12 @@ async function inspectLoginVerificationPage(
   ]);
   const qr = await visibleVerificationQr(page);
   const qrPng = qr ? await qr.screenshot({ type: 'png' }) : null;
+  const maskedMobile = extractMaskedMobile(
+    await page
+      .locator('body')
+      .innerText()
+      .catch(() => ''),
+  );
   const masked = page.locator(
     [
       'input',
@@ -678,7 +705,7 @@ async function inspectLoginVerificationPage(
     ].join(','),
   );
   const sensitiveText = page.getByText(
-    /(?:1[3-9][0-9]{9}|1[3-9][0-9]{2}\*{2,}[0-9]{2,4}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
+    /(?:1[3-9][0-9]{9}|1[3-9][0-9](?:\s*[*＊•·xX]){2,8}\s*[0-9]{2,4}|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/iu,
   );
   const screenshotPng = await page.screenshot({
     animations: 'disabled',
@@ -722,12 +749,21 @@ async function inspectLoginVerificationPage(
     capturedAt: new Date(),
     challengeType,
     hasCodeInput,
+    ...(maskedMobile ? { maskedMobile } : {}),
     pageOrigin: current.origin,
     pagePath: current.pathname,
     pageSignature,
     qrPng,
     screenshotPng,
+    smsResendAvailable,
   });
+}
+
+function extractMaskedMobile(text: string): string | null {
+  const match = text.match(
+    /(?:\+?86[\s-]*)?(1[3-9][0-9])[\s-]*(?:[*＊•·xX][\s-]*){2,8}([0-9]{2,4})/u,
+  );
+  return match?.[1] && match[2] ? `${match[1]}****${match[2]}` : null;
 }
 
 async function hasLoginVerificationIndicators(page: Page): Promise<boolean> {

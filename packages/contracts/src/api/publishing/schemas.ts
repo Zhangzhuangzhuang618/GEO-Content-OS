@@ -394,9 +394,14 @@ export const DouyinLoginVerificationSchema = z
     ]),
     diagnostic_image_data_url: PngDataUrlSchema.optional(),
     has_code_input: z.boolean(),
+    masked_mobile: z
+      .string()
+      .regex(/^1[3-9][0-9]\*{4}[0-9]{2,4}$/u)
+      .optional(),
     page_origin: z.string().url().max(240),
     page_path: z.string().startsWith('/').max(500),
     page_signature: z.string().regex(/^[0-9a-f]{64}$/u),
+    sms_resend_available: z.boolean().optional(),
   })
   .strict();
 export const DouyinBrowserSessionViewSchema = BaijiahaoBrowserSessionViewSchema.extend({

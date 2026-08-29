@@ -945,6 +945,8 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
                 available_methods: ['sms_code'],
                 challenge_type: 'sms_code',
                 has_code_input: true,
+                masked_mobile: '138****5678',
+                sms_resend_available: true,
               },
               version: 3,
             },
@@ -961,13 +963,16 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
   ).toBeVisible();
   await expect(page.getByRole('img', { name: '抖音二次验证脱敏诊断截图' })).toHaveCount(0);
   await page.getByRole('button', { name: '发送短信验证码' }).click();
+  await expect(page.getByText('验证码接收手机：138****5678')).toBeVisible();
   await expect(page.getByLabel('短信验证码')).toBeVisible();
+  await page.getByRole('button', { name: '重新发送验证码' }).click();
   await page.getByLabel('短信验证码').fill('654321');
   await page.getByRole('button', { name: '提交验证码' }).click();
 
   await expect(page.getByText('状态：已登录')).toBeVisible();
   await expect(page.getByText('抖音二次验证已完成，登录快照已安全保存。')).toBeVisible();
   expect(actions).toEqual([
+    { method: 'verification_sms_send' },
     { method: 'verification_sms_send' },
     { method: 'verification_sms_verify', sms_code: '654321' },
   ]);

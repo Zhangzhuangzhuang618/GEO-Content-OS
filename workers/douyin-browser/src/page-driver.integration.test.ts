@@ -317,7 +317,19 @@ describe('Douyin local browser simulator', () => {
 
       await expect(
         driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
-      ).resolves.toMatchObject({ challengeType: 'sms_code', hasCodeInput: true });
+      ).resolves.toMatchObject({
+        challengeType: 'sms_code',
+        hasCodeInput: true,
+        maskedMobile: '138****5678',
+        smsResendAvailable: true,
+      });
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({
+        challengeType: 'sms_code',
+        hasCodeInput: true,
+        maskedMobile: '138****5678',
+      });
       await expect(
         driver.submitLoginVerification(ACCOUNT_ID, {
           method: 'verification_sms_verify',
@@ -417,6 +429,7 @@ async function route(
            document.querySelector('#sms-method').onclick=()=>{
              document.querySelector('#security-challenge').innerHTML='<h2>接收短信验证码</h2><p class="mobile-value">138****5678</p><button id="send-code">获取验证码</button>';
              document.querySelector('#send-code').onclick=()=>{
+               if(document.querySelector('input[autocomplete="one-time-code"]'))return;
                document.querySelector('#security-challenge').insertAdjacentHTML('beforeend','<input placeholder="短信验证码" autocomplete="one-time-code"><button id="verify-code">验证</button>');
                document.querySelector('#verify-code').onclick=()=>{
                  if(document.querySelector('input').value!=='654321')return;

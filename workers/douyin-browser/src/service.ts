@@ -582,6 +582,7 @@ export class DouyinBrowserService {
           challenge_type: diagnostic.challengeType,
           content_hash: contentHash,
           has_code_input: diagnostic.hasCodeInput,
+          ...(diagnostic.maskedMobile ? { masked_mobile: diagnostic.maskedMobile } : {}),
           object_uri: object.uri,
           page_origin: diagnostic.pageOrigin,
           page_path: diagnostic.pagePath,
@@ -625,6 +626,9 @@ export class DouyinBrowserService {
       return null;
     }
     let diagnosticImageDataUrl: string | undefined;
+    const maskedMobile = isMaskedMobile(value['masked_mobile'])
+      ? value['masked_mobile']
+      : undefined;
     try {
       const screenshot = await this.storage.getObject(storageKey(value['object_uri']));
       if (sha256(screenshot) === value['content_hash']) {
@@ -639,6 +643,7 @@ export class DouyinBrowserService {
       challenge_type: challengeType,
       ...(diagnosticImageDataUrl ? { diagnostic_image_data_url: diagnosticImageDataUrl } : {}),
       has_code_input: value['has_code_input'],
+      ...(maskedMobile ? { masked_mobile: maskedMobile } : {}),
       page_origin: value['page_origin'],
       page_path: value['page_path'],
       page_signature: value['page_signature'],
@@ -809,10 +814,18 @@ function verificationView(
     challenge_type: diagnostic.challengeType,
     diagnostic_image_data_url: `data:image/png;base64,${Buffer.from(diagnostic.screenshotPng).toString('base64')}`,
     has_code_input: diagnostic.hasCodeInput,
+    ...(diagnostic.maskedMobile ? { masked_mobile: diagnostic.maskedMobile } : {}),
     page_origin: diagnostic.pageOrigin,
     page_path: diagnostic.pagePath,
     page_signature: diagnostic.pageSignature,
+    ...(diagnostic.smsResendAvailable === undefined
+      ? {}
+      : { sms_resend_available: diagnostic.smsResendAvailable }),
   });
+}
+
+function isMaskedMobile(value: unknown): value is string {
+  return typeof value === 'string' && /^1[3-9][0-9]\*{4}[0-9]{2,4}$/u.test(value);
 }
 
 function canVerifySession(session: BrowserSession): boolean {
