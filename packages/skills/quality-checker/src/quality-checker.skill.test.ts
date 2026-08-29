@@ -868,6 +868,33 @@ describe('QualityCheckerSkill', () => {
     ).resolves.toMatchObject({ output: { data: { decision: 'block' } } });
   });
 
+  it('drops a company-name block whose quoted name is absent from the reported location', async () => {
+    const input = qualityInputWithBlocks([
+      { block_key: 'intro', text: '工厂搬迁前应先确认设备清单。' },
+      { block_key: 'comparison', text: '可通过货拉拉安排运输。' },
+    ]);
+    const output = blockedOutput({
+      category: 'brand',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '内容包含禁止的第三方品牌“货拉拉”。',
+      rule_id: 'brand.other_company_name',
+      severity: 'BLOCK',
+      suggestion: '改为匿名表述。',
+    });
+
+    await expect(
+      skill(
+        new MockModelAdapter({ modelKey: 'flash', responses: [{ text: JSON.stringify(output) }] }),
+      ).run({
+        context,
+        input,
+        recordUsage: () => undefined,
+        recoverDeterministicFalsePositiveIssues: true,
+      }),
+    ).resolves.toMatchObject({ output: { data: { decision: 'pass', issues: [] } } });
+  });
+
   it('keeps an exact legal company name when ordinary words precede it in the sentence', async () => {
     const input = qualityInputWithBlocks([
       { block_key: 'intro', text: '可通过广州家盛搬家有限公司安排运输。' },

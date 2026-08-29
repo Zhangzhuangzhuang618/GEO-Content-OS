@@ -224,13 +224,19 @@ export class BrowserPlatformDailyScheduler {
 }
 
 async function retireFailed(transaction: postgres.TransactionSql, batch: BatchRow) {
-  const failure = JSON.stringify({
-    code: 'GENERATION_FAILED_RETIRED',
-    schema_version: 'browser-platform-automation-error@1',
-  });
   await transaction`
     UPDATE browser_platform_daily_batch_items AS item SET status='retired',
-      last_error_json=${failure}::text::jsonb
+      last_error_json=jsonb_strip_nulls(jsonb_build_object(
+        'code','GENERATION_FAILED_RETIRED',
+        'generation_error',(
+          SELECT run.error_json FROM generation_runs AS run
+          WHERE run.tenant_id=item.tenant_id AND run.package_id=item.package_id
+            AND run.variant_id=item.variant_id AND run.status='failed'
+          ORDER BY run.created_at DESC,run.id DESC LIMIT 1
+        ),
+        'message','内容生成失败，候选已退出后台执行，调度器将按上限创建新候选补位。',
+        'schema_version','browser-platform-automation-error@1'
+      ))
     FROM content_variants AS variant
     WHERE item.tenant_id=${batch.tenantId}::uuid AND item.batch_id=${batch.id}::uuid
       AND variant.id=item.variant_id AND variant.tenant_id=item.tenant_id
@@ -238,7 +244,7 @@ async function retireFailed(transaction: postgres.TransactionSql, batch: BatchRo
   `;
   await transaction`
     UPDATE browser_platform_automation_runs AS automation SET status='manual_required',
-      last_error_json=${failure}::text::jsonb,finished_at=now(),version=version+1
+      last_error_json=item.last_error_json,finished_at=now(),version=version+1
     FROM browser_platform_daily_batch_items AS item
     WHERE item.tenant_id=${batch.tenantId}::uuid AND item.batch_id=${batch.id}::uuid
       AND item.automation_run_id=automation.id AND automation.tenant_id=item.tenant_id

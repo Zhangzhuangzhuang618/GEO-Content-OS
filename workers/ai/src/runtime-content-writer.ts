@@ -162,6 +162,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     private readonly promptLoader?: (
       context: ContentWriterRunContext,
     ) => Promise<ContentWriterPublishedPrompt>,
+    private readonly structuredFallbackModelKey?: string,
   ) {}
 
   public async generateMaster(input: {
@@ -698,6 +699,16 @@ export class RuntimeContentWriter implements ContentWriterPort {
       schemas,
     );
     const skill = new ContentWriterSkill(new SkillRunner(adapter, schemas, tools));
+    const fallbackAdapter = this.structuredFallbackModelKey
+      ? this.adapters.get(this.structuredFallbackModelKey)
+      : undefined;
+    const structuredFallback =
+      fallbackAdapter && fallbackAdapter.modelKey !== adapter.modelKey
+        ? {
+            modelKey: fallbackAdapter.modelKey,
+            skill: new ContentWriterSkill(new SkillRunner(fallbackAdapter, schemas, tools)),
+          }
+        : undefined;
     const invocation = {
       context: createSkillContext({
         inputHash: input.context.inputHash,
@@ -719,7 +730,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       ...(input.signal ? { signal: input.signal } : {}),
       temperature: input.context.modelPolicy === 'quality' ? 0.25 : 0.35,
     } as const;
-    let result = await runWithStructuredOutputRetry(skill, invocation);
+    let result = await runWithStructuredOutputRetry(skill, invocation, structuredFallback);
     if (result.output.status === 'failed') {
       throw new GenerationWorkerError(
         'CONTENT_WRITER_FAILED',
@@ -755,16 +766,20 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
 
-    result = await runWithStructuredOutputRetry(skill, {
-      ...invocation,
-      revision: {
-        candidate: output.data,
-        issues: Object.freeze([
-          ...new Set([...(revision?.issues ?? []), ...assessment.issues, ...deterministicIssues]),
-        ]),
+    result = await runWithStructuredOutputRetry(
+      skill,
+      {
+        ...invocation,
+        revision: {
+          candidate: output.data,
+          issues: Object.freeze([
+            ...new Set([...(revision?.issues ?? []), ...assessment.issues, ...deterministicIssues]),
+          ]),
+        },
+        toolNames: [],
       },
-      toolNames: [],
-    });
+      structuredFallback,
+    );
     output = result.output;
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -791,14 +806,18 @@ export class RuntimeContentWriter implements ContentWriterPort {
       (!assessment.passed || deterministicIssues.length > 0)
     ) {
       for (let round = 2; round <= DOUYIN_GENERATION_REWRITE_ROUNDS; round += 1) {
-        result = await runWithStructuredOutputRetry(skill, {
-          ...invocation,
-          revision: {
-            candidate: output.data,
-            issues: Object.freeze([...new Set([...assessment.issues, ...deterministicIssues])]),
+        result = await runWithStructuredOutputRetry(
+          skill,
+          {
+            ...invocation,
+            revision: {
+              candidate: output.data,
+              issues: Object.freeze([...new Set([...assessment.issues, ...deterministicIssues])]),
+            },
+            toolNames: [],
           },
-          toolNames: [],
-        });
+          structuredFallback,
+        );
         output = result.output;
         assessment = assessContentWriterContents(output.data.variants, validationPolicy);
         deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -1946,15 +1965,31 @@ function usesOfficialSiteDirectFlow(writerInput: JsonObject): boolean {
 async function runWithStructuredOutputRetry(
   skill: ContentWriterSkill,
   invocation: Parameters<ContentWriterSkill['run']>[0],
+  fallback?: { readonly modelKey: string; readonly skill: ContentWriterSkill },
 ) {
   try {
     return await skill.run(invocation);
   } catch (error) {
     if (!(error instanceof SkillRuntimeError) || error.code !== 'SKILL_OUTPUT_INVALID') throw error;
-    return skill.run({
-      ...invocation,
-      temperature: Math.min(invocation.temperature ?? 0.25, 0.15),
-    });
+    try {
+      return await skill.run({
+        ...invocation,
+        temperature: Math.min(invocation.temperature ?? 0.25, 0.15),
+      });
+    } catch (retryError) {
+      if (
+        !(retryError instanceof SkillRuntimeError) ||
+        retryError.code !== 'SKILL_OUTPUT_INVALID' ||
+        !fallback
+      ) {
+        throw retryError;
+      }
+      return fallback.skill.run({
+        ...invocation,
+        context: Object.freeze({ ...invocation.context, modelKey: fallback.modelKey }),
+        temperature: Math.min(invocation.temperature ?? 0.25, 0.1),
+      });
+    }
   }
 }
 

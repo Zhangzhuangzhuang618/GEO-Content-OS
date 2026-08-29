@@ -13,6 +13,7 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { PostgresPublisherStore } from './publisher.store.js';
+import { validatePublishEvent } from './publisher.event.js';
 import type {
   BaijiahaoReconcileClaim,
   BaijiahaoRemoteStatus,
@@ -120,6 +121,54 @@ describe('publisher worker', () => {
       FROM audit_events WHERE resource_id=${JOB_ID}::uuid
     `;
     expect(audit[0]?.value).not.toContain(ACCESS_TOKEN);
+  });
+
+  it('renews the database lease only for the active publishing attempt', async () => {
+    const database = requireClient(client);
+    const store = new PostgresPublisherStore(database, 1_000);
+    const validated = validatePublishEvent(event());
+    const claimed = await store.claim(validated);
+    expect(claimed.kind).toBe('claimed');
+    if (claimed.kind !== 'claimed') throw new Error('Expected a publishing claim');
+    await database`
+      UPDATE publish_jobs SET updated_at=now()-interval '10 minutes'
+      WHERE id=${JOB_ID}::uuid
+    `;
+
+    await expect(store.heartbeat(validated, claimed.value)).resolves.toBe(true);
+    await expect(
+      database<{ fresh: boolean }[]>`
+        SELECT updated_at > now()-interval '1 minute' AS fresh
+        FROM publish_jobs WHERE id=${JOB_ID}::uuid
+      `,
+    ).resolves.toEqual([{ fresh: true }]);
+  });
+
+  it('queues one idempotent recovery event after a terminal BullMQ failure', async () => {
+    const database = requireClient(client);
+    const failedEvent = event();
+    const worker = createWorker(database, requireCredentials(credentials), new FakePlatform());
+
+    await expect(worker.recoverQueueFailure(failedEvent)).resolves.toBe(true);
+    await expect(worker.recoverQueueFailure(failedEvent)).resolves.toBe(false);
+
+    const recovery = await database<
+      { readonly count: number; readonly jobVersion: number; readonly requestId: string }[]
+    >`
+      SELECT count(*)::integer AS count,
+        max((payload_json->'data'->>'job_version')::integer) AS "jobVersion",
+        max(payload_json->'data'->>'request_id') AS "requestId"
+      FROM outbox_events
+      WHERE event_type='publishing.job.execution_requested.v1'
+        AND payload_json->'data'->>'request_id' LIKE 'queue-recovery:%'
+    `;
+    expect(recovery).toEqual([
+      {
+        count: 1,
+        jobVersion: 1,
+        requestId: `queue-recovery:${failedEvent.event_id}`,
+      },
+    ]);
   });
 
   it('maps content chunk citation ids to their public links', async () => {

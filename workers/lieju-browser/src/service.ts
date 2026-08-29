@@ -302,24 +302,34 @@ export class LiejuBrowserService {
       }
       publication = await this.store.updatePublication(publication, { status: 'prepared' });
     }
-    publication = await this.store.updatePublication(publication, {
-      status: 'submitting',
-      submittedAt: new Date(),
-    });
     try {
       const images = await this.loadImages(publication, input);
-      const remote = await this.driver.submit(
-        {
-          accountId,
-          contentFingerprint,
-          images,
-          payload: input.payload,
-          postingProfile: input.postingProfile,
-          profilePath: this.profilePath(session),
-          storageStateJson,
-        },
-        (png) => this.saveArtifact(publication, 'pre_submit', png),
-      );
+      const driverInput = {
+        accountId,
+        contentFingerprint,
+        images,
+        payload: input.payload,
+        postingProfile: input.postingProfile,
+        profilePath: this.profilePath(session),
+        storageStateJson,
+      } as const;
+      const beforeSubmit = async (png: Uint8Array) => {
+        publication = await this.store.updatePublication(publication, {
+          status: 'submitting',
+          submittedAt: new Date(),
+        });
+        await this.saveArtifact(publication, 'pre_submit', png);
+      };
+      let remote;
+      try {
+        remote = await this.driver.submit(driverInput, beforeSubmit);
+      } catch (error) {
+        if (publication.status !== 'prepared' || !isRecoverablePublishRuntimeFailure(error)) {
+          throw error;
+        }
+        await this.driver.release(accountId);
+        remote = await this.driver.submit(driverInput, beforeSubmit);
+      }
       const stableRemote = stableRemoteReference(publication, remote);
       const updated = await this.store.updatePublication(publication, {
         remote: stableRemote,
@@ -722,4 +732,14 @@ function redactBrowserError(value: string): string {
       /((?:api[_-]?key|credential|password|secret|session|storage[_-]?state|token)\s*[:=]\s*)[^&\s,;)]+/giu,
       '$1[REDACTED]',
     );
+}
+
+function isRecoverablePublishRuntimeFailure(error: unknown): boolean {
+  return (
+    error instanceof PageDriverOperationError &&
+    error.stage !== 'submit' &&
+    /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
+      safeBrowserError(error),
+    )
+  );
 }

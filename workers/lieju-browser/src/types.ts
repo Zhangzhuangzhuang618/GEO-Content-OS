@@ -88,6 +88,7 @@ export interface LiejuPageDriver {
   capture(accountId: string): Promise<Uint8Array>;
   close(): Promise<void>;
   exportStorageState(accountId: string): Promise<string>;
+  release(accountId: string): Promise<void>;
   reconcile(
     accountId: string,
     profilePath: string,

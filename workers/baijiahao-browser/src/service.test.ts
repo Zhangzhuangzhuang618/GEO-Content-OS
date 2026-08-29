@@ -803,8 +803,109 @@ describe('Baijiahao browser service', () => {
       status: 'attention_required',
     });
     expect(updatePublication).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: 'submitting' }),
+      expect.objectContaining({ status: 'prepared' }),
       { status: 'manual_required' },
+    );
+  });
+
+  it('recreates a crashed browser context once before the irreversible submit step', async () => {
+    const session = browserSession('authenticated');
+    const prepared: PublicationClaim = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentVersionId: CONTENT_VERSION_ID,
+      id: PUBLICATION_ID,
+      idempotencyKey: 'baijiahao-pre-submit-crash-retry',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      sessionId: SESSION_ID,
+      status: 'prepared',
+      tenantId: TENANT_ID,
+      version: 1,
+    });
+    const updatePublication = vi.fn(
+      async (publication: PublicationClaim, update: Readonly<Record<string, unknown>>) =>
+        Object.freeze({
+          ...publication,
+          externalId: update['remote'] ? 'published-147' : undefined,
+          externalUrl: update['remote'] ? 'https://baijiahao.example/published-147' : undefined,
+          status: update['status'] as PublicationClaim['status'],
+          submittedAt: update['submittedAt'] as Date | undefined,
+          version: publication.version + 1,
+        }),
+    );
+    const release = vi.fn(async () => undefined);
+    const submit = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new PageDriverOperationError('upload_body_images', new Error('page: Page crashed')),
+      )
+      .mockImplementationOnce(async (_input, beforeSubmit) => {
+        await beforeSubmit(Buffer.from('pre-submit'));
+        return {
+          externalId: 'published-147',
+          status: 'published' as const,
+          url: 'https://baijiahao.example/published-147',
+        };
+      });
+    const store = {
+      getOrCreateSession: vi.fn(async () => session),
+      insertArtifact: vi.fn(async () => undefined),
+      loadImageAssets: vi.fn(async () => []),
+      markSession: vi.fn(async () => ({
+        ...session,
+        storageStateCiphertext: 'refreshed-encrypted-state',
+        storageStateKeyVersion: 'test-v2',
+        version: 2,
+      })),
+      preparePublication: vi.fn(async () => prepared),
+      updatePublication,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      capture: vi.fn(async () => Buffer.from('post-submit')),
+      exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
+      release,
+      submit,
+      verifyAuthenticated: vi.fn(async () => true),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-encrypted-state',
+        credentialKeyVersion: 'test-v2',
+      })),
+    } as unknown as CredentialEnvelopeService;
+    const storage = {
+      putObject: vi.fn(async () => ({ uri: 'memory://test/publication.png' })),
+    } as unknown as ObjectStorageAdapter;
+    const service = new BaijiahaoBrowserService(config(), store, driver, credentials, storage);
+    const payload = {
+      abstract: '用于验证提交前浏览器崩溃重试。',
+      body_asset_ids: [],
+      body_html: '<p>用于验证提交前浏览器崩溃重试。</p>',
+      body_text: '用于验证提交前浏览器崩溃重试。',
+      citation_links: [],
+      content_type: 'news',
+      cover_asset_id: null,
+      platform_code: 'baijiahao' as const,
+      rule_version: 'baijiahao-render-rules@1.1.0' as const,
+      schema_version: 'baijiahao-payload@2' as const,
+      tags: ['百家号', '崩溃恢复', '验证'],
+      title: '百家号提交前崩溃恢复验证',
+    };
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: prepared.idempotencyKey,
+        payload,
+        payload_hash: hashBaijiahaoPayload(payload),
+      }),
+    ).resolves.toMatchObject({ external_id: 'published-147', status: 'published' });
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(2);
+    expect(updatePublication).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ status: 'prepared' }),
+      expect.objectContaining({ status: 'submitting' }),
     );
   });
 
@@ -877,12 +978,15 @@ describe('Baijiahao browser service', () => {
       capture: vi.fn(async () => Buffer.from('post-submit')),
       exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
       release: vi.fn(async () => undefined),
-      submit: vi.fn(async () => ({
-        externalId: 'rejected-145',
-        reviewReason: '内容未通过审核',
-        status: 'failed' as const,
-        url: null,
-      })),
+      submit: vi.fn(async (_input, beforeSubmit) => {
+        await beforeSubmit(Buffer.from('pre-submit'));
+        return {
+          externalId: 'rejected-145',
+          reviewReason: '内容未通过审核',
+          status: 'failed' as const,
+          url: null,
+        };
+      }),
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as BaijiahaoPageDriver;
     const credentials = {

@@ -837,12 +837,55 @@ function rewriteDiagnostics(
   );
   const thresholds = gate.blocking_rules
     .filter((rule) => rule.startsWith('gate.'))
-    .map((rule) => `${rule} 未达到冻结门槛`);
+    .map((rule) => browserPlatformGateRewriteDiagnostic(rule, policy, gate));
   return Object.freeze([
     `平台：${policy.platformCode}。必须逐项修复当前报告，不得沿用旧报告或忽略问题。`,
     ...details,
     ...thresholds,
   ]);
+}
+
+export function browserPlatformGateRewriteDiagnostic(
+  rule: string,
+  policy: BrowserPlatformAutomationPolicy,
+  gate: BrowserPlatformQualityGate,
+): string {
+  const values: Readonly<Record<string, readonly [number, number, string]>> = Object.freeze({
+    'gate.brand_consistency': [
+      gate.brand_consistency,
+      policy.brandConsistencyMin,
+      '删除与已发布品牌资料冲突或缺乏支持的企业陈述。',
+    ],
+    'gate.factual_accuracy': [
+      gate.factual_accuracy,
+      policy.factualAccuracyMin,
+      '按报告位置删除无证据事实，或把声明精确关联到能够直接支持它的引用。',
+    ],
+    'gate.geo_total': [
+      gate.geo_total,
+      policy.geoTotalMin,
+      '先解决本次事实、问题覆盖、可读性和平台适配问题，不得用重复文本补分。',
+    ],
+    'gate.platform_fit': [
+      gate.platform_fit,
+      policy.platformFitMin,
+      '按当前平台标题、正文、结构和发布边界重写。',
+    ],
+    'gate.question_coverage': [
+      gate.question_coverage,
+      policy.questionCoverageMin,
+      '让标题和正文直接回答用户的具体选择或操作问题。',
+    ],
+    'gate.readability_safety': [
+      gate.readability_safety,
+      policy.readabilitySafetyMin,
+      '补充有实质信息的步骤并删除危险承诺，禁止堆字。',
+    ],
+  });
+  const value = values[rule];
+  return value
+    ? `门禁 ${rule}：当前 ${value[0]}，最低要求 ${value[1]}。${value[2]}`
+    : `${rule} 未达到冻结门槛。`;
 }
 
 function promptIssues(value: unknown): readonly string[] {

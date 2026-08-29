@@ -388,6 +388,13 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     this.pages.clear();
   }
 
+  public async release(accountId: string): Promise<void> {
+    const context = this.contexts.get(accountId);
+    this.contexts.delete(accountId);
+    this.pages.delete(accountId);
+    if (context) await context.close();
+  }
+
   private async page(
     accountId: string,
     profilePath: string,

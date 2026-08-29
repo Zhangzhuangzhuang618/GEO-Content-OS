@@ -65,8 +65,12 @@ async function main(): Promise<void> {
   const storage = createStorageAdapter(readStorageConfiguration());
   const usage = new PostgresUsageRecorder(database);
   const mediaUsage = new PostgresMediaUsageRecorder(database);
-  const writer = new RuntimeContentWriter(database, adapters, (context, modelUsage) =>
-    usage.record(context, modelUsage),
+  const writer = new RuntimeContentWriter(
+    database,
+    adapters,
+    (context, modelUsage) => usage.record(context, modelUsage),
+    undefined,
+    config.automation.rewriteModelKey,
   );
   const automation = new OfficialSiteAutomation(database, writer, config.automation);
   const baijiahaoAutomation = new BaijiahaoAutomation(database, writer, config.automation);

@@ -337,23 +337,33 @@ export class BaijiahaoBrowserService {
         }
         publication = await this.store.updatePublication(publication, { status: 'prepared' });
       }
-      publication = await this.store.updatePublication(publication, {
-        status: 'submitting',
-        submittedAt: new Date(),
-      });
       try {
         const images = await this.loadImages(publication, input);
-        const remote = await this.driver.submit(
-          {
-            accountId,
-            contentFingerprint,
-            images,
-            payload: input.payload,
-            profilePath: this.profilePath(session),
-            storageStateJson,
-          },
-          (png) => this.saveArtifact(publication, 'pre_submit', png),
-        );
+        const driverInput = {
+          accountId,
+          contentFingerprint,
+          images,
+          payload: input.payload,
+          profilePath: this.profilePath(session),
+          storageStateJson,
+        } as const;
+        const beforeSubmit = async (png: Uint8Array) => {
+          publication = await this.store.updatePublication(publication, {
+            status: 'submitting',
+            submittedAt: new Date(),
+          });
+          await this.saveArtifact(publication, 'pre_submit', png);
+        };
+        let remote;
+        try {
+          remote = await this.driver.submit(driverInput, beforeSubmit);
+        } catch (error) {
+          if (publication.status !== 'prepared' || !isRecoverablePublishRuntimeFailure(error)) {
+            throw error;
+          }
+          await this.releaseBrowserAccount(accountId);
+          remote = await this.driver.submit(driverInput, beforeSubmit);
+        }
         const updated = await this.store.updatePublication(publication, {
           remote,
           status: publicationStatus(remote.status),
@@ -810,5 +820,13 @@ function redactBrowserError(value: string): string {
 function isRecoverableLoginRuntimeFailure(error: unknown): boolean {
   return /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
     safeBrowserError(error),
+  );
+}
+
+function isRecoverablePublishRuntimeFailure(error: unknown): boolean {
+  return (
+    error instanceof PageDriverOperationError &&
+    error.stage !== 'submit' &&
+    isRecoverableLoginRuntimeFailure(error)
   );
 }

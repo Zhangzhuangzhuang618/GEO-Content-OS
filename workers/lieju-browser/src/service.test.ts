@@ -411,7 +411,7 @@ describe('Lieju browser service', () => {
       status: 'attention_required',
     });
     expect(updatePublication).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: 'submitting' }),
+      expect.objectContaining({ status: 'prepared' }),
       { status: 'manual_required' },
     );
   });
@@ -477,12 +477,15 @@ describe('Lieju browser service', () => {
     } as unknown as PostgresLiejuBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('post-submit')),
-      submit: vi.fn(async () => ({
-        externalId: 'rejected-145',
-        reviewReason: '内容未通过审核',
-        status: 'failed' as const,
-        url: null,
-      })),
+      submit: vi.fn(async (_input, beforeSubmit) => {
+        await beforeSubmit(Buffer.from('pre-submit'));
+        return {
+          externalId: 'rejected-145',
+          reviewReason: '内容未通过审核',
+          status: 'failed' as const,
+          url: null,
+        };
+      }),
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as LiejuPageDriver;
     const credentials = {
@@ -539,12 +542,15 @@ describe('Lieju browser service', () => {
     } as unknown as PostgresLiejuBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('review-accepted')),
-      submit: vi.fn(async () => ({
-        externalId: null,
-        reviewReason: null,
-        status: 'published' as const,
-        url: null,
-      })),
+      submit: vi.fn(async (_input, beforeSubmit) => {
+        await beforeSubmit(Buffer.from('pre-submit'));
+        return {
+          externalId: null,
+          reviewReason: null,
+          status: 'published' as const,
+          url: null,
+        };
+      }),
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as LiejuPageDriver;
     const credentials = {

@@ -243,7 +243,6 @@ export function hasExternalCredentialEvidence(
   if (names.length === 0 || owners.size === 0) return false;
   const certificates = citations.flatMap((citation) => {
     if (!citation.credentialAuthorized || !citation.claimText) return [];
-    if (!claimTextMatches(claim, citation.claimText)) return [];
     const mappedNames = findExternalCredentialNames(citation.claimText);
     if (mappedNames.length === 0) return [];
     const quote = citation.quoteText;
@@ -253,6 +252,12 @@ export function hasExternalCredentialEvidence(
     return name &&
       holder &&
       owners.has(holder) &&
+      (claimTextMatches(claim, citation.claimText) ||
+        names.some(
+          (claimName) =>
+            credentialNameMatches(claimName, name) &&
+            mappedNames.some((mappedName) => credentialNameMatches(mappedName, name)),
+        )) &&
       mappedNames.some((mappedName) => credentialNameMatches(mappedName, name))
       ? [{ holder, name }]
       : [];

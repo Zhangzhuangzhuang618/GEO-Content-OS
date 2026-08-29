@@ -197,7 +197,7 @@ describe('baijiahao delivery integration', () => {
       mode: 'api',
     });
     expect(config.mode).toBe('api');
-    if (config.mode === 'api') expect(config.timeout_ms).toBe(60_000);
+    if (config.mode === 'api') expect(config.timeout_ms).toBe(300_000);
   });
 });
 

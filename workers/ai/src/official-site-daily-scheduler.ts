@@ -355,11 +355,17 @@ async function retireGenerationFailures(
   await transaction`
     UPDATE official_site_daily_batch_items AS item SET
       status='retired',
-      last_error_json=jsonb_build_object(
+      last_error_json=jsonb_strip_nulls(jsonb_build_object(
         'code','CONTENT_GENERATION_FAILED',
+        'generation_error',(
+          SELECT run.error_json FROM generation_runs AS run
+          WHERE run.tenant_id=item.tenant_id AND run.package_id=item.package_id
+            AND run.variant_id=item.variant_id AND run.status='failed'
+          ORDER BY run.created_at DESC,run.id DESC LIMIT 1
+        ),
         'message','内容生成失败，系统将创建新候选补位。',
         'schema_version','official-site-daily-error@1'
-      )
+      ))
     FROM content_variants AS variant
     WHERE item.batch_id=${batch.id}::uuid AND item.tenant_id=${batch.tenantId}::uuid
       AND item.status='generating'

@@ -10,6 +10,7 @@ import type {
   NormalizedExport,
   PlatformDelivery,
   PublishClaim,
+  PublisherStorePort,
   PublisherWorkerDependencies,
   PublisherWorkerResult,
   ValidatedPublishEvent,
@@ -67,6 +68,7 @@ export class PublisherWorker {
     }
 
     let delivery: PlatformDelivery;
+    const stopHeartbeat = startLeaseHeartbeat(this.dependencies.store, event, claim);
     try {
       delivery = await this.dependencies.platform.deliver(claim, credential, signal);
       if (
@@ -107,6 +109,8 @@ export class PublisherWorker {
         status: unknown ? 'unknown' : 'failed',
       });
       return terminal(event, claim, unknown ? 'unknown' : 'processed');
+    } finally {
+      stopHeartbeat();
     }
 
     if (delivery.mode === 'api') {
@@ -153,6 +157,12 @@ export class PublisherWorker {
       jobId: event.jobId,
       mode: delivery.mode,
     });
+  }
+
+  public async recoverQueueFailure(rawEvent: unknown): Promise<boolean> {
+    const recover = this.dependencies.store.recoverQueueFailure;
+    if (!recover) return false;
+    return recover.call(this.dependencies.store, validatePublishEvent(rawEvent));
   }
 
   public async reconcileBaijiahao(
@@ -238,6 +248,19 @@ export class PublisherWorker {
     }
     return parsed;
   }
+}
+
+function startLeaseHeartbeat(
+  store: PublisherStorePort,
+  event: ValidatedPublishEvent,
+  claim: PublishClaim,
+): () => void {
+  if (!store.heartbeat) return () => undefined;
+  const timer = setInterval(() => {
+    void store.heartbeat?.(event, claim).catch(() => undefined);
+  }, 60_000);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 function normalizeExport(

@@ -329,22 +329,32 @@ export class DouyinBrowserService {
     }
 
     const images = await this.loadImages(publication, input.payload.image_asset_ids);
-    publication = await this.store.updatePublication(publication, {
-      status: 'submitting',
-      submittedAt: new Date(),
-    });
     try {
-      const remote = await this.driver.submit(
-        {
-          accountId,
-          contentFingerprint,
-          images,
-          payload: input.payload,
-          profilePath: this.profilePath(session),
-          storageStateJson,
-        },
-        (png) => this.saveArtifact(publication, 'pre_submit', png),
-      );
+      const driverInput = {
+        accountId,
+        contentFingerprint,
+        images,
+        payload: input.payload,
+        profilePath: this.profilePath(session),
+        storageStateJson,
+      } as const;
+      const beforeSubmit = async (png: Uint8Array) => {
+        publication = await this.store.updatePublication(publication, {
+          status: 'submitting',
+          submittedAt: new Date(),
+        });
+        await this.saveArtifact(publication, 'pre_submit', png);
+      };
+      let remote;
+      try {
+        remote = await this.driver.submit(driverInput, beforeSubmit);
+      } catch (error) {
+        if (publication.status !== 'prepared' || !isRecoverablePublishRuntimeFailure(error)) {
+          throw error;
+        }
+        await this.driver.release(accountId);
+        remote = await this.driver.submit(driverInput, beforeSubmit);
+      }
       const updated = await this.store.updatePublication(publication, {
         remote,
         status: publicationStatus(remote.status),
@@ -920,4 +930,21 @@ function redact(value: string): string {
       /((?:api[_-]?key|credential|password|secret|session|storage[_-]?state|token)\s*[:=]\s*)[^&\s,;)]+/giu,
       '$1[REDACTED]',
     );
+}
+
+function isRecoverablePublishRuntimeFailure(error: unknown): boolean {
+  return (
+    error instanceof PageDriverOperationError &&
+    error.stage !== 'submit' &&
+    /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
+      runtimeFailureText(error, 3),
+    )
+  );
+}
+
+function runtimeFailureText(error: unknown, depth: number): string {
+  if (depth < 1 || error === null || typeof error !== 'object') return String(error ?? '');
+  const candidate = error as { readonly cause?: unknown; readonly message?: unknown };
+  const message = typeof candidate.message === 'string' ? candidate.message : '';
+  return `${message} ${runtimeFailureText(candidate.cause, depth - 1)}`;
 }

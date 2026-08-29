@@ -1317,6 +1317,42 @@ describe('AI Worker runtime wiring', () => {
     expect(recordUsage).toHaveBeenCalledTimes(3);
   });
 
+  it('uses the configured quality model once when the fast model cannot produce valid structure', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const recordUsage = vi.fn();
+    const fast = new LooseMockAdapter(
+      Array.from({ length: 6 }, () => ({ text: '{"master_content":' })),
+      'deepseek-v4-flash',
+    );
+    const quality = new LooseMockAdapter(
+      [{ text: JSON.stringify(fixture.output.data) }],
+      'deepseek-v4-pro',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', fast],
+        ['deepseek-v4-pro', quality],
+      ]),
+      recordUsage,
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+
+    await expect(
+      writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: 'runtime-content-structured-fallback-0061',
+        writerInput: fixture.input as JsonObject,
+      }),
+    ).resolves.toMatchObject({ platform_code: 'master' });
+    expect(fast.requests.length).toBeGreaterThanOrEqual(2);
+    expect(quality.requests).toHaveLength(1);
+    expect(recordUsage.mock.calls.some((call) => call[1]?.modelKey === 'deepseek-v4-pro')).toBe(
+      true,
+    );
+  });
+
   it('generates official-site body and FAQ in separate shallow stages', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const article = officialSiteArticleDraft();

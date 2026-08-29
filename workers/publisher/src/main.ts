@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   );
   const consumer = new PublisherQueueConsumer(publisher, {
     concurrency: config.queueConcurrency,
+    lockDurationMs: config.lockDurationMs,
     onError: (error) => console.error('Publisher Worker queue error', error),
     redisUrl: config.redisUrl,
   });

@@ -343,7 +343,7 @@ describe('lieju delivery integration', () => {
       posting_profile: POSTING_PROFILE,
     });
     expect(config.mode).toBe('api');
-    if (config.mode === 'api') expect(config.timeout_ms).toBe(60_000);
+    if (config.mode === 'api') expect(config.timeout_ms).toBe(300_000);
   });
 
   it('rejects the removed logistics-only category', () => {

@@ -109,6 +109,7 @@ export interface DouyinPageDriver {
   close(): Promise<void>;
   exportStorageState(accountId: string): Promise<string>;
   inspectLoginVerification(accountId: string): Promise<LoginVerificationDiagnostic | null>;
+  release(accountId: string): Promise<void>;
   reconcile(
     accountId: string,
     profilePath: string,

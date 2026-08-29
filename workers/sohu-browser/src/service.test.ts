@@ -504,7 +504,7 @@ describe('Sohu browser service', () => {
       status: 'attention_required',
     });
     expect(updatePublication).toHaveBeenLastCalledWith(
-      expect.objectContaining({ status: 'submitting' }),
+      expect.objectContaining({ status: 'prepared' }),
       { status: 'manual_required' },
     );
   });
@@ -570,12 +570,15 @@ describe('Sohu browser service', () => {
     } as unknown as PostgresSohuBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('post-submit')),
-      submit: vi.fn(async () => ({
-        externalId: 'rejected-145',
-        reviewReason: '内容未通过审核',
-        status: 'failed' as const,
-        url: null,
-      })),
+      submit: vi.fn(async (_input, beforeSubmit) => {
+        await beforeSubmit(Buffer.from('pre-submit'));
+        return {
+          externalId: 'rejected-145',
+          reviewReason: '内容未通过审核',
+          status: 'failed' as const,
+          url: null,
+        };
+      }),
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as SohuPageDriver;
     const credentials = {

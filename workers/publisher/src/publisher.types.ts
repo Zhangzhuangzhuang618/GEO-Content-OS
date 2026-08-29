@@ -125,6 +125,7 @@ export interface PublisherPlatformPort {
 
 export interface PublisherStorePort {
   claim(event: ValidatedPublishEvent): Promise<PublishClaimResult>;
+  heartbeat?(event: ValidatedPublishEvent, claim: PublishClaim): Promise<boolean>;
   reserveLiejuOfficialSubmission?(claim: PublishClaim): Promise<boolean>;
   complete(
     event: ValidatedPublishEvent,
@@ -152,6 +153,7 @@ export interface PublisherStorePort {
     claim: PublishClaim,
     failure: { readonly code: string; readonly message: string; readonly requestHash: string },
   ): Promise<void>;
+  recoverQueueFailure?(event: ValidatedPublishEvent): Promise<boolean>;
   claimBaijiahaoReconciliation?(
     event: ValidatedBaijiahaoReconcileEvent,
   ): Promise<

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   BrowserPlatformAutomation,
+  browserPlatformGateRewriteDiagnostic,
   buildBrowserPlatformRewriteInput,
   type BrowserPlatformAutomationPolicy,
   nextSchedule,
@@ -73,6 +74,25 @@ describe('browser-platform automation', () => {
         scores,
       ),
     ).toMatchObject({ blocking_rules: [], passed: true, platform_code: 'lieju' });
+  });
+
+  it('explains a failed frozen gate with its score, target and repair action', () => {
+    const gate = {
+      blocking_rules: ['gate.factual_accuracy'],
+      brand_consistency: 95,
+      factual_accuracy: 72,
+      geo_total: 88,
+      passed: false,
+      platform_code: 'lieju',
+      platform_fit: 86,
+      question_coverage: 87,
+      readability_safety: 90,
+      schema_version: 'browser-platform-quality-gate@1',
+    } as const;
+
+    expect(browserPlatformGateRewriteDiagnostic('gate.factual_accuracy', policy(), gate)).toBe(
+      '门禁 gate.factual_accuracy：当前 72，最低要求 90。按报告位置删除无证据事实，或把声明精确关联到能够直接支持它的引用。',
+    );
   });
 
   it('uses configured Shanghai slots and avoids occupied timestamps', () => {

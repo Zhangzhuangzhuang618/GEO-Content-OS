@@ -558,6 +558,26 @@ describe('deterministic pre-publish risk scanner', () => {
     ).toContain('deterministic.fact.external_credential_requires_evidence');
   });
 
+  it('accepts exact per-certificate claim mappings for a compound credential sentence', () => {
+    const statement =
+      '公司同时持有营业执照、道路运输经营许可证和道路运输证，证照信息可通过官方渠道核验。';
+    const citations = ['营业执照', '道路运输经营许可证', '道路运输证'].map((name, index) => ({
+      claimText: `公司持有${name}。`,
+      credentialAuthorized: true,
+      id: `10000000-0000-4000-8000-00000000004${index}`,
+      quoteText: `资料类型：企业证照\n证照名称：${name}\n持证主体：广州志远搬家服务有限公司`,
+    }));
+
+    expect(
+      scanDeterministicRisks({
+        brandProfile: brand(),
+        citations,
+        content: content({ blocks: [block('credential', statement)] }),
+        platformCode: 'official_site',
+      }).map((item) => item.rule_id),
+    ).not.toContain('deterministic.fact.external_credential_requires_evidence');
+  });
+
   it('blocks missing official-site technical GEO fields and merges with model output', () => {
     const deterministic = scanDeterministicRisks({
       brandProfile: brand(),

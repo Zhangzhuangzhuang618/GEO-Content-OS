@@ -99,7 +99,7 @@ export const LiejuDeliveryConfigSchema = z.union([
       }),
       mode: z.literal('api'),
       posting_profile: LiejuPostingProfileSchema,
-      timeout_ms: z.number().int().min(100).max(60_000).default(60_000),
+      timeout_ms: z.number().int().min(100).max(300_000).default(300_000),
     })
     .strict(),
   z

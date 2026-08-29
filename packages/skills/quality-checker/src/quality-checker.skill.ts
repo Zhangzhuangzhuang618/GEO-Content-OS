@@ -313,7 +313,8 @@ function withoutDeterministicFalsePositiveIssues(
       const reason = invalidBrandIssueReason(input, issue, allowedCompanyNames);
       return (
         reason !== 'only_allowed_owner_or_generic_name_is_quoted' &&
-        reason !== 'quoted_name_is_not_identifiable_company'
+        reason !== 'quoted_name_is_not_identifiable_company' &&
+        reason !== 'quoted_prohibited_name_is_not_present_at_location'
       );
     }
     if (

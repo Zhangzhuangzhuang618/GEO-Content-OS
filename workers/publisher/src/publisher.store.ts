@@ -334,6 +334,92 @@ export class PostgresPublisherStore implements PublisherStorePort {
     });
   }
 
+  public async heartbeat(event: ValidatedPublishEvent, claim: PublishClaim): Promise<boolean> {
+    const rows = await this.client<{ readonly id: string }[]>`
+      UPDATE publish_jobs SET updated_at=now()
+      WHERE id=${claim.jobId}::uuid AND tenant_id=${event.tenantId}::uuid
+        AND status IN ('publishing','cancel_requested') AND attempt_count=${claim.attempt}
+      RETURNING id
+    `;
+    return rows.length === 1;
+  }
+
+  public recoverQueueFailure(event: ValidatedPublishEvent): Promise<boolean> {
+    return this.client.begin(async (transaction) => {
+      const rows = await transaction<
+        {
+          readonly scheduledAt: Date;
+          readonly status: JobRow['status'];
+          readonly version: number;
+        }[]
+      >`
+        SELECT scheduled_at AS "scheduledAt",status,version
+        FROM publish_jobs
+        WHERE id=${event.jobId}::uuid AND tenant_id=${event.tenantId}::uuid
+        FOR UPDATE
+      `;
+      const job = rows[0];
+      if (!job || TERMINAL_JOB_STATUSES.has(job.status)) return false;
+
+      const recoveryRequestId = `queue-recovery:${event.eventId}`;
+      const existing = await transaction<{ readonly count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM outbox_events
+        WHERE tenant_id=${event.tenantId}::uuid
+          AND aggregate_type='publish_job' AND aggregate_id=${event.jobId}::uuid
+          AND event_type='publishing.job.execution_requested.v1'
+          AND payload_json->'data'->>'request_id'=${recoveryRequestId}
+      `;
+      if ((existing[0]?.count ?? 0) > 0) return false;
+
+      const recoveries = await transaction<{ readonly count: number }[]>`
+        SELECT count(*)::integer AS count
+        FROM outbox_events
+        WHERE tenant_id=${event.tenantId}::uuid
+          AND aggregate_type='publish_job' AND aggregate_id=${event.jobId}::uuid
+          AND event_type='publishing.job.execution_requested.v1'
+          AND payload_json->'data'->>'request_id' LIKE 'queue-recovery:%'
+      `;
+      if ((recoveries[0]?.count ?? 0) >= 3) return false;
+
+      const now = new Date();
+      const nextAttemptAt = new Date(
+        Math.max(
+          job.scheduledAt.getTime(),
+          job.status === 'publishing' || job.status === 'cancel_requested'
+            ? now.getTime() + this.staleAfterMs
+            : now.getTime(),
+        ),
+      );
+      const eventId = randomUUID();
+      const occurredAt = now.toISOString();
+      const scheduledAt = nextAttemptAt.toISOString();
+      const envelope = {
+        aggregate: { id: event.jobId, type: 'publish_job' },
+        data: {
+          job_id: event.jobId,
+          job_version: job.version,
+          request_id: recoveryRequestId,
+          scheduled_at: scheduledAt,
+        },
+        event_id: eventId,
+        event_type: 'publishing.job.execution_requested.v1',
+        occurred_at: occurredAt,
+        tenant: { id: event.tenantId },
+      };
+      await transaction`
+        INSERT INTO outbox_events (
+          id,tenant_id,event_type,aggregate_type,aggregate_id,payload_json,next_attempt_at
+        ) VALUES (
+          ${eventId}::uuid,${event.tenantId}::uuid,'publishing.job.execution_requested.v1',
+          'publish_job',${event.jobId}::uuid,${JSON.stringify(envelope)}::text::jsonb,
+          ${scheduledAt}::timestamptz
+        )
+      `;
+      return true;
+    });
+  }
+
   public complete(
     event: ValidatedPublishEvent,
     claim: PublishClaim,
