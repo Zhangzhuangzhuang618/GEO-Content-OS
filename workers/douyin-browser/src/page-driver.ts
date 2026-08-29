@@ -63,6 +63,14 @@ const VERIFICATION_DIALOG_MARKERS = Object.freeze([
   '使用原设备扫码',
   '原设备扫码',
 ]);
+const VERIFICATION_DIALOG_ANCHOR_LABELS = Object.freeze([
+  '身份验证',
+  '短信验证码',
+  '接收短信验证码',
+  '使用原设备扫码',
+  '原设备扫码',
+]);
+const VERIFICATION_DIALOG_MARK_ATTRIBUTE = 'data-geo-douyin-verification-dialog';
 const SMS_SEND_CONTROL_LABELS = Object.freeze([
   '获取验证码',
   '发送验证码',
@@ -200,14 +208,7 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     } else if (input.method === 'verification_sms_send') {
       let dialog = await visibleVerificationDialog(page);
       let codeInput = verificationCodeInput(page, dialog);
-      const codeInputWasVisible = await codeInput.isVisible().catch(() => false);
       const codeInputWasActionable = await isVerificationCodeInputActionable(codeInput);
-      if (codeInputWasVisible && !codeInputWasActionable) {
-        throw new PageDriverError(
-          'CAPTCHA_REQUIRED',
-          'Douyin SMS verification input is covered by another security challenge',
-        );
-      }
       if (!codeInputWasActionable) {
         const method = await uniqueVisibleControl(page, RECEIVE_SMS_METHOD_LABELS, dialog);
         if (method) {
@@ -219,6 +220,13 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
           dialog = await visibleVerificationDialog(page);
           codeInput = verificationCodeInput(page, dialog);
         } else {
+          const codeInputWasVisible = await codeInput.isVisible().catch(() => false);
+          if (codeInputWasVisible) {
+            throw new PageDriverError(
+              'CAPTCHA_REQUIRED',
+              'Douyin SMS verification input is covered by another security challenge',
+            );
+          }
           const outboundSms = await uniqueVisibleControl(page, SEND_SMS_METHOD_LABELS, dialog);
           throw new PageDriverError(
             'PAGE_SIGNATURE_CHANGED',
@@ -665,11 +673,88 @@ async function visibleVerificationDialog(page: Page): Promise<Locator | null> {
         selector === '#uc-second-verify' ||
         VERIFICATION_DIALOG_MARKERS.some((marker) => text.includes(marker))
       ) {
-        return candidate;
+        return markVerificationDialog(candidate);
+      }
+    }
+  }
+
+  for (const label of VERIFICATION_DIALOG_ANCHOR_LABELS) {
+    const anchors = page.getByText(label, { exact: true });
+    for (let index = 0; index < Math.min(await anchors.count(), 10); index += 1) {
+      const anchor = anchors.nth(index);
+      if (!(await anchor.isVisible().catch(() => false))) continue;
+      let candidate = anchor.locator('xpath=..');
+      for (let depth = 0; depth < 12; depth += 1) {
+        const tagName = await candidate
+          .evaluate((element) => element.tagName.toLowerCase())
+          .catch(() => '');
+        if (!tagName || tagName === 'body' || tagName === 'html') break;
+        if (
+          (await candidate.isVisible().catch(() => false)) &&
+          (await hasVerificationContainerEvidence(candidate))
+        ) {
+          return markVerificationDialog(candidate);
+        }
+        candidate = candidate.locator('xpath=..');
       }
     }
   }
   return null;
+}
+
+async function markVerificationDialog(dialog: Locator): Promise<Locator> {
+  await dialog
+    .evaluate(
+      (element, attribute) => element.setAttribute(attribute, 'active'),
+      VERIFICATION_DIALOG_MARK_ATTRIBUTE,
+    )
+    .catch(() => undefined);
+  return dialog;
+}
+
+async function hasVerificationContainerEvidence(scope: Locator): Promise<boolean> {
+  let evidenceCount = 0;
+  const labels = [
+    ...VERIFICATION_DIALOG_ANCHOR_LABELS,
+    ...SEND_SMS_METHOD_LABELS,
+    ...FACE_VERIFICATION_METHOD_LABELS,
+    ...SMS_SEND_CONTROL_LABELS,
+  ];
+  for (const label of labels) {
+    const matches = scope.getByText(label, { exact: true });
+    for (let index = 0; index < Math.min(await matches.count(), 5); index += 1) {
+      if (
+        await matches
+          .nth(index)
+          .isVisible()
+          .catch(() => false)
+      ) {
+        evidenceCount += 1;
+        break;
+      }
+    }
+    if (evidenceCount >= 2) return true;
+  }
+  if (
+    await scope
+      .locator(SELECTORS.verificationCode)
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    evidenceCount += 1;
+  }
+  if (evidenceCount >= 2) return true;
+  if (
+    await scope
+      .locator(SELECTORS.verificationQr)
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    evidenceCount += 1;
+  }
+  return evidenceCount >= 2;
 }
 
 function verificationCodeInput(page: Page, dialog: Locator | null): Locator {
@@ -836,7 +921,7 @@ async function inspectLoginVerificationPage(
         color: transparent !important;
         text-shadow: none !important;
       }
-      #uc-second-verify, [role="dialog"] {
+      #uc-second-verify, [role="dialog"], [${VERIFICATION_DIALOG_MARK_ATTRIBUTE}="active"] {
         outline: 4px solid #f59e0b !important;
         outline-offset: -4px !important;
       }

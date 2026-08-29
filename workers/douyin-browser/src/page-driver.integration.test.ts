@@ -355,6 +355,46 @@ describe('Douyin local browser simulator', () => {
     }
   });
 
+  it('selects receive-SMS in an unmarked choice overlay before checking a covered input', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?sms=unmarked`,
+      }),
+    );
+    try {
+      const login = await driver.startLogin(
+        ACCOUNT_ID,
+        join(profileRoot, `${ACCOUNT_ID}-unmarked`),
+      );
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        { code: 'CAPTCHA_REQUIRED' },
+      );
+      await expect(driver.inspectLoginVerification(ACCOUNT_ID)).resolves.toMatchObject({
+        challengeType: 'identity_choice',
+        controlEvidence: {
+          codeInputActionable: false,
+          codeInputVisible: false,
+          faceVerificationOptionVisible: true,
+          foregroundDialogVisible: true,
+          receiveSmsOptionVisible: true,
+          sendSmsOptionVisible: true,
+        },
+        hasCodeInput: false,
+      });
+
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({
+        challengeType: 'sms_code',
+        hasCodeInput: true,
+        maskedMobile: '138****5678',
+      });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('does not report an SMS control covered by a verification mask as resendable', async () => {
     const driver = new PlaywrightDouyinPageDriver(
       Object.freeze({
@@ -464,17 +504,23 @@ async function route(
     return;
   }
   if (url.pathname === '/login') {
-    const smsBlocked = url.searchParams.get('sms') === 'blocked';
+    const smsMode = url.searchParams.get('sms');
+    const smsBlocked = smsMode === 'blocked';
+    const verificationContainerId = smsMode === 'unmarked' ? 'identity-choice' : 'uc-second-verify';
+    const verificationContainerAttributes =
+      smsMode === 'unmarked'
+        ? `id="${verificationContainerId}"`
+        : `id="${verificationContainerId}" role="dialog"`;
     const loginScript = url.searchParams.has('sms')
       ? `setTimeout(()=>{
-           document.body.insertAdjacentHTML('beforeend','<div class="user-info">发布作品 作品管理</div><input id="background-code" placeholder="验证码"><section id="uc-second-verify" role="dialog" style="position:fixed;inset:20px;z-index:5;background:white"><h2>身份验证</h2><button id="sms-method">接收短信验证码</button><button id="face-method">手机刷脸验证</button><button id="outbound-sms-method">发送短信验证</button><button id="device-method">使用原设备扫码</button></section>');
+           document.body.insertAdjacentHTML('beforeend','<div class="user-info">发布作品 作品管理</div><input id="background-code" placeholder="验证码"><section ${verificationContainerAttributes} style="position:fixed;inset:20px;z-index:5;background:white"><h2>身份验证</h2><button id="sms-method">接收短信验证码</button><button id="face-method">手机刷脸验证</button><button id="outbound-sms-method">发送短信验证</button><button id="device-method">使用原设备扫码</button></section>');
            document.querySelector('#outbound-sms-method').onclick=()=>{document.body.dataset.outboundSmsSelected='true'};
            document.querySelector('#sms-method').onclick=()=>{
-             document.querySelector('#uc-second-verify').innerHTML='<h2>短信验证码</h2><input id="verification-code" placeholder="短信验证码" autocomplete="one-time-code"><button id="send-code">获取验证码</button>${smsBlocked ? '<div class="second_verify_mask" style="position:fixed;inset:0;z-index:10"></div>' : ''}';
+             document.querySelector('#${verificationContainerId}').innerHTML='<h2>短信验证码</h2><input id="verification-code" placeholder="短信验证码" autocomplete="one-time-code"><button id="send-code">获取验证码</button>${smsBlocked ? '<div class="second_verify_mask" style="position:fixed;inset:0;z-index:10"></div>' : ''}';
              document.querySelector('#send-code').onclick=()=>{
                const send=document.querySelector('#send-code');
                send.disabled=true;send.textContent='60秒后重新发送';
-               if(!document.querySelector('.mobile-value'))document.querySelector('#uc-second-verify').insertAdjacentHTML('beforeend','<p class="mobile-value">138****5678</p><button id="verify-code">验证</button>');
+               if(!document.querySelector('.mobile-value'))document.querySelector('#${verificationContainerId}').insertAdjacentHTML('beforeend','<p class="mobile-value">138****5678</p><button id="verify-code">验证</button>');
                document.querySelector('#verify-code').onclick=()=>{
                  if(document.querySelector('#verification-code').value!=='654321')return;
                  document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
@@ -483,7 +529,7 @@ async function route(
              };
            };
            document.querySelector('#device-method').onclick=()=>{
-             document.querySelector('#uc-second-verify').innerHTML='<h2>使用原设备扫码</h2><img class="verification-qr" aria-label="二次验证二维码" src="/qrcode.svg">';
+             document.querySelector('#${verificationContainerId}').innerHTML='<h2>使用原设备扫码</h2><img class="verification-qr" aria-label="二次验证二维码" src="/qrcode.svg">';
            };
          },200)`
       : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
