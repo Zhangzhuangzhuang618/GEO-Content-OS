@@ -395,6 +395,43 @@ describe('Douyin local browser simulator', () => {
     }
   });
 
+  it('accepts a fillable SMS input when only the input click target is covered', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?sms=direct`,
+      }),
+    );
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, join(profileRoot, `${ACCOUNT_ID}-direct`));
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        { code: 'CAPTCHA_REQUIRED' },
+      );
+
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({
+        challengeType: 'sms_code',
+        controlEvidence: {
+          codeInputActionable: false,
+          codeInputVisible: true,
+          foregroundDialogVisible: true,
+        },
+        hasCodeInput: true,
+        maskedMobile: '138****5678',
+        smsResendAvailable: false,
+      });
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, {
+          method: 'verification_sms_verify',
+          sms_code: '654321',
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('does not report an SMS control covered by a verification mask as resendable', async () => {
     const driver = new PlaywrightDouyinPageDriver(
       Object.freeze({
@@ -506,6 +543,7 @@ async function route(
   if (url.pathname === '/login') {
     const smsMode = url.searchParams.get('sms');
     const smsBlocked = smsMode === 'blocked';
+    const smsDirect = smsMode === 'direct';
     const verificationContainerId = smsMode === 'unmarked' ? 'identity-choice' : 'uc-second-verify';
     const verificationContainerAttributes =
       smsMode === 'unmarked'
@@ -516,6 +554,14 @@ async function route(
            document.body.insertAdjacentHTML('beforeend','<div class="user-info">发布作品 作品管理</div><input id="background-code" placeholder="验证码"><section ${verificationContainerAttributes} style="position:fixed;inset:20px;z-index:5;background:white"><h2>身份验证</h2><button id="sms-method">接收短信验证码</button><button id="face-method">手机刷脸验证</button><button id="outbound-sms-method">发送短信验证</button><button id="device-method">使用原设备扫码</button></section>');
            document.querySelector('#outbound-sms-method').onclick=()=>{document.body.dataset.outboundSmsSelected='true'};
            document.querySelector('#sms-method').onclick=()=>{
+             if(${JSON.stringify(smsDirect)}){
+               document.querySelector('#${verificationContainerId}').innerHTML='<h2>短信验证码</h2><div style="position:relative;width:200px;height:40px"><input id="verification-code" style="width:200px;height:40px" placeholder="短信验证码" autocomplete="one-time-code"><span style="position:absolute;inset:0;z-index:2"></span></div><p class="mobile-value">138****5678</p><button id="verify-code">验证</button>';
+               document.querySelector('#verify-code').onclick=()=>{
+                 if(document.querySelector('#verification-code').value!=='654321')return;
+                 document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
+               };
+               return;
+             }
              document.querySelector('#${verificationContainerId}').innerHTML='<h2>短信验证码</h2><input id="verification-code" placeholder="短信验证码" autocomplete="one-time-code"><button id="send-code">获取验证码</button>${smsBlocked ? '<div class="second_verify_mask" style="position:fixed;inset:0;z-index:10"></div>' : ''}';
              document.querySelector('#send-code').onclick=()=>{
                const send=document.querySelector('#send-code');

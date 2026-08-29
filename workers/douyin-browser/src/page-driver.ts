@@ -80,6 +80,7 @@ const SMS_SEND_CONTROL_LABELS = Object.freeze([
   '重新获取验证码',
   '重新获取',
 ]);
+const SMS_VERIFY_CONTROL_LABELS = Object.freeze(['验证', '确定', '提交', '完成', '下一步']);
 
 interface WorkListEvidence {
   readonly externalId: string;
@@ -208,7 +209,11 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     } else if (input.method === 'verification_sms_send') {
       let dialog = await visibleVerificationDialog(page);
       let codeInput = verificationCodeInput(page, dialog);
-      const codeInputWasActionable = await isVerificationCodeInputActionable(codeInput);
+      const codeInputWasActionable = await isVerificationCodeStepActionable(
+        page,
+        codeInput,
+        dialog,
+      );
       if (!codeInputWasActionable) {
         const method = await uniqueVisibleControl(page, RECEIVE_SMS_METHOD_LABELS, dialog);
         if (method) {
@@ -238,7 +243,10 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       }
       const send = await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS, dialog);
       if (!send) {
-        if (!codeInputWasActionable && (await isVerificationCodeInputActionable(codeInput))) {
+        if (
+          !codeInputWasActionable &&
+          (await isVerificationCodeStepActionable(page, codeInput, dialog))
+        ) {
           return inspectLoginVerificationPage(page);
         }
         throw new PageDriverError(
@@ -249,7 +257,10 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
         );
       }
       if (!(await send.isEnabled().catch(() => false))) {
-        if (!codeInputWasActionable && (await isVerificationCodeInputActionable(codeInput))) {
+        if (
+          !codeInputWasActionable &&
+          (await isVerificationCodeStepActionable(page, codeInput, dialog))
+        ) {
           return inspectLoginVerificationPage(page);
         }
         throw new PageDriverError(
@@ -268,24 +279,26 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     } else {
       const dialog = await visibleVerificationDialog(page);
       const code = verificationCodeInput(page, dialog);
-      if (!(await isVerificationCodeInputActionable(code))) {
+      if (!(await isVerificationCodeStepActionable(page, code, dialog))) {
         throw new PageDriverError(
           'CAPTCHA_REQUIRED',
           'Douyin SMS verification input is covered by another security challenge',
         );
       }
-      await code.fill(input.sms_code);
-      const submit = await uniqueVisibleControl(
-        page,
-        ['验证', '确定', '提交', '完成', '下一步'],
-        dialog,
-      );
+      const submit = await uniqueVisibleControl(page, SMS_VERIFY_CONTROL_LABELS, dialog);
       if (!submit) {
         throw new PageDriverError(
           'PAGE_SIGNATURE_CHANGED',
           'Douyin SMS verification submit control was not found',
         );
       }
+      if (!(await isVerificationControlActionable(submit))) {
+        throw new PageDriverError(
+          'CAPTCHA_REQUIRED',
+          'Douyin SMS verification submit control is covered by another security challenge',
+        );
+      }
+      await code.fill(input.sms_code);
       await submit.click();
       const deadline = Date.now() + this.config.navigationTimeoutMs;
       while (Date.now() < deadline) {
@@ -773,7 +786,7 @@ async function waitForActionableVerificationCodeInput(
     const dialog = await visibleVerificationDialog(page);
     const input = verificationCodeInput(page, dialog);
     inputVisible ||= await input.isVisible().catch(() => false);
-    if (await isVerificationCodeInputActionable(input)) return;
+    if (await isVerificationCodeStepActionable(page, input, dialog)) return;
     await page.waitForTimeout(Math.min(200, Math.max(1, deadline - Date.now())));
   }
   throw new PageDriverError(
@@ -843,7 +856,8 @@ async function inspectLoginVerificationPage(
   );
   const codeInput = verificationCodeInput(page, dialog);
   const codeInputVisible = await codeInput.isVisible().catch(() => false);
-  const hasCodeInput = await isVerificationCodeInputActionable(codeInput);
+  const codeInputActionable = await isVerificationCodeInputActionable(codeInput);
+  const hasCodeInput = await isVerificationCodeStepActionable(page, codeInput, dialog);
   const smsSendControl = hasCodeInput
     ? await uniqueVisibleControl(page, SMS_SEND_CONTROL_LABELS, dialog)
     : null;
@@ -874,7 +888,7 @@ async function inspectLoginVerificationPage(
     ...(hasDeviceMethod ? (['original_device_scan'] as const) : []),
   ]);
   const controlEvidence = Object.freeze({
-    codeInputActionable: hasCodeInput,
+    codeInputActionable,
     codeInputVisible,
     faceVerificationOptionVisible: hasFaceVerificationMethod,
     foregroundDialogVisible: Boolean(dialog),
@@ -993,6 +1007,19 @@ async function isVerificationCodeInputActionable(input: Locator): Promise<boolea
     .click({ timeout: 250, trial: true })
     .then(() => true)
     .catch(() => false);
+}
+
+async function isVerificationCodeStepActionable(
+  page: Page,
+  input: Locator,
+  dialog: Locator | null,
+): Promise<boolean> {
+  if (!(await input.isVisible().catch(() => false))) return false;
+  if (!(await input.isEnabled().catch(() => false))) return false;
+  if (!(await input.isEditable().catch(() => false))) return false;
+  if (await isVerificationCodeInputActionable(input)) return true;
+  const submit = await uniqueVisibleControl(page, SMS_VERIFY_CONTROL_LABELS, dialog);
+  return Boolean(submit && (await isVerificationControlActionable(submit)));
 }
 
 function extractMaskedMobile(text: string): string | null {
