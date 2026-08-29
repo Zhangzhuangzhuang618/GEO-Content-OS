@@ -141,6 +141,7 @@ describe('Douyin browser service', () => {
   });
 
   it('persists an asynchronous QR verification failure for operator recovery', async () => {
+    const failureLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const initial = Object.freeze({
       ...browserSession(),
       authenticatedAt: null,
@@ -191,6 +192,14 @@ describe('Douyin browser service', () => {
       qrExpiresAt: null,
       status: 'attention_required',
     });
+    expect(failureLog).toHaveBeenCalledWith(
+      'Douyin browser login verification failed',
+      expect.objectContaining({
+        account_id: ACCOUNT_ID,
+        error: expect.stringContaining('browser process exited'),
+      }),
+    );
+    failureLog.mockRestore();
   });
 
   it('stores only a redacted diagnostic when QR authorization reaches a security challenge', async () => {
@@ -214,6 +223,7 @@ describe('Douyin browser service', () => {
     const markSession = vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce(attention);
     const diagnostic = loginVerificationDiagnostic();
     const diagnosticLog = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const failureLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const putObject = vi.fn(async ({ key }: { key: string }) => ({
       uri: `memory://geo/${key}`,
     }));
@@ -285,6 +295,13 @@ describe('Douyin browser service', () => {
       }),
     );
     expect(diagnosticLog).toHaveBeenCalledWith(
+      'Douyin browser login requires additional verification',
+      {
+        account_id: ACCOUNT_ID,
+        error_code: 'CAPTCHA_REQUIRED',
+      },
+    );
+    expect(diagnosticLog).toHaveBeenCalledWith(
       'Douyin login verification diagnostic captured',
       expect.objectContaining({
         account_id: ACCOUNT_ID,
@@ -304,7 +321,9 @@ describe('Douyin browser service', () => {
     );
     expect(JSON.stringify(diagnosticLog.mock.calls)).not.toContain('13800138000');
     expect(JSON.stringify(diagnosticLog.mock.calls)).not.toContain('654321');
+    expect(failureLog).not.toHaveBeenCalled();
     diagnosticLog.mockRestore();
+    failureLog.mockRestore();
   });
 
   it('does not let an older QR attempt overwrite a newer login attempt', async () => {
@@ -488,6 +507,7 @@ describe('Douyin browser service', () => {
     });
     const markSession = vi.fn(async () => authenticated);
     const submitLoginVerification = vi.fn(async () => null);
+    const actionLog = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const encrypt = vi.fn(async () => ({
       credentialCiphertext: 'new-ciphertext',
       credentialKeyVersion: 'local-v2',
@@ -519,6 +539,12 @@ describe('Douyin browser service', () => {
     });
     expect(encrypt).toHaveBeenCalledWith('{"cookies":[{"name":"sid","value":"safe"}]}');
     expect(JSON.stringify(markSession.mock.calls)).not.toContain('654321');
+    expect(actionLog).toHaveBeenCalledWith('Douyin login verification action requested', {
+      account_id: ACCOUNT_ID,
+      method: 'verification_sms_verify',
+    });
+    expect(JSON.stringify(actionLog.mock.calls)).not.toContain('654321');
+    actionLog.mockRestore();
   });
 
   it('persists credentials and reactivates the account after a security challenge succeeds', async () => {

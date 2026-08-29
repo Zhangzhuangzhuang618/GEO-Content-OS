@@ -961,7 +961,14 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
   await expect(
     page.getByText('二次验证诊断证据已安全保存；页面截图不作为操作画面展示'),
   ).toBeVisible();
+  await expect(page.getByText('扫码授权已经完成，当前停留在抖音身份验证方式选择页')).toBeVisible();
   await expect(page.getByRole('img', { name: '抖音二次验证脱敏诊断截图' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '生成登录二维码' })).toHaveCount(0);
+  const restartButton = page.getByRole('button', { name: '放弃当前验证并重新扫码' });
+  await expect(restartButton).toBeVisible();
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await restartButton.click();
+  expect(actions).toEqual([]);
   await page.getByRole('button', { name: '发送短信验证码' }).click();
   await expect(
     page.getByText(

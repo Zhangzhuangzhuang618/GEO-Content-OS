@@ -510,6 +510,10 @@ export class DouyinBrowserService {
           'Douyin login verification is not currently required',
         );
       }
+      console.warn('Douyin login verification action requested', {
+        account_id: accountId,
+        method: input.method,
+      });
       try {
         const diagnostic = await this.driver.submitLoginVerification(accountId, input);
         if (!diagnostic) return sessionView(await this.persistAuthenticatedSession(session));
@@ -683,21 +687,29 @@ export class DouyinBrowserService {
         await this.persistAuthenticatedSession(current);
       });
     } catch (error) {
-      console.error('Douyin browser login verification failed', {
-        account_id: session.accountId,
-        error: safeBrowserError(error),
-      });
+      const errorCode = loginVerificationErrorCode(error);
+      if (
+        error instanceof PageDriverError &&
+        (error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED')
+      ) {
+        console.warn('Douyin browser login requires additional verification', {
+          account_id: session.accountId,
+          error_code: errorCode,
+        });
+      } else {
+        console.error('Douyin browser login verification failed', {
+          account_id: session.accountId,
+          error: safeBrowserError(error),
+        });
+      }
       try {
         await this.locks.run(session.accountId, async () => {
           const current = await this.store.getSession(session.accountId);
           if (!isCurrentQrAttempt(current, session, expiresAt)) return;
-          const captured = await this.captureLoginDiagnostic(
-            current,
-            loginVerificationErrorCode(error),
-          ).catch(() => null);
+          const captured = await this.captureLoginDiagnostic(current, errorCode).catch(() => null);
           await this.store.markSession(current, {
             error: captured?.error ?? {
-              code: loginVerificationErrorCode(error),
+              code: errorCode,
               schema_version: 'douyin-browser-error@1',
             },
             qrExpiresAt: null,

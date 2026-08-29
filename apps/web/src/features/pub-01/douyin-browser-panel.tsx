@@ -80,12 +80,19 @@ export function DouyinBrowserPanel({
     return () => clearInterval(timer);
   }, [account.id, session?.status]);
 
-  async function beginLogin() {
+  async function beginLogin(confirmRestart = false) {
     if (inFlight.current) return;
+    if (
+      confirmRestart &&
+      !window.confirm('这会放弃当前二次验证并生成新的登录二维码。确定重新扫码吗？')
+    ) {
+      return;
+    }
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
     inFlight.current = true;
     setBusy(true);
+    setSmsCode('');
     setMessage(null);
     try {
       const next = await startDouyinBrowserLogin(account, csrf, session?.status === 'reauth');
@@ -196,14 +203,20 @@ export function DouyinBrowserPanel({
           最近核验：{formatDateTime(session?.last_verified_at)}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            className={primaryButton}
-            disabled={busy}
-            onClick={() => void beginLogin()}
-            type="button"
-          >
-            {busy ? '正在启动…' : session?.status === 'reauth' ? '重新扫码' : '生成登录二维码'}
-          </button>
+          {session?.status !== 'attention_required' || !session.verification ? (
+            <button
+              className={primaryButton}
+              disabled={busy}
+              onClick={() => void beginLogin()}
+              type="button"
+            >
+              {busy
+                ? '正在启动…'
+                : session?.status === 'reauth' || session?.status === 'attention_required'
+                  ? '重新扫码'
+                  : '生成登录二维码'}
+            </button>
+          ) : null}
           <button
             className={secondaryButton}
             disabled={busy}
@@ -235,6 +248,11 @@ export function DouyinBrowserPanel({
             <p className="mt-1 text-xs text-ink-500">
               二次验证诊断证据已安全保存；页面截图不作为操作画面展示，请使用下方验证方式继续。
             </p>
+            {session.verification.challenge_type === 'identity_choice' ? (
+              <p className="mt-2 text-sm leading-6 text-amber-900">
+                扫码授权已经完成，当前停留在抖音身份验证方式选择页，尚未进入验证码输入页。请先选择下方验证方式；重复生成二维码会放弃当前验证进度。
+              </p>
+            ) : null}
             {session.verification.available_methods.includes('sms_code') ? (
               <p className="mt-2 text-sm font-medium text-ink-800">
                 {session.verification.masked_mobile
@@ -312,6 +330,14 @@ export function DouyinBrowserPanel({
                 当前页面是交互式验证码，系统不会识别、破解或绕过。请重新扫码，或在页面提供短信/原设备方式后再继续。
               </p>
             ) : null}
+            <button
+              className={`${secondaryButton} mt-4`}
+              disabled={busy}
+              onClick={() => void beginLogin(true)}
+              type="button"
+            >
+              放弃当前验证并重新扫码
+            </button>
           </div>
         ) : null}
         <p aria-live="polite" className="mt-4 text-sm text-ink-700">
