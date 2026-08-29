@@ -12,6 +12,7 @@ import type {
   LoginStartResult,
   LoginVerificationDiagnostic,
   LoginVerificationInput,
+  LoginVerificationSnapshot,
   RemotePublication,
 } from './types.js';
 
@@ -182,10 +183,20 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
 
   public async inspectLoginVerification(
     accountId: string,
-  ): Promise<LoginVerificationDiagnostic | null> {
+  ): Promise<LoginVerificationDiagnostic | null>;
+  public async inspectLoginVerification(
+    accountId: string,
+    options: { readonly captureScreenshot: false },
+  ): Promise<LoginVerificationSnapshot | null>;
+  public async inspectLoginVerification(
+    accountId: string,
+    options?: { readonly captureScreenshot: false },
+  ): Promise<LoginVerificationSnapshot | null> {
     const page = this.pages.get(accountId);
     if (!page || page.isClosed()) return null;
-    return inspectLoginVerificationPage(page);
+    return options?.captureScreenshot === false
+      ? inspectLoginVerificationPage(page, false)
+      : inspectLoginVerificationPage(page);
   }
 
   public async submitLoginVerification(
@@ -489,6 +500,7 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     if (existing && !existing.isClosed()) return existing;
     await mkdir(dirname(profilePath), { recursive: true });
     const context = await chromium.launchPersistentContext(profilePath, {
+      ...(this.config.headless ? { args: ['--disable-gpu'] } : {}),
       headless: this.config.headless,
       viewport: { height: 960, width: 1440 },
     });
@@ -849,7 +861,15 @@ async function uniqueVisibleControl(
 
 async function inspectLoginVerificationPage(
   page: Page,
-): Promise<LoginVerificationDiagnostic | null> {
+): Promise<LoginVerificationDiagnostic | null>;
+async function inspectLoginVerificationPage(
+  page: Page,
+  captureScreenshot: false,
+): Promise<LoginVerificationSnapshot | null>;
+async function inspectLoginVerificationPage(
+  page: Page,
+  captureScreenshot = true,
+): Promise<LoginVerificationSnapshot | null> {
   const dialog = await visibleVerificationDialog(page);
   const hasReceiveSmsMethod = Boolean(
     await uniqueVisibleControl(page, RECEIVE_SMS_METHOD_LABELS, dialog),
@@ -931,18 +951,20 @@ async function inspectLoginVerificationPage(
     visualCaptchaVisible: hasVisualCaptcha,
   });
   const qr = await visibleVerificationQr(page);
-  const qrPng = qr ? await qr.screenshot({ type: 'png' }) : null;
+  const qrPng = captureScreenshot && qr ? await qr.screenshot({ type: 'png' }) : null;
   const maskedMobile = extractMaskedMobile(
     await page
       .locator('body')
       .innerText()
       .catch(() => ''),
   );
-  const screenshotPng = await captureLoginVerificationScreenshot(page, dialog, controlEvidence);
+  const screenshotPng = captureScreenshot
+    ? await captureLoginVerificationScreenshot(page, dialog, controlEvidence)
+    : null;
   const current = new URL(page.url());
   const challengeType = hasCodeInput
     ? 'sms_code'
-    : qrPng
+    : qr
       ? 'original_device_scan'
       : dialog &&
           (hasReceiveSmsMethod || hasSendSmsMethod || hasFaceVerificationMethod || hasDeviceMethod)
@@ -975,7 +997,7 @@ async function inspectLoginVerificationPage(
     pagePath: current.pathname,
     pageSignature,
     qrPng,
-    screenshotPng,
+    ...(screenshotPng ? { screenshotPng } : {}),
     smsResendAvailable,
   });
 }

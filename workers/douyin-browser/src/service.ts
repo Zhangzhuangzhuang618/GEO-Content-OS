@@ -22,6 +22,7 @@ import type {
   DouyinPageDriver,
   LoginVerificationDiagnostic,
   LoginVerificationInput,
+  LoginVerificationSnapshot,
   PublicationClaim,
   RemotePublication,
 } from './types.js';
@@ -72,6 +73,9 @@ export class DouyinBrowserService {
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
       try {
+        if (session.status === 'qr_ready' || session.status === 'attention_required') {
+          await this.driver.release(accountId);
+        }
         const result = await this.driver.startLogin(accountId, this.profilePath(session));
         if (result.qrPng.byteLength === 0) {
           return sessionView(await this.persistAuthenticatedSession(session));
@@ -121,12 +125,19 @@ export class DouyinBrowserService {
   public async sessionStatus(accountId: string): Promise<Readonly<Record<string, unknown>>> {
     const session = await this.store.getSession(accountId);
     if (!canVerifySession(session)) return sessionView(session);
+    if (this.locks.isBusy(accountId)) {
+      return session.status === 'attention_required'
+        ? sessionView(session, await this.storedVerificationView(session, false))
+        : sessionView(session);
+    }
     return this.locks.run(accountId, async () => {
       const current = await this.store.getSession(accountId);
       if (!canVerifySession(current)) return sessionView(current);
       try {
         if (current.status === 'attention_required') {
-          const live = await this.driver.inspectLoginVerification(accountId);
+          const live = await this.driver.inspectLoginVerification(accountId, {
+            captureScreenshot: false,
+          });
           if (live) return sessionView(current, verificationView(live));
         }
         const authenticated = await this.driver.verifyAuthenticated(
@@ -615,6 +626,7 @@ export class DouyinBrowserService {
 
   private async storedVerificationView(
     session: BrowserSession,
+    includeDiagnosticImage = true,
   ): Promise<Readonly<Record<string, unknown>> | null> {
     const raw = session.lastError?.['verification'];
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -649,13 +661,15 @@ export class DouyinBrowserService {
     const maskedMobile = isMaskedMobile(value['masked_mobile'])
       ? value['masked_mobile']
       : undefined;
-    try {
-      const screenshot = await this.storage.getObject(storageKey(value['object_uri']));
-      if (sha256(screenshot) === value['content_hash']) {
-        diagnosticImageDataUrl = `data:image/png;base64,${Buffer.from(screenshot).toString('base64')}`;
+    if (includeDiagnosticImage) {
+      try {
+        const screenshot = await this.storage.getObject(storageKey(value['object_uri']));
+        if (sha256(screenshot) === value['content_hash']) {
+          diagnosticImageDataUrl = `data:image/png;base64,${Buffer.from(screenshot).toString('base64')}`;
+        }
+      } catch {
+        diagnosticImageDataUrl = undefined;
       }
-    } catch {
-      diagnosticImageDataUrl = undefined;
     }
     return Object.freeze({
       available_methods: availableMethods,
@@ -834,13 +848,17 @@ function sessionView(
 }
 
 function verificationView(
-  diagnostic: LoginVerificationDiagnostic,
+  diagnostic: LoginVerificationSnapshot,
 ): Readonly<Record<string, unknown>> {
   return Object.freeze({
     available_methods: diagnostic.availableMethods,
     captured_at: diagnostic.capturedAt.toISOString(),
     challenge_type: diagnostic.challengeType,
-    diagnostic_image_data_url: `data:image/png;base64,${Buffer.from(diagnostic.screenshotPng).toString('base64')}`,
+    ...(hasDiagnosticScreenshot(diagnostic)
+      ? {
+          diagnostic_image_data_url: `data:image/png;base64,${Buffer.from(diagnostic.screenshotPng).toString('base64')}`,
+        }
+      : {}),
     has_code_input: diagnostic.hasCodeInput,
     ...(diagnostic.maskedMobile ? { masked_mobile: diagnostic.maskedMobile } : {}),
     page_origin: diagnostic.pageOrigin,
@@ -850,6 +868,12 @@ function verificationView(
       ? {}
       : { sms_resend_available: diagnostic.smsResendAvailable }),
   });
+}
+
+function hasDiagnosticScreenshot(
+  diagnostic: LoginVerificationSnapshot,
+): diagnostic is LoginVerificationDiagnostic {
+  return 'screenshotPng' in diagnostic && diagnostic.screenshotPng instanceof Uint8Array;
 }
 
 function verificationControlEvidenceView(

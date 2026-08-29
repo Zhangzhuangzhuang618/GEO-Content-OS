@@ -39,7 +39,7 @@ export interface LoginVerificationControlEvidence {
   readonly visualCaptchaVisible: boolean;
 }
 
-export interface LoginVerificationDiagnostic {
+export interface LoginVerificationSnapshot {
   readonly availableMethods: readonly LoginVerificationMethod[];
   readonly capturedAt: Date;
   readonly challengeType:
@@ -56,8 +56,11 @@ export interface LoginVerificationDiagnostic {
   readonly pagePath: string;
   readonly pageSignature: string;
   readonly qrPng: Uint8Array | null;
-  readonly screenshotPng: Uint8Array;
   readonly smsResendAvailable?: boolean;
+}
+
+export interface LoginVerificationDiagnostic extends LoginVerificationSnapshot {
+  readonly screenshotPng: Uint8Array;
 }
 
 export type LoginVerificationInput =
@@ -131,6 +134,10 @@ export interface DouyinPageDriver {
   close(): Promise<void>;
   exportStorageState(accountId: string): Promise<string>;
   inspectLoginVerification(accountId: string): Promise<LoginVerificationDiagnostic | null>;
+  inspectLoginVerification(
+    accountId: string,
+    options: { readonly captureScreenshot: false },
+  ): Promise<LoginVerificationSnapshot | null>;
   release(accountId: string): Promise<void>;
   reconcile(
     accountId: string,

@@ -420,11 +420,12 @@ describe('Douyin browser service', () => {
     });
     const diagnostic = loginVerificationDiagnostic();
     const verifyAuthenticated = vi.fn();
+    const inspectLoginVerification = vi.fn(async () => diagnostic);
     const service = new DouyinBrowserService(
       config(),
       { getSession: vi.fn(async () => attention) } as unknown as PostgresDouyinBrowserStore,
       {
-        inspectLoginVerification: vi.fn(async () => diagnostic),
+        inspectLoginVerification,
         verifyAuthenticated,
       } as unknown as DouyinPageDriver,
       {} as CredentialEnvelopeService,
@@ -436,12 +437,90 @@ describe('Douyin browser service', () => {
       verification: {
         available_methods: ['sms_code', 'original_device_scan'],
         challenge_type: 'identity_choice',
-        diagnostic_image_data_url: `data:image/png;base64,${Buffer.from(
-          diagnostic.screenshotPng,
-        ).toString('base64')}`,
       },
     });
+    expect(inspectLoginVerification).toHaveBeenCalledWith(ACCOUNT_ID, {
+      captureScreenshot: false,
+    });
     expect(verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('returns the stored challenge without waiting for an active browser restart', async () => {
+    const diagnostic = loginVerificationDiagnostic();
+    const contentHash = createHash('sha256').update(diagnostic.screenshotPng).digest('hex');
+    const attention = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      lastError: {
+        code: 'CAPTCHA_REQUIRED',
+        verification: {
+          available_methods: diagnostic.availableMethods,
+          captured_at: diagnostic.capturedAt.toISOString(),
+          challenge_type: diagnostic.challengeType,
+          content_hash: contentHash,
+          has_code_input: diagnostic.hasCodeInput,
+          object_uri: 'memory://geo/douyin-browser/redacted.png',
+          page_origin: diagnostic.pageOrigin,
+          page_path: diagnostic.pagePath,
+          page_signature: diagnostic.pageSignature,
+        },
+      },
+      lastVerifiedAt: null,
+      status: 'attention_required' as const,
+      storageStateCiphertext: null,
+      storageStateKeyVersion: null,
+    });
+    const pending = Object.freeze({
+      ...attention,
+      lastError: null,
+      qrExpiresAt: new Date(Date.now() + 60_000),
+      status: 'qr_ready' as const,
+      version: 2,
+    });
+    let finishBrowserStart: (
+      value: Readonly<{ expiresAt: Date; qrPng: Uint8Array }>,
+    ) => void = () => undefined;
+    const browserStart = new Promise<Readonly<{ expiresAt: Date; qrPng: Uint8Array }>>(
+      (resolve) => {
+        finishBrowserStart = resolve;
+      },
+    );
+    const release = vi.fn(async () => undefined);
+    const startLogin = vi.fn(async () => browserStart);
+    const inspectLoginVerification = vi.fn();
+    const getObject = vi.fn(async () => diagnostic.screenshotPng);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getOrCreateSession: vi.fn(async () => attention),
+        getSession: vi.fn(async () => attention),
+        markSession: vi.fn(async () => pending),
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification,
+        release,
+        startLogin,
+        waitForAuthentication: vi.fn(() => new Promise<boolean>(() => undefined)),
+      } as unknown as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      { getObject } as unknown as ObjectStorageAdapter,
+    );
+
+    const restart = service.startLogin(ACCOUNT_ID);
+    await vi.waitFor(() => expect(startLogin).toHaveBeenCalledOnce());
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'attention_required',
+      verification: {
+        available_methods: ['sms_code', 'original_device_scan'],
+        challenge_type: 'identity_choice',
+      },
+    });
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
+    expect(inspectLoginVerification).not.toHaveBeenCalled();
+    expect(getObject).not.toHaveBeenCalled();
+
+    finishBrowserStart({ expiresAt: pending.qrExpiresAt!, qrPng: Buffer.from('replacement-qr') });
+    await expect(restart).resolves.toMatchObject({ status: 'qr_ready' });
   });
 
   it('returns the last verified redacted diagnostic after the browser page is no longer live', async () => {

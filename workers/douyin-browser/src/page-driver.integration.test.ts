@@ -326,6 +326,14 @@ describe('Douyin local browser simulator', () => {
       const diagnosticPng = Buffer.from(diagnostic!.screenshotPng);
       expect(diagnosticPng.readUInt32BE(16)).toBeLessThan(1_440);
       expect(diagnosticPng.readUInt32BE(20)).toBeLessThan(960);
+      const lightweight = await driver.inspectLoginVerification(ACCOUNT_ID, {
+        captureScreenshot: false,
+      });
+      expect(lightweight).toMatchObject({
+        challengeType: 'identity_choice',
+        hasCodeInput: false,
+      });
+      expect(lightweight).not.toHaveProperty('screenshotPng');
 
       await expect(
         driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
