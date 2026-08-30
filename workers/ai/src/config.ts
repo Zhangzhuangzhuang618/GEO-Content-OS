@@ -19,6 +19,7 @@ export interface ContentMediaAutomationConfig {
 }
 
 export interface OfficialSiteAutomationConfig {
+  readonly draftModelKey?: string;
   readonly qualityModelKey: string;
   readonly qualityPromptVersionId: string;
   readonly qualitySkillVersion: string;
@@ -57,6 +58,7 @@ export function readAiWorkerConfig(environment = process.env): AiWorkerConfig {
   });
   return Object.freeze({
     automation: Object.freeze({
+      draftModelKey: balancedModelKey,
       qualityModelKey: qualityCheckerModelKey,
       qualityPromptVersionId: uuid(
         environment['QUALITY_CHECKER_PROMPT_VERSION_ID'],

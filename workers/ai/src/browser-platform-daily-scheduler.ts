@@ -379,6 +379,9 @@ async function createCandidate(
     authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: batch.platformCode === 'lieju' ? '通过页面联系方式咨询具体需求' : null,
     schema_version: 'brief-constraints@1',
+    ...(batch.platformCode === 'douyin'
+      ? { douyin_daily_direct: true, server_bound_generation_context: true }
+      : {}),
     target_accounts_by_code: {
       [batch.platformCode]: {
         account_id: seed.account.id,
@@ -458,6 +461,7 @@ async function createCandidate(
   };
   const inputHash = sha256(JSON.stringify(writerInput));
   const requestId = `${batch.platformCode}-daily-${batch.id.slice(0, 8)}-${candidateNo}`;
+  const generationModelKey = browserPlatformGenerationModelKey(batch.platformCode, config);
   const masterRuns = await transaction<{ id: string }[]>`
     INSERT INTO generation_runs (
       tenant_id,workspace_id,project_id,package_id,variant_id,skill_name,skill_version,
@@ -465,7 +469,7 @@ async function createCandidate(
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.workspaceId}::uuid,${batch.projectId}::uuid,
       ${packageId}::uuid,NULL,'content-writer',${config.writerSkillVersion},
-      ${config.writerPromptVersionId}::uuid,${config.rewriteModelKey},${inputHash},${requestId}
+      ${config.writerPromptVersionId}::uuid,${generationModelKey},${inputHash},${requestId}
     ) RETURNING id
   `;
   const variantRuns = await transaction<{ id: string }[]>`
@@ -475,7 +479,7 @@ async function createCandidate(
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.workspaceId}::uuid,${batch.projectId}::uuid,
       ${packageId}::uuid,${variantId}::uuid,'content-writer',${config.writerSkillVersion},
-      ${config.writerPromptVersionId}::uuid,${config.rewriteModelKey},${inputHash},${requestId}
+      ${config.writerPromptVersionId}::uuid,${generationModelKey},${inputHash},${requestId}
     ) RETURNING id
   `;
   const masterRunId = required(masterRuns[0]?.id, 'Master run insert failed');
@@ -503,7 +507,7 @@ async function createCandidate(
       actor_user_id: batch.createdBy,
       input_hash: inputHash,
       master_run_id: masterRunId,
-      model_key: config.rewriteModelKey,
+      model_key: generationModelKey,
       model_policy: 'quality',
       package_id: packageId,
       project_id: batch.projectId,
@@ -545,6 +549,15 @@ async function createCandidate(
       })}::text::jsonb,${requestId}
     )
   `;
+}
+
+export function browserPlatformGenerationModelKey(
+  platformCode: Platform,
+  config: Pick<OfficialSiteAutomationConfig, 'draftModelKey' | 'rewriteModelKey'>,
+): string {
+  return platformCode === 'douyin'
+    ? (config.draftModelKey ?? config.rewriteModelKey)
+    : config.rewriteModelKey;
 }
 
 async function attention(

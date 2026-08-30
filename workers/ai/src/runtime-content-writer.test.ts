@@ -56,6 +56,155 @@ describe('AI Worker runtime wiring', () => {
     expect(recordUsage).toHaveBeenCalledOnce();
   });
 
+  it('compiles a server-bound Douyin daily draft without exposing tools', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const flash = new LooseMockAdapter(
+      [{ text: JSON.stringify(douyinDirectDraft()) }],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-master',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-direct-variant',
+      writerInput,
+    });
+
+    const meta = variant.platform_meta as JsonObject;
+    const cards = meta['cards'] as readonly JsonObject[];
+    expect(flash.requests).toHaveLength(1);
+    expect(flash.requests[0]?.tools ?? []).toHaveLength(0);
+    expect(pro.requests).toHaveLength(0);
+    expect(cards.map((card) => card['card_key'])).toEqual([
+      'cover',
+      'conditions',
+      'pricing',
+      'protection',
+      'schedule',
+      'checklist',
+      'summary',
+    ]);
+    expect(variant.blocks).toHaveLength(9);
+    expect(String(meta['description']).split(/\n\n/gu)).toHaveLength(8);
+    expect(meta['description']).toContain('分项报价');
+  });
+
+  it('repairs only the failing Douyin draft fields with Flash before Pro', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = douyinDirectDraft({
+      opening_pain: '广州跨区搬家需要提前完成两端现场信息核对并安排车辆与人员',
+    });
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              { replacement_text: initial.opening_topic, target_id: 'opening_topic' },
+              {
+                replacement_text:
+                  '广州跨区搬家涉及两端现场条件，遗漏信息容易带来等待、加价或磕碰风险',
+                target_id: 'opening_pain',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-repair-master',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-direct-repair-variant',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      'opening_pain',
+    );
+    expect(flash.requests.every((request) => !request.tools?.length)).toBe(true);
+    expect(pro.requests).toHaveLength(0);
+    expect((variant.platform_meta as JsonObject)['description']).toContain('加价或磕碰风险');
+  });
+
+  it('escalates an invalid bounded Douyin draft to Pro without tool calls', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const flash = new LooseMockAdapter(
+      [{ text: '{"title":' }, { text: '{"title":' }],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter(
+      [{ text: JSON.stringify(douyinDirectDraft()) }],
+      'deepseek-v4-pro',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    await expect(
+      writer.generateMaster({
+        context: masterContext,
+        requestId: 'runtime-douyin-direct-pro-fallback',
+        writerInput,
+      }),
+    ).resolves.toMatchObject({ platform_code: 'master' });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(pro.requests).toHaveLength(1);
+    expect([...flash.requests, ...pro.requests].every((request) => !request.tools?.length)).toBe(
+      true,
+    );
+  });
+
   it('removes an identical Douyin CTA block while preserving the canonical CTA', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const output = multiPlatformContentData(['douyin'], new Set());
@@ -1882,6 +2031,75 @@ function multiPlatformWriterInput(
       platformCodes.map((platformCode) => [platformCode, rule]),
     ),
   };
+}
+
+function douyinDirectWriterInput(input: JsonObject): JsonObject {
+  const base = multiPlatformWriterInput(input, ['douyin']);
+  const brief = base['brief'] as JsonObject;
+  const strategy = base['strategy'] as JsonObject;
+  return {
+    ...base,
+    brief: {
+      ...brief,
+      constraints: {
+        douyin_daily_direct: true,
+        server_bound_generation_context: true,
+      },
+    },
+    strategy: { ...strategy, profile: {} },
+  };
+}
+
+function douyinDirectDraft(overrides: { readonly opening_pain?: string } = {}) {
+  const paragraphs = DOUYIN_NARRATIVE_DESCRIPTION.split(/\n\n/gu);
+  return {
+    cards: {
+      checklist: {
+        body: '先清点物品；再确认进场条件；最后把费用、责任和验收方式写进约定。',
+        heading: '按三步准备清单',
+      },
+      conditions: {
+        body: '先核对两端楼层、电梯预约、门口停车和通道尺寸，再判断车辆与装卸顺序。',
+        heading: '现场条件先判断',
+      },
+      cover: {
+        body: '跨区搬家别急着定车，先把两端现场、费用边界和时间限制排清楚。',
+        heading: '跨区搬家怎么准备',
+      },
+      pricing: {
+        body: '把运输、人工、拆装、包装、楼层和等待项目分别确认，避免只比较一个总价。',
+        heading: '报价边界逐项核对',
+      },
+      protection: {
+        body: '易碎品分类包装，大件确认拆装方式，交接时按清单验收并记录异常。',
+        heading: '防护责任提前确认',
+      },
+      schedule: {
+        body: '预约电梯和进场时间，确认车辆调度与计划变化的响应方式，减少现场等待。',
+        heading: '工期调度留出余量',
+      },
+      summary: {
+        body: '结合两端现场、分项报价、防护责任和时间安排逐项选择，最后按清单确认。',
+        heading: '按选择依据再确认',
+      },
+    },
+    checklist: paragraphs[5]!,
+    conclusion: paragraphs[6]!,
+    evidence_claims: [],
+    opening_pain:
+      overrides.opening_pain ??
+      '广州跨区搬家涉及两端楼层、电梯预约、停车位置和物品拆装，任一条件遗漏都容易带来等待、临时加项或物品磕碰',
+    opening_topic: '一份搬家服务选择指南',
+    price_boundary: paragraphs[2]!,
+    protection_risk: paragraphs[3]!,
+    schedule: paragraphs[4]!,
+    solution_paragraphs: [
+      paragraphs[1]!,
+      '根据物品体积和道路条件选择车型，同时核对车辆能否进入两端装卸点；将人员、车辆和搬运顺序形成可复核方案，减少到场后反复调整。',
+    ],
+    title: '一份搬家服务选择指南',
+    topics: ['搬家准备', '搬家指南', '搬家避坑', '广州搬家'],
+  } as const;
 }
 
 function multiPlatformContentData(

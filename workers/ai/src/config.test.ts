@@ -10,6 +10,7 @@ describe('AI Worker model routing configuration', () => {
     const config = readAiWorkerConfig(environment());
 
     expect(config.automation).toMatchObject({
+      draftModelKey: 'deepseek-v4-flash',
       qualityModelKey: 'deepseek-v4-pro',
       rewriteModelKey: 'deepseek-v4-pro',
     });
