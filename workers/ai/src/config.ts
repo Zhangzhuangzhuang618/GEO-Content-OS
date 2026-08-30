@@ -32,12 +32,32 @@ export function readAiWorkerConfig(environment = process.env): AiWorkerConfig {
   if (environment['NODE_ENV'] === 'production' && driver === 'mock') {
     throw new Error('AI_MODEL_DRIVER=mock is forbidden in production');
   }
+  const fastModelKey = required(
+    environment['CONTENT_MODEL_FAST_KEY'] ?? 'deepseek-v4-flash',
+    'CONTENT_MODEL_FAST_KEY',
+  );
+  const balancedModelKey = required(
+    environment['CONTENT_MODEL_BALANCED_KEY'] ?? 'deepseek-v4-flash',
+    'CONTENT_MODEL_BALANCED_KEY',
+  );
+  const qualityModelKey = required(
+    environment['CONTENT_MODEL_QUALITY_KEY'],
+    'CONTENT_MODEL_QUALITY_KEY',
+  );
+  const qualityCheckerModelKey = required(
+    environment['QUALITY_CHECKER_MODEL_KEY'],
+    'QUALITY_CHECKER_MODEL_KEY',
+  );
+  assertDistinctDeepSeekQualityRouting({
+    balancedModelKey,
+    driver,
+    fastModelKey,
+    qualityCheckerModelKey,
+    qualityModelKey,
+  });
   return Object.freeze({
     automation: Object.freeze({
-      qualityModelKey: required(
-        environment['QUALITY_CHECKER_MODEL_KEY'],
-        'QUALITY_CHECKER_MODEL_KEY',
-      ),
+      qualityModelKey: qualityCheckerModelKey,
       qualityPromptVersionId: uuid(
         environment['QUALITY_CHECKER_PROMPT_VERSION_ID'],
         'QUALITY_CHECKER_PROMPT_VERSION_ID',
@@ -46,10 +66,7 @@ export function readAiWorkerConfig(environment = process.env): AiWorkerConfig {
         environment['QUALITY_CHECKER_SKILL_VERSION'] ?? '1.0.0',
         'QUALITY_CHECKER_SKILL_VERSION',
       ),
-      rewriteModelKey: required(
-        environment['CONTENT_MODEL_QUALITY_KEY'],
-        'CONTENT_MODEL_QUALITY_KEY',
-      ),
+      rewriteModelKey: qualityModelKey,
       writerPromptVersionId: uuid(
         environment['CONTENT_WRITER_PROMPT_VERSION_ID'],
         'CONTENT_WRITER_PROMPT_VERSION_ID',
@@ -95,6 +112,32 @@ export function readAiWorkerConfig(environment = process.env): AiWorkerConfig {
     ),
     redisUrl: required(environment['REDIS_URL'], 'REDIS_URL'),
   });
+}
+
+function assertDistinctDeepSeekQualityRouting(input: {
+  readonly balancedModelKey: string;
+  readonly driver: AiModelDriver;
+  readonly fastModelKey: string;
+  readonly qualityCheckerModelKey: string;
+  readonly qualityModelKey: string;
+}): void {
+  if (input.driver !== 'deepseek') return;
+  if (
+    input.qualityModelKey === input.fastModelKey ||
+    input.qualityModelKey === input.balancedModelKey
+  ) {
+    throw new Error(
+      'CONTENT_MODEL_QUALITY_KEY must differ from the Fast and Balanced model keys for DeepSeek routing',
+    );
+  }
+  if (
+    input.qualityCheckerModelKey === input.fastModelKey ||
+    input.qualityCheckerModelKey === input.balancedModelKey
+  ) {
+    throw new Error(
+      'QUALITY_CHECKER_MODEL_KEY must differ from the Fast and Balanced model keys for DeepSeek routing',
+    );
+  }
 }
 
 function uuid(value: string | undefined, name: string): string {

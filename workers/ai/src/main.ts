@@ -38,6 +38,12 @@ import { DailyCitationRetriever } from './daily-citation-retriever.js';
 
 async function main(): Promise<void> {
   const config = readAiWorkerConfig();
+  console.warn('AI model routing safety check passed', {
+    balanced_model_key: process.env['CONTENT_MODEL_BALANCED_KEY'] ?? 'deepseek-v4-flash',
+    fast_model_key: process.env['CONTENT_MODEL_FAST_KEY'] ?? 'deepseek-v4-flash',
+    quality_checker_model_key: config.automation.qualityModelKey,
+    quality_model_key: config.automation.rewriteModelKey,
+  });
   const database = postgres(config.databaseUrl, { max: 5, prepare: false });
   const embedding = createEmbeddingAdapter(
     readEmbeddingConfiguration({
