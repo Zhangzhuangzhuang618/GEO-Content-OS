@@ -1885,6 +1885,11 @@ function douyinDirectEvidenceIssues(
   const supplied = suppliedCitationIds(writerInput);
   const visible = normalizeContentText(douyinDirectVisibleText(draft));
   const issues: string[] = [];
+  if (supplied.size > 0 && draft.evidence_claims.length === 0) {
+    issues.push(
+      'douyin:证据映射为空；至少将一条可见、由已提供引用直接支持的完整事实声明关联到 citation_map；若当前文案没有可直接支持的声明，后续完整草稿修订必须改用输入引用能直接支持的事实',
+    );
+  }
   draft.evidence_claims.forEach((claim, index) => {
     const unknown = claim.citation_ids.filter((citationId) => !supplied.has(citationId));
     if (unknown.length > 0) {

@@ -238,6 +238,67 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
+  it('repairs an empty Douyin evidence map before the independent factual gate', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citationId = '73000000-0000-4000-8000-000000000062';
+    const valid = douyinDirectDraft();
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(valid) },
+        {
+          text: JSON.stringify({
+            evidence_claims: [
+              {
+                citation_ids: [citationId],
+                claim_text: valid.opening_pain,
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const baseInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        {
+          chunk_id: '75000000-0000-4000-8000-000000000062',
+          citation_id: citationId,
+          quote_text: valid.opening_pain,
+          source_id: '74000000-0000-4000-8000-000000000062',
+        },
+      ],
+    };
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-empty-evidence-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      '证据映射为空',
+    );
+    expect(result.citation_map).toEqual([
+      expect.objectContaining({ citation_ids: [citationId], claim_text: valid.opening_pain }),
+    ]);
+    expect(pro.requests).toHaveLength(0);
+  });
+
   it('routes a short Douyin field through targeted Flash repair instead of schema fallback', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const valid = douyinDirectDraft();
