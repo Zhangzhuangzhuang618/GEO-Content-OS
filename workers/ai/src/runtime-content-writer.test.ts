@@ -167,6 +167,77 @@ describe('AI Worker runtime wiring', () => {
     expect((variant.platform_meta as JsonObject)['description']).toContain('加价或磕碰风险');
   });
 
+  it('repairs Douyin evidence metadata against supplied citations and visible text', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citationId = '73000000-0000-4000-8000-000000000061';
+    const sourceId = '74000000-0000-4000-8000-000000000061';
+    const valid = douyinDirectDraft();
+    const initial = {
+      ...valid,
+      evidence_claims: [
+        {
+          citation_ids: [citationId],
+          claim_text: '广州跨区搬家需要提前核对两端条件',
+        },
+      ],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            evidence_claims: [
+              {
+                citation_ids: [citationId],
+                claim_text: valid.opening_pain,
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const baseInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        {
+          chunk_id: '75000000-0000-4000-8000-000000000061',
+          citation_id: citationId,
+          quote_text: valid.opening_pain,
+          source_id: sourceId,
+        },
+      ],
+    };
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-evidence-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      'Repair evidence_claims only',
+    );
+    expect(result.citation_map).toEqual([
+      expect.objectContaining({ citation_ids: [citationId], claim_text: valid.opening_pain }),
+    ]);
+    expect(pro.requests).toHaveLength(0);
+  });
+
   it('routes a short Douyin field through targeted Flash repair instead of schema fallback', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const valid = douyinDirectDraft();
@@ -301,6 +372,65 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests[0]?.messages.map((message) => message.content).join('\n')).toContain(
       'price_boundary',
     );
+    expect([...flash.requests, ...pro.requests].every((request) => !request.tools?.length)).toBe(
+      true,
+    );
+  });
+
+  it('runs one bounded Flash repair when Pro still leaves a deterministic Douyin issue', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const valid = douyinDirectDraft();
+    const initial = {
+      ...valid,
+      opening_pain: '广州跨区搬家需要提前完成两端现场信息核对并安排车辆与人员',
+    };
+    const incompleteRepair = {
+      replacements: [
+        { replacement_text: initial.opening_topic, target_id: 'opening_topic' },
+        { replacement_text: initial.opening_pain, target_id: 'opening_pain' },
+      ],
+    };
+    const completeRepair = {
+      replacements: [
+        { replacement_text: initial.opening_topic, target_id: 'opening_topic' },
+        {
+          replacement_text:
+            '广州跨区搬家涉及两端楼层、电梯和停车条件，遗漏信息容易造成等待或临时调整',
+          target_id: 'opening_pain',
+        },
+      ],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        { text: JSON.stringify(incompleteRepair) },
+        { text: JSON.stringify(completeRepair) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([{ text: JSON.stringify(initial) }], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-post-pro-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(3);
+    expect(pro.requests).toHaveLength(1);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain('遗漏信息容易造成等待');
     expect([...flash.requests, ...pro.requests].every((request) => !request.tools?.length)).toBe(
       true,
     );

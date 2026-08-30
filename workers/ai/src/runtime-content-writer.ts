@@ -135,6 +135,10 @@ interface DouyinDirectRepairOutput {
   readonly replacements: readonly DouyinDirectReplacement[];
 }
 
+interface DouyinDirectEvidenceRepairOutput {
+  readonly evidence_claims: readonly DouyinDirectEvidenceClaim[];
+}
+
 const DOUYIN_DIRECT_TEXT_TARGETS = Object.freeze([
   'title',
   'opening_topic',
@@ -186,6 +190,21 @@ const DOUYIN_DIRECT_CARD_SCHEMA: JsonObject = Object.freeze({
   type: 'object',
 });
 
+const DOUYIN_DIRECT_EVIDENCE_CLAIM_SCHEMA: JsonObject = Object.freeze({
+  additionalProperties: false,
+  properties: {
+    citation_ids: {
+      items: { format: 'uuid', type: 'string' },
+      minItems: 1,
+      type: 'array',
+      uniqueItems: true,
+    },
+    claim_text: { maxLength: 240, type: 'string' },
+  },
+  required: ['claim_text', 'citation_ids'],
+  type: 'object',
+});
+
 const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
   $id: 'https://geo.example/schemas/douyin-direct-draft-1.json',
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -224,20 +243,7 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
     checklist: { maxLength: 130, type: 'string' },
     conclusion: { maxLength: 90, type: 'string' },
     evidence_claims: {
-      items: {
-        additionalProperties: false,
-        properties: {
-          citation_ids: {
-            items: { format: 'uuid', type: 'string' },
-            minItems: 1,
-            type: 'array',
-            uniqueItems: true,
-          },
-          claim_text: { maxLength: 240, type: 'string' },
-        },
-        required: ['claim_text', 'citation_ids'],
-        type: 'object',
-      },
+      items: DOUYIN_DIRECT_EVIDENCE_CLAIM_SCHEMA,
       maxItems: 12,
       type: 'array',
     },
@@ -299,6 +305,21 @@ const DOUYIN_DIRECT_REPAIR_SCHEMA: JsonObject = Object.freeze({
     },
   },
   required: ['replacements'],
+  type: 'object',
+});
+
+const DOUYIN_DIRECT_EVIDENCE_REPAIR_SCHEMA: JsonObject = Object.freeze({
+  $id: 'https://geo.example/schemas/douyin-direct-evidence-repair-1.json',
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  additionalProperties: false,
+  properties: {
+    evidence_claims: {
+      items: DOUYIN_DIRECT_EVIDENCE_CLAIM_SCHEMA,
+      maxItems: 12,
+      type: 'array',
+    },
+  },
+  required: ['evidence_claims'],
   type: 'object',
 });
 
@@ -960,6 +981,23 @@ export class RuntimeContentWriter implements ContentWriterPort {
       }
     }
 
+    if (hasDouyinDirectEvidenceIssues(evaluation.issues)) {
+      try {
+        const repaired = await this.runDouyinDirectEvidenceRepair(
+          input,
+          prompt,
+          draft,
+          evaluation.issues,
+          1,
+        );
+        draft = repaired.output;
+        evaluation = evaluateDouyinDirectDraft(input, draft, repaired.usages);
+        if (evaluation.issues.length === 0) return evaluation.output;
+      } catch (error) {
+        if (!isStructuredOutputFailure(error)) throw error;
+      }
+    }
+
     if (fallbackModelKey) {
       const fallback = await this.runDouyinDirectDraft(
         input,
@@ -968,8 +1006,48 @@ export class RuntimeContentWriter implements ContentWriterPort {
         { candidate: draft, issues: evaluation.issues },
         1,
       );
-      evaluation = evaluateDouyinDirectDraft(input, fallback.output, fallback.usages);
+      draft = fallback.output;
+      evaluation = evaluateDouyinDirectDraft(input, draft, fallback.usages);
       if (evaluation.issues.length === 0) return evaluation.output;
+
+      const fallbackRepairTargets = douyinDirectRepairTargets(
+        draft,
+        evaluation.issues,
+        input.writerInput,
+      );
+      if (fallbackRepairTargets.length > 0) {
+        try {
+          const repaired = await this.runDouyinDirectRepair(
+            input,
+            prompt,
+            draft,
+            evaluation.issues,
+            fallbackRepairTargets,
+            2,
+          );
+          draft = repaired.output;
+          evaluation = evaluateDouyinDirectDraft(input, draft, repaired.usages);
+          if (evaluation.issues.length === 0) return evaluation.output;
+        } catch (error) {
+          if (!isStructuredOutputFailure(error)) throw error;
+        }
+      }
+
+      if (hasDouyinDirectEvidenceIssues(evaluation.issues)) {
+        try {
+          const repaired = await this.runDouyinDirectEvidenceRepair(
+            input,
+            prompt,
+            draft,
+            evaluation.issues,
+            2,
+          );
+          evaluation = evaluateDouyinDirectDraft(input, repaired.output, repaired.usages);
+          if (evaluation.issues.length === 0) return evaluation.output;
+        } catch (error) {
+          if (!isStructuredOutputFailure(error)) throw error;
+        }
+      }
     }
 
     throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', evaluation.issues.join('; '));
@@ -1016,6 +1094,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     draft: DouyinDirectDraft,
     issues: readonly string[],
     targetIds: readonly string[],
+    repairRound = 1,
   ): Promise<SkillRunResult<DouyinDirectDraft>> {
     const runner = this.directRunner(input.context);
     return runDirectWithStructuredOutputRetry<DouyinDirectRepairOutput>(
@@ -1027,7 +1106,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         messages: douyinDirectRepairMessages(prompt, draft, issues, targetIds),
         outputSchema: DOUYIN_DIRECT_REPAIR_SCHEMA,
         recordUsage: (usage) => this.recordUsage(input.context, usage),
-        requestId: `${input.requestId}-targeted-repair`,
+        requestId: `${input.requestId}-targeted-repair-${repairRound}`,
         ...(input.signal ? { signal: input.signal } : {}),
       }),
       1,
@@ -1035,6 +1114,48 @@ export class RuntimeContentWriter implements ContentWriterPort {
       Object.freeze({
         ...result,
         output: applyDouyinDirectReplacements(draft, result.output, targetIds),
+      }),
+    );
+  }
+
+  private runDouyinDirectEvidenceRepair(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    prompt: ContentWriterPublishedPrompt,
+    draft: DouyinDirectDraft,
+    issues: readonly string[],
+    repairRound: number,
+  ): Promise<SkillRunResult<DouyinDirectDraft>> {
+    const runner = this.directRunner(input.context);
+    return runDirectWithStructuredOutputRetry<DouyinDirectEvidenceRepairOutput>(
+      runner,
+      directInvocation({
+        context: input.context,
+        input: input.writerInput,
+        maxOutputTokens: this.directMaxOutputTokens(input.context, 4_096),
+        messages: douyinDirectEvidenceRepairMessages(prompt, draft, issues, input.writerInput),
+        outputSchema: DOUYIN_DIRECT_EVIDENCE_REPAIR_SCHEMA,
+        recordUsage: (usage) => this.recordUsage(input.context, usage),
+        requestId: `${input.requestId}-evidence-repair-${repairRound}`,
+        ...(input.signal ? { signal: input.signal } : {}),
+      }),
+      1,
+    ).then((result) =>
+      Object.freeze({
+        ...result,
+        output: new SchemaGuard().assert<DouyinDirectDraft>(
+          DOUYIN_DIRECT_DRAFT_SCHEMA,
+          Object.freeze({
+            ...draft,
+            evidence_claims: Object.freeze([...result.output.evidence_claims]),
+          }),
+          'SKILL_OUTPUT_INVALID',
+          'Douyin evidence repair violated the bounded draft schema',
+        ),
       }),
     );
   }
@@ -1408,7 +1529,7 @@ ${CONTENT_WRITER_PLATFORM_PROMPTS_V1.douyin}
 
 Fill the semantic slots exactly:
 - Read brief.constraints.douyin_search_intent and douyin_topic_focus first. They define the one search-decision question this article must answer. Keep that intent explicit in the title and use it as the primary thread of every paragraph and card; do not fall back to a generic process or preparation article.
-- opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark.
+- opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark. opening_pain must name the concrete object and problem or consequence, and must naturally contain at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 - solution_paragraphs contains exactly two substantive solution paragraphs. When the published strategy supplies the owner company name, mention it naturally in one of these two paragraphs and no more than twice in the complete description.
 - price_boundary, protection_risk, schedule, checklist, and conclusion each become one separate paragraph. checklist must contain at least three explicit numbered actions using 第一、第二、第三. conclusion must give a practical selection basis.
 - cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. These are technical safety slots, not seven independent article themes. Make every slot explain a different condition, comparison, boundary, or action for the selected search intent; for example, a pricing article uses the slots for price-impacting conditions, like-for-like comparison, included responsibility, waiting-charge boundaries, and a quote-check checklist.
@@ -1463,6 +1584,8 @@ This is a bounded field repair. No tools are available. Rewrite only the supplie
     {
       content: `Resolve every quality issue by changing only the target fields below. Return exactly one changed, non-empty replacement for every target_id and no other IDs. Preserve all grounded facts. Do not add credentials, other company names, prices, metrics, rankings, cases, guarantees, citation IDs, Markdown, or explanation.
 
+When a quality issue gives a minimum character count, exceed that minimum by 5-10 Chinese characters while staying within the current field maximum. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
+
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
       role: 'user',
     },
@@ -1474,6 +1597,40 @@ Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
           original_text: values.get(targetId),
           target_id: targetId,
         })),
+      }),
+      role: 'user',
+    },
+  ]);
+}
+
+function douyinDirectEvidenceRepairMessages(
+  prompt: ContentWriterPublishedPrompt,
+  draft: DouyinDirectDraft,
+  issues: readonly string[],
+  writerInput: JsonObject,
+): readonly ModelMessage[] {
+  return Object.freeze([
+    {
+      content: `${CONTENT_WRITER_SYSTEM_PROMPT_V1}
+
+Published content policy:
+${prompt.systemPrompt}
+
+This is a bounded evidence-metadata repair. No tools are available. Do not rewrite any visible content field.`,
+      role: 'system',
+    },
+    {
+      content: `Repair evidence_claims only. Every claim_text must be copied verbatim from one current visible text field, every citation_id must be present in supplied_citations, and the cited quote must directly support the complete claim. Remove any mapping that cannot satisfy all three conditions. Returning an empty evidence_claims array is required when no supplied citation directly supports a visible public claim. Do not invent, paraphrase, broaden, or weaken a claim to force a citation match.
+
+Return only {"evidence_claims":[{"claim_text":"...","citation_ids":["..."]}]}.`,
+      role: 'user',
+    },
+    {
+      content: JSON.stringify({
+        current_evidence_claims: draft.evidence_claims,
+        quality_issues: issues.filter((issue) => issue.includes('证据映射')),
+        supplied_citations: Array.isArray(writerInput['citations']) ? writerInput['citations'] : [],
+        visible_text_fields: Object.fromEntries(douyinDirectTextEntries(draft)),
       }),
       role: 'user',
     },
@@ -1739,6 +1896,10 @@ function douyinDirectEvidenceIssues(
     }
   });
   return Object.freeze(issues);
+}
+
+function hasDouyinDirectEvidenceIssues(issues: readonly string[]): boolean {
+  return issues.some((issue) => issue.includes('证据映射'));
 }
 
 function douyinDirectRepairTargets(
