@@ -208,7 +208,11 @@ describe('browser-platform automation', () => {
   it('keeps the Douyin image-note contract when rebuilding rewrite input', () => {
     const input = {
       brief: {
-        constraints: { additional_instructions: '仅修复本次质量报告。' },
+        constraints: {
+          additional_instructions: '仅修复本次质量报告。',
+          douyin_search_intent: 'pricing',
+          douyin_topic_focus: '围绕收费项目和变化条件给出核对方法。',
+        },
         platform_codes: ['douyin'],
         title: '搬家前怎么准备',
       },
@@ -227,8 +231,16 @@ describe('browser-platform automation', () => {
     expect(instructions).toEqual(expect.stringContaining('仅修复本次质量报告。'));
     expect(instructions).toEqual(expect.stringContaining('content_kind=image_note'));
     expect(instructions).toEqual(expect.stringContaining('6-9张'));
+    expect(instructions).toEqual(expect.stringContaining('唯一搜索决策意图'));
+    expect(instructions).toEqual(expect.stringContaining('标题证据承诺'));
     expect(instructions).not.toEqual(expect.stringContaining('搜狐号'));
-    expect(rewrite['brief']).toMatchObject({ platform_codes: ['douyin'] });
+    expect(rewrite['brief']).toMatchObject({
+      constraints: {
+        douyin_search_intent: 'pricing',
+        douyin_topic_focus: '围绕收费项目和变化条件给出核对方法。',
+      },
+      platform_codes: ['douyin'],
+    });
   });
 });
 

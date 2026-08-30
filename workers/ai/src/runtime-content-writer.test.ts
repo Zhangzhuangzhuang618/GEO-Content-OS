@@ -214,6 +214,51 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
+  it('repairs a Douyin daily title that ignores its selected search intent', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = {
+      ...douyinDirectDraft(),
+      title: '广州搬家公司流程怎么安排',
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: '广州搬家公司收费怎么核对', target_id: 'title' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, 'pricing');
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-intent-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      '收费核对',
+    );
+    expect(result.title).toBe('广州搬家公司收费怎么核对');
+    expect(pro.requests).toHaveLength(0);
+  });
+
   it('uses Pro only after targeted Flash repair leaves a Douyin field below its minimum', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const valid = douyinDirectDraft();
@@ -2127,7 +2172,7 @@ function multiPlatformWriterInput(
   };
 }
 
-function douyinDirectWriterInput(input: JsonObject): JsonObject {
+function douyinDirectWriterInput(input: JsonObject, searchIntent?: string): JsonObject {
   const base = multiPlatformWriterInput(input, ['douyin']);
   const brief = base['brief'] as JsonObject;
   const strategy = base['strategy'] as JsonObject;
@@ -2137,6 +2182,7 @@ function douyinDirectWriterInput(input: JsonObject): JsonObject {
       ...brief,
       constraints: {
         douyin_daily_direct: true,
+        ...(searchIntent ? { douyin_search_intent: searchIntent } : {}),
         server_bound_generation_context: true,
       },
     },

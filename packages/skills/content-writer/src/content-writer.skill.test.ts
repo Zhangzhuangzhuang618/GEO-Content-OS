@@ -39,7 +39,7 @@ afterEach(async () => {
 
 describe('ContentWriterSkill', () => {
   it('publishes the Lieju question-title and literal-contact boundary', () => {
-    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.12');
+    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.13');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('content_kind=image_note');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('6-9 张');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('420-900 字');
@@ -54,6 +54,13 @@ describe('ContentWriterSkill', () => {
     );
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain(
       '怎么/如何/避坑/清单/步骤/判断',
+    );
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('地域＋具体场景＋决策问题');
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain(
+      '推荐选择、方案比较、收费核对、正规性',
+    );
+    expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain(
+      '真实场景、真实案例、现场实录、收费对比、资质核验、合同条款解读、口碑参考',
     );
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.lieju).toContain(
       '自然使用“如何、怎么、指南、方法、哪些”等问法之一',

@@ -11,6 +11,15 @@ import type { JsonObject } from './generation.types.js';
 
 type Platform = 'douyin' | 'lieju' | 'sohu';
 
+export interface DouyinDailyDecisionAngle {
+  readonly focus: string;
+  readonly key: string;
+  readonly label: string;
+  readonly title: string;
+}
+
+type CandidateAngle = DouyinDailyDecisionAngle;
+
 interface BatchRow {
   readonly accountId: string;
   readonly businessDate: string;
@@ -340,13 +349,12 @@ async function createCandidate(
   dailyCitations: DailyCitationPort,
 ) {
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
-  const angle = ANGLES[(candidateNo - 1) % ANGLES.length]!;
-  const maxTitle = batch.platformCode === 'douyin' ? 30 : batch.platformCode === 'lieju' ? 30 : 72;
-  const title = truncate(angle.title(keyword.term), maxTitle);
+  const angle = candidateAngle(batch, keyword.term, candidateNo);
+  const title = angle.title;
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
   const audience = `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
   const evidence = await dailyCitations.retrieve({
-    angle: angle.label,
+    angle: angle.focus,
     authoritySourceIds: seed.authoritySourceIds,
     audience,
     businessDate: batch.businessDate,
@@ -367,20 +375,31 @@ async function createCandidate(
     batch.platformCode === 'lieju'
       ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。正文不得出现具体电话或手机号、微信/QQ账号、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
       : batch.platformCode === 'douyin'
-        ? '输出抖音图文笔记：platform_meta.content_kind 必须是 image_note；生成6-9张图文卡片，顺序为封面、正文、总结。卡片按主题痛点、现场核对、报价或服务边界、防护风险、预约工期、实操清单和结论推进，正文每页只讲一个判断或动作并控制在24-88字，禁止长段拆页、模板标题和同义重复。同时提供420-900字、5-8个自然段的独立发布主文案，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，第二至第三段给解决方案并在资料支持时自然提及一次本企业全称，随后讲清费用边界、防护风险和工期安排，倒数第二段至少3条编号避坑点，最后给选择依据；不得复制摘要、正文块或卡片，不得使用模板钩子和助手过渡语。topics 使用3-8个紧贴地域、场景和服务对象的话题。不得声明原创、不得伪造热点、排行、亲历、用户评价或无证据资质；发布器会如实勾选 AI 创作标识。'
+        ? '输出抖音图文笔记：标题先回答本候选指定的搜索决策意图，不得退回泛化的流程或准备知识题；在输入有依据时组合“地域＋具体场景＋决策问题”，缺少地域或场景证据时不得补造。platform_meta.content_kind 必须是 image_note；生成6-9张图文卡片，顺序为封面、正文、总结。现场、报价、防护、工期和清单是安全技术槽位，必须全部围绕本篇唯一主意图提供不同的判断或动作，不能写成每篇相同的七段模板；正文每页控制在24-88字，禁止长段拆页、模板标题和同义重复。同时提供420-900字、5-8个自然段的独立发布主文案，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，第二至第三段给解决方案并在资料支持时自然提及一次本企业全称，随后讲清费用边界、防护风险和工期安排，倒数第二段至少3条编号避坑点，最后给选择依据；不得复制摘要、正文块或卡片，不得使用模板钩子和助手过渡语。“真实场景、真实案例、收费对比、资质核验、合同条款解读、口碑参考”等证据承诺，只有在对应资料直接支持且正文通过 citation_map 映射时才能写进标题；否则改写为核对方法、选择标准或比较维度。topics 使用3-8个紧贴地域、场景和服务对象的话题。不得声明原创、不得伪造热点、排行、亲历、用户评价或无证据资质；发布器会如实勾选 AI 创作标识。'
         : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
   const constraints = {
     additional_instructions: [
       `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${candidateNo} 个候选。`,
       `围绕“${keyword.term}”的“${angle.label}”展开。`,
+      ...(batch.platformCode === 'douyin'
+        ? [
+            `本篇唯一搜索决策意图为“${angle.key}”，主题焦点为：${angle.focus}`,
+            '标题、主文案和全部卡片必须共同回答该焦点；其他必备安全模块只解释它的条件和边界，不得抢成另一篇泛化流程文。',
+          ]
+        : []),
       '只使用给定品牌资料和引用证据，不得编造价格、规模、资质、排名或承诺。',
       platformInstruction,
-    ].join(''),
+    ].join(batch.platformCode === 'douyin' ? '\n' : ''),
     authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: batch.platformCode === 'lieju' ? '通过页面联系方式咨询具体需求' : null,
     schema_version: 'brief-constraints@1',
     ...(batch.platformCode === 'douyin'
-      ? { douyin_daily_direct: true, server_bound_generation_context: true }
+      ? {
+          douyin_daily_direct: true,
+          douyin_search_intent: angle.key,
+          douyin_topic_focus: angle.focus,
+          server_bound_generation_context: true,
+        }
       : {}),
     target_accounts_by_code: {
       [batch.platformCode]: {
@@ -540,6 +559,7 @@ async function createCandidate(
         automation_run_id: automationRunId,
         batch_id: batch.id,
         candidate_no: candidateNo,
+        ...(batch.platformCode === 'douyin' ? { angle_key: angle.key } : {}),
         evidence_context_hash: evidence.contextHash,
         evidence_query_hash: evidence.queryHash,
         evidence_retrieval_degraded: evidence.degraded,
@@ -600,6 +620,133 @@ const ANGLES = Object.freeze([
   { label: '风险边界', title: (keyword: string) => `${keyword}常见问题怎么避坑` },
   { label: '验收检查', title: (keyword: string) => `${keyword}完成后如何验收` },
 ]);
+
+const DOUYIN_ROTATION_EPOCH_DAY = Math.floor(Date.UTC(2026, 7, 30) / 86_400_000);
+
+const DOUYIN_DECISION_ANGLES = Object.freeze([
+  {
+    focus:
+      '回答用户应按哪些可核验条件选择合适服务，给出推荐标准；不得输出无证据公司榜单、名次或“最好”。',
+    key: 'recommendation',
+    label: '推荐决策',
+    suffix: '怎么选更靠谱',
+  },
+  {
+    focus: '按服务范围、现场条件、费用口径、责任和时效做同维度方案比较；不得点名竞品或伪造测评。',
+    key: 'comparison',
+    label: '方案比较',
+    suffix: '方案怎么比较',
+  },
+  {
+    focus:
+      '拆解运输、人工、拆装、包装、楼层、等待等资料支持的收费项目和变化条件；无报价证据不得写具体价格。',
+    key: 'pricing',
+    label: '收费核对',
+    suffix: '收费怎么核对',
+  },
+  {
+    focus: '说明如何核对经营主体、可用证照、合同和可验证服务信息；缺少对应证据时只能写核验动作。',
+    key: 'legitimacy',
+    label: '正规性核验',
+    suffix: '正规性怎么核验',
+  },
+  {
+    focus: '围绕服务范围、增项条件、取消变更、责任边界和验收记录说明合同应核对的内容。',
+    key: 'contract',
+    label: '合同条款',
+    suffix: '合同重点看什么',
+  },
+  {
+    focus: '围绕物品清单、异常记录、责任划分和赔付约定给出事前核对方法，不承诺结果。',
+    key: 'liability',
+    label: '赔付责任',
+    suffix: '损坏赔付怎么约定',
+  },
+  {
+    focus: '根据物品、道路、限高、装卸距离和停车条件说明车型选择依据，不编造车辆能力。',
+    key: 'vehicle',
+    label: '车型选择',
+    suffix: '车型怎么选合适',
+  },
+  {
+    focus: '说明人工计费可能涉及的人数、工时、拆装、搬运距离和等待边界，避免只看总价。',
+    key: 'labor',
+    label: '人工费用',
+    suffix: '人工费怎么核对',
+  },
+  {
+    focus: '围绕楼层、电梯预约、门洞通道、停车和园区登记等进场条件说明核对方法。',
+    key: 'access',
+    label: '楼层与进场',
+    suffix: '进场条件怎么核对',
+  },
+  {
+    focus: '集中回答常见临时增项、信息遗漏和服务边界风险，形成具体避坑判断。',
+    key: 'risk_avoidance',
+    label: '风险避坑',
+    suffix: '服务怎么避坑',
+  },
+  {
+    focus: '围绕预约窗口、车辆人员调度、进出场限制和计划变更说明时间安排依据。',
+    key: 'scheduling',
+    label: '工期调度',
+    suffix: '时间安排怎么确认',
+  },
+  {
+    focus: '围绕交接清单、数量和外观记录、异常处理及完成标准说明验收方法。',
+    key: 'acceptance',
+    label: '交接验收',
+    suffix: '交接验收怎么做',
+  },
+] as const);
+
+function candidateAngle(batch: BatchRow, keyword: string, candidateNo: number): CandidateAngle {
+  if (batch.platformCode === 'douyin') {
+    return douyinDailyDecisionAngle({
+      businessDate: batch.businessDate,
+      candidateNo,
+      keyword,
+      targetCount: batch.targetCount,
+    });
+  }
+  const angleIndex = (candidateNo - 1) % ANGLES.length;
+  const selected = ANGLES[angleIndex]!;
+  const maximum = batch.platformCode === 'lieju' ? 30 : 72;
+  return Object.freeze({
+    focus: selected.label,
+    key: `general-${angleIndex + 1}`,
+    label: selected.label,
+    title: truncate(selected.title(keyword), maximum),
+  });
+}
+
+export function douyinDailyDecisionAngle(input: {
+  readonly businessDate: string;
+  readonly candidateNo: number;
+  readonly keyword: string;
+  readonly targetCount: number;
+}): DouyinDailyDecisionAngle {
+  const businessDay = Math.floor(Date.parse(`${input.businessDate}T00:00:00Z`) / 86_400_000);
+  const dayOffset = Number.isFinite(businessDay) ? businessDay - DOUYIN_ROTATION_EPOCH_DAY : 0;
+  const rawIndex = dayOffset * Math.max(1, input.targetCount) + Math.max(1, input.candidateNo) - 1;
+  const index =
+    ((rawIndex % DOUYIN_DECISION_ANGLES.length) + DOUYIN_DECISION_ANGLES.length) %
+    DOUYIN_DECISION_ANGLES.length;
+  const selected = DOUYIN_DECISION_ANGLES[index]!;
+  return Object.freeze({
+    focus: selected.focus,
+    key: selected.key,
+    label: selected.label,
+    title: douyinDecisionTitle(input.keyword, selected.suffix),
+  });
+}
+
+function douyinDecisionTitle(keyword: string, suffix: string): string {
+  const normalizedKeyword = keyword.normalize('NFC').replace(/\s+/gu, ' ').trim();
+  const suffixLength = [...suffix].length;
+  const keywordLimit = Math.max(1, 26 - suffixLength);
+  return `${[...normalizedKeyword].slice(0, keywordLimit).join('')}${suffix}`;
+}
 
 function truncate(value: string, maximum: number) {
   return [...value.normalize('NFC').replace(/\s+/gu, ' ').trim()].slice(0, maximum).join('');

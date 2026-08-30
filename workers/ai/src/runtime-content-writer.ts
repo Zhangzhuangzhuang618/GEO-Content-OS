@@ -82,6 +82,23 @@ const DOUYIN_DIRECT_CARD_SLOTS = Object.freeze([
   'summary',
 ] as const);
 
+const DOUYIN_SEARCH_INTENT_TITLE_RULES: Readonly<
+  Record<string, { readonly label: string; readonly pattern: RegExp }>
+> = Object.freeze({
+  acceptance: { label: '交接验收', pattern: /验收|交接|检查/u },
+  access: { label: '楼层与进场', pattern: /楼层|电梯|进场|通道|停车|装卸/u },
+  comparison: { label: '方案比较', pattern: /对比|比较|怎么比|如何比/u },
+  contract: { label: '合同条款', pattern: /合同|条款|约定/u },
+  labor: { label: '人工费用', pattern: /人工|人员|工时/u },
+  legitimacy: { label: '正规性核验', pattern: /正规|资质|证照|主体|许可/u },
+  liability: { label: '赔付责任', pattern: /赔付|赔偿|责任|损坏|异常/u },
+  pricing: { label: '收费核对', pattern: /收费|费用|计费|报价|价格/u },
+  recommendation: { label: '推荐决策', pattern: /推荐|哪家|怎么选|如何选|选择/u },
+  risk_avoidance: { label: '风险避坑', pattern: /避坑|风险|增项|注意/u },
+  scheduling: { label: '工期调度', pattern: /时间|预约|工期|调度|排期/u },
+  vehicle: { label: '车型选择', pattern: /车型|车辆|货车/u },
+});
+
 type DouyinDirectCardSlot = (typeof DOUYIN_DIRECT_CARD_SLOTS)[number];
 
 interface DouyinDirectCardDraft {
@@ -1390,12 +1407,14 @@ Bound Douyin policy:
 ${CONTENT_WRITER_PLATFORM_PROMPTS_V1.douyin}
 
 Fill the semantic slots exactly:
+- Read brief.constraints.douyin_search_intent and douyin_topic_focus first. They define the one search-decision question this article must answer. Keep that intent explicit in the title and use it as the primary thread of every paragraph and card; do not fall back to a generic process or preparation article.
 - opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark.
 - solution_paragraphs contains exactly two substantive solution paragraphs. When the published strategy supplies the owner company name, mention it naturally in one of these two paragraphs and no more than twice in the complete description.
 - price_boundary, protection_risk, schedule, checklist, and conclusion each become one separate paragraph. checklist must contain at least three explicit numbered actions using 第一、第二、第三. conclusion must give a practical selection basis.
-- cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. Each page provides a different judgment or action.
+- cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. These are technical safety slots, not seven independent article themes. Make every slot explain a different condition, comparison, boundary, or action for the selected search intent; for example, a pricing article uses the slots for price-impacting conditions, like-for-like comparison, included responsibility, waiting-charge boundaries, and a quote-check checklist.
 - Keep every field inside its production range: title 6–26 characters; opening_topic 10–35; opening_pain 20–70; each solution paragraph 55–95; price_boundary and protection_risk 55–100; schedule 50–90; checklist 80–130; conclusion 50–90. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
 - evidence_claims is optional evidence metadata, not extra prose. Include an item only when claim_text appears verbatim in another returned text field and every citation_id comes from content_writer_input.citations. Use [] when no supplied citation directly supports a public claim. Never cite a first-party assertion merely to make it appear independent.
+- “真实场景、真实案例、现场实录、收费对比、资质核验、合同条款解读、口碑参考” are evidence promises. Use them in the title only when an evidence_claim directly supports the promised content; otherwise use a neutral verification method, selection standard, or comparison dimension. Never create an unsupported ranking, reputation conclusion, or competitor list.
 
 Return only the shallow JSON object. Do not return master_content, variants, platform_meta, card_key, kind, block_key, block_type, schema_version, envelope fields, Markdown, or commentary.`,
       role: 'user',
@@ -2188,6 +2207,7 @@ function deterministicContentIssues(
     issues.push(...credentialCitationIssues(content, writerInput));
     if (content.platform_code === 'douyin') {
       issues.push(
+        ...douyinSearchIntentIssues(content, writerInput),
         ...assessDouyinOwnerPromotion(content, ownerCompanyNames).map((finding) => finding.message),
       );
     }
@@ -2200,6 +2220,21 @@ function deterministicContentIssues(
   }
   issues.push(...credentialCitationIssues(data.master_content, writerInput));
   return Object.freeze(issues);
+}
+
+function douyinSearchIntentIssues(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): readonly string[] {
+  const brief = jsonObject(writerInput['brief']);
+  const constraints = brief ? jsonObject(brief['constraints']) : undefined;
+  const intent = constraints?.['douyin_search_intent'];
+  if (typeof intent !== 'string') return Object.freeze([]);
+  const rule = DOUYIN_SEARCH_INTENT_TITLE_RULES[intent];
+  if (!rule || rule.pattern.test(content.title)) return Object.freeze([]);
+  return Object.freeze([
+    `douyin:标题没有体现本候选指定的“${rule.label}”搜索决策意图，必须在标题中直接回答该意图，不得退回泛化流程或准备题 [repair_target=title]`,
+  ]);
 }
 
 function credentialCitationIssues(

@@ -49,11 +49,42 @@ describe('Douyin editorial policy', () => {
       'owner_mention_limit',
     ]);
   });
+
+  it('requires visible mapped evidence before the title promises a real scene', () => {
+    const content = validContent();
+    content.title = '广州搬家真实场景记录';
+
+    expect(assessDouyinImageNoteEditorial(content).map((finding) => finding.code)).toContain(
+      'title_evidence_promise',
+    );
+
+    const claimText = '现场记录显示两端均需核对楼层和电梯条件';
+    content.platform_meta.description = content.platform_meta.description.replace(
+      '确定方案前应核对',
+      `${claimText}；确定方案前应核对`,
+    );
+    content.citation_map = [
+      {
+        citation_ids: ['81000000-0000-4000-8000-000000000001'],
+        claim_key: 'scene-evidence',
+        claim_text: claimText,
+      },
+    ];
+
+    expect(assessDouyinImageNoteEditorial(content).map((finding) => finding.code)).not.toContain(
+      'title_evidence_promise',
+    );
+  });
 });
 
 function validContent() {
   return {
     blocks: [{ block_key: 'intro', block_type: 'paragraph', text: '正文说明现场核对方法。' }],
+    citation_map: [] as Array<{
+      citation_ids: string[];
+      claim_key: string;
+      claim_text: string;
+    }>,
     platform_meta: {
       cards: [
         {

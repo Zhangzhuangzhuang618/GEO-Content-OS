@@ -25,6 +25,40 @@ const ASSISTANT_FLAVOR_PATTERNS = [
   /以上(?:内容|流程|建议).{0,24}(?:仅供参考|来自公开|整理)/u,
 ] as const;
 
+const TITLE_EVIDENCE_PROMISES = Object.freeze([
+  {
+    evidence: /现场|场景|案例|实拍|服务记录|作业记录/u,
+    label: '真实场景或案例',
+    title: /真实(?:场景|案例)|现场实录|实拍/u,
+  },
+  {
+    evidence:
+      /(?:收费|费用|价格|计费|报价).{0,30}(?:对比|比较)|(?:对比|比较).{0,30}(?:收费|费用|价格|计费|报价)/u,
+    label: '收费对比',
+    title: /(?:收费|费用|价格)(?:对比|比较)|(?:对比|比较)(?:收费|费用|价格)/u,
+  },
+  {
+    evidence: /资质|证照|许可证|证书/u,
+    label: '资质核验',
+    title: /资质核验|证照核验/u,
+  },
+  {
+    evidence: /合同|条款|约定/u,
+    label: '合同条款解读',
+    title: /合同条款/u,
+  },
+  {
+    evidence: /口碑|评价/u,
+    label: '口碑或评价',
+    title: /高口碑|真实口碑|口碑(?:参考|对比)|评价数据/u,
+  },
+  {
+    evidence: /榜单|排名|样本|评选|排序/u,
+    label: '榜单或排名',
+    title: /排行榜|前十名|TOP\s*\d+|排名/u,
+  },
+] as const);
+
 export function assessDouyinImageNoteEditorial(
   content: unknown,
 ): readonly DouyinEditorialFinding[] {
@@ -121,6 +155,8 @@ export function assessDouyinImageNoteEditorial(
       ),
     );
   }
+
+  findings.push(...titleEvidencePromiseFindings(value, title));
 
   const cards = meta?.['cards'];
   if (!Array.isArray(cards) || cards.length < 6 || cards.length > 9) {
@@ -262,6 +298,50 @@ export function assessDouyinImageNoteEditorial(
     );
   }
   return Object.freeze(findings);
+}
+
+function titleEvidencePromiseFindings(
+  content: Readonly<Record<string, unknown>> | null,
+  title: string,
+): readonly DouyinEditorialFinding[] {
+  if (!content) return Object.freeze([]);
+  const activePromises = TITLE_EVIDENCE_PROMISES.filter((promise) => promise.title.test(title));
+  if (activePromises.length === 0) return Object.freeze([]);
+  const meta = record(content['platform_meta']);
+  const visibleText = normalize(
+    [
+      stringValue(meta?.['description']),
+      ...contentBlockTexts(content['blocks']),
+      ...cardTexts(meta?.['cards']),
+    ].join('\n'),
+  );
+  const mappings = Array.isArray(content['citation_map']) ? content['citation_map'] : [];
+  return Object.freeze(
+    activePromises.flatMap((promise) => {
+      const supported = mappings.some((mapping) => {
+        const value = record(mapping);
+        const claimText = stringValue(value?.['claim_text']).trim();
+        const citationIds = value?.['citation_ids'];
+        return (
+          claimText.length > 0 &&
+          Array.isArray(citationIds) &&
+          citationIds.length > 0 &&
+          promise.evidence.test(claimText) &&
+          visibleText.includes(normalize(claimText))
+        );
+      });
+      return supported
+        ? []
+        : [
+            finding(
+              'title_evidence_promise',
+              'title',
+              `douyin:标题使用“${promise.label}”证据承诺，但正文没有可见且已映射引用的对应证据`,
+              '补充输入直接支持且已映射引用的对应证据，或把标题改为核对方法、选择标准或比较维度。',
+            ),
+          ];
+    }),
+  );
 }
 
 export function assessDouyinOwnerPromotion(
