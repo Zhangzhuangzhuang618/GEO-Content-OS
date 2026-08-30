@@ -132,11 +132,38 @@ const DOUYIN_DIRECT_TEXT_TARGETS = Object.freeze([
   ...DOUYIN_DIRECT_CARD_SLOTS.flatMap((slot) => [`cards.${slot}.heading`, `cards.${slot}.body`]),
 ]);
 
+const DOUYIN_DIRECT_MINIMUM_LENGTHS: Readonly<Record<string, number>> = Object.freeze({
+  'cards.checklist.body': 24,
+  'cards.checklist.heading': 4,
+  'cards.conditions.body': 24,
+  'cards.conditions.heading': 4,
+  'cards.cover.body': 12,
+  'cards.cover.heading': 6,
+  'cards.pricing.body': 24,
+  'cards.pricing.heading': 4,
+  'cards.protection.body': 24,
+  'cards.protection.heading': 4,
+  'cards.schedule.body': 24,
+  'cards.schedule.heading': 4,
+  'cards.summary.body': 30,
+  'cards.summary.heading': 4,
+  checklist: 80,
+  conclusion: 50,
+  opening_pain: 20,
+  opening_topic: 10,
+  price_boundary: 55,
+  protection_risk: 55,
+  schedule: 50,
+  'solution_paragraphs.0': 55,
+  'solution_paragraphs.1': 55,
+  title: 6,
+});
+
 const DOUYIN_DIRECT_CARD_SCHEMA: JsonObject = Object.freeze({
   additionalProperties: false,
   properties: {
-    body: { maxLength: 88, minLength: 24, type: 'string' },
-    heading: { maxLength: 16, minLength: 4, type: 'string' },
+    body: { maxLength: 88, type: 'string' },
+    heading: { maxLength: 16, type: 'string' },
   },
   required: ['heading', 'body'],
   type: 'object',
@@ -155,8 +182,8 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
         cover: {
           additionalProperties: false,
           properties: {
-            body: { maxLength: 46, minLength: 12, type: 'string' },
-            heading: { maxLength: 22, minLength: 6, type: 'string' },
+            body: { maxLength: 46, type: 'string' },
+            heading: { maxLength: 22, type: 'string' },
           },
           required: ['heading', 'body'],
           type: 'object',
@@ -167,8 +194,8 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
         summary: {
           additionalProperties: false,
           properties: {
-            body: { maxLength: 96, minLength: 30, type: 'string' },
-            heading: { maxLength: 16, minLength: 4, type: 'string' },
+            body: { maxLength: 96, type: 'string' },
+            heading: { maxLength: 16, type: 'string' },
           },
           required: ['heading', 'body'],
           type: 'object',
@@ -177,8 +204,8 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
       required: DOUYIN_DIRECT_CARD_SLOTS,
       type: 'object',
     },
-    checklist: { maxLength: 130, minLength: 80, type: 'string' },
-    conclusion: { maxLength: 90, minLength: 50, type: 'string' },
+    checklist: { maxLength: 130, type: 'string' },
+    conclusion: { maxLength: 90, type: 'string' },
     evidence_claims: {
       items: {
         additionalProperties: false,
@@ -189,7 +216,7 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
             type: 'array',
             uniqueItems: true,
           },
-          claim_text: { maxLength: 240, minLength: 4, type: 'string' },
+          claim_text: { maxLength: 240, type: 'string' },
         },
         required: ['claim_text', 'citation_ids'],
         type: 'object',
@@ -197,20 +224,20 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
       maxItems: 12,
       type: 'array',
     },
-    opening_pain: { maxLength: 70, minLength: 20, type: 'string' },
-    opening_topic: { maxLength: 35, minLength: 10, type: 'string' },
-    price_boundary: { maxLength: 100, minLength: 55, type: 'string' },
-    protection_risk: { maxLength: 100, minLength: 55, type: 'string' },
-    schedule: { maxLength: 90, minLength: 50, type: 'string' },
+    opening_pain: { maxLength: 70, type: 'string' },
+    opening_topic: { maxLength: 35, type: 'string' },
+    price_boundary: { maxLength: 100, type: 'string' },
+    protection_risk: { maxLength: 100, type: 'string' },
+    schedule: { maxLength: 90, type: 'string' },
     solution_paragraphs: {
-      items: { maxLength: 95, minLength: 55, type: 'string' },
+      items: { maxLength: 95, type: 'string' },
       maxItems: 2,
       minItems: 2,
       type: 'array',
     },
-    title: { maxLength: 26, minLength: 6, type: 'string' },
+    title: { maxLength: 26, type: 'string' },
     topics: {
-      items: { maxLength: 40, minLength: 1, type: 'string' },
+      items: { maxLength: 40, type: 'string' },
       maxItems: 8,
       minItems: 3,
       type: 'array',
@@ -1367,6 +1394,7 @@ Fill the semantic slots exactly:
 - solution_paragraphs contains exactly two substantive solution paragraphs. When the published strategy supplies the owner company name, mention it naturally in one of these two paragraphs and no more than twice in the complete description.
 - price_boundary, protection_risk, schedule, checklist, and conclusion each become one separate paragraph. checklist must contain at least three explicit numbered actions using 第一、第二、第三. conclusion must give a practical selection basis.
 - cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. Each page provides a different judgment or action.
+- Keep every field inside its production range: title 6–26 characters; opening_topic 10–35; opening_pain 20–70; each solution paragraph 55–95; price_boundary and protection_risk 55–100; schedule 50–90; checklist 80–130; conclusion 50–90. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
 - evidence_claims is optional evidence metadata, not extra prose. Include an item only when claim_text appears verbatim in another returned text field and every citation_id comes from content_writer_input.citations. Use [] when no supplied citation directly supports a public claim. Never cite a first-party assertion merely to make it appear independent.
 
 Return only the shallow JSON object. Do not return master_content, variants, platform_meta, card_key, kind, block_key, block_type, schema_version, envelope fields, Markdown, or commentary.`,
@@ -1443,24 +1471,74 @@ function evaluateDouyinDirectDraft(
   usages: readonly ModelUsage[],
 ): { readonly issues: readonly string[]; readonly output: ContentWriterOutput } {
   const data = douyinDirectData(draft, input.writerInput);
-  new SchemaGuard().assert<ContentWriterData>(
-    CONTENT_WRITER_DATA_SCHEMA,
-    data,
-    'SKILL_OUTPUT_INVALID',
-    'Server-assembled Douyin content did not match the frozen Content Writer schema',
-  );
   const assessment = assessContentWriterContents(data.variants, 'quality');
+  const minimumLengthIssues = douyinDirectMinimumLengthIssues(draft);
   const issues = Object.freeze([
     ...new Set([
-      ...assessment.issues,
+      ...minimumLengthIssues,
+      ...nonRedundantDouyinDirectAssessmentIssues(assessment.issues, minimumLengthIssues),
       ...rewriteDeterministicIssues(data, input.writerInput),
       ...douyinDirectEvidenceIssues(draft, input.writerInput),
     ]),
   ]);
+  if (issues.length === 0) {
+    new SchemaGuard().assert<ContentWriterData>(
+      CONTENT_WRITER_DATA_SCHEMA,
+      data,
+      'SKILL_OUTPUT_INVALID',
+      'Server-assembled Douyin content did not match the frozen Content Writer schema',
+    );
+  }
   return Object.freeze({
     issues,
     output: douyinDirectOutput(input.context, input.requestId, input.writerInput, data, usages),
   });
+}
+
+function douyinDirectMinimumLengthIssues(draft: DouyinDirectDraft): readonly string[] {
+  const values = douyinDirectTextEntries(draft);
+  return Object.freeze(
+    Object.entries(DOUYIN_DIRECT_MINIMUM_LENGTHS).flatMap(([targetId, minimum]) => {
+      const actual = [...(values.get(targetId) ?? '').trim()].length;
+      return actual < minimum
+        ? [
+            `douyin:字段 ${targetId} 仅 ${actual} 个字符，至少需要 ${minimum} 个 [repair_target=${targetId}]`,
+          ]
+        : [];
+    }),
+  );
+}
+
+function nonRedundantDouyinDirectAssessmentIssues(
+  issues: readonly string[],
+  minimumLengthIssues: readonly string[],
+): readonly string[] {
+  const minimumTargets = new Set(
+    minimumLengthIssues.flatMap((issue) => {
+      const targetId = /\[repair_target=([^\]]+)\]/u.exec(issue)?.[1];
+      return targetId ? [targetId] : [];
+    }),
+  );
+  const hasNarrativeShortfall = [...minimumTargets].some(
+    (targetId) => !targetId.startsWith('cards.') && targetId !== 'title',
+  );
+  const hasCardShortfall = [...minimumTargets].some((targetId) => targetId.startsWith('cards.'));
+  return Object.freeze(
+    issues.filter((issue) => {
+      if (minimumTargets.has('title') && issue.startsWith('douyin:标题为 ')) return false;
+      if (
+        hasNarrativeShortfall &&
+        (issue === 'douyin:platform_meta.description 必须为 420–900 个字符' ||
+          /^douyin:正文仅 \d+ 个有效字符/u.test(issue))
+      ) {
+        return false;
+      }
+      if (hasCardShortfall && issue.startsWith('douyin:图文卡片必须按封面、正文、总结排序')) {
+        return false;
+      }
+      return true;
+    }),
+  );
 }
 
 function douyinDirectData(draft: DouyinDirectDraft, writerInput: JsonObject): ContentWriterData {
@@ -1666,6 +1744,11 @@ function douyinDirectRepairTargets(
     `cards.${slot}.body`,
   ]);
   for (const issue of issues) {
+    const explicitTarget = /\[repair_target=([^\]]+)\]/u.exec(issue)?.[1];
+    if (explicitTarget && DOUYIN_DIRECT_TEXT_TARGETS.includes(explicitTarget)) {
+      targets.add(explicitTarget);
+      continue;
+    }
     if (issue.includes('证据映射')) continue;
     if (issue.includes('标题')) targets.add('title');
     if (issue.includes('第一段') || issue.includes('第一句') || issue.includes('第二句话')) {

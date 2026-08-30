@@ -167,6 +167,100 @@ describe('AI Worker runtime wiring', () => {
     expect((variant.platform_meta as JsonObject)['description']).toContain('加价或磕碰风险');
   });
 
+  it('routes a short Douyin field through targeted Flash repair instead of schema fallback', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const valid = douyinDirectDraft();
+    const initial = { ...valid, price_boundary: '先确认费用。' };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: valid.price_boundary, target_id: 'price_boundary' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    await expect(
+      writer.generateMaster({
+        context: masterContext,
+        requestId: 'runtime-douyin-direct-short-field-repair',
+        writerInput,
+      }),
+    ).resolves.toMatchObject({ platform_code: 'master' });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(JSON.stringify(flash.requests[0]?.responseFormat)).not.toContain('minLength');
+    expect(JSON.stringify(flash.requests[0]?.responseFormat)).toContain('maxLength');
+    expect(repairPrompt).toContain('price_boundary');
+    expect(repairPrompt).toContain('至少需要 55 个');
+    expect(flash.requests.every((request) => !request.tools?.length)).toBe(true);
+    expect(pro.requests).toHaveLength(0);
+  });
+
+  it('uses Pro only after targeted Flash repair leaves a Douyin field below its minimum', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const valid = douyinDirectDraft();
+    const initial = { ...valid, price_boundary: '先确认费用。' };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: '再确认收费边界。', target_id: 'price_boundary' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([{ text: JSON.stringify(valid) }], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    await expect(
+      writer.generateMaster({
+        context: masterContext,
+        requestId: 'runtime-douyin-direct-short-field-pro-fallback',
+        writerInput,
+      }),
+    ).resolves.toMatchObject({ platform_code: 'master' });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(pro.requests).toHaveLength(1);
+    expect(pro.requests[0]?.messages.map((message) => message.content).join('\n')).toContain(
+      'price_boundary',
+    );
+    expect([...flash.requests, ...pro.requests].every((request) => !request.tools?.length)).toBe(
+      true,
+    );
+  });
+
   it('escalates an invalid bounded Douyin draft to Pro without tool calls', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const flash = new LooseMockAdapter(

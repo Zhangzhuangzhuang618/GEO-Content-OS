@@ -76,6 +76,32 @@ describe('browser-platform automation', () => {
     ).toMatchObject({ blocking_rules: [], passed: true, platform_code: 'lieju' });
   });
 
+  it('keeps the automation gate blocked when a passing report misses frozen score thresholds', () => {
+    const automation = new BrowserPlatformAutomation(null as never, null as never, {} as never);
+    const scores = {
+      answerability: 95,
+      entity: 88,
+      evidence: 55,
+      platform_fit: 90,
+      question: 90,
+      readability_safety: 90,
+      total: 83.6,
+    } as const;
+
+    expect(
+      automation.calculateGate(
+        policy(),
+        { decision: 'pass', geo_scores: scores, issues: [], score: 100 },
+        scores,
+      ),
+    ).toMatchObject({
+      blocking_rules: expect.arrayContaining(['gate.factual_accuracy', 'gate.geo_total']),
+      factual_accuracy: 55,
+      geo_total: 83.6,
+      passed: false,
+    });
+  });
+
   it('explains a failed frozen gate with its score, target and repair action', () => {
     const gate = {
       blocking_rules: ['gate.factual_accuracy'],
