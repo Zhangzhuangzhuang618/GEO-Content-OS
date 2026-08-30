@@ -409,6 +409,55 @@ describe('Douyin browser service', () => {
     expect(markAccountReauth).not.toHaveBeenCalled();
   });
 
+  it('requires a fresh login when the in-memory verification page no longer exists', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      lastVerifiedAt: null,
+      status: 'attention_required' as const,
+      storageStateCiphertext: null,
+      storageStateKeyVersion: null,
+    });
+    const reauth = Object.freeze({
+      ...attention,
+      lastError: { code: 'AUTH_REQUIRED', schema_version: 'douyin-browser-error@1' },
+      status: 'reauth' as const,
+      version: attention.version + 1,
+    });
+    const markAccountReauth = vi.fn(async () => undefined);
+    const markSession = vi.fn(async () => reauth);
+    const verifyAuthenticated = vi.fn();
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getSession: vi.fn(async () => attention),
+        markAccountReauth,
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification: vi.fn(async () => {
+          throw new PageDriverError('AUTH_REQUIRED', 'challenge unavailable');
+        }),
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({ status: 'reauth' });
+    expect(markAccountReauth).toHaveBeenCalledWith(ACCOUNT_ID, TENANT_ID);
+    expect(markSession).toHaveBeenCalledWith(
+      attention,
+      expect.objectContaining({
+        error: { code: 'AUTH_REQUIRED', schema_version: 'douyin-browser-error@1' },
+        status: 'reauth',
+      }),
+    );
+    expect(verifyAuthenticated).not.toHaveBeenCalled();
+    errorLog.mockRestore();
+  });
+
   it('returns a live security challenge without navigating away during status polling', async () => {
     const attention = Object.freeze({
       ...browserSession(),

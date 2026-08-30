@@ -193,7 +193,9 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     options?: { readonly captureScreenshot: false },
   ): Promise<LoginVerificationSnapshot | null> {
     const page = this.pages.get(accountId);
-    if (!page || page.isClosed()) return null;
+    if (!page || page.isClosed()) {
+      throw new PageDriverError('AUTH_REQUIRED', 'Douyin browser challenge is unavailable');
+    }
     return options?.captureScreenshot === false
       ? inspectLoginVerificationPage(page, false)
       : inspectLoginVerificationPage(page);

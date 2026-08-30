@@ -510,6 +510,10 @@ describe('Douyin local browser simulator', () => {
       ).resolves.toBeNull();
       await expect(driver.inspectLoginVerification(ACCOUNT_ID)).resolves.toBeNull();
       expect(await driver.exportStorageState(ACCOUNT_ID)).toContain('douyin-auth');
+      await driver.release(ACCOUNT_ID);
+      await expect(driver.inspectLoginVerification(ACCOUNT_ID)).rejects.toMatchObject({
+        code: 'AUTH_REQUIRED',
+      });
     } finally {
       await driver.close();
     }
