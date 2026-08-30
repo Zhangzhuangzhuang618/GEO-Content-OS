@@ -500,7 +500,12 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     if (existing && !existing.isClosed()) return existing;
     await mkdir(dirname(profilePath), { recursive: true });
     const context = await chromium.launchPersistentContext(profilePath, {
-      ...(this.config.headless ? { args: ['--disable-gpu'] } : {}),
+      ...(this.config.headless
+        ? {
+            args: ['--disable-gpu', '--disable-software-rasterizer'],
+            ignoreDefaultArgs: ['--enable-unsafe-swiftshader'],
+          }
+        : {}),
       headless: this.config.headless,
       viewport: { height: 960, width: 1440 },
     });
@@ -784,9 +789,7 @@ async function hasVerificationContainerEvidence(scope: Locator): Promise<boolean
 }
 
 function verificationCodeInput(page: Page, dialog: Locator | null): Locator {
-  return dialog
-    ? dialog.locator(SELECTORS.verificationCode).first()
-    : page.locator(SELECTORS.verificationCode).first();
+  return dialog ? dialog.locator(SELECTORS.verificationCode).first() : page.locator(':not(*)');
 }
 
 async function waitForSmsVerificationTransition(page: Page, timeoutMs: number): Promise<void> {
@@ -1068,7 +1071,7 @@ async function captureLoginVerificationScreenshot(
   try {
     return dialog
       ? await dialog.screenshot(options)
-      : await page.screenshot({ ...options, fullPage: true });
+      : await page.screenshot({ ...options, fullPage: false });
   } finally {
     await scope
       .evaluate((element, attribute) => element.removeAttribute(attribute), summaryAttribute)
@@ -1136,17 +1139,13 @@ function extractMaskedMobile(text: string): string | null {
 }
 
 async function hasLoginVerificationIndicators(page: Page): Promise<boolean> {
-  const codeInputVisible = await page
-    .locator(SELECTORS.verificationCode)
-    .first()
-    .isVisible()
-    .catch(() => false);
+  const dialog = await visibleVerificationDialog(page);
   const visualChallengeVisible = await page
     .locator(SELECTORS.captcha)
     .first()
     .isVisible()
     .catch(() => false);
-  return codeInputVisible || visualChallengeVisible || (await hasVisibleSecurityChallenge(page));
+  return Boolean(dialog) || visualChallengeVisible || (await hasVisibleSecurityChallenge(page));
 }
 
 async function waitForVerificationQr(page: Page, timeoutMs: number): Promise<Locator> {

@@ -481,6 +481,40 @@ describe('Douyin local browser simulator', () => {
     }
   });
 
+  it('ignores a background verification input after the SMS challenge closes', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?sms=background`,
+      }),
+    );
+    try {
+      const login = await driver.startLogin(
+        ACCOUNT_ID,
+        join(profileRoot, `${ACCOUNT_ID}-background`),
+      );
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        { code: 'CAPTCHA_REQUIRED' },
+      );
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({
+        challengeType: 'sms_code',
+        hasCodeInput: true,
+      });
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, {
+          method: 'verification_sms_verify',
+          sms_code: '654321',
+        }),
+      ).resolves.toBeNull();
+      await expect(driver.inspectLoginVerification(ACCOUNT_ID)).resolves.toBeNull();
+      expect(await driver.exportStorageState(ACCOUNT_ID)).toContain('douyin-auth');
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('does not report an SMS control covered by a verification mask as resendable', async () => {
     const driver = new PlaywrightDouyinPageDriver(
       Object.freeze({
@@ -598,6 +632,7 @@ async function route(
   if (url.pathname === '/login') {
     const smsMode = url.searchParams.get('sms');
     const smsBlocked = smsMode === 'blocked';
+    const smsBackground = smsMode === 'background';
     const smsDelayed = smsMode === 'delayed';
     const smsDirect = smsMode === 'direct';
     const verificationContainerId = smsMode === 'unmarked' ? 'identity-choice' : 'uc-second-verify';
@@ -626,7 +661,9 @@ async function route(
                 if(!document.querySelector('.mobile-value'))document.querySelector('#${verificationContainerId}').insertAdjacentHTML('beforeend','<p class="mobile-value">138****5678</p><button id="verify-code">验证</button>');
                 document.querySelector('#verify-code').onclick=()=>{
                   if(document.querySelector('#verification-code').value!=='654321')return;
-                  document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
+                  document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');
+                  if(${JSON.stringify(smsBackground)})document.querySelector('#${verificationContainerId}').remove();
+                  else document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
                 };
                 setTimeout(()=>{send.disabled=false;send.textContent='重新发送验证码'},1000);
               };
