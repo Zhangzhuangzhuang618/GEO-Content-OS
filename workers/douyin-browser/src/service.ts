@@ -282,13 +282,7 @@ export class DouyinBrowserService {
       throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login is required');
     }
     const storageStateJson = await this.decryptState(session);
-    if (
-      !(await this.driver.verifyAuthenticated(
-        accountId,
-        this.profilePath(session),
-        storageStateJson,
-      ))
-    ) {
+    if (!(await this.verifyAuthenticatedForPublish(session, storageStateJson))) {
       session = await this.requireReauth(session, 'LOGIN_EXPIRED');
       void session;
       throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login has expired');
@@ -413,6 +407,29 @@ export class DouyinBrowserService {
       images.push(Object.freeze({ assetId: asset.assetId, body, mimeType: asset.mimeType }));
     }
     return Object.freeze(images);
+  }
+
+  private async verifyAuthenticatedForPublish(
+    session: BrowserSession,
+    storageStateJson: string | null,
+  ): Promise<boolean> {
+    const verify = () =>
+      this.driver.verifyAuthenticated(
+        session.accountId,
+        this.profilePath(session),
+        storageStateJson,
+      );
+    try {
+      return await verify();
+    } catch (error) {
+      if (!isRecoverableBrowserRuntimeFailure(error)) throw error;
+      console.warn('Douyin browser recovered a crashed pre-publish page', {
+        account_id: session.accountId,
+        error: safeBrowserError(error),
+      });
+      await this.driver.release(session.accountId);
+      return verify();
+    }
   }
 
   private async reconcile(
@@ -1024,9 +1041,13 @@ function isRecoverablePublishRuntimeFailure(error: unknown): boolean {
   return (
     error instanceof PageDriverOperationError &&
     error.stage !== 'submit' &&
-    /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
-      runtimeFailureText(error, 3),
-    )
+    isRecoverableBrowserRuntimeFailure(error)
+  );
+}
+
+function isRecoverableBrowserRuntimeFailure(error: unknown): boolean {
+  return /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
+    runtimeFailureText(error, 3),
   );
 }
 

@@ -140,6 +140,71 @@ describe('Douyin browser service', () => {
     expect(store.insertArtifact).toHaveBeenCalledTimes(2);
   });
 
+  it('reopens a crashed page before the pre-publish authentication check', async () => {
+    const payload = imageNotePayload();
+    const body = Buffer.from('card-image');
+    const contentHash = createHash('sha256').update(body).digest('hex');
+    const processing = {
+      ...publication('processing', 2),
+      externalId: 'remote-note-158',
+    };
+    const store = {
+      getOrCreateSession: vi.fn(async () => browserSession()),
+      insertArtifact: vi.fn(async () => undefined),
+      loadImageAssets: vi.fn(async () =>
+        IMAGE_IDS.map((assetId) => ({
+          assetId,
+          contentHash,
+          mimeType: 'image/jpeg' as const,
+          objectUri: `memory://geo/${assetId}.jpg`,
+          sizeBytes: body.byteLength,
+        })),
+      ),
+      preparePublication: vi.fn(async () => publication('prepared', 1)),
+      updatePublication: vi.fn(async () => processing),
+    } as unknown as PostgresDouyinBrowserStore;
+    const verifyAuthenticated = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('page.goto: Page crashed'))
+      .mockResolvedValueOnce(true);
+    const release = vi.fn(async () => undefined);
+    const submit = vi.fn(async () => ({
+      externalId: 'remote-note-158',
+      reviewReason: null,
+      status: 'processing' as const,
+      url: null,
+    }));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      store,
+      {
+        capture: vi.fn(async () => Buffer.from('post-submit')),
+        release,
+        submit,
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
+      {
+        getObject: vi.fn(async () => body),
+        putObject: vi.fn(async ({ key }: { key: string }) => ({ uri: `memory://geo/${key}` })),
+      } as unknown as ObjectStorageAdapter,
+    );
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'douyin:image-note:recover-crashed-page',
+        payload,
+        payload_hash: hashDouyinPayload(payload),
+      }),
+    ).resolves.toMatchObject({ external_id: 'remote-note-158', status: 'processing' });
+    expect(verifyAuthenticated).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
+    expect(submit).toHaveBeenCalledOnce();
+    warning.mockRestore();
+  });
+
   it('persists an asynchronous QR verification failure for operator recovery', async () => {
     const failureLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const initial = Object.freeze({
