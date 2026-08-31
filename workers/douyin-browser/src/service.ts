@@ -216,7 +216,13 @@ export class DouyinBrowserService {
       payload: parsed.data.payload,
       payloadHash: parsed.data.payload_hash,
     });
-    return this.locks.run(accountId, () => this.publishLocked(accountId, input));
+    return this.locks.run(accountId, async () => {
+      try {
+        return await this.publishLocked(accountId, input);
+      } finally {
+        await this.releaseAutomationPage(accountId);
+      }
+    });
   }
 
   public async status(
@@ -236,7 +242,12 @@ export class DouyinBrowserService {
       if (publication.status === 'manual_required' && session.status !== 'authenticated') {
         return responseStatus(publication, 'unknown');
       }
-      const remote = await this.reconcile(session, publication);
+      let remote: RemotePublication | null;
+      try {
+        remote = await this.reconcile(session, publication);
+      } finally {
+        await this.releaseAutomationPage(accountId);
+      }
       if (!remote) return responseStatus(publication, 'unknown');
       const updated = await this.store.updatePublication(publication, {
         remote,
@@ -429,6 +440,17 @@ export class DouyinBrowserService {
       });
       await this.driver.release(session.accountId);
       return verify();
+    }
+  }
+
+  private async releaseAutomationPage(accountId: string): Promise<void> {
+    try {
+      await this.driver.release(accountId);
+    } catch (error) {
+      console.warn('Douyin browser could not release an automated page', {
+        account_id: accountId,
+        error: safeBrowserError(error),
+      });
     }
   }
 

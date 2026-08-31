@@ -106,6 +106,7 @@ describe('Douyin browser service', () => {
     });
     const driver = {
       capture: vi.fn(async () => Buffer.from('post-submit')),
+      release: vi.fn(async () => undefined),
       submit,
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as DouyinPageDriver;
@@ -200,6 +201,7 @@ describe('Douyin browser service', () => {
       }),
     ).resolves.toMatchObject({ external_id: 'remote-note-158', status: 'processing' });
     expect(verifyAuthenticated).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledTimes(2);
     expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
     expect(submit).toHaveBeenCalledOnce();
     warning.mockRestore();
@@ -819,6 +821,7 @@ describe('Douyin browser service', () => {
     const driver = {
       capture: vi.fn(async () => Buffer.from('unresolved-state')),
       reconcile: vi.fn(async () => null),
+      release: vi.fn(async () => undefined),
       submit: vi.fn(),
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as DouyinPageDriver;
@@ -872,12 +875,14 @@ describe('Douyin browser service', () => {
       updatePublication,
     } as unknown as PostgresDouyinBrowserStore;
     const reconcile = vi.fn(async () => remote);
+    const release = vi.fn(async () => undefined);
     const service = new DouyinBrowserService(
       config(),
       store,
       {
         capture: vi.fn(async () => Buffer.from('reconciled-publication')),
         reconcile,
+        release,
       } as unknown as DouyinPageDriver,
       { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
       {
@@ -895,6 +900,7 @@ describe('Douyin browser service', () => {
       status: 'published',
     });
     expect(reconcile).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
   it('preserves manual-required state when authenticated reconciliation finds no match', async () => {
@@ -905,6 +911,7 @@ describe('Douyin browser service', () => {
     });
     const updatePublication = vi.fn();
     const reconcile = vi.fn(async () => null);
+    const release = vi.fn(async () => undefined);
     const service = new DouyinBrowserService(
       config(),
       {
@@ -912,7 +919,7 @@ describe('Douyin browser service', () => {
         getSession: vi.fn(async () => browserSession()),
         updatePublication,
       } as unknown as PostgresDouyinBrowserStore,
-      { reconcile } as unknown as DouyinPageDriver,
+      { reconcile, release } as unknown as DouyinPageDriver,
       { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
       {} as ObjectStorageAdapter,
     );
@@ -924,6 +931,7 @@ describe('Douyin browser service', () => {
     });
     expect(updatePublication).not.toHaveBeenCalled();
     expect(reconcile).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
   });
 
   it('does not reconcile manual-required state before authentication is restored', async () => {
@@ -966,6 +974,7 @@ describe('Douyin browser service', () => {
       updatePublication: vi.fn(),
     } as unknown as PostgresDouyinBrowserStore;
     const driver = {
+      release: vi.fn(async () => undefined),
       submit: vi.fn(),
       verifyAuthenticated: vi.fn(async () => true),
     } as unknown as DouyinPageDriver;
