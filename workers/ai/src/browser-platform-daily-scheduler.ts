@@ -6,19 +6,30 @@ import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
-import type { DailyCitationPort } from './daily-citation-retriever.js';
+import type { DailyCitation, DailyCitationPort } from './daily-citation-retriever.js';
 import type { JsonObject } from './generation.types.js';
 
 type Platform = 'douyin' | 'lieju' | 'sohu';
 
 export interface DouyinDailyDecisionAngle {
+  readonly evidencePromise: DouyinTitleEvidencePromise | null;
   readonly focus: string;
   readonly key: string;
   readonly label: string;
   readonly title: string;
+  readonly titleSubject: string;
 }
 
 type CandidateAngle = DouyinDailyDecisionAngle;
+
+export type DouyinTitleEvidencePromise = '收费对比' | '合同条款解读' | '真实场景' | '资质核验';
+
+interface DailyKeyword {
+  readonly id: string;
+  readonly region: string | null;
+  readonly scene: string | null;
+  readonly term: string;
+}
 
 interface BatchRow {
   readonly accountId: string;
@@ -45,7 +56,7 @@ interface Seed {
   };
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
   readonly authoritySourceIds: readonly string[];
-  readonly keywords: readonly { readonly id: string; readonly term: string }[];
+  readonly keywords: readonly DailyKeyword[];
   readonly rule: { readonly hash: string; readonly id: string; readonly rules: JsonObject };
 }
 
@@ -157,7 +168,7 @@ export class BrowserPlatformDailyScheduler {
       if (!batch) return;
       await retireFailed(transaction, batch);
       const counts = await transaction<
-        { attempted: number; inProgress: number; qualified: number }[]
+        { attempted: number; dayAttempted: number; inProgress: number; qualified: number }[]
       >`
         SELECT
           (
@@ -165,6 +176,16 @@ export class BrowserPlatformDailyScheduler {
             WHERE current_item.tenant_id=${batch.tenantId}::uuid
               AND current_item.batch_id=${batch.id}::uuid
           ) AS attempted,
+          (
+            SELECT count(*)::integer
+            FROM browser_platform_daily_batches AS attempted_batch
+            JOIN browser_platform_daily_batch_items AS attempted_item
+              ON attempted_item.batch_id=attempted_batch.id
+              AND attempted_item.tenant_id=attempted_batch.tenant_id
+            WHERE attempted_batch.tenant_id=${batch.tenantId}::uuid
+              AND attempted_batch.policy_id=${batch.policyId}::uuid
+              AND attempted_batch.business_date=${batch.businessDate}::date
+          ) AS "dayAttempted",
           (
             SELECT count(*)::integer FROM browser_platform_daily_batch_items AS current_item
             WHERE current_item.tenant_id=${batch.tenantId}::uuid
@@ -183,7 +204,12 @@ export class BrowserPlatformDailyScheduler {
           AND day_batch.policy_id=${batch.policyId}::uuid
           AND day_batch.business_date=${batch.businessDate}::date
       `;
-      const count = counts[0] ?? { attempted: 0, inProgress: 0, qualified: 0 };
+      const count = counts[0] ?? {
+        attempted: 0,
+        dayAttempted: 0,
+        inProgress: 0,
+        qualified: 0,
+      };
       if (count.qualified >= batch.targetCount) return;
       if (count.attempted >= batch.candidateLimit && count.inProgress === 0) {
         await attention(
@@ -219,6 +245,7 @@ export class BrowserPlatformDailyScheduler {
             batch,
             seed,
             count.attempted + offset,
+            count.dayAttempted + offset,
             this.config,
             this.dailyCitations,
           );
@@ -274,7 +301,10 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
       ORDER BY published_at DESC NULLS LAST,created_at DESC,id DESC LIMIT 1
     `,
     transaction<Seed['keywords'][number][]>`
-      SELECT keyword.id,keyword.term::text AS term FROM keywords AS keyword
+      SELECT keyword.id,keyword.term::text AS term,
+        NULLIF(btrim(keyword.import_metadata_json->>'region'),'') AS region,
+        NULLIF(btrim(keyword.import_metadata_json->>'scene'),'') AS scene
+      FROM keywords AS keyword
       JOIN keyword_sets AS set
         ON set.id=keyword.keyword_set_id AND set.tenant_id=keyword.tenant_id
         AND set.project_id=${batch.projectId}::uuid AND set.status='active' AND set.deleted_at IS NULL
@@ -345,12 +375,18 @@ async function createCandidate(
   batch: BatchRow,
   seed: Seed,
   candidateNo: number,
+  editorialSequenceNo: number,
   config: OfficialSiteAutomationConfig,
   dailyCitations: DailyCitationPort,
 ) {
-  const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
-  const angle = candidateAngle(batch, keyword.term, candidateNo);
-  const title = angle.title;
+  const keyword = seed.keywords[(editorialSequenceNo - 1) % seed.keywords.length]!;
+  const titleSubject = douyinTitleSubject({
+    fallbackRegion: dominantKeywordRegion(seed.keywords),
+    keyword: keyword.term,
+    region: keyword.region,
+    scene: keyword.scene,
+  });
+  let angle = candidateAngle(batch, keyword.term, editorialSequenceNo, titleSubject);
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
   const audience = `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
   const evidence = await dailyCitations.retrieve({
@@ -358,32 +394,50 @@ async function createCandidate(
     authoritySourceIds: seed.authoritySourceIds,
     audience,
     businessDate: batch.businessDate,
-    candidateNo,
+    candidateNo: editorialSequenceNo,
     keyword: keyword.term,
     objective,
     platformCode: batch.platformCode,
     projectId: batch.projectId,
     tenantId: batch.tenantId,
-    title,
+    title: angle.title,
     userId: batch.createdBy,
     workspaceId: batch.workspaceId,
   });
   if (evidence.citations.length === 0) {
-    throw new DailyEvidenceMissingError(`企业资料索引中没有找到与候选“${title}”相关的可用证据。`);
+    throw new DailyEvidenceMissingError(
+      `企业资料索引中没有找到与候选“${angle.title}”相关的可用证据。`,
+    );
   }
+  if (batch.platformCode === 'douyin') {
+    angle = candidateAngle(
+      batch,
+      keyword.term,
+      editorialSequenceNo,
+      titleSubject,
+      douyinEvidenceTitleOpportunity(angle.key, evidence.citations),
+    );
+  }
+  const title = angle.title;
   const platformInstruction =
     batch.platformCode === 'lieju'
       ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。正文不得出现具体电话或手机号、微信/QQ账号、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
       : batch.platformCode === 'douyin'
-        ? '输出抖音图文笔记：标题先回答本候选指定的搜索决策意图，不得退回泛化的流程或准备知识题；在输入有依据时组合“地域＋具体场景＋决策问题”，缺少地域或场景证据时不得补造。platform_meta.content_kind 必须是 image_note；生成6-9张图文卡片，顺序为封面、正文、总结。现场、报价、防护、工期和清单是安全技术槽位，必须全部围绕本篇唯一主意图提供不同的判断或动作，不能写成每篇相同的七段模板；正文每页控制在24-88字，禁止长段拆页、模板标题和同义重复。同时提供420-900字、5-8个自然段的独立发布主文案，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，第二至第三段给解决方案并在资料支持时自然提及一次本企业全称，随后讲清费用边界、防护风险和工期安排，倒数第二段至少3条编号避坑点，最后给选择依据；不得复制摘要、正文块或卡片，不得使用模板钩子和助手过渡语。“真实场景、真实案例、收费对比、资质核验、合同条款解读、口碑参考”等证据承诺，只有在对应资料直接支持且正文通过 citation_map 映射时才能写进标题；否则改写为核对方法、选择标准或比较维度。topics 使用3-8个紧贴地域、场景和服务对象的话题。不得声明原创、不得伪造热点、排行、亲历、用户评价或无证据资质；发布器会如实勾选 AI 创作标识。'
+        ? '输出抖音图文笔记：标题先回答本候选指定的搜索决策意图，不得退回泛化的流程或准备知识题；服务器会绑定由项目关键词事实得到的“地域＋具体场景”标题主体，标题必须逐字保留该主体并接续决策问题。platform_meta.content_kind 必须是 image_note；生成6-9张图文卡片，顺序为封面、正文、总结。现场、报价、防护、工期和清单是安全技术槽位，必须全部围绕本篇唯一主意图提供不同的判断或动作，不能写成每篇相同的七段模板；正文每页控制在24-88字，禁止长段拆页、模板标题和同义重复。同时提供420-900字、5-8个自然段的独立发布主文案，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，第二至第三段给解决方案并在资料支持时自然提及一次本企业全称，随后讲清费用边界、防护风险和工期安排，倒数第二段至少3条编号避坑点，最后给选择依据；不得复制摘要、正文块或卡片，不得使用模板钩子和助手过渡语。“真实场景、真实案例、收费对比、资质核验、合同条款解读、口碑参考”等证据承诺，只有在对应资料直接支持且正文通过 citation_map 映射时才能写进标题；服务器绑定证据承诺时，标题必须逐字保留该承诺并在正文提供直接支持它的可见事实与 citation_map。topics 使用3-8个紧贴地域、场景和服务对象的话题。不得声明原创、不得伪造热点、排行、亲历、用户评价或无证据资质；发布器会如实勾选 AI 创作标识。'
         : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
   const constraints = {
     additional_instructions: [
-      `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${candidateNo} 个候选。`,
+      `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${editorialSequenceNo} 个当日编辑候选。`,
       `围绕“${keyword.term}”的“${angle.label}”展开。`,
       ...(batch.platformCode === 'douyin'
         ? [
             `本篇唯一搜索决策意图为“${angle.key}”，主题焦点为：${angle.focus}`,
+            `标题必须逐字包含服务器绑定的地域与具体场景主体“${angle.titleSubject}”。`,
+            ...(angle.evidencePromise
+              ? [
+                  `标题必须逐字包含服务器绑定的证据承诺“${angle.evidencePromise}”，正文必须给出由引用直接支持的对应可见事实并完成 citation_map 映射。`,
+                ]
+              : []),
             '标题、主文案和全部卡片必须共同回答该焦点；其他必备安全模块只解释它的条件和边界，不得抢成另一篇泛化流程文。',
           ]
         : []),
@@ -396,6 +450,8 @@ async function createCandidate(
     ...(batch.platformCode === 'douyin'
       ? {
           douyin_daily_direct: true,
+          douyin_title_evidence_promise: angle.evidencePromise,
+          douyin_title_subject: angle.titleSubject,
           douyin_search_intent: angle.key,
           douyin_topic_focus: angle.focus,
           server_bound_generation_context: true,
@@ -559,6 +615,7 @@ async function createCandidate(
         automation_run_id: automationRunId,
         batch_id: batch.id,
         candidate_no: candidateNo,
+        editorial_sequence_no: editorialSequenceNo,
         ...(batch.platformCode === 'douyin' ? { angle_key: angle.key } : {}),
         evidence_context_hash: evidence.contextHash,
         evidence_query_hash: evidence.queryHash,
@@ -700,31 +757,43 @@ const DOUYIN_DECISION_ANGLES = Object.freeze([
   },
 ] as const);
 
-function candidateAngle(batch: BatchRow, keyword: string, candidateNo: number): CandidateAngle {
+function candidateAngle(
+  batch: BatchRow,
+  keyword: string,
+  candidateNo: number,
+  titleSubject = keyword,
+  evidencePromise: DouyinTitleEvidencePromise | null = null,
+): CandidateAngle {
   if (batch.platformCode === 'douyin') {
     return douyinDailyDecisionAngle({
       businessDate: batch.businessDate,
       candidateNo,
+      evidencePromise,
       keyword,
       targetCount: batch.targetCount,
+      titleSubject,
     });
   }
   const angleIndex = (candidateNo - 1) % ANGLES.length;
   const selected = ANGLES[angleIndex]!;
   const maximum = batch.platformCode === 'lieju' ? 30 : 72;
   return Object.freeze({
+    evidencePromise: null,
     focus: selected.label,
     key: `general-${angleIndex + 1}`,
     label: selected.label,
     title: truncate(selected.title(keyword), maximum),
+    titleSubject: keyword,
   });
 }
 
 export function douyinDailyDecisionAngle(input: {
   readonly businessDate: string;
   readonly candidateNo: number;
+  readonly evidencePromise?: DouyinTitleEvidencePromise | null;
   readonly keyword: string;
   readonly targetCount: number;
+  readonly titleSubject?: string;
 }): DouyinDailyDecisionAngle {
   const businessDay = Math.floor(Date.parse(`${input.businessDate}T00:00:00Z`) / 86_400_000);
   const dayOffset = Number.isFinite(businessDay) ? businessDay - DOUYIN_ROTATION_EPOCH_DAY : 0;
@@ -733,19 +802,115 @@ export function douyinDailyDecisionAngle(input: {
     ((rawIndex % DOUYIN_DECISION_ANGLES.length) + DOUYIN_DECISION_ANGLES.length) %
     DOUYIN_DECISION_ANGLES.length;
   const selected = DOUYIN_DECISION_ANGLES[index]!;
+  const evidencePromise = input.evidencePromise ?? null;
+  const suffix = evidencePromise
+    ? douyinEvidencePromiseSuffix(selected.key, evidencePromise)
+    : selected.suffix;
+  const titleSubject = boundedDouyinTitleSubject(input.titleSubject ?? input.keyword, suffix);
   return Object.freeze({
+    evidencePromise,
     focus: selected.focus,
     key: selected.key,
     label: selected.label,
-    title: douyinDecisionTitle(input.keyword, selected.suffix),
+    title: `${titleSubject}${suffix}`,
+    titleSubject,
   });
 }
 
-function douyinDecisionTitle(keyword: string, suffix: string): string {
-  const normalizedKeyword = keyword.normalize('NFC').replace(/\s+/gu, ' ').trim();
+function boundedDouyinTitleSubject(value: string, suffix: string): string {
+  const normalized = value.normalize('NFC').replace(/\s+/gu, '').trim();
   const suffixLength = [...suffix].length;
-  const keywordLimit = Math.max(1, 26 - suffixLength);
-  return `${[...normalizedKeyword].slice(0, keywordLimit).join('')}${suffix}`;
+  const subjectLimit = Math.max(1, 26 - suffixLength);
+  return [...normalized].slice(0, subjectLimit).join('');
+}
+
+function douyinEvidencePromiseSuffix(intent: string, promise: DouyinTitleEvidencePromise): string {
+  if (promise === '资质核验' && intent === 'legitimacy') return '资质核验清单';
+  if (promise === '收费对比' && intent === 'comparison') return '收费对比怎么做';
+  if (promise === '收费对比' && intent === 'pricing') return '收费对比怎么看';
+  if (promise === '合同条款解读' && intent === 'contract') return '合同条款解读';
+  if (promise === '真实场景' && intent === 'recommendation') return '真实场景怎么选';
+  if (promise === '真实场景' && intent === 'comparison') return '真实场景怎么比';
+  return promise;
+}
+
+export function douyinTitleSubject(input: {
+  readonly fallbackRegion: string | null;
+  readonly keyword: string;
+  readonly region: string | null;
+  readonly scene: string | null;
+}): string {
+  const region = usableRegion(input.region) ?? usableRegion(input.fallbackRegion);
+  const scene = usableScene(input.scene) ?? sceneFromKeyword(input.keyword, region);
+  if (region && scene.startsWith(region)) return scene;
+  return `${region ?? ''}${scene}` || input.keyword.normalize('NFC').replace(/\s+/gu, '').trim();
+}
+
+export function douyinEvidenceTitleOpportunity(
+  intent: string,
+  citations: readonly DailyCitation[],
+): DouyinTitleEvidencePromise | null {
+  const evidence = citations.map((citation) => citation.quoteText).join('\n');
+  if (intent === 'legitimacy' && /资料类型：企业证照/u.test(evidence)) return '资质核验';
+  if (intent === 'contract' && /资料类型：(?:服务)?合同/u.test(evidence)) return '合同条款解读';
+  if (
+    (intent === 'pricing' || intent === 'comparison') &&
+    citations.some(
+      (citation) =>
+        /收费|费用|报价|计费|价格/u.test(citation.quoteText) &&
+        (citation.quoteText.match(
+          /\d+(?:\.\d+)?(?:\s*[-–—]\s*\d+(?:\.\d+)?)?\s*元/gu,
+        )?.length ?? 0) >= 2,
+    )
+  ) {
+    return '收费对比';
+  }
+  if (
+    (intent === 'recommendation' || intent === 'comparison') &&
+    /资料类型：(?:作业记录|服务记录|现场记录|真实案例)/u.test(evidence)
+  ) {
+    return '真实场景';
+  }
+  return null;
+}
+
+function dominantKeywordRegion(keywords: readonly DailyKeyword[]): string | null {
+  const counts = new Map<string, number>();
+  for (const keyword of keywords) {
+    const region = usableRegion(keyword.region);
+    if (region) counts.set(region, (counts.get(region) ?? 0) + 1);
+  }
+  return (
+    [...counts.entries()].sort(
+      ([leftRegion, leftCount], [rightRegion, rightCount]) =>
+        rightCount - leftCount || leftRegion.localeCompare(rightRegion, 'zh-CN'),
+    )[0]?.[0] ?? null
+  );
+}
+
+function usableRegion(value: string | null): string | null {
+  const normalized = value?.normalize('NFC').replace(/\s+/gu, '').trim();
+  if (!normalized || /^(?:通用(?:\/无地域)?|无地域|全国)$/u.test(normalized)) return null;
+  return normalized;
+}
+
+function usableScene(value: string | null): string | null {
+  const normalized = value?.normalize('NFC').replace(/\s+/gu, '').trim();
+  if (!normalized || normalized === '通用搬家') return null;
+  return normalized;
+}
+
+function sceneFromKeyword(keyword: string, region: string | null): string {
+  let normalized = keyword
+    .normalize('NFC')
+    .replace(/\s+/gu, '')
+    .replace(/[?？!！]/gu, '')
+    .trim();
+  if (region && normalized.startsWith(region)) normalized = normalized.slice(region.length);
+  normalized = normalized
+    .replace(/^(?:靠谱的?|正规的?|专业的?|推荐的?)/u, '')
+    .replace(/(?:哪家好|怎么选|如何选|推荐)$/u, '');
+  return normalized || '搬家服务';
 }
 
 function truncate(value: string, maximum: number) {

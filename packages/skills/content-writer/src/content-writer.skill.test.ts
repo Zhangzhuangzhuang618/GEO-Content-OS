@@ -39,7 +39,7 @@ afterEach(async () => {
 
 describe('ContentWriterSkill', () => {
   it('publishes the Lieju question-title and literal-contact boundary', () => {
-    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.13');
+    expect(CONTENT_WRITER_CONTRACT_V1.prompt.version).toBe('content-writer-prompt@1.1.14');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('content_kind=image_note');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('6-9 张');
     expect(CONTENT_WRITER_CONTRACT_V1.platformPrompts.douyin).toContain('420-900 字');

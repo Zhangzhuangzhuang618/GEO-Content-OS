@@ -4,6 +4,8 @@ import {
   browserPlatformGenerationModelKey,
   candidateLimitAttentionMessage,
   douyinDailyDecisionAngle,
+  douyinEvidenceTitleOpportunity,
+  douyinTitleSubject,
 } from './browser-platform-daily-scheduler.js';
 
 describe('browser platform daily scheduler', () => {
@@ -61,5 +63,43 @@ describe('browser platform daily scheduler', () => {
     expect(angle.title).toMatch(/收费怎么核对$/u);
     expect([...angle.title].length).toBeLessThanOrEqual(26);
     expect(angle.title).not.toContain('仓储运输服务选择');
+  });
+
+  it('binds the project region and keyword scene instead of leaving a generic title subject', () => {
+    expect(
+      douyinTitleSubject({
+        fallbackRegion: '广州',
+        keyword: '靠谱的搬家公司',
+        region: '通用/无地域',
+        scene: '居民搬家',
+      }),
+    ).toBe('广州居民搬家');
+  });
+
+  it('binds a title evidence promise only when retrieved evidence matches the selected intent', () => {
+    const promise = douyinEvidenceTitleOpportunity('legitimacy', [
+      {
+        chunkId: 'chunk-1',
+        quoteText: '资料类型：企业证照\n证照名称：道路运输经营许可证',
+        sourceId: 'source-1',
+      },
+    ]);
+    const angle = douyinDailyDecisionAngle({
+      businessDate: '2026-08-31',
+      candidateNo: 1,
+      evidencePromise: promise,
+      keyword: '跨城搬家',
+      targetCount: 3,
+      titleSubject: '广州异地搬家',
+    });
+
+    expect(promise).toBe('资质核验');
+    expect(angle).toMatchObject({
+      evidencePromise: '资质核验',
+      key: 'legitimacy',
+      title: '广州异地搬家资质核验清单',
+      titleSubject: '广州异地搬家',
+    });
+    expect([...angle.title].length).toBeLessThanOrEqual(26);
   });
 });

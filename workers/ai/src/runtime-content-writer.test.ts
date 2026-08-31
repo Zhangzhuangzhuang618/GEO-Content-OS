@@ -357,7 +357,7 @@ describe('AI Worker runtime wiring', () => {
         { text: JSON.stringify(initial) },
         {
           text: JSON.stringify({
-            replacements: [{ replacement_text: '广州搬家公司收费怎么核对', target_id: 'title' }],
+            replacements: [{ replacement_text: '广州居民搬家收费怎么核对', target_id: 'title' }],
           }),
         },
       ],
@@ -374,7 +374,9 @@ describe('AI Worker runtime wiring', () => {
       async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
       'deepseek-v4-pro',
     );
-    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, 'pricing');
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, 'pricing', {
+      douyin_title_subject: '广州居民搬家',
+    });
     const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
 
     const result = await writer.generateMaster({
@@ -387,7 +389,92 @@ describe('AI Worker runtime wiring', () => {
     expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
       '收费核对',
     );
-    expect(result.title).toBe('广州搬家公司收费怎么核对');
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      '广州居民搬家',
+    );
+    expect(result.title).toBe('广州居民搬家收费怎么核对');
+    expect(pro.requests).toHaveLength(0);
+  });
+
+  it('repairs a Douyin evidence map that does not fulfil the bound title promise', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citationId = '73000000-0000-4000-8000-000000000063';
+    const baseDraft = douyinDirectDraft();
+    const supportedClaim =
+      '收费对比要按相同项目口径展开：资料中的基础运输费用为300元，人工费用为200元；还要核对拆装、包装、楼层、等待和增项条件。';
+    const valid = {
+      ...baseDraft,
+      evidence_claims: [
+        {
+          citation_ids: [citationId],
+          claim_text: supportedClaim,
+        },
+      ],
+      opening_topic: '广州搬家收费对比选择指南',
+      price_boundary: supportedClaim,
+      title: '广州搬家收费对比选择指南',
+    };
+    const initial = {
+      ...valid,
+      evidence_claims: [
+        {
+          citation_ids: [citationId],
+          claim_text: baseDraft.opening_pain,
+        },
+      ],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        { text: JSON.stringify({ evidence_claims: valid.evidence_claims }) },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const baseInput = douyinDirectWriterInput(fixture.input as JsonObject, 'pricing', {
+      douyin_title_evidence_promise: '收费对比',
+      douyin_title_subject: '广州搬家',
+    });
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        {
+          chunk_id: '75000000-0000-4000-8000-000000000063',
+          citation_id: citationId,
+          quote_text: supportedClaim,
+          source_id: '74000000-0000-4000-8000-000000000063',
+        },
+      ],
+    };
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-direct-evidence-promise-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      '收费对比',
+    );
+    expect(result.title).toBe('广州搬家收费对比选择指南');
+    expect(result.citation_map).toEqual([
+      expect.objectContaining({
+        citation_ids: [citationId],
+        claim_text: supportedClaim,
+      }),
+    ]);
     expect(pro.requests).toHaveLength(0);
   });
 
@@ -2363,7 +2450,11 @@ function multiPlatformWriterInput(
   };
 }
 
-function douyinDirectWriterInput(input: JsonObject, searchIntent?: string): JsonObject {
+function douyinDirectWriterInput(
+  input: JsonObject,
+  searchIntent?: string,
+  constraintOverrides: JsonObject = {},
+): JsonObject {
   const base = multiPlatformWriterInput(input, ['douyin']);
   const brief = base['brief'] as JsonObject;
   const strategy = base['strategy'] as JsonObject;
@@ -2375,6 +2466,7 @@ function douyinDirectWriterInput(input: JsonObject, searchIntent?: string): Json
         douyin_daily_direct: true,
         ...(searchIntent ? { douyin_search_intent: searchIntent } : {}),
         server_bound_generation_context: true,
+        ...constraintOverrides,
       },
     },
     strategy: { ...strategy, profile: {} },

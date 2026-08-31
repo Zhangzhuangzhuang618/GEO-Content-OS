@@ -614,6 +614,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
             ]
           : input.platformCode === 'douyin'
             ? [
+                '继续逐字保留 brief.constraints.douyin_title_subject；brief.constraints.douyin_title_evidence_promise 存在时也必须逐字保留，并让正文可见事实和 citation_map 直接兑现该承诺。不得用同义词替换服务器绑定内容。',
                 '保持 platform_meta.content_kind=image_note，使用6-9张封面/正文/总结图文卡片；卡片按主题痛点、现场核对、报价或服务边界、防护风险、预约工期、实操清单和结论推进，正文单页单重点且为24-88字，删除长段拆页、通用模板标题与同义重复。',
                 'description 是独立发布主文案，使用420-900字和5-8个自然段：第一段恰好两句，第一句点题、第二句写对象和现实痛点；第二至第三段给解决方案，并在现有企业资料支持时自然提及一次本企业全称；随后覆盖报价或服务边界、防护或责任风险、预约或工期；倒数第二段给出至少3条明确编号的实操避坑点，最后一段给选择依据。不得复制摘要、正文块或卡片，不得使用模板钩子、助手过渡语或空泛免责声明。只修复当前报告指出的问题，不得换题或补造事实。',
                 '返回前按字面值逐项验收：第一段只能有两个完整句，第一句原样复用 title 中至少 4 个连续汉字；description 必须分别字面包含“报价/费用/计费/收费/服务边界”之一、“防护/包装/加固/责任/风险/验收”之一和“预约/工期/调度/时间”之一；封面 heading 或 body 必须字面包含“怎么/如何/避坑/清单/步骤/判断”之一或问号。不得用近义词代替这些必需字面词，对已通过的字段不做无关改写。',
@@ -1529,6 +1530,7 @@ ${CONTENT_WRITER_PLATFORM_PROMPTS_V1.douyin}
 
 Fill the semantic slots exactly:
 - Read brief.constraints.douyin_search_intent and douyin_topic_focus first. They define the one search-decision question this article must answer. Keep that intent explicit in the title and use it as the primary thread of every paragraph and card; do not fall back to a generic process or preparation article.
+- Read brief.constraints.douyin_title_subject next. It is the server-bound “region + concrete scene” title subject and must appear verbatim in title. When brief.constraints.douyin_title_evidence_promise is a non-empty string, it is backed by a matching citation opportunity: preserve it verbatim in title and write one directly supported visible fact that fulfils the promise, then map that exact fact in evidence_claims. Do not replace either bound string with a synonym.
 - opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark. opening_pain must name the concrete object and problem or consequence, and must naturally contain at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 - solution_paragraphs contains exactly two substantive solution paragraphs. When the published strategy supplies the owner company name, mention it naturally in one of these two paragraphs and no more than twice in the complete description.
 - price_boundary, protection_risk, schedule, checklist, and conclusion each become one separate paragraph. checklist must contain at least three explicit numbered actions using 第一、第二、第三. conclusion must give a practical selection basis.
@@ -1620,7 +1622,7 @@ This is a bounded evidence-metadata repair. No tools are available. Do not rewri
       role: 'system',
     },
     {
-      content: `Repair evidence_claims only. Every claim_text must be copied verbatim from one current visible text field, every citation_id must be present in supplied_citations, and the cited quote must directly support the complete claim. Remove any mapping that cannot satisfy all three conditions. Returning an empty evidence_claims array is required when no supplied citation directly supports a visible public claim. Do not invent, paraphrase, broaden, or weaken a claim to force a citation match.
+      content: `Repair evidence_claims only. Every claim_text must be copied verbatim from one current visible text field, every citation_id must be present in supplied_citations, and the cited quote must directly support the complete claim. Remove any mapping that cannot satisfy all three conditions. When brief.constraints.douyin_title_evidence_promise is bound, select a directly supported visible claim that specifically fulfils that promise; a merely related generic claim is invalid. Returning an empty evidence_claims array is required when no supplied citation directly supports a visible public claim; the later full-draft repair must then rewrite visible text instead. Do not invent, paraphrase, broaden, or weaken a claim to force a citation match.
 
 Return only {"evidence_claims":[{"claim_text":"...","citation_ids":["..."]}]}.`,
       role: 'user',
@@ -1883,6 +1885,7 @@ function douyinDirectEvidenceIssues(
   writerInput: JsonObject,
 ): readonly string[] {
   const supplied = suppliedCitationIds(writerInput);
+  const suppliedDetails = suppliedCitations(writerInput);
   const visible = normalizeContentText(douyinDirectVisibleText(draft));
   const issues: string[] = [];
   if (supplied.size > 0 && draft.evidence_claims.length === 0) {
@@ -1900,7 +1903,65 @@ function douyinDirectEvidenceIssues(
       issues.push(`douyin:证据映射 ${index + 1} 的 claim_text 未出现在可见文案中`);
     }
   });
+  const requiredPromise = requiredDouyinTitleEvidencePromise(writerInput);
+  if (requiredPromise) {
+    const promisePattern = douyinEvidencePromiseClaimPattern(requiredPromise);
+    const hasMappedPromiseClaim = draft.evidence_claims.some(
+      (claim) =>
+        claim.citation_ids.length > 0 &&
+        claim.citation_ids.every((citationId) => supplied.has(citationId)) &&
+        promisePattern.test(claim.claim_text) &&
+        claim.citation_ids.some((citationId) => {
+          const citation = suppliedDetails.get(citationId);
+          return (
+            citation !== undefined &&
+            douyinEvidencePromiseCitationSupports(requiredPromise, citation.quoteText)
+          );
+        }),
+    );
+    if (!hasMappedPromiseClaim) {
+      issues.push(
+        `douyin:证据映射必须包含一条由已提供引用直接支持、且具体兑现标题证据承诺“${requiredPromise}”的可见事实；不能用泛化建议替代`,
+      );
+    }
+  }
   return Object.freeze(issues);
+}
+
+function requiredDouyinTitleEvidencePromise(writerInput: JsonObject): string | null {
+  const brief = jsonObject(writerInput['brief']);
+  const constraints = brief ? jsonObject(brief['constraints']) : undefined;
+  const value = constraints?.['douyin_title_evidence_promise'];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function douyinEvidencePromiseClaimPattern(promise: string): RegExp {
+  if (promise === '资质核验') return /资质|证照|许可证|营业执照|证书|统一社会信用代码/u;
+  if (promise === '收费对比') return /收费|费用|计费|报价|价格|\d+(?:\.\d+)?\s*元/u;
+  if (promise === '合同条款解读') return /合同|条款|约定/u;
+  if (promise === '真实场景') return /真实场景|现场|作业记录|服务记录|案例/u;
+  return new RegExp(escapeRegExp(promise), 'u');
+}
+
+function douyinEvidencePromiseCitationSupports(promise: string, quoteText: string): boolean {
+  if (promise === '资质核验') {
+    return /资料类型：企业证照|资质|证照|许可证|营业执照|证书/u.test(quoteText);
+  }
+  if (promise === '收费对比') {
+    return (
+      /收费|费用|报价|计费|价格/u.test(quoteText) &&
+      (quoteText.match(/\d+(?:\.\d+)?(?:\s*[-–—]\s*\d+(?:\.\d+)?)?\s*元/gu)?.length ?? 0) >= 2
+    );
+  }
+  if (promise === '合同条款解读') return /合同|条款|约定/u.test(quoteText);
+  if (promise === '真实场景') {
+    return /资料类型：(?:作业记录|服务记录|现场记录|真实案例)|真实场景|现场|案例/u.test(quoteText);
+  }
+  return quoteText.includes(promise);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function hasDouyinDirectEvidenceIssues(issues: readonly string[]): boolean {
@@ -1913,6 +1974,7 @@ function douyinDirectRepairTargets(
   writerInput: JsonObject,
 ): readonly string[] {
   const targets = new Set<string>();
+  const requiredEvidencePromise = requiredDouyinTitleEvidencePromise(writerInput);
   const narrative = [
     'opening_topic',
     'opening_pain',
@@ -1934,7 +1996,7 @@ function douyinDirectRepairTargets(
       targets.add(explicitTarget);
       continue;
     }
-    if (issue.includes('证据映射')) continue;
+    if (isDouyinEvidenceOnlyIssue(issue, requiredEvidencePromise)) continue;
     if (issue.includes('标题')) targets.add('title');
     if (issue.includes('第一段') || issue.includes('第一句') || issue.includes('第二句话')) {
       targets.add('opening_topic');
@@ -2002,11 +2064,18 @@ function douyinDirectRepairTargets(
   }
   if (
     targets.size === 0 &&
-    issues.some((issue) => !issue.includes('证据映射') && !issue.includes('topics'))
+    issues.some(
+      (issue) =>
+        !isDouyinEvidenceOnlyIssue(issue, requiredEvidencePromise) && !issue.includes('topics'),
+    )
   ) {
     narrative.forEach((id) => targets.add(id));
   }
   return Object.freeze([...targets]);
+}
+
+function isDouyinEvidenceOnlyIssue(issue: string, requiredPromise: string | null): boolean {
+  return issue.includes('证据映射') || Boolean(requiredPromise && issue.includes('证据承诺'));
 }
 
 function applyDouyinDirectReplacements(
@@ -2394,13 +2463,37 @@ function douyinSearchIntentIssues(
 ): readonly string[] {
   const brief = jsonObject(writerInput['brief']);
   const constraints = brief ? jsonObject(brief['constraints']) : undefined;
+  const issues: string[] = [];
   const intent = constraints?.['douyin_search_intent'];
-  if (typeof intent !== 'string') return Object.freeze([]);
-  const rule = DOUYIN_SEARCH_INTENT_TITLE_RULES[intent];
-  if (!rule || rule.pattern.test(content.title)) return Object.freeze([]);
-  return Object.freeze([
-    `douyin:标题没有体现本候选指定的“${rule.label}”搜索决策意图，必须在标题中直接回答该意图，不得退回泛化流程或准备题 [repair_target=title]`,
-  ]);
+  if (typeof intent === 'string') {
+    const rule = DOUYIN_SEARCH_INTENT_TITLE_RULES[intent];
+    if (rule && !rule.pattern.test(content.title)) {
+      issues.push(
+        `douyin:标题没有体现本候选指定的“${rule.label}”搜索决策意图，必须在标题中直接回答该意图，不得退回泛化流程或准备题 [repair_target=title]`,
+      );
+    }
+  }
+  const titleSubject = constraints?.['douyin_title_subject'];
+  if (
+    typeof titleSubject === 'string' &&
+    titleSubject.trim() &&
+    !content.title.includes(titleSubject.trim())
+  ) {
+    issues.push(
+      `douyin:标题必须逐字包含服务器绑定的地域与具体场景主体“${titleSubject.trim()}” [repair_target=title]`,
+    );
+  }
+  const evidencePromise = constraints?.['douyin_title_evidence_promise'];
+  if (
+    typeof evidencePromise === 'string' &&
+    evidencePromise.trim() &&
+    !content.title.includes(evidencePromise.trim())
+  ) {
+    issues.push(
+      `douyin:已有匹配证据，标题必须逐字包含服务器绑定的证据承诺“${evidencePromise.trim()}” [repair_target=title]`,
+    );
+  }
+  return Object.freeze(issues);
 }
 
 function credentialCitationIssues(
