@@ -1,11 +1,16 @@
 import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   assessDouyinOwnerPromotion,
+  buildEnterpriseAssuranceText,
   companyNamePolicyInstruction,
   findDisallowedCompanyNames,
+  findInternalCustomerCopyLanguage,
   findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
+  sanitizeEvidenceQuoteForCustomerCopy,
+  uniquePublishedOwnerCompanyName,
+  type EnterpriseEvidenceKind,
   type LiejuForbiddenContactDetail,
 } from '@geo-content-os/contracts';
 import {
@@ -331,10 +336,23 @@ interface ContentLengthShortfall {
 interface TargetedTextRepairTarget {
   readonly content: ContentWriterContent;
   readonly id: string;
+  readonly internalCustomerLanguage: readonly string[];
   readonly originalText: string;
   readonly prohibitedContactDetails: readonly LiejuForbiddenContactDetail[];
   readonly prohibitedPromotionalTerms: readonly string[];
   readonly unsupportedClaims: readonly string[];
+}
+
+interface EnterpriseEvidencePolicy {
+  readonly companyName: string;
+  readonly customerRequestSupported: boolean;
+  readonly references: readonly {
+    readonly citationId: string;
+    readonly displayName: string;
+    readonly kind: EnterpriseEvidenceKind;
+    readonly sourceId: string;
+  }[];
+  readonly serviceType: string;
 }
 
 interface TargetedTextRepairReplacement {
@@ -349,6 +367,11 @@ interface TargetedTextRepairOutput {
 interface TargetedTextRepairResult {
   readonly output: ContentWriterOutput;
   readonly rejectionReason: string | null;
+}
+
+interface InternalTextRepairTarget {
+  readonly id: string;
+  readonly text: string;
 }
 
 const TARGETED_TEXT_REPAIR_SCHEMA: JsonObject = Object.freeze({
@@ -651,6 +674,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
       readonly issues: readonly string[];
     },
   ): Promise<OfficialSiteArticleDraft> {
+    input = Object.freeze({
+      ...input,
+      writerInput: sanitizeWriterInputForCustomerCopy(input.writerInput),
+    });
     const runner = this.directRunner(input.context);
     const prompt = withCompanyNamePolicy(
       this.promptLoader
@@ -668,25 +695,30 @@ export class RuntimeContentWriter implements ContentWriterPort {
       requestId: input.requestId,
       ...(input.signal ? { signal: input.signal } : {}),
     });
-    let article = (
-      await runDirectWithStructuredOutputRetry<OfficialSiteArticleDraft>(runner, invocation, 2)
-    ).output;
+    let article = normalizeOfficialSiteArticle(
+      (await runDirectWithStructuredOutputRetry<OfficialSiteArticleDraft>(runner, invocation, 2))
+        .output,
+    );
+    article = await this.repairOfficialSiteArticleInternalCopy(input, prompt, article);
     let issues = assessOfficialSiteArticle(article, input.writerInput);
     if (issues.length > 0 && !onlyOfficialSiteLengthShortfall(issues)) {
-      article = (
-        await runDirectWithStructuredOutputRetry<OfficialSiteArticleDraft>(
-          runner,
-          {
-            ...invocation,
-            messages: officialSiteArticleMessages(input.writerInput, prompt, {
-              candidate: officialSiteArticleContent(article, 'official_site', input.writerInput),
-              issues,
-            }),
-            temperature: 0.15,
-          },
-          2,
-        )
-      ).output;
+      article = normalizeOfficialSiteArticle(
+        (
+          await runDirectWithStructuredOutputRetry<OfficialSiteArticleDraft>(
+            runner,
+            {
+              ...invocation,
+              messages: officialSiteArticleMessages(input.writerInput, prompt, {
+                candidate: officialSiteArticleContent(article, 'official_site', input.writerInput),
+                issues,
+              }),
+              temperature: 0.15,
+            },
+            2,
+          )
+        ).output,
+      );
+      article = await this.repairOfficialSiteArticleInternalCopy(input, prompt, article);
       issues = assessOfficialSiteArticle(article, input.writerInput);
     }
     for (
@@ -700,7 +732,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
         article,
         round,
       );
-      article = mergeOfficialSiteExpansion(article, expansion, round);
+      article = normalizeOfficialSiteArticle(mergeOfficialSiteExpansion(article, expansion, round));
+      article = await this.repairOfficialSiteArticleInternalCopy(input, prompt, article);
       issues = assessOfficialSiteArticle(article, input.writerInput);
     }
     if (issues.length > 0) {
@@ -841,6 +874,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
     },
     article: GeneratedContent,
   ): Promise<OfficialSiteFaqDraft> {
+    input = Object.freeze({
+      ...input,
+      writerInput: sanitizeWriterInputForCustomerCopy(input.writerInput),
+    });
     const runner = this.directRunner(input.context);
     const prompt = withCompanyNamePolicy(
       this.promptLoader
@@ -848,7 +885,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         : await this.getPrompt(input.context),
       input.writerInput,
     );
-    return (
+    const faq = (
       await runDirectWithStructuredOutputRetry<OfficialSiteFaqDraft>(
         runner,
         directInvocation({
@@ -864,6 +901,141 @@ export class RuntimeContentWriter implements ContentWriterPort {
         3,
       )
     ).output;
+    return this.repairOfficialSiteFaqInternalCopy(input, prompt, faq);
+  }
+
+  private async repairOfficialSiteArticleInternalCopy(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    prompt: ContentWriterPublishedPrompt,
+    article: OfficialSiteArticleDraft,
+  ): Promise<OfficialSiteArticleDraft> {
+    const targets = [
+      { id: 'title', text: article.title },
+      { id: 'summary', text: article.summary },
+      ...article.blocks.map((block, index) => ({ id: `blocks.${index}.text`, text: block.text })),
+    ].filter((target) => findInternalCustomerCopyLanguage(target.text).length > 0);
+    const replacements = await this.repairInternalCustomerCopyTargets(input, prompt, targets);
+    if (replacements.size === 0) return article;
+    return Object.freeze({
+      blocks: Object.freeze(
+        article.blocks.map((block, index) =>
+          Object.freeze({
+            ...block,
+            text: replacements.get(`blocks.${index}.text`) ?? block.text,
+          }),
+        ),
+      ),
+      summary: replacements.get('summary') ?? article.summary,
+      title: replacements.get('title') ?? article.title,
+    });
+  }
+
+  private async repairOfficialSiteFaqInternalCopy(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    prompt: ContentWriterPublishedPrompt,
+    faq: OfficialSiteFaqDraft,
+  ): Promise<OfficialSiteFaqDraft> {
+    const targets = faq.faq
+      .flatMap((item, index) => [
+        { id: `faq.${index}.question`, text: item.question },
+        { id: `faq.${index}.answer`, text: item.answer },
+      ])
+      .filter((target) => findInternalCustomerCopyLanguage(target.text).length > 0);
+    const replacements = await this.repairInternalCustomerCopyTargets(input, prompt, targets);
+    if (replacements.size === 0) return faq;
+    return Object.freeze({
+      faq: Object.freeze(
+        faq.faq.map((item, index) =>
+          Object.freeze({
+            answer: replacements.get(`faq.${index}.answer`) ?? item.answer,
+            question: replacements.get(`faq.${index}.question`) ?? item.question,
+          }),
+        ),
+      ),
+    });
+  }
+
+  private async repairInternalCustomerCopyTargets(
+    input: {
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly signal?: AbortSignal;
+      readonly writerInput: JsonObject;
+    },
+    prompt: ContentWriterPublishedPrompt,
+    targets: readonly InternalTextRepairTarget[],
+  ): Promise<ReadonlyMap<string, string>> {
+    if (targets.length === 0) return new Map();
+    const repaired = await runDirectWithStructuredOutputRetry<TargetedTextRepairOutput>(
+      this.directRunner(input.context),
+      directInvocation({
+        context: input.context,
+        input: input.writerInput,
+        maxOutputTokens: this.directMaxOutputTokens(input.context, 4_096),
+        messages: Object.freeze([
+          {
+            content: `${CONTENT_WRITER_SYSTEM_PROMPT_V1}\n\nPublished content policy:\n${prompt.systemPrompt}\n\nThis is a bounded customer-copy repair. Rewrite only the supplied text targets.`,
+            role: 'system',
+          },
+          {
+            content:
+              'Remove internal risk-control, evidence-classification, evidence-boundary, and model-disclaimer wording while preserving the useful customer-facing meaning in natural Chinese. Return exactly one changed, non-empty replacement for each target_id and no other IDs. Do not add facts, credentials, citations, numbers, guarantees, rankings, Markdown, or commentary.',
+            role: 'user',
+          },
+          {
+            content: JSON.stringify({
+              targets: targets.map((target) => ({
+                internal_customer_language: findInternalCustomerCopyLanguage(target.text),
+                original_text: target.text,
+                target_id: target.id,
+              })),
+            }),
+            role: 'user',
+          },
+        ]),
+        outputSchema: TARGETED_TEXT_REPAIR_SCHEMA,
+        recordUsage: (usage) => this.recordUsage(input.context, usage),
+        requestId: `${input.requestId}-internal-copy-repair`,
+        ...(input.signal ? { signal: input.signal } : {}),
+      }),
+      2,
+    );
+    const expected = new Map(targets.map((target) => [target.id, target.text]));
+    const replacements = new Map<string, string>();
+    for (const replacement of repaired.output.replacements) {
+      const original = expected.get(replacement.target_id);
+      const text = replacement.replacement_text.trim();
+      if (
+        original === undefined ||
+        replacements.has(replacement.target_id) ||
+        !text ||
+        text === original ||
+        findInternalCustomerCopyLanguage(text).length > 0
+      ) {
+        throw new GenerationWorkerError(
+          'CONTENT_QUALITY_INSUFFICIENT',
+          '客户正文定点修复无效，已停止生成',
+        );
+      }
+      replacements.set(replacement.target_id, text);
+    }
+    if (replacements.size !== expected.size) {
+      throw new GenerationWorkerError(
+        'CONTENT_QUALITY_INSUFFICIENT',
+        '客户正文定点修复未覆盖全部命中句段，已停止生成',
+      );
+    }
+    return replacements;
   }
 
   private directRunner(context: ContentWriterRunContext): SkillRunner {
@@ -896,6 +1068,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): CachedRun {
+    input = Object.freeze({
+      ...input,
+      writerInput: sanitizeWriterInputForCustomerCopy(input.writerInput),
+    });
     if (!this.adapters.has(input.context.modelKey)) {
       throw new GenerationWorkerError(
         'MODEL_ROUTE_NOT_FOUND',
@@ -1170,6 +1346,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
     },
     revision?: ContentWriterRevision,
   ): Promise<ContentWriterOutput> {
+    input = Object.freeze({
+      ...input,
+      writerInput: sanitizeWriterInputForCustomerCopy(input.writerInput),
+    });
     const adapter = this.adapters.get(input.context.modelKey)!;
     const prompt = withCompanyNamePolicy(
       this.promptLoader
@@ -1230,9 +1410,28 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
     const validationPolicy = revision ? 'quality' : input.context.modelPolicy;
-    let output = result.output;
+    let output = normalizeContentWriterOutput(result.output, input.writerInput);
     let assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     let deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    let targetedRepairRejection: string | null = null;
+    if (onlyInternalCustomerCopyIssues(assessment.issues, deterministicIssues)) {
+      const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
+      output = normalizeContentWriterOutput(targetedRepair.output, input.writerInput);
+      targetedRepairRejection = targetedRepair.rejectionReason;
+      assessment = assessContentWriterContents(output.data.variants, validationPolicy);
+      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+      if (assessment.passed && deterministicIssues.length === 0) return output;
+      throw new GenerationWorkerError(
+        'CONTENT_QUALITY_INSUFFICIENT',
+        [
+          ...assessment.issues,
+          ...deterministicIssues,
+          ...(targetedRepairRejection
+            ? [`targeted_repair_rejected:${targetedRepairRejection}`]
+            : []),
+        ].join('; '),
+      );
+    }
     if (
       deterministicIssues.length === 0 &&
       (assessment.passed ||
@@ -1247,7 +1446,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
       shortfalls &&
       (deterministicIssues.length === 0 || onlyUnchangedRewriteIssues(deterministicIssues))
     ) {
-      output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
+      output = normalizeContentWriterOutput(
+        await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls),
+        input.writerInput,
+      );
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
       if (assessment.passed && deterministicIssues.length === 0) return output;
@@ -1271,13 +1473,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
       },
       structuredFallback,
     );
-    output = result.output;
+    output = normalizeContentWriterOutput(result.output, input.writerInput);
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
-    let targetedRepairRejection: string | null = null;
     if (onlyTargetedTextRepairIssues(assessment.issues, deterministicIssues)) {
       const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
-      output = targetedRepair.output;
+      output = normalizeContentWriterOutput(targetedRepair.output, input.writerInput);
       targetedRepairRejection = targetedRepair.rejectionReason;
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -1287,7 +1488,10 @@ export class RuntimeContentWriter implements ContentWriterPort {
       shortfalls &&
       (deterministicIssues.length === 0 || onlyUnchangedRewriteIssues(deterministicIssues))
     ) {
-      output = await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls);
+      output = normalizeContentWriterOutput(
+        await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls),
+        input.writerInput,
+      );
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     }
@@ -1309,7 +1513,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
           },
           structuredFallback,
         );
-        output = result.output;
+        output = normalizeContentWriterOutput(result.output, input.writerInput);
         assessment = assessContentWriterContents(output.data.variants, validationPolicy);
         deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
         if (assessment.passed && deterministicIssues.length === 0) return output;
@@ -1586,7 +1790,7 @@ This is a bounded field repair. No tools are available. Rewrite only the supplie
     {
       content: `Resolve every quality issue by changing only the target fields below. Return exactly one changed, non-empty replacement for every target_id and no other IDs. Preserve all grounded facts. Do not add credentials, other company names, prices, metrics, rankings, cases, guarantees, citation IDs, Markdown, or explanation.
 
-When a quality issue gives a minimum character count, exceed that minimum by 5-10 Chinese characters while staying within the current field maximum. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
+When a quality issue identifies internal risk-control, evidence-boundary, evidence-classification, or model-disclaimer wording, remove only that wording and preserve the useful customer-facing meaning in natural Chinese. When a quality issue gives a minimum character count, exceed that minimum by 5-10 Chinese characters while staying within the current field maximum. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
       role: 'user',
@@ -1648,7 +1852,10 @@ function evaluateDouyinDirectDraft(
   draft: DouyinDirectDraft,
   usages: readonly ModelUsage[],
 ): { readonly issues: readonly string[]; readonly output: ContentWriterOutput } {
-  const data = douyinDirectData(draft, input.writerInput);
+  const data = normalizeContentWriterData(
+    douyinDirectData(draft, input.writerInput),
+    input.writerInput,
+  );
   const assessment = assessContentWriterContents(data.variants, 'quality');
   const minimumLengthIssues = douyinDirectMinimumLengthIssues(draft);
   const issues = Object.freeze([
@@ -2057,7 +2264,8 @@ function douyinDirectRepairTargets(
   for (const [targetId, text] of douyinDirectTextEntries(draft)) {
     if (
       unsupportedCredentialClaims(directContent, text, writerInput).length > 0 ||
-      findDisallowedCompanyNames(text, allowedNames).length > 0
+      findDisallowedCompanyNames(text, allowedNames).length > 0 ||
+      findInternalCustomerCopyLanguage(text).length > 0
     ) {
       targets.add(targetId);
     }
@@ -2438,7 +2646,13 @@ function deterministicContentIssues(
 ): readonly string[] {
   const ownerCompanyNames = ownerCompanyNamesFromWriterInput(writerInput);
   const issues = [...companyNamePolicyIssues(data, 'content-writer', ownerCompanyNames)];
+  if (stringValues(data).some((value) => findInternalCustomerCopyLanguage(value).length > 0)) {
+    issues.push(
+      'content-writer:客户正文包含内部风控或模板化免责话术，只改写命中句段并保留其余正文',
+    );
+  }
   for (const content of data.variants) {
+    issues.push(...enterpriseEvidenceIssues(content, writerInput));
     issues.push(...credentialCitationIssues(content, writerInput));
     if (content.platform_code === 'douyin') {
       issues.push(
@@ -2454,6 +2668,40 @@ function deterministicContentIssues(
     }
   }
   issues.push(...credentialCitationIssues(data.master_content, writerInput));
+  return Object.freeze(issues);
+}
+
+function enterpriseEvidenceIssues(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): readonly string[] {
+  if (content.platform_code !== 'official_site' && content.platform_code !== 'lieju') return [];
+  const policy = enterpriseEvidencePolicy(writerInput);
+  if (!policy) return [];
+  const expectedText = buildEnterpriseAssuranceText({
+    companyName: policy.companyName,
+    customerRequestSupported: policy.customerRequestSupported,
+    evidenceNames: policy.references.map((reference) => reference.displayName),
+    serviceType: policy.serviceType,
+  });
+  const blocks = content.blocks.filter((block) => block.block_key === 'enterprise-credentials');
+  const mapping = content.citation_map.find(
+    (candidate) => candidate.claim_key === 'enterprise-credentials',
+  );
+  const expectedCitationIds = new Set(policy.references.map((reference) => reference.citationId));
+  const actualCitationIds = new Set(mapping?.citation_ids ?? []);
+  const issues: string[] = [];
+  if (blocks.length !== 1 || blocks[0]?.text !== expectedText) {
+    issues.push(`${content.platform_code}:资质保障段落缺失、重复或与当前企业资料不一致`);
+  }
+  if (
+    !mapping ||
+    mapping.claim_text !== expectedText ||
+    actualCitationIds.size !== expectedCitationIds.size ||
+    [...expectedCitationIds].some((citationId) => !actualCitationIds.has(citationId))
+  ) {
+    issues.push(`${content.platform_code}:基础资料未全部进入资质保障段落的最终引用映射`);
+  }
   return Object.freeze(issues);
 }
 
@@ -2624,7 +2872,8 @@ function onlyTargetedTextRepairIssues(
     if (
       issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照') ||
       issue.includes('包含发布层禁止的具体联系方式') ||
-      issue.includes('包含发布层禁止的宣传词')
+      issue.includes('包含发布层禁止的宣传词') ||
+      issue.includes('包含内部风控或模板化免责话术')
     ) {
       hasRepairableIssue = true;
       continue;
@@ -2633,6 +2882,17 @@ function onlyTargetedTextRepairIssues(
     return false;
   }
   return hasRepairableIssue;
+}
+
+function onlyInternalCustomerCopyIssues(
+  assessmentIssues: readonly string[],
+  deterministicIssues: readonly string[],
+): boolean {
+  return (
+    assessmentIssues.length === 0 &&
+    deterministicIssues.length > 0 &&
+    deterministicIssues.every((issue) => issue.includes('包含内部风控或模板化免责话术'))
+  );
 }
 
 function targetedTextRepairTargets(
@@ -2664,10 +2924,12 @@ function targetedTextRepairTargets(
           : [];
       const prohibitedContactDetails =
         content.platform_code === 'lieju' ? findLiejuForbiddenContactDetails(text) : [];
+      const internalCustomerLanguage = findInternalCustomerCopyLanguage(text);
       if (
         unsupportedClaims.length === 0 &&
         prohibitedPromotionalTerms.length === 0 &&
-        prohibitedContactDetails.length === 0
+        prohibitedContactDetails.length === 0 &&
+        internalCustomerLanguage.length === 0
       ) {
         return;
       }
@@ -2675,6 +2937,7 @@ function targetedTextRepairTargets(
         Object.freeze({
           content,
           id,
+          internalCustomerLanguage,
           originalText: text,
           prohibitedContactDetails,
           prohibitedPromotionalTerms,
@@ -2689,6 +2952,9 @@ function targetedTextRepairTargets(
       if (locked.has(`${content.platform_code}:${block.block_key}`)) return;
       add(`${prefix}.blocks[${index}].text`, block.text, true);
     });
+    for (const target of jsonTextTargets(content.platform_meta, `${prefix}.platform_meta`)) {
+      add(target.id, target.text, false);
+    }
   };
   collect(data.master_content, 'master_content');
   data.variants.forEach((content) => collect(content, `variants.${content.platform_code}`));
@@ -2713,7 +2979,7 @@ This is a bounded targeted repair stage. Rewrite only the supplied text targets.
     {
       content: `${prompt.taskTemplate}
 
-For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Remove every listed literal phone number, WeChat ID, or QQ ID. Do not remove a URL unless another listed issue independently requires changing it. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
+For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Remove every listed literal phone number, WeChat ID, or QQ ID. Remove internal risk-control, evidence-classification, evidence-boundary, and model-disclaimer wording while preserving the useful customer-facing statement in natural Chinese. Do not remove a URL unless another listed issue independently requires changing it. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.
 ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify(rejectionReason)}. Correct that exact problem.` : ''}`,
@@ -2723,6 +2989,7 @@ ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify
       content: JSON.stringify({
         targeted_text_repair_targets: targets.map((target) => ({
           original_text: target.originalText,
+          internal_customer_language: target.internalCustomerLanguage,
           prohibited_contact_details: target.prohibitedContactDetails,
           prohibited_promotional_terms: target.prohibitedPromotionalTerms,
           target_id: target.id,
@@ -2773,6 +3040,12 @@ function invalidTargetedTextRepairReason(
     ) {
       return `replacement_still_contains_prohibited_promotional_term:${target.id}`;
     }
+    if (
+      target.internalCustomerLanguage.length > 0 &&
+      findInternalCustomerCopyLanguage(replacement.replacement_text).length > 0
+    ) {
+      return `replacement_still_contains_internal_customer_language:${target.id}`;
+    }
   }
   return null;
 }
@@ -2796,9 +3069,18 @@ function applyTargetedTextRepairs(
     const title = byId.get(`${prefix}.title`) ?? content.title;
     const summary = byId.get(`${prefix}.summary`) ?? content.summary;
     const cta = byId.get(`${prefix}.cta`) ?? content.cta;
-    const textValues = [title, summary, cta, ...blocks.map((block) => block.text)].filter(
-      (value): value is string => typeof value === 'string',
-    );
+    const platformMeta = replaceJsonTextTargets(
+      content.platform_meta,
+      `${prefix}.platform_meta`,
+      byId,
+    ) as ContentWriterContent['platform_meta'];
+    const textValues = [
+      title,
+      summary,
+      cta,
+      ...blocks.map((block) => block.text),
+      ...stringValues(platformMeta),
+    ].filter((value): value is string => typeof value === 'string');
     return Object.freeze({
       ...content,
       blocks,
@@ -2808,6 +3090,7 @@ function applyTargetedTextRepairs(
         ),
       ),
       cta,
+      platform_meta: platformMeta,
       summary,
       title,
     });
@@ -2818,6 +3101,41 @@ function applyTargetedTextRepairs(
       data.variants.map((content) => repair(content, `variants.${content.platform_code}`)),
     ),
   });
+}
+
+function jsonTextTargets(value: unknown, path: string): readonly InternalTextRepairTarget[] {
+  if (typeof value === 'string') return [Object.freeze({ id: path, text: value })];
+  if (Array.isArray(value)) {
+    return Object.freeze(
+      value.flatMap((item, index) => jsonTextTargets(item, `${path}[${index}]`)),
+    );
+  }
+  if (!isJsonObject(value)) return [];
+  return Object.freeze(
+    Object.entries(value).flatMap(([key, item]) => jsonTextTargets(item, `${path}.${key}`)),
+  );
+}
+
+function replaceJsonTextTargets(
+  value: unknown,
+  path: string,
+  replacements: ReadonlyMap<string, string>,
+): unknown {
+  if (typeof value === 'string') return replacements.get(path) ?? value;
+  if (Array.isArray(value)) {
+    return Object.freeze(
+      value.map((item, index) => replaceJsonTextTargets(item, `${path}[${index}]`, replacements)),
+    );
+  }
+  if (!isJsonObject(value)) return value;
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        replaceJsonTextTargets(item, `${path}.${key}`, replacements),
+      ]),
+    ),
+  );
 }
 
 function officialSiteBodyCharacterCount(article: OfficialSiteArticleDraft): number {
@@ -3032,25 +3350,234 @@ function officialSiteVariant(
       ),
     ),
   });
-  return generated({
-    blocks: article.blocks as unknown as ContentWriterContent['blocks'],
-    citation_map:
-      (article['citation_map'] as ContentWriterContent['citation_map'] | undefined) ?? [],
-    cta:
-      typeof article['cta'] === 'string' || article['cta'] === null
-        ? article['cta']
-        : configuredCta(writerInput),
-    hashtags: Object.freeze([]),
-    platform_code: 'official_site',
-    platform_meta: Object.freeze({
-      faq: Object.freeze(faq),
-      meta_description: summary,
-      schema_org: schemaOrg,
-      slug: deterministicSlug(title, summary),
+  return generated(
+    applyEnterpriseEvidenceToContent(
+      {
+        blocks: article.blocks as unknown as ContentWriterContent['blocks'],
+        citation_map:
+          (article['citation_map'] as ContentWriterContent['citation_map'] | undefined) ?? [],
+        cta:
+          typeof article['cta'] === 'string' || article['cta'] === null
+            ? article['cta']
+            : configuredCta(writerInput),
+        hashtags: Object.freeze([]),
+        platform_code: 'official_site',
+        platform_meta: Object.freeze({
+          faq: Object.freeze(faq),
+          meta_description: summary,
+          schema_org: schemaOrg,
+          slug: deterministicSlug(title, summary),
+        }),
+        summary,
+        title,
+      },
+      writerInput,
+    ),
+  );
+}
+
+function normalizeContentWriterOutput(
+  output: ContentWriterOutput,
+  writerInput: JsonObject,
+): ContentWriterOutput {
+  return Object.freeze({
+    ...output,
+    data: normalizeContentWriterData(output.data, writerInput),
+  });
+}
+
+function normalizeContentWriterData(
+  data: ContentWriterData,
+  writerInput: JsonObject,
+): ContentWriterData {
+  return Object.freeze({
+    master_content: normalizeGeneratedContent(data.master_content),
+    variants: Object.freeze(
+      data.variants.map((content) =>
+        applyEnterpriseEvidenceToContent(normalizeGeneratedContent(content), writerInput),
+      ),
+    ),
+  });
+}
+
+function normalizeGeneratedContent(content: ContentWriterContent): ContentWriterContent {
+  const title = content.title.trim();
+  const summary = content.summary.trim();
+  const cta = content.cta === null ? null : content.cta.trim() || null;
+  const blocks = Object.freeze(
+    content.blocks.flatMap((block) => {
+      const text = block.text.trim();
+      return text ? [Object.freeze({ ...block, text })] : [];
     }),
+  );
+  const visible = [title, summary, cta, ...blocks.map((block) => block.text)].filter(
+    (value): value is string => typeof value === 'string' && Boolean(value),
+  );
+  visible.push(...stringValues(content.platform_meta));
+  return Object.freeze({
+    ...content,
+    blocks,
+    citation_map: Object.freeze(
+      content.citation_map.flatMap((mapping) => {
+        const claimText = mapping.claim_text.trim();
+        return claimText && visible.some((text) => contentClaimMatches(text, claimText))
+          ? [Object.freeze({ ...mapping, claim_text: claimText })]
+          : [];
+      }),
+    ),
+    cta,
+    platform_meta: content.platform_meta,
     summary,
     title,
   });
+}
+
+function applyEnterpriseEvidenceToContent(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): ContentWriterContent {
+  if (content.platform_code !== 'official_site' && content.platform_code !== 'lieju') {
+    return content;
+  }
+  const policy = enterpriseEvidencePolicy(writerInput);
+  if (!policy) return content;
+  const blockText = buildEnterpriseAssuranceText({
+    companyName: policy.companyName,
+    customerRequestSupported: policy.customerRequestSupported,
+    evidenceNames: policy.references.map((reference) => reference.displayName),
+    serviceType: policy.serviceType,
+  });
+  const reservedKeys = new Set(['enterprise-credentials-heading', 'enterprise-credentials']);
+  const blocks = content.blocks.filter((block) => !reservedKeys.has(block.block_key));
+  if (content.platform_code === 'official_site') {
+    blocks.push(
+      Object.freeze({
+        block_key: 'enterprise-credentials-heading',
+        block_type: 'heading' as const,
+        text: '企业资质与保障',
+      }),
+    );
+  }
+  blocks.push(
+    Object.freeze({
+      block_key: 'enterprise-credentials',
+      block_type: 'paragraph' as const,
+      text: blockText,
+    }),
+  );
+  const citationMap = content.citation_map.filter(
+    (mapping) => mapping.claim_key !== 'enterprise-credentials',
+  );
+  citationMap.push(
+    Object.freeze({
+      citation_ids: Object.freeze(policy.references.map((reference) => reference.citationId)),
+      claim_key: 'enterprise-credentials',
+      claim_text: blockText,
+    }),
+  );
+  return Object.freeze({
+    ...content,
+    blocks: Object.freeze(blocks),
+    citation_map: Object.freeze(citationMap),
+  });
+}
+
+function enterpriseEvidencePolicy(writerInput: JsonObject): EnterpriseEvidencePolicy | null {
+  const brief = jsonObject(writerInput['brief']);
+  const constraints = brief ? jsonObject(brief['constraints']) : null;
+  const value = constraints ? jsonObject(constraints['enterprise_evidence']) : null;
+  if (!value) return null;
+  const companyName = typeof value['company_name'] === 'string' ? value['company_name'].trim() : '';
+  const serviceType = typeof value['service_type'] === 'string' ? value['service_type'].trim() : '';
+  const profileName = uniquePublishedOwnerCompanyName(
+    jsonObject(writerInput['strategy'])?.['profile'],
+  );
+  const supplied = suppliedCitations(writerInput);
+  const rawReferences = Array.isArray(value['references']) ? value['references'] : [];
+  const references = rawReferences.flatMap((item) => {
+    if (!isJsonObject(item)) return [];
+    const citationId = item['citation_id'];
+    const displayName = item['display_name'];
+    const kind = item['kind'];
+    const sourceId = item['source_id'];
+    return typeof citationId === 'string' &&
+      supplied.get(citationId)?.sourceId === sourceId &&
+      typeof displayName === 'string' &&
+      displayName.trim() &&
+      isEnterpriseEvidenceKind(kind) &&
+      typeof sourceId === 'string' &&
+      sourceId.trim()
+      ? [
+          Object.freeze({
+            citationId,
+            displayName: displayName.trim(),
+            kind,
+            sourceId,
+          }),
+        ]
+      : [];
+  });
+  const uniqueCitationIds = new Set(references.map((reference) => reference.citationId));
+  const uniqueSourceIds = new Set(references.map((reference) => reference.sourceId));
+  if (
+    value['schema_version'] !== 'enterprise-evidence@1' ||
+    !companyName ||
+    companyName !== profileName ||
+    !serviceType ||
+    references.length === 0 ||
+    references.length !== rawReferences.length ||
+    uniqueCitationIds.size !== references.length ||
+    uniqueSourceIds.size !== references.length
+  ) {
+    throw new GenerationWorkerError(
+      'CONTENT_QUALITY_INSUFFICIENT',
+      '官网或列举网企业资料约束无效：法定名称、服务类型和基础资料引用必须完整且一致',
+    );
+  }
+  return Object.freeze({
+    companyName,
+    customerRequestSupported: value['customer_request_supported'] === true,
+    references: Object.freeze(references),
+    serviceType,
+  });
+}
+
+function isEnterpriseEvidenceKind(value: unknown): value is EnterpriseEvidenceKind {
+  return (
+    value === 'business_license' ||
+    value === 'industry_permit' ||
+    value === 'transport_certificate' ||
+    value === 'quality_management' ||
+    value === 'environment_management' ||
+    value === 'occupational_health_safety' ||
+    value === 'insurance_or_damage_protection'
+  );
+}
+
+function normalizeOfficialSiteArticle(article: OfficialSiteArticleDraft): OfficialSiteArticleDraft {
+  return Object.freeze({
+    blocks: Object.freeze(
+      article.blocks.flatMap((block) => {
+        const text = block.text.trim();
+        return text ? [Object.freeze({ ...block, text })] : [];
+      }),
+    ),
+    summary: article.summary.trim(),
+    title: article.title.trim(),
+  });
+}
+
+function sanitizeWriterInputForCustomerCopy(writerInput: JsonObject): JsonObject {
+  if (!Array.isArray(writerInput['citations'])) return writerInput;
+  const citations = writerInput['citations'].map((citation) =>
+    isJsonObject(citation) && typeof citation['quote_text'] === 'string'
+      ? Object.freeze({
+          ...citation,
+          quote_text: sanitizeEvidenceQuoteForCustomerCopy(citation['quote_text']),
+        })
+      : citation,
+  );
+  return Object.freeze({ ...writerInput, citations });
 }
 
 function suppliedCitationIds(writerInput: JsonObject): ReadonlySet<string> {

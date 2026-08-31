@@ -379,6 +379,13 @@
       "when": 1787702400000,
       "tag": "0053_douyin_image_note_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1788163200000,
+      "tag": "0054_enterprise_evidence_customer_copy",
+      "breakpoints": true
     }
   ]
 }

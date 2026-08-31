@@ -153,7 +153,6 @@ function insuranceProofDocument(
     `保险类型：${proof.insuranceType}`,
     `保障期间：${proof.effectiveFrom} 至 ${proof.effectiveTo}`,
     `参保人数：${proof.insuredCount}人`,
-    '用途边界：该资料仅证明上述企业投保事实、保险类型、保障期间和参保人数，不代表服务质量、理赔结果或到期后的持续有效性。',
   ].join('\n');
   return Object.freeze({
     content_hash: material.contentHash,

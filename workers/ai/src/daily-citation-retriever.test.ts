@@ -191,6 +191,41 @@ describe('DailyCitationRetriever', () => {
       'chunk-topic',
     ]);
   });
+
+  it('keeps every baseline evidence item outside ranking and adds at most three topical items', async () => {
+    const search = new FakeCitationSearch([
+      citationHit('chunk-topic-1', 'source-topic-1'),
+      citationHit('chunk-baseline-1', 'source-baseline-1'),
+      citationHit(
+        'chunk-other-company-insurance',
+        'source-other-company-insurance',
+        '资料类型：企业保险证明\n投保主体：其他企业有限公司',
+      ),
+      citationHit('chunk-topic-2', 'source-topic-2'),
+      citationHit('chunk-topic-3', 'source-topic-3'),
+      citationHit('chunk-topic-4', 'source-topic-4'),
+    ]);
+    const baselineCitations = Array.from({ length: 7 }, (_, index) => ({
+      chunkId: `chunk-baseline-${index + 1}`,
+      quoteText: `基础资料${index + 1}`,
+      sourceId: `source-baseline-${index + 1}`,
+    }));
+
+    const selection = await new DailyCitationRetriever(new FakeEmbedding(), search).retrieve({
+      ...REQUEST,
+      authoritySourceIds: baselineCitations.slice(0, 6).map((item) => item.sourceId),
+      baselineCitations,
+    });
+
+    expect(selection.citations).toHaveLength(10);
+    expect(selection.citations.slice(0, 7)).toEqual(baselineCitations);
+    expect(selection.citations.slice(7).map((citation) => citation.chunkId)).toEqual([
+      'chunk-topic-1',
+      'chunk-topic-2',
+      'chunk-topic-3',
+    ]);
+    expect(search.inputs).toHaveLength(1);
+  });
 });
 
 class FakeEmbedding implements EmbeddingAdapter {

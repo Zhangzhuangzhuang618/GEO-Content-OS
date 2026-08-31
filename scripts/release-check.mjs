@@ -11,8 +11,8 @@ const executableBaseline = Object.freeze({
   currentTableCount: 92,
   frozenPageCount: 32,
   frozenTableCount: 57,
-  latestMigration: '0053_douyin_image_note_automation',
-  previousMigration: '0052_wentian_geo_connector',
+  latestMigration: '0054_enterprise_evidence_customer_copy',
+  previousMigration: '0053_douyin_image_note_automation',
   publicEndpointCount: 170,
   skills: Object.freeze([
     'material-parser',
@@ -119,7 +119,7 @@ function assertMigrationBaseline() {
     latestTags[0] !== executableBaseline.previousMigration ||
     latestTags[1] !== executableBaseline.latestMigration
   ) {
-    fail('current migration baseline must end with 0052 followed by 0053');
+    fail('current migration baseline must end with 0053 followed by 0054');
   }
 
   const frozenMigrationIndex = migrationFiles.indexOf('0030_freeze_v21.sql');

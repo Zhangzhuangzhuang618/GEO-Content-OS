@@ -1,12 +1,17 @@
 import {
   DomainEventEnvelopeSchema,
+  enterpriseEvidenceCustomerRequestSupported,
+  enterpriseEvidenceRequiredKinds,
   findPublishedOwnerCompanyNames,
+  uniquePublishedOwnerCompanyName,
+  type EnterpriseEvidenceReference,
 } from '@geo-content-os/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
 import type { DailyCitation, DailyCitationPort } from './daily-citation-retriever.js';
+import { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 import type { JsonObject } from './generation.types.js';
 
 type Platform = 'douyin' | 'lieju' | 'sohu';
@@ -28,6 +33,7 @@ interface DailyKeyword {
   readonly id: string;
   readonly region: string | null;
   readonly scene: string | null;
+  readonly serviceType: string | null;
   readonly term: string;
 }
 
@@ -56,6 +62,12 @@ interface Seed {
   };
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
   readonly authoritySourceIds: readonly string[];
+  readonly companyName: string | null;
+  readonly enterpriseEvidence: {
+    readonly citations: readonly DailyCitation[];
+    readonly references: readonly EnterpriseEvidenceReference[];
+  } | null;
+  readonly enterpriseEvidenceCustomerRequestSupported: boolean;
   readonly keywords: readonly DailyKeyword[];
   readonly rule: { readonly hash: string; readonly id: string; readonly rules: JsonObject };
 }
@@ -289,21 +301,23 @@ async function retireFailed(transaction: postgres.TransactionSql, batch: BatchRo
 }
 
 async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): Promise<Seed> {
-  const [brands, rules, keywords, knowledge, accounts, authoritySources] = await Promise.all([
-    transaction<Seed['brand'][]>`
+  const [brands, rules, keywords, knowledge, accounts, authoritySources, workspaces] =
+    await Promise.all([
+      transaction<Seed['brand'][]>`
       SELECT id,profile_json AS profile,version FROM brand_profiles
       WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
         AND status='published' ORDER BY version DESC LIMIT 1
     `,
-    transaction<Seed['rule'][]>`
+      transaction<Seed['rule'][]>`
       SELECT id,content_hash AS hash,rules_json AS rules FROM platform_rule_versions
       WHERE platform_code=${batch.platformCode} AND status='published'
       ORDER BY published_at DESC NULLS LAST,created_at DESC,id DESC LIMIT 1
     `,
-    transaction<Seed['keywords'][number][]>`
+      transaction<Seed['keywords'][number][]>`
       SELECT keyword.id,keyword.term::text AS term,
         NULLIF(btrim(keyword.import_metadata_json->>'region'),'') AS region,
-        NULLIF(btrim(keyword.import_metadata_json->>'scene'),'') AS scene
+        NULLIF(btrim(keyword.import_metadata_json->>'scene'),'') AS scene,
+        NULLIF(btrim(keyword.import_metadata_json->>'service_type'),'') AS "serviceType"
       FROM keywords AS keyword
       JOIN keyword_sets AS set
         ON set.id=keyword.keyword_set_id AND set.tenant_id=keyword.tenant_id
@@ -312,7 +326,7 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         AND ${batch.platformCode}=ANY(keyword.platform_scope)
       ORDER BY keyword.priority DESC,keyword.id
     `,
-    transaction<{ id: string }[]>`
+      transaction<{ id: string }[]>`
       SELECT chunk.id
       FROM source_chunks AS chunk
       JOIN source_documents AS source
@@ -327,14 +341,14 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         AND chunk.status='active'
       LIMIT 1
     `,
-    transaction<Seed['account'][]>`
+      transaction<Seed['account'][]>`
       SELECT id,display_name AS "displayName",provider_account_id AS "providerAccountId",
         timezone,capabilities_json AS capabilities FROM platform_accounts
       WHERE id=${batch.accountId}::uuid AND tenant_id=${batch.tenantId}::uuid
         AND workspace_id=${batch.workspaceId}::uuid AND platform_code=${batch.platformCode}
         AND status='active' AND publish_mode='api' AND deleted_at IS NULL LIMIT 1
     `,
-    transaction<{ holderName: string; id: string }[]>`
+      transaction<{ holderName: string; id: string }[]>`
       SELECT id,metadata_json->>'holder_name' AS "holderName"
       FROM source_documents
       WHERE tenant_id=${batch.tenantId}::uuid AND workspace_id=${batch.workspaceId}::uuid
@@ -347,7 +361,12 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         AND (effective_to IS NULL OR effective_to>=${batch.businessDate}::date)
       ORDER BY created_at DESC,id
     `,
-  ]);
+      transaction<{ settings: Readonly<Record<string, unknown>> }[]>`
+      SELECT settings_json AS settings FROM workspaces
+      WHERE id=${batch.workspaceId}::uuid AND tenant_id=${batch.tenantId}::uuid
+        AND status='active' AND deleted_at IS NULL LIMIT 1
+    `,
+    ]);
   const brand = brands[0];
   const rule = rules[0];
   const account = accounts[0];
@@ -357,6 +376,27 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
   if (!keywords.length) throw new Error(`项目没有适用于 ${batch.platformCode} 的关键词。`);
   if (!knowledge.length) throw new Error('项目没有可用的已解析知识资料。');
   const ownerCompanyNames = findPublishedOwnerCompanyNames(brand.profile);
+  const companyName =
+    batch.platformCode === 'lieju' ? uniquePublishedOwnerCompanyName(brand.profile) : null;
+  if (batch.platformCode === 'lieju' && !companyName) {
+    throw new Error('已发布品牌资料必须且只能包含一个法定企业全称，请先修正品牌资料。');
+  }
+  const enterpriseEvidence = companyName
+    ? await loadEnterpriseEvidenceBundle(transaction, {
+        businessDate: batch.businessDate,
+        companyName,
+        projectId: batch.projectId,
+        requiredKinds: enterpriseEvidenceRequiredKinds(workspaces[0]?.settings),
+        tenantId: batch.tenantId,
+        workspaceId: batch.workspaceId,
+      })
+    : null;
+  if (batch.platformCode === 'lieju' && enterpriseEvidence?.references.length === 0) {
+    throw new Error('当前企业没有可用于文章的有效基础资质或保障资料。');
+  }
+  if (batch.platformCode === 'lieju' && enterpriseEvidence?.missingRequiredKinds.length) {
+    throw new Error('当前企业的基础资料未满足工作区资料完整性策略，请先补充或调整资料策略。');
+  }
   return {
     account,
     authoritySourceIds: Object.freeze(
@@ -365,6 +405,11 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
         .map((source) => source.id),
     ),
     brand,
+    companyName,
+    enterpriseEvidence,
+    enterpriseEvidenceCustomerRequestSupported: enterpriseEvidenceCustomerRequestSupported(
+      workspaces[0]?.settings,
+    ),
     keywords: Object.freeze(keywords),
     rule,
   };
@@ -393,6 +438,9 @@ async function createCandidate(
     angle: angle.focus,
     authoritySourceIds: seed.authoritySourceIds,
     audience,
+    ...(batch.platformCode === 'lieju' && seed.enterpriseEvidence
+      ? { baselineCitations: seed.enterpriseEvidence.citations }
+      : {}),
     businessDate: batch.businessDate,
     candidateNo: editorialSequenceNo,
     keyword: keyword.term,
@@ -421,7 +469,7 @@ async function createCandidate(
   const title = angle.title;
   const platformInstruction =
     batch.platformCode === 'lieju'
-      ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。正文不得出现具体电话或手机号、微信/QQ账号、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
+      ? '标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务范围、流程、可核验能力和适用场景，自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。服务器会确定性插入一次资质保障段落，模型不得重复罗列或改写该资料清单。正文不得出现具体电话或手机号、微信/QQ账号、极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价、结果保证或内部风控话术。'
       : batch.platformCode === 'douyin'
         ? '输出抖音图文笔记：标题先回答本候选指定的搜索决策意图，不得退回泛化的流程或准备知识题；服务器会绑定由项目关键词事实得到的“地域＋具体场景”标题主体，标题必须逐字保留该主体并接续决策问题。platform_meta.content_kind 必须是 image_note；生成6-9张图文卡片，顺序为封面、正文、总结。现场、报价、防护、工期和清单是安全技术槽位，必须全部围绕本篇唯一主意图提供不同的判断或动作，不能写成每篇相同的七段模板；正文每页控制在24-88字，禁止长段拆页、模板标题和同义重复。同时提供420-900字、5-8个自然段的独立发布主文案，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，第二至第三段给解决方案并在资料支持时自然提及一次本企业全称，随后讲清费用边界、防护风险和工期安排，倒数第二段至少3条编号避坑点，最后给选择依据；不得复制摘要、正文块或卡片，不得使用模板钩子和助手过渡语。“真实场景、真实案例、收费对比、资质核验、合同条款解读、口碑参考”等证据承诺，只有在对应资料直接支持且正文通过 citation_map 映射时才能写进标题；服务器绑定证据承诺时，标题必须逐字保留该承诺并在正文提供直接支持它的可见事实与 citation_map。topics 使用3-8个紧贴地域、场景和服务对象的话题。不得声明原创、不得伪造热点、排行、亲历、用户评价或无证据资质；发布器会如实勾选 AI 创作标识。'
         : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
@@ -447,6 +495,22 @@ async function createCandidate(
     authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: batch.platformCode === 'lieju' ? '通过页面联系方式咨询具体需求' : null,
     schema_version: 'brief-constraints@1',
+    ...(batch.platformCode === 'lieju' && seed.enterpriseEvidence
+      ? {
+          enterprise_evidence: {
+            company_name: seed.companyName,
+            customer_request_supported: seed.enterpriseEvidenceCustomerRequestSupported,
+            references: seed.enterpriseEvidence.references.map((reference) => ({
+              citation_id: reference.citationId,
+              display_name: reference.displayName,
+              kind: reference.kind,
+              source_id: reference.sourceId,
+            })),
+            schema_version: 'enterprise-evidence@1',
+            service_type: keyword.serviceType ?? keyword.term,
+          },
+        }
+      : {}),
     ...(batch.platformCode === 'douyin'
       ? {
           douyin_daily_direct: true,
@@ -858,9 +922,8 @@ export function douyinEvidenceTitleOpportunity(
     citations.some(
       (citation) =>
         /收费|费用|报价|计费|价格/u.test(citation.quoteText) &&
-        (citation.quoteText.match(
-          /\d+(?:\.\d+)?(?:\s*[-–—]\s*\d+(?:\.\d+)?)?\s*元/gu,
-        )?.length ?? 0) >= 2,
+        (citation.quoteText.match(/\d+(?:\.\d+)?(?:\s*[-–—]\s*\d+(?:\.\d+)?)?\s*元/gu)?.length ??
+          0) >= 2,
     )
   ) {
     return '收费对比';

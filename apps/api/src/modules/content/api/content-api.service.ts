@@ -1,6 +1,9 @@
 import {
   applyOfficialSiteServicePhone,
+  classifyEnterpriseEvidence,
   ContentDocumentSchema,
+  enterpriseEvidenceCustomerRequestSupported,
+  enterpriseEvidenceRequiredKinds,
   type ContentDocument as ApiContentDocument,
   type ContentPackageQuery,
   type ContentVariantStatus,
@@ -13,6 +16,11 @@ import {
   type ReopenVariantsRequest,
   qualityEvaluationFingerprintSource,
   readOfficialSiteServicePhone,
+  sanitizeEvidenceQuoteForCustomerCopy,
+  uniquePublishedOwnerCompanyName,
+  missingEnterpriseEvidenceKinds,
+  type EnterpriseEvidenceKind,
+  type EnterpriseEvidenceReference,
 } from '@geo-content-os/contracts';
 import {
   createEmbeddingAdapter,
@@ -1293,8 +1301,11 @@ async function buildWriterInput(
   const brand = brandRows[0];
   if (!brief || !brand)
     throw contentStateInvalid('Published brand strategy and Brief are required');
-  const sourceRows = await client<{ sourceId: string }[]>`
-    SELECT DISTINCT source.id AS "sourceId"
+  const sourceRows = await client<{ enterpriseEvidence: boolean; sourceId: string }[]>`
+    SELECT DISTINCT source.id AS "sourceId",
+      COALESCE(source.metadata_json->>'schema_version' IN (
+        'source-certificate@1','source-insurance-proof@1'
+      ),false) AS "enterpriseEvidence"
     FROM content_packages AS package
     JOIN brief_sources AS link
       ON link.brief_id = package.brief_id
@@ -1309,7 +1320,43 @@ async function buildWriterInput(
       AND source.deleted_at IS NULL
     ORDER BY source.id
   `;
-  const citations = await retrieveWriterCitations(client, scope, packageId, brief, sourceRows);
+  const enterprisePlatforms = platformCodes.filter(
+    (platformCode) => platformCode === 'official_site' || platformCode === 'lieju',
+  );
+  const companyName =
+    enterprisePlatforms.length > 0 ? uniquePublishedOwnerCompanyName(brand.profile) : null;
+  if (enterprisePlatforms.length > 0 && !companyName) {
+    throw contentValidationInvalid(
+      'Published brand profile must contain exactly one legal enterprise name',
+    );
+  }
+  const enterprisePolicy = companyName
+    ? await loadEnterpriseEvidenceWorkspacePolicy(client, scope)
+    : { customerRequestSupported: false, requiredKinds: [] as const };
+  const enterpriseEvidence = companyName
+    ? await loadManualEnterpriseEvidence(client, scope, companyName, enterprisePolicy.requiredKinds)
+    : null;
+  if (enterprisePlatforms.length > 0 && enterpriseEvidence?.references.length === 0) {
+    throw contentValidationInvalid(
+      'Current enterprise has no valid baseline credentials or protection evidence',
+    );
+  }
+  if (enterprisePlatforms.length > 0 && enterpriseEvidence?.missingRequiredKinds.length) {
+    throw contentValidationInvalid(
+      'Current enterprise evidence does not satisfy the workspace completeness policy',
+    );
+  }
+  const serviceType = await loadPrimaryServiceType(client, scope, packageId, brief.title);
+  const citations = await retrieveWriterCitations(
+    client,
+    scope,
+    packageId,
+    brief,
+    enterprisePlatforms.length > 0
+      ? sourceRows.filter((source) => !source.enterpriseEvidence)
+      : sourceRows,
+    enterpriseEvidence?.citations ?? [],
+  );
   const rules = readPlatformRules(platformCodes);
   const targetAccounts =
     process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] === 'true'
@@ -1322,6 +1369,30 @@ async function buildWriterInput(
       brief_id: brief.briefId,
       constraints: {
         ...brief.constraints,
+        ...(enterpriseEvidence && companyName
+          ? {
+              authorized_certificate_source_ids: [
+                ...new Set([
+                  ...jsonStringArray(brief.constraints['authorized_certificate_source_ids']),
+                  ...enterpriseEvidence.references
+                    .filter((reference) => reference.kind !== 'insurance_or_damage_protection')
+                    .map((reference) => reference.sourceId),
+                ]),
+              ],
+              enterprise_evidence: {
+                company_name: companyName,
+                customer_request_supported: enterprisePolicy.customerRequestSupported,
+                references: enterpriseEvidence.references.map((reference) => ({
+                  citation_id: reference.citationId,
+                  display_name: reference.displayName,
+                  kind: reference.kind,
+                  source_id: reference.sourceId,
+                })),
+                schema_version: 'enterprise-evidence@1',
+                service_type: serviceType,
+              },
+            }
+          : {}),
         ...(Object.keys(targetAccounts).length > 0
           ? { target_accounts_by_code: targetAccounts }
           : {}),
@@ -1348,8 +1419,9 @@ async function retrieveWriterCitations(
     readonly title: string;
   },
   sources: readonly { readonly sourceId: string }[],
+  baselineCitations: readonly Record<string, JsonValue>[],
 ): Promise<readonly Record<string, JsonValue>[]> {
-  if (sources.length === 0) return [];
+  if (sources.length === 0) return baselineCitations;
   const keywordRows = await client<{ term: string }[]>`
     SELECT keyword.term
     FROM content_packages AS package
@@ -1410,12 +1482,151 @@ async function retrieveWriterCitations(
     },
     sourceDocumentIds: sources.map((source) => source.sourceId),
   });
-  return context.hits.map((hit) => ({
-    chunk_id: hit.chunkId,
-    citation_id: hit.chunkId,
-    quote_text: hit.text,
-    source_id: hit.sourceDocumentId,
-  }));
+  const baselineSourceIds = new Set(
+    baselineCitations.flatMap((citation) =>
+      typeof citation['source_id'] === 'string' ? [citation['source_id']] : [],
+    ),
+  );
+  const topic = context.hits
+    .filter((hit) => !baselineSourceIds.has(hit.sourceDocumentId))
+    .slice(0, baselineCitations.length > 0 ? 3 : context.hits.length)
+    .map((hit) => ({
+      chunk_id: hit.chunkId,
+      citation_id: hit.chunkId,
+      quote_text: sanitizeEvidenceQuoteForCustomerCopy(hit.text),
+      source_id: hit.sourceDocumentId,
+    }));
+  return Object.freeze([...baselineCitations, ...topic]);
+}
+
+async function loadPrimaryServiceType(
+  client: SqlClient,
+  scope: ContentScope,
+  packageId: string,
+  fallback: string,
+): Promise<string> {
+  const rows = await client<{ serviceType: string | null; term: string }[]>`
+    SELECT keyword.term::text AS term,
+      NULLIF(btrim(keyword.import_metadata_json->>'service_type'),'') AS "serviceType"
+    FROM content_packages AS package
+    JOIN brief_keywords AS link
+      ON link.brief_id=package.brief_id AND link.tenant_id=package.tenant_id
+    JOIN keywords AS keyword
+      ON keyword.id=link.keyword_id AND keyword.tenant_id=link.tenant_id
+    WHERE package.id=${packageId}::uuid AND package.tenant_id=${scope.tenantId}::uuid
+      AND package.workspace_id=${scope.workspaceId}::uuid
+      AND package.project_id=${scope.projectId}::uuid AND keyword.status='active'
+    ORDER BY link.is_primary DESC,keyword.priority DESC,keyword.id
+    LIMIT 1
+  `;
+  return rows[0]?.serviceType ?? rows[0]?.term ?? fallback;
+}
+
+async function loadEnterpriseEvidenceWorkspacePolicy(
+  client: SqlClient,
+  scope: ContentScope,
+): Promise<{
+  readonly customerRequestSupported: boolean;
+  readonly requiredKinds: readonly EnterpriseEvidenceKind[];
+}> {
+  const rows = await client<{ settings: Readonly<Record<string, unknown>> }[]>`
+    SELECT settings_json AS settings FROM workspaces
+    WHERE id=${scope.workspaceId}::uuid AND tenant_id=${scope.tenantId}::uuid
+      AND status='active' AND deleted_at IS NULL LIMIT 1
+  `;
+  return Object.freeze({
+    customerRequestSupported: enterpriseEvidenceCustomerRequestSupported(rows[0]?.settings),
+    requiredKinds: enterpriseEvidenceRequiredKinds(rows[0]?.settings),
+  });
+}
+
+async function loadManualEnterpriseEvidence(
+  client: SqlClient,
+  scope: ContentScope,
+  companyName: string,
+  requiredKinds: readonly EnterpriseEvidenceKind[],
+): Promise<{
+  readonly citations: readonly Record<string, JsonValue>[];
+  readonly missingRequiredKinds: readonly EnterpriseEvidenceKind[];
+  readonly references: readonly EnterpriseEvidenceReference[];
+}> {
+  const rows = await client<
+    {
+      chunkId: string;
+      metadata: Readonly<Record<string, unknown>>;
+      quoteText: string;
+      sourceId: string;
+    }[]
+  >`
+    SELECT DISTINCT ON (source.id)
+      source.id AS "sourceId",chunk.id AS "chunkId",chunk.text AS "quoteText",
+      source.metadata_json AS metadata
+    FROM source_documents AS source
+    JOIN source_chunks AS chunk
+      ON chunk.source_document_id=source.id AND chunk.tenant_id=source.tenant_id
+      AND chunk.status='active'
+    WHERE source.tenant_id=${scope.tenantId}::uuid
+      AND source.workspace_id=${scope.workspaceId}::uuid
+      AND (source.project_id=${scope.projectId}::uuid OR source.project_id IS NULL)
+      AND source.status='active' AND source.deleted_at IS NULL
+      AND source.trust_level IN ('verified','normal')
+      AND (source.effective_from IS NULL OR source.effective_from<=(now() AT TIME ZONE 'Asia/Shanghai')::date)
+      AND (source.effective_to IS NULL OR source.effective_to>=(now() AT TIME ZONE 'Asia/Shanghai')::date)
+      AND (
+        (
+          source.metadata_json->>'schema_version'='source-certificate@1'
+          AND source.metadata_json->>'holder_name'=${companyName}
+          AND source.metadata_json @> '{"article_use_allowed":true,"public_display_confirmed":true}'::jsonb
+        ) OR (
+          source.metadata_json->>'schema_version'='source-insurance-proof@1'
+          AND source.metadata_json->>'policyholder_name'=${companyName}
+          AND source.metadata_json->'summary_use_confirmed'='true'::jsonb
+        )
+      )
+    ORDER BY source.id,chunk.chunk_no,chunk.id
+  `;
+  const selected = rows.flatMap((row) => {
+    const evidence = classifyEnterpriseEvidence(row.metadata);
+    const quoteText = sanitizeEvidenceQuoteForCustomerCopy(row.quoteText);
+    if (!evidence || !quoteText) return [];
+    return [
+      {
+        citation: {
+          chunk_id: row.chunkId,
+          citation_id: row.chunkId,
+          quote_text: quoteText,
+          source_id: row.sourceId,
+        } as Record<string, JsonValue>,
+        reference: Object.freeze({
+          citationId: row.chunkId,
+          displayName: evidence.displayName,
+          kind: evidence.kind,
+          sourceId: row.sourceId,
+        }),
+      },
+    ];
+  });
+  const missingRequiredKinds = missingEnterpriseEvidenceKinds(
+    requiredKinds,
+    selected.map((item) => item.reference),
+  );
+  console.warn('Enterprise evidence selection completed', {
+    evidence_count: selected.length,
+    evidence_source_ids: selected.map((item) => item.reference.sourceId),
+    validation_result:
+      selected.length === 0 ? 'missing' : missingRequiredKinds.length > 0 ? 'incomplete' : 'passed',
+  });
+  return Object.freeze({
+    citations: Object.freeze(selected.map((item) => item.citation)),
+    missingRequiredKinds,
+    references: Object.freeze(selected.map((item) => item.reference)),
+  });
+}
+
+function jsonStringArray(value: JsonValue | undefined): readonly string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 async function loadGenerationTargetAccounts(

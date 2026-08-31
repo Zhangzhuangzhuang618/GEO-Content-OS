@@ -51100,6 +51100,26 @@
                                 "type": "string",
                                 "const": "workspace-settings@1"
                               },
+                              "enterprise_evidence_customer_request_supported": {
+                                "type": "boolean"
+                              },
+                              "enterprise_evidence_required_kinds": {
+                                "minItems": 1,
+                                "maxItems": 7,
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": [
+                                    "business_license",
+                                    "industry_permit",
+                                    "transport_certificate",
+                                    "quality_management",
+                                    "environment_management",
+                                    "occupational_health_safety",
+                                    "insurance_or_damage_protection"
+                                  ]
+                                }
+                              },
                               "official_site_service_phone": {
                                 "type": "string",
                                 "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
@@ -51323,6 +51343,24 @@
                     "type": "object",
                     "properties": {
                       "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                      "enterprise_evidence_customer_request_supported": { "type": "boolean" },
+                      "enterprise_evidence_required_kinds": {
+                        "minItems": 1,
+                        "maxItems": 7,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "business_license",
+                            "industry_permit",
+                            "transport_certificate",
+                            "quality_management",
+                            "environment_management",
+                            "occupational_health_safety",
+                            "insurance_or_damage_protection"
+                          ]
+                        }
+                      },
                       "official_site_service_phone": {
                         "type": "string",
                         "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
@@ -51413,6 +51451,24 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "enterprise_evidence_customer_request_supported": { "type": "boolean" },
+                            "enterprise_evidence_required_kinds": {
+                              "minItems": 1,
+                              "maxItems": 7,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "business_license",
+                                  "industry_permit",
+                                  "transport_certificate",
+                                  "quality_management",
+                                  "environment_management",
+                                  "occupational_health_safety",
+                                  "insurance_or_damage_protection"
+                                ]
+                              }
+                            },
                             "official_site_service_phone": {
                               "type": "string",
                               "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
@@ -51648,6 +51704,24 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "enterprise_evidence_customer_request_supported": { "type": "boolean" },
+                            "enterprise_evidence_required_kinds": {
+                              "minItems": 1,
+                              "maxItems": 7,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "business_license",
+                                  "industry_permit",
+                                  "transport_certificate",
+                                  "quality_management",
+                                  "environment_management",
+                                  "occupational_health_safety",
+                                  "insurance_or_damage_protection"
+                                ]
+                              }
+                            },
                             "official_site_service_phone": {
                               "type": "string",
                               "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
@@ -51879,6 +51953,24 @@
                     "type": "object",
                     "properties": {
                       "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                      "enterprise_evidence_customer_request_supported": { "type": "boolean" },
+                      "enterprise_evidence_required_kinds": {
+                        "minItems": 1,
+                        "maxItems": 7,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "business_license",
+                            "industry_permit",
+                            "transport_certificate",
+                            "quality_management",
+                            "environment_management",
+                            "occupational_health_safety",
+                            "insurance_or_damage_protection"
+                          ]
+                        }
+                      },
                       "official_site_service_phone": {
                         "type": "string",
                         "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
@@ -51968,6 +52060,24 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "enterprise_evidence_customer_request_supported": { "type": "boolean" },
+                            "enterprise_evidence_required_kinds": {
+                              "minItems": 1,
+                              "maxItems": 7,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "business_license",
+                                  "industry_permit",
+                                  "transport_certificate",
+                                  "quality_management",
+                                  "environment_management",
+                                  "occupational_health_safety",
+                                  "insurance_or_damage_protection"
+                                ]
+                              }
+                            },
                             "official_site_service_phone": {
                               "type": "string",
                               "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"
@@ -52222,6 +52332,24 @@
                           "type": "object",
                           "properties": {
                             "schema_version": { "type": "string", "const": "workspace-settings@1" },
+                            "enterprise_evidence_customer_request_supported": { "type": "boolean" },
+                            "enterprise_evidence_required_kinds": {
+                              "minItems": 1,
+                              "maxItems": 7,
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": [
+                                  "business_license",
+                                  "industry_permit",
+                                  "transport_certificate",
+                                  "quality_management",
+                                  "environment_management",
+                                  "occupational_health_safety",
+                                  "insurance_or_damage_protection"
+                                ]
+                              }
+                            },
                             "official_site_service_phone": {
                               "type": "string",
                               "pattern": "^(?:1[3-9]\\d{9}|0\\d{9,11}|(?:400|800)\\d{7})$"

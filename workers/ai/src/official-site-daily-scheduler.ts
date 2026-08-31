@@ -1,13 +1,18 @@
 import {
   DomainEventEnvelopeSchema,
+  enterpriseEvidenceCustomerRequestSupported,
+  enterpriseEvidenceRequiredKinds,
   findPublishedOwnerCompanyNames,
   readOfficialSiteServicePhone,
+  uniquePublishedOwnerCompanyName,
+  type EnterpriseEvidenceReference,
 } from '@geo-content-os/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
-import type { DailyCitationPort } from './daily-citation-retriever.js';
+import type { DailyCitation, DailyCitationPort } from './daily-citation-retriever.js';
+import { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 import type { JsonObject } from './generation.types.js';
 
 const DAILY_TARGET = 10;
@@ -38,8 +43,10 @@ const RECOVERABLE_PREREQUISITE_CODES = Object.freeze([
   'OFFICIAL_ACCOUNT_REQUIRED',
   'OFFICIAL_SITE_SERVICE_PHONE_REQUIRED',
   'OFFICIAL_KEYWORD_REQUIRED',
+  'ENTERPRISE_EVIDENCE_REQUIRED',
   'PARSED_KNOWLEDGE_REQUIRED',
   'PUBLISHED_BRAND_PROFILE_REQUIRED',
+  'PUBLISHED_LEGAL_COMPANY_NAME_REQUIRED',
   'PUBLISHED_OFFICIAL_RULE_REQUIRED',
 ] as const);
 
@@ -87,9 +94,16 @@ interface CandidateSeed {
   };
   readonly authoritySourceIds: readonly string[];
   readonly brand: { readonly id: string; readonly profile: JsonObject; readonly version: number };
+  readonly companyName: string;
+  readonly enterpriseEvidence: {
+    readonly citations: readonly DailyCitation[];
+    readonly references: readonly EnterpriseEvidenceReference[];
+  };
+  readonly enterpriseEvidenceCustomerRequestSupported: boolean;
   readonly keywords: readonly {
     readonly id: string;
     readonly intent: 'commercial' | 'informational' | 'navigational' | 'transactional';
+    readonly serviceType: string | null;
     readonly term: string;
   }[];
   readonly rule: {
@@ -511,10 +525,12 @@ async function loadCandidateSeed(
       {
         id: string;
         intent: CandidateSeed['keywords'][number]['intent'];
+        serviceType: string | null;
         term: string;
       }[]
     >`
-      SELECT keyword.id,keyword.intent,keyword.term::text AS term
+      SELECT keyword.id,keyword.intent,keyword.term::text AS term,
+        NULLIF(btrim(keyword.import_metadata_json->>'service_type'),'') AS "serviceType"
       FROM keywords AS keyword
       JOIN keyword_sets AS set
         ON set.id=keyword.keyword_set_id AND set.tenant_id=keyword.tenant_id
@@ -599,10 +615,42 @@ async function loadCandidateSeed(
   if (knowledge.length === 0) {
     throw prerequisite('PARSED_KNOWLEDGE_REQUIRED', '请先完成至少一份企业资料的解析。');
   }
+  const companyName = uniquePublishedOwnerCompanyName(brand.profile);
+  if (!companyName) {
+    throw prerequisite(
+      'PUBLISHED_LEGAL_COMPANY_NAME_REQUIRED',
+      '已发布品牌资料必须且只能包含一个法定企业全称，请先修正品牌资料。',
+    );
+  }
+  const enterpriseEvidence = await loadEnterpriseEvidenceBundle(transaction, {
+    businessDate: batch.businessDate,
+    companyName,
+    projectId: batch.projectId,
+    requiredKinds: enterpriseEvidenceRequiredKinds(workspaces[0]?.settings),
+    tenantId: batch.tenantId,
+    workspaceId: batch.workspaceId,
+  });
+  if (enterpriseEvidence.references.length === 0) {
+    throw prerequisite(
+      'ENTERPRISE_EVIDENCE_REQUIRED',
+      '当前企业没有可用于官网文章的有效基础资质或保障资料。',
+    );
+  }
+  if (enterpriseEvidence.missingRequiredKinds.length > 0) {
+    throw prerequisite(
+      'ENTERPRISE_EVIDENCE_REQUIRED',
+      '当前企业的基础资料未满足工作区资料完整性策略，请先补充或调整资料策略。',
+    );
+  }
   return {
     account,
     authoritySourceIds: selectAuthorizedCertificateSourceIds(brand.profile, certs),
     brand,
+    companyName,
+    enterpriseEvidence,
+    enterpriseEvidenceCustomerRequestSupported: enterpriseEvidenceCustomerRequestSupported(
+      workspaces[0]?.settings,
+    ),
     keywords: Object.freeze(keywords),
     rule,
   };
@@ -625,6 +673,7 @@ async function createCandidate(
     angle: angle.label,
     authoritySourceIds: seed.authoritySourceIds,
     audience,
+    baselineCitations: seed.enterpriseEvidence.citations,
     businessDate: batch.businessDate,
     candidateNo,
     keyword: keyword.term,
@@ -648,9 +697,22 @@ async function createCandidate(
       `本篇必须围绕“${keyword.term}”的“${angle.label}”展开，与同日其他文章保持不同角度。`,
       '优先使用企业第一方资料；涉及外部事实时必须使用所提供证据。',
       '不得编造价格、地址、电话、资质、客户数量、行业排名或无法核验的承诺。',
+      '服务器会确定性插入“企业资质与保障”内容块，模型不得重复罗列或改写该资料清单，不得输出内部风控、证据分类或模板化免责话术。',
     ].join(''),
     authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: null,
+    enterprise_evidence: {
+      company_name: seed.companyName,
+      customer_request_supported: seed.enterpriseEvidenceCustomerRequestSupported,
+      references: seed.enterpriseEvidence.references.map((reference) => ({
+        citation_id: reference.citationId,
+        display_name: reference.displayName,
+        kind: reference.kind,
+        source_id: reference.sourceId,
+      })),
+      schema_version: 'enterprise-evidence@1',
+      service_type: keyword.serviceType ?? keyword.term,
+    },
     official_site_direct: true,
     schema_version: 'brief-constraints@1',
     target_accounts_by_code: {

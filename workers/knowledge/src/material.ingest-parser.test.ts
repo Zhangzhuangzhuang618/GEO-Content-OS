@@ -51,7 +51,8 @@ describe('material ingest parser', () => {
     expect(parsed.title).toBe('企业保险证明');
     expect(parsed.text).toContain('投保主体：广州示例搬家服务有限公司');
     expect(parsed.text).toContain('参保人数：11人');
-    expect(parsed.text).toContain('不代表服务质量、理赔结果');
+    expect(parsed.text).not.toContain('用途边界');
+    expect(parsed.text).not.toContain('不代表理赔结果');
     expect(parsed.text).not.toContain('张三');
     expect(parsed.text).not.toContain('440101199001011234');
     expect(parsed.text).not.toContain('13800138000');

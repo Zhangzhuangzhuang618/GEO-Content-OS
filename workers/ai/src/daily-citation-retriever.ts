@@ -11,6 +11,7 @@ export interface DailyCitationRequest {
   readonly angle: string;
   readonly authoritySourceIds?: readonly string[];
   readonly audience: string;
+  readonly baselineCitations?: readonly DailyCitation[];
   readonly businessDate: string;
   readonly candidateNo: number;
   readonly keyword: string;
@@ -50,6 +51,48 @@ export class DailyCitationRetriever implements DailyCitationPort {
     const query = buildDailyCitationQuery(input);
     const context = await this.search(input, query, 'topic');
     const authoritySourceIds = [...new Set(input.authoritySourceIds ?? [])].sort();
+    const baselineCitations = deduplicateCitations(input.baselineCitations ?? []);
+    if (baselineCitations.length > 0) {
+      const baselineChunkIds = new Set(baselineCitations.map((citation) => citation.chunkId));
+      const baselineSourceIds = new Set(baselineCitations.map((citation) => citation.sourceId));
+      const authoritySources = new Set(authoritySourceIds);
+      const topicCitations: DailyCitation[] = [];
+      const sourceCounts = new Map<string, number>();
+      for (const hit of context.hits) {
+        if (topicCitations.length >= 3) break;
+        if (baselineChunkIds.has(hit.chunkId) || baselineSourceIds.has(hit.sourceDocumentId))
+          continue;
+        if (
+          /资料类型：企业(?:证照|保险证明)/u.test(hit.text) &&
+          !authoritySources.has(hit.sourceDocumentId)
+        ) {
+          continue;
+        }
+        const sourceCount = sourceCounts.get(hit.sourceDocumentId) ?? 0;
+        if (sourceCount >= 2) continue;
+        topicCitations.push(
+          Object.freeze({
+            chunkId: hit.chunkId,
+            quoteText: hit.text,
+            sourceId: hit.sourceDocumentId,
+          }),
+        );
+        sourceCounts.set(hit.sourceDocumentId, sourceCount + 1);
+      }
+      const baselineHash = sha256(
+        baselineCitations
+          .map(
+            (citation) => `${citation.sourceId}:${citation.chunkId}:${sha256(citation.quoteText)}`,
+          )
+          .join(':'),
+      );
+      return Object.freeze({
+        citations: Object.freeze([...baselineCitations, ...topicCitations]),
+        contextHash: sha256(`${context.contextHash}:${baselineHash}`),
+        degraded: context.degraded,
+        queryHash: context.queryHash,
+      });
+    }
     const authorityContext =
       authoritySourceIds.length > 0
         ? await this.search(input, AUTHORITY_EVIDENCE_QUERY, 'authority', authoritySourceIds)
@@ -153,6 +196,24 @@ export class DailyCitationRetriever implements DailyCitationPort {
       trustLevels: ['verified', 'normal'],
     });
   }
+}
+
+function deduplicateCitations(values: readonly DailyCitation[]): readonly DailyCitation[] {
+  const seen = new Set<string>();
+  return Object.freeze(
+    values.flatMap((citation) => {
+      if (
+        seen.has(citation.chunkId) ||
+        !citation.chunkId.trim() ||
+        !citation.sourceId.trim() ||
+        !citation.quoteText.trim()
+      ) {
+        return [];
+      }
+      seen.add(citation.chunkId);
+      return [Object.freeze({ ...citation })];
+    }),
+  );
 }
 
 const AUTHORITY_EVIDENCE_QUERY =

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { ENTERPRISE_EVIDENCE_KINDS } from '../enterprise-evidence-policy.js';
 import { OfficialSiteServicePhoneSchema } from '../official-site-service-contact.js';
 import { PLATFORM_CODES } from '../platforms.js';
 import {
@@ -14,6 +15,15 @@ import {
 export const WorkspaceSettingsSchema = z
   .object({
     schema_version: z.literal('workspace-settings@1'),
+    enterprise_evidence_customer_request_supported: z.boolean().optional(),
+    enterprise_evidence_required_kinds: z
+      .array(z.enum(ENTERPRISE_EVIDENCE_KINDS))
+      .min(1)
+      .max(ENTERPRISE_EVIDENCE_KINDS.length)
+      .refine((values) => new Set(values).size === values.length, {
+        message: 'Required enterprise evidence kinds must be unique',
+      })
+      .optional(),
     official_site_service_phone: OfficialSiteServicePhoneSchema.optional(),
     default_platform_codes: z
       .array(z.enum(PLATFORM_CODES))

@@ -40,6 +40,7 @@ import {
   LIEJU_RENDER_RULE_VERSION,
 } from '@geo-content-os/adapter-platforms/lieju/render';
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
+import { findInternalCustomerCopyLanguage } from '@geo-content-os/contracts';
 import { createHash } from 'node:crypto';
 import {
   hashToutiaoPayload,
@@ -136,6 +137,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
     credential: Readonly<Record<string, unknown>> | null,
     signal?: AbortSignal,
   ): Promise<PlatformDelivery> {
+    assertEnterpriseEvidencePublishGate(claim);
     const config = deliveryConfig(claim, credential);
     const content = platformRenderContent(claim.content);
     switch (claim.platformCode) {
@@ -289,6 +291,71 @@ export class PlatformPublisher implements PublisherPlatformPort {
           (input) => new DouyinDeliveryAdapter(config).deliver(input, signal),
         );
     }
+  }
+}
+
+export function assertEnterpriseEvidencePublishGate(claim: PublishClaim): void {
+  if (
+    stringValues(claim.content).some((value) => findInternalCustomerCopyLanguage(value).length > 0)
+  ) {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'INTERNAL_CUSTOMER_COPY_BLOCKED: Customer content contains internal risk-control language',
+    );
+  }
+  if (claim.platformCode !== 'official_site' && claim.platformCode !== 'lieju') return;
+  const gate = claim.enterpriseEvidenceGate;
+  if (!gate) return;
+  if (
+    !gate.companyName ||
+    claim.ownerCompanyNames.length !== 1 ||
+    claim.ownerCompanyNames[0] !== gate.companyName
+  ) {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'ENTERPRISE_NAME_INVALID: Published brand profile must contain exactly one legal enterprise name',
+    );
+  }
+  if (gate.requiredSourceIds.length === 0) {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'ENTERPRISE_EVIDENCE_MISSING: No valid baseline enterprise evidence is available',
+    );
+  }
+  if (gate.missingRequiredKinds.length > 0) {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'ENTERPRISE_EVIDENCE_INCOMPLETE: Baseline evidence does not satisfy the workspace completeness policy',
+    );
+  }
+  const mapped = new Set(gate.mappedSourceIds);
+  const required = new Set(gate.requiredSourceIds);
+  if (
+    mapped.size !== required.size ||
+    gate.requiredSourceIds.some((sourceId) => !mapped.has(sourceId))
+  ) {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'ENTERPRISE_EVIDENCE_MAPPING_INCOMPLETE: Baseline evidence is missing from the final citation map',
+    );
+  }
+  const blocks = Array.isArray(claim.content['blocks']) ? claim.content['blocks'] : [];
+  const enterpriseBlocks = blocks.filter(
+    (block) => record(block) && block['block_key'] === 'enterprise-credentials',
+  );
+  const text =
+    enterpriseBlocks.length === 1 && typeof enterpriseBlocks[0]?.['text'] === 'string'
+      ? enterpriseBlocks[0]['text']
+      : '';
+  if (
+    !text ||
+    !text.includes(gate.companyName) ||
+    gate.evidenceNames.some((name) => !text.includes(name))
+  ) {
+    throw new PublisherError(
+      'PUBLISHER_RENDER_BLOCKED',
+      'ENTERPRISE_EVIDENCE_COPY_INVALID: Enterprise assurance copy is missing or inconsistent',
+    );
   }
 }
 
@@ -610,4 +677,15 @@ function usesAccountScopedGateway(platformCode: string, liejuDeliveryMethod: unk
     platformCode === 'sohu' ||
     (platformCode === 'lieju' && liejuDeliveryMethod !== 'official_api')
   );
+}
+
+function stringValues(value: unknown): readonly string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringValues);
+  if (!record(value)) return [];
+  return Object.values(value).flatMap(stringValues);
+}
+
+function record(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

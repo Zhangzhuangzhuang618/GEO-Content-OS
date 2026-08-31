@@ -7,6 +7,23 @@ import {
 } from './deterministic-risk-scanner.js';
 
 describe('deterministic pre-publish risk scanner', () => {
+  it('blocks internal evidence-control language on every customer platform', () => {
+    const issues = scanDeterministicRisks({
+      brandProfile: brand(),
+      citations: [],
+      content: content({
+        blocks: [
+          block('intro', '公司资料属于企业第一方口径，需自行核实，且不代表服务质量或理赔结果。'),
+        ],
+      }),
+      platformCode: 'sohu',
+    });
+
+    expect(issues.map((item) => item.rule_id)).toContain(
+      'deterministic.copy.internal_risk_language',
+    );
+  });
+
   it('accepts approved first-party scale facts and complete official-site GEO metadata', () => {
     const issues = scanDeterministicRisks({
       brandProfile: brand({

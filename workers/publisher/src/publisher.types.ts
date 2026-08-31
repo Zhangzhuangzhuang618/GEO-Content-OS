@@ -1,5 +1,5 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
-import type { PlatformCode } from '@geo-content-os/contracts';
+import type { EnterpriseEvidenceKind, PlatformCode } from '@geo-content-os/contracts';
 
 export interface ValidatedPublishEvent {
   readonly eventId: string;
@@ -51,6 +51,13 @@ export interface PublishClaim {
   readonly credentialCiphertext: string | null;
   readonly credentialKeyVersion: string | null;
   readonly citations: readonly PublishCitationLink[];
+  readonly enterpriseEvidenceGate?: {
+    readonly companyName: string | null;
+    readonly evidenceNames: readonly string[];
+    readonly mappedSourceIds: readonly string[];
+    readonly missingRequiredKinds: readonly EnterpriseEvidenceKind[];
+    readonly requiredSourceIds: readonly string[];
+  };
   readonly idempotencyKey: string;
   readonly liejuDeliveryMethod?: 'browser_gateway' | 'official_api';
   readonly jobId: string;

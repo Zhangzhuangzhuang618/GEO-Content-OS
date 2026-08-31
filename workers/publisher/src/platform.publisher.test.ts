@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { InMemoryStorageAdapter } from '@geo-content-os/adapter-storage';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PlatformPublisher } from './platform.publisher.js';
+import { assertEnterpriseEvidencePublishGate, PlatformPublisher } from './platform.publisher.js';
 import type { PublishClaim } from './publisher.types.js';
 
 const fixtureUrl = new URL(
@@ -21,6 +21,103 @@ const douyinFixtureUrl = new URL(
 
 describe('PlatformPublisher', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('blocks official and Lieju delivery when baseline evidence mapping or customer copy is invalid', () => {
+    const companyName = '广州甲方搬家有限公司';
+    const sourceIds = [randomUUID(), randomUUID()];
+    const valid = createClaim(
+      {
+        blocks: [
+          {
+            block_key: 'enterprise-credentials',
+            block_type: 'paragraph',
+            text: `依法登记的企业可查询工商信息。${companyName}已提供营业执照和道路运输证，可供客户核验。`,
+          },
+        ],
+        schema_version: 'content-writer-data@1',
+      },
+      [],
+      [],
+      {
+        enterpriseEvidenceGate: {
+          companyName,
+          evidenceNames: ['营业执照', '道路运输证'],
+          mappedSourceIds: sourceIds,
+          missingRequiredKinds: [],
+          requiredSourceIds: sourceIds,
+        },
+        ownerCompanyNames: [companyName],
+      },
+    );
+    expect(() => assertEnterpriseEvidencePublishGate(valid)).not.toThrow();
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({ ...valid, platformCode: 'lieju' }),
+    ).not.toThrow();
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...valid,
+        enterpriseEvidenceGate: {
+          ...valid.enterpriseEvidenceGate!,
+          mappedSourceIds: [sourceIds[0]!],
+        },
+      }),
+    ).toThrow(/ENTERPRISE_EVIDENCE_MAPPING_INCOMPLETE/u);
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...valid,
+        enterpriseEvidenceGate: {
+          ...valid.enterpriseEvidenceGate!,
+          missingRequiredKinds: ['insurance_or_damage_protection'],
+        },
+      }),
+    ).toThrow(/ENTERPRISE_EVIDENCE_INCOMPLETE/u);
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...valid,
+        enterpriseEvidenceGate: {
+          ...valid.enterpriseEvidenceGate!,
+          mappedSourceIds: [...sourceIds, randomUUID()],
+        },
+      }),
+    ).toThrow(/ENTERPRISE_EVIDENCE_MAPPING_INCOMPLETE/u);
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...valid,
+        content: {
+          ...valid.content,
+          blocks: [
+            {
+              block_key: 'enterprise-credentials',
+              block_type: 'paragraph',
+              text: `${companyName}已提供营业执照和道路运输证，但仅反映企业基本状况，不代表服务质量。`,
+            },
+          ],
+        },
+      }),
+    ).toThrow(/INTERNAL_CUSTOMER_COPY_BLOCKED/u);
+  });
+
+  it('blocks internal risk-control language on every publishing platform', () => {
+    const claim = createClaim(
+      {
+        blocks: [
+          {
+            block_key: 'body',
+            block_type: 'paragraph',
+            text: '资料属于企业第一方口径，需自行核实。',
+          },
+        ],
+        schema_version: 'content-writer-data@1',
+      },
+      [],
+      [],
+      { platformCode: 'sohu' },
+    );
+
+    expect(() => assertEnterpriseEvidencePublishGate(claim)).toThrow(
+      /INTERNAL_CUSTOMER_COPY_BLOCKED/u,
+    );
+  });
 
   it('removes content storage metadata before rendering an official-site export', async () => {
     const fixture = (await readJson(fixtureUrl)) as {

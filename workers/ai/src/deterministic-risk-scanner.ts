@@ -2,6 +2,7 @@ import {
   assessDouyinImageNoteEditorial,
   assessDouyinOwnerPromotion,
   findDisallowedCompanyNames,
+  findInternalCustomerCopyLanguage,
   findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
@@ -150,6 +151,17 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
   addDouyinEditorialIssues(issues, input, allowedCompanyNames);
 
   for (const section of contentSections(input.content)) {
+    if (findInternalCustomerCopyLanguage(section.text).length > 0) {
+      issues.push(
+        issue(
+          'deterministic.copy.internal_risk_language',
+          'readability',
+          section.location,
+          '客户正文包含内部风控或模板化免责话术。',
+          '只改写命中的句段，保留客观事实并改为自然的客户表达。',
+        ),
+      );
+    }
     for (const rule of RISK_RULES) {
       const evidence =
         rule.support === 'citation'

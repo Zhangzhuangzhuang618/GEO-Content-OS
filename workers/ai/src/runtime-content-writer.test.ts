@@ -1034,6 +1034,132 @@ describe('AI Worker runtime wiring', () => {
     expect(rewrittenText).not.toContain('02085627757');
   });
 
+  it('repairs only the field containing internal customer-facing risk language', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['sohu'], new Set());
+    const blockIndex = clean.variants[0]!.blocks.length - 1;
+    const originalText = clean.variants[0]!.blocks[blockIndex]!.text;
+    const unresolved = {
+      ...clean,
+      variants: [
+        {
+          ...clean.variants[0]!,
+          blocks: clean.variants[0]!.blocks.map((block, index) =>
+            index === blockIndex
+              ? {
+                  ...block,
+                  text: `${block.text}这些资料属于企业第一方口径，需自行核实。`,
+                }
+              : block,
+          ),
+        },
+      ],
+    };
+    const repairedText = `${originalText}这些资料可按公开信息和页面所示资料核验。`;
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(unresolved) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: repairedText,
+                target_id: `variants.sohu.blocks[${blockIndex}].text`,
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['sohu']);
+
+    const master = await writer.generateMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-internal-copy-targeted-repair-0078',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000078'),
+      masterContent: master,
+      platformCode: 'sohu',
+      requestId: 'runtime-internal-copy-targeted-repair-variant-0078',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      'internal_customer_language',
+    );
+    expect(variant.blocks[blockIndex]?.text).toBe(repairedText);
+    expect(variant.blocks[0]?.text).toBe(clean.variants[0]!.blocks[0]!.text);
+  });
+
+  it('repairs internal customer language inside customer-visible platform metadata', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const clean = multiPlatformContentData(['sohu'], new Set());
+    const unresolved = {
+      ...clean,
+      variants: [
+        {
+          ...clean.variants[0]!,
+          platform_meta: {
+            abstract: '可核对企业资料，但这些资料属于企业第一方口径，需自行核实。',
+            content_type: 'article',
+          },
+        },
+      ],
+    };
+    const repairedText = '可通过公开信息和页面所示资料核对企业情况。';
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(unresolved) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: repairedText,
+                target_id: 'variants.sohu.platform_meta.abstract',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = multiPlatformWriterInput(fixture.input as JsonObject, ['sohu']);
+
+    const master = await writer.generateMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-internal-platform-meta-repair-0078',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000088'),
+      masterContent: master,
+      platformCode: 'sohu',
+      requestId: 'runtime-internal-platform-meta-repair-variant-0078',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    const platformMeta = variant.platform_meta as JsonObject;
+    expect(platformMeta['abstract']).toBe(repairedText);
+    expect(platformMeta['content_type']).toBe('article');
+  });
+
   it('repairs a Lieju credential claim until it cites the supplied structured certificate', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const base = multiPlatformContentData(['lieju'], new Set());
@@ -1971,6 +2097,210 @@ describe('AI Worker runtime wiring', () => {
     expect(articlePrompt).toContain('某公司');
   });
 
+  it('repairs only internal-language fields in the direct official-site article and FAQ', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const cleanArticle = officialSiteArticleDraft();
+    const article = {
+      ...cleanArticle,
+      blocks: cleanArticle.blocks.map((block, index) =>
+        index === 1
+          ? { ...block, text: `${block.text}该资料属于企业第一方口径，需自行核实。` }
+          : block,
+      ),
+    };
+    const cleanFaq = {
+      faq: Array.from({ length: 4 }, (_, index) => ({
+        answer: `按照正文中的第 ${index + 1} 项核对方法执行。`,
+        question: `第 ${index + 1} 项如何核对？`,
+      })),
+    };
+    const faq = {
+      faq: cleanFaq.faq.map((item, index) =>
+        index === 0
+          ? { ...item, answer: `${item.answer}相关资料仅反映基本状况，不代表服务质量。` }
+          : item,
+      ),
+    };
+    const adapter = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(article) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: cleanArticle.blocks[1]!.text,
+                target_id: 'blocks.1.text',
+              },
+            ],
+          }),
+        },
+        { text: JSON.stringify(faq) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: cleanFaq.faq[0]!.answer,
+                target_id: 'faq.0.answer',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = officialSiteWriterInput(fixture.input as JsonObject);
+    const master = await writer.generateOfficialSiteMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-official-internal-copy-0078',
+      writerInput,
+    });
+    const variant = await writer.generateOfficialSiteVariant({
+      context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000078'),
+      masterContent: master,
+      platformCode: 'official_site',
+      requestId: 'runtime-official-internal-copy-variant-0078',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(4);
+    expect(variant.blocks[1]?.text).toBe(cleanArticle.blocks[1]!.text);
+    expect(
+      (variant['platform_meta'] as { faq: readonly { answer: string }[] }).faq[0]?.answer,
+    ).toBe(cleanFaq.faq[0]!.answer);
+  });
+
+  it('injects each workspace own enterprise evidence without cross-company reuse', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const companies = [
+      ['广州甲方搬家有限公司', '81'],
+      ['广州乙方设备搬迁有限公司', '82'],
+    ] as const;
+    for (const [companyName, suffix] of companies) {
+      const article = officialSiteArticleDraft();
+      const faq = {
+        faq: Array.from({ length: 4 }, (_, index) => ({
+          answer: `按照正文中的第 ${index + 1} 项核对方法执行。`,
+          question: `第 ${index + 1} 项如何核对？`,
+        })),
+      };
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([
+          [
+            'deepseek-v4-flash',
+            new LooseMockAdapter(
+              [{ text: JSON.stringify(article) }, { text: JSON.stringify(faq) }],
+              'deepseek-v4-flash',
+            ),
+          ],
+        ]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      );
+      const writerInput = officialSiteEnterpriseEvidenceWriterInput(
+        fixture.input as JsonObject,
+        companyName,
+        suffix,
+      );
+      const master = await writer.generateOfficialSiteMaster({
+        context: context(MASTER_RUN, null),
+        requestId: `runtime-official-enterprise-${suffix}`,
+        writerInput,
+      });
+      const variant = await writer.generateOfficialSiteVariant({
+        context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000061'),
+        masterContent: master,
+        platformCode: 'official_site',
+        requestId: `runtime-official-enterprise-variant-${suffix}`,
+        writerInput,
+      });
+      const block = variant.blocks.find(
+        (candidate) => candidate.block_key === 'enterprise-credentials',
+      );
+      expect(block?.text).toContain(companyName);
+      expect(block?.text).toContain('营业执照');
+      expect(block?.text).toContain('道路运输证');
+      expect(block?.text).not.toContain(companies.find(([name]) => name !== companyName)?.[0]);
+      expect(block?.text).not.toContain('不代表服务质量');
+      const citationMap = variant['citation_map'] as readonly {
+        readonly citation_ids: readonly string[];
+        readonly claim_key: string;
+      }[];
+      expect(
+        citationMap.find((mapping) => mapping.claim_key === 'enterprise-credentials')?.citation_ids,
+      ).toHaveLength(2);
+    }
+  });
+
+  it('maps every item in a seven-document enterprise evidence bundle', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const evidenceNames = [
+      '营业执照',
+      '道路运输经营许可证',
+      '道路运输证',
+      '质量管理体系认证证书',
+      '环境管理体系认证证书',
+      '职业健康安全管理体系认证证书',
+      '企业财产损失保险',
+    ] as const;
+    const article = officialSiteArticleDraft();
+    const faq = {
+      faq: Array.from({ length: 4 }, (_, index) => ({
+        answer: `按照正文中的第 ${index + 1} 项核对方法执行。`,
+        question: `第 ${index + 1} 项如何核对？`,
+      })),
+    };
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        [
+          'deepseek-v4-flash',
+          new LooseMockAdapter(
+            [{ text: JSON.stringify(article) }, { text: JSON.stringify(faq) }],
+            'deepseek-v4-flash',
+          ),
+        ],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = officialSiteEnterpriseEvidenceWriterInput(
+      fixture.input as JsonObject,
+      '广东众人搬家起重吊装有限公司',
+      '83',
+      evidenceNames,
+    );
+    const master = await writer.generateOfficialSiteMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'runtime-official-enterprise-seven-83',
+      writerInput,
+    });
+    const variant = await writer.generateOfficialSiteVariant({
+      context: context(VARIANT_RUN, '72000000-0000-4000-8000-000000000083'),
+      masterContent: master,
+      platformCode: 'official_site',
+      requestId: 'runtime-official-enterprise-seven-variant-83',
+      writerInput,
+    });
+    const block = variant.blocks.find(
+      (candidate) => candidate.block_key === 'enterprise-credentials',
+    );
+    for (const evidenceName of evidenceNames) expect(block?.text).toContain(evidenceName);
+    const citationMap = variant['citation_map'] as readonly {
+      readonly citation_ids: readonly string[];
+      readonly claim_key: string;
+    }[];
+    expect(
+      citationMap.find((mapping) => mapping.claim_key === 'enterprise-credentials')?.citation_ids,
+    ).toHaveLength(7);
+  });
+
   it('rewrites an official-site draft that names another company', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const cleanArticle = officialSiteArticleDraft();
@@ -2426,6 +2756,65 @@ function officialSiteWriterInput(
       },
     },
   };
+}
+
+function officialSiteEnterpriseEvidenceWriterInput(
+  input: JsonObject,
+  ownerCompanyName: string,
+  suffix: string,
+  evidenceNames: readonly string[] = ['营业执照', '道路运输证'],
+): JsonObject {
+  const writerInput = officialSiteWriterInput(input, ownerCompanyName);
+  const brief = writerInput['brief'] as JsonObject;
+  const references = evidenceNames.map((displayName, index) => {
+    const tail = String(Number(suffix) * 10 + index).padStart(12, '0');
+    return {
+      citationId: `75000000-0000-4000-8000-${tail}`,
+      displayName,
+      kind: enterpriseEvidenceKindForTest(displayName),
+      sourceId: `74000000-0000-4000-8000-${tail}`,
+    };
+  });
+  return {
+    ...writerInput,
+    brief: {
+      ...brief,
+      constraints: {
+        authorized_certificate_source_ids: references
+          .filter((reference) => reference.kind !== 'insurance_or_damage_protection')
+          .map((reference) => reference.sourceId),
+        enterprise_evidence: {
+          company_name: ownerCompanyName,
+          customer_request_supported: false,
+          references: references.map((reference) => ({
+            citation_id: reference.citationId,
+            display_name: reference.displayName,
+            kind: reference.kind,
+            source_id: reference.sourceId,
+          })),
+          schema_version: 'enterprise-evidence@1',
+          service_type: '设备搬迁',
+        },
+        official_site_direct: true,
+      },
+    },
+    citations: references.map((reference) => ({
+      chunk_id: reference.citationId,
+      citation_id: reference.citationId,
+      quote_text: `资料类型：企业证照\n证照名称：${reference.displayName}\n持证主体：${ownerCompanyName}`,
+      source_id: reference.sourceId,
+    })),
+  };
+}
+
+function enterpriseEvidenceKindForTest(displayName: string): string {
+  if (displayName === '营业执照') return 'business_license';
+  if (displayName === '道路运输经营许可证') return 'industry_permit';
+  if (displayName === '道路运输证') return 'transport_certificate';
+  if (displayName.includes('质量管理体系')) return 'quality_management';
+  if (displayName.includes('环境管理体系')) return 'environment_management';
+  if (displayName.includes('职业健康安全管理体系')) return 'occupational_health_safety';
+  return 'insurance_or_damage_protection';
 }
 
 function multiPlatformWriterInput(

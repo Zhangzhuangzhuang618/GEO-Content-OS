@@ -148,8 +148,8 @@ describe('freeze v2.1 database verification', () => {
       migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
     );
     expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
-      '0052_wentian_geo_connector',
       '0053_douyin_image_note_automation',
+      '0054_enterprise_evidence_customer_copy',
     ]);
   });
 
@@ -159,8 +159,10 @@ describe('freeze v2.1 database verification', () => {
     const [summary] = await client<
       {
         invitedOwners: number;
+        liejuRules: number;
         modelRates: number;
         projects: number;
+        qualityAutomationPrompts: number;
         rules: number;
         subscriptions: number;
         workspaces: number;
@@ -172,14 +174,18 @@ describe('freeze v2.1 database verification', () => {
         (SELECT count(*)::integer FROM workspaces WHERE id = ${FREEZE_V21_SEED.workspaceId}) AS workspaces,
         (SELECT count(*)::integer FROM projects WHERE id = ${FREEZE_V21_SEED.projectId}) AS projects,
         (SELECT count(*)::integer FROM model_rate_cards WHERE id = ${FREEZE_V21_SEED.modelRateCardId}) AS "modelRates",
+        (SELECT count(*)::integer FROM prompt_versions WHERE id = ${FREEZE_V21_SEED.qualityAutomationPromptVersionId} AND skill_name = 'quality-checker' AND version = '1.2.0' AND status = 'published' AND content_hash = encode(digest(convert_to(system_prompt || E'\n' || task_template,'UTF8'),'sha256'),'hex')) AS "qualityAutomationPrompts",
+        (SELECT count(*)::integer FROM platform_rule_versions WHERE id = ${FREEZE_V21_SEED.liejuRuleVersionId} AND platform_code = 'lieju' AND version = '1.0.0' AND status = 'published' AND content_hash = encode(digest(convert_to(rules_json::text,'UTF8'),'sha256'),'hex')) AS "liejuRules",
         (SELECT count(*)::integer FROM platform_rule_versions WHERE status = 'published') AS rules
     `;
 
     expect(summary).toEqual({
       invitedOwners: 1,
+      liejuRules: 1,
       modelRates: 1,
       projects: 1,
-      rules: 8,
+      qualityAutomationPrompts: 1,
+      rules: 9,
       subscriptions: 1,
       workspaces: 1,
     });

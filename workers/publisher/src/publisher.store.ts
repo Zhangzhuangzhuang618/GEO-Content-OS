@@ -1,5 +1,8 @@
 import {
+  classifyEnterpriseEvidence,
+  enterpriseEvidenceRequiredKinds,
   findPublishedOwnerCompanyNames,
+  missingEnterpriseEvidenceKinds,
   readOfficialSiteServicePhone,
   type ContentPackageStatus,
   type ContentVariantStatus,
@@ -51,6 +54,7 @@ interface JobRow {
   readonly payloadHash: string;
   readonly platformCode: PlatformCode;
   readonly publishMode: 'api' | 'export' | 'manual';
+  readonly projectId: string;
   readonly scheduledAt: Date;
   readonly status:
     'cancel_requested' | 'cancelled' | 'failed' | 'published' | 'publishing' | 'scheduled';
@@ -61,6 +65,7 @@ interface JobRow {
   readonly variantVersion: number;
   readonly version: number;
   readonly workspaceSettings: Readonly<Record<string, unknown>>;
+  readonly workspaceId: string;
 }
 
 interface CompletionRow {
@@ -134,6 +139,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           variant.version AS "variantVersion",
           variant.current_content_version_id AS "currentContentVersionId",
           variant.platform_code AS "platformCode", package.id AS "packageId",
+          package.project_id AS "projectId",package.workspace_id AS "workspaceId",
           package.status AS "packageStatus", package.version AS "packageVersion",
           content_version.content_json AS content, content_version.content_hash AS "contentHash",
           account.credential_ciphertext AS "credentialCiphertext",
@@ -268,6 +274,11 @@ export class PostgresPublisherStore implements PublisherStorePort {
         ORDER BY citation.chunk_id::text, source.title,
           COALESCE(chunk.metadata_json->>'url', source.uri)
       `;
+      const ownerCompanyNames = findPublishedOwnerCompanyNames(row.brandProfile);
+      const enterpriseEvidenceGate =
+        row.platformCode === 'official_site' || row.platformCode === 'lieju'
+          ? await loadEnterpriseEvidencePublishGate(transaction, row, ownerCompanyNames)
+          : undefined;
       return {
         kind: 'claimed',
         value: Object.freeze({
@@ -280,6 +291,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
           contentVersionId: row.contentVersionId,
           credentialCiphertext: row.credentialCiphertext,
           credentialKeyVersion: row.credentialKeyVersion,
+          ...(enterpriseEvidenceGate ? { enterpriseEvidenceGate } : {}),
           idempotencyKey: row.idempotencyKey,
           ...(row.platformCode === 'lieju'
             ? { liejuDeliveryMethod: row.liejuDeliveryMethod ?? 'browser_gateway' }
@@ -291,7 +303,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
             ),
           ),
           officialSiteServicePhone: readOfficialSiteServicePhone(row.workspaceSettings),
-          ownerCompanyNames: findPublishedOwnerCompanyNames(row.brandProfile),
+          ownerCompanyNames,
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,
           publishMode: row.publishMode,
@@ -1189,6 +1201,83 @@ export class PostgresPublisherStore implements PublisherStorePort {
 
 function isLiejuOfficial(claim: PublishClaim): boolean {
   return claim.platformCode === 'lieju' && claim.liejuDeliveryMethod === 'official_api';
+}
+
+async function loadEnterpriseEvidencePublishGate(
+  transaction: postgres.TransactionSql,
+  row: Pick<
+    JobRow,
+    'contentVersionId' | 'projectId' | 'tenantId' | 'workspaceId' | 'workspaceSettings'
+  >,
+  ownerCompanyNames: readonly string[],
+): Promise<NonNullable<PublishClaim['enterpriseEvidenceGate']>> {
+  const companyName = ownerCompanyNames.length === 1 ? ownerCompanyNames[0]! : null;
+  const requiredRows = companyName
+    ? await transaction<{ metadata: Readonly<Record<string, unknown>>; sourceId: string }[]>`
+        SELECT source.id AS "sourceId",source.metadata_json AS metadata
+        FROM source_documents AS source
+        WHERE source.tenant_id=${row.tenantId}::uuid
+          AND source.workspace_id=${row.workspaceId}::uuid
+          AND (source.project_id=${row.projectId}::uuid OR source.project_id IS NULL)
+          AND source.status='active' AND source.deleted_at IS NULL
+          AND source.trust_level IN ('verified','normal')
+          AND (source.effective_from IS NULL OR source.effective_from<=(now() AT TIME ZONE 'Asia/Shanghai')::date)
+          AND (source.effective_to IS NULL OR source.effective_to>=(now() AT TIME ZONE 'Asia/Shanghai')::date)
+          AND (
+            (
+              source.metadata_json->>'schema_version'='source-certificate@1'
+              AND source.metadata_json->>'holder_name'=${companyName}
+              AND source.metadata_json @> '{"article_use_allowed":true,"public_display_confirmed":true}'::jsonb
+            ) OR (
+              source.metadata_json->>'schema_version'='source-insurance-proof@1'
+              AND source.metadata_json->>'policyholder_name'=${companyName}
+              AND source.metadata_json->'summary_use_confirmed'='true'::jsonb
+            )
+          )
+        ORDER BY source.id
+      `
+    : [];
+  const required = requiredRows.flatMap((source) => {
+    const evidence = classifyEnterpriseEvidence(source.metadata);
+    return evidence ? [{ ...evidence, sourceId: source.sourceId }] : [];
+  });
+  const missingRequiredKinds = missingEnterpriseEvidenceKinds(
+    enterpriseEvidenceRequiredKinds(row.workspaceSettings),
+    required,
+  );
+  const mappedRows = await transaction<{ sourceId: string }[]>`
+    SELECT DISTINCT chunk.source_document_id AS "sourceId"
+    FROM ai_citations AS citation
+    JOIN source_chunks AS chunk
+      ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
+    WHERE citation.tenant_id=${row.tenantId}::uuid
+      AND citation.content_version_id=${row.contentVersionId}::uuid
+      AND citation.claim_key='enterprise-credentials'
+    ORDER BY chunk.source_document_id
+  `;
+  const requiredSourceIds = required.map((source) => source.sourceId);
+  const mappedSourceIds = mappedRows.map((source) => source.sourceId);
+  const mapped = new Set(mappedSourceIds);
+  console.warn('Enterprise evidence publication validation completed', {
+    evidence_count: requiredSourceIds.length,
+    evidence_source_ids: requiredSourceIds,
+    validation_result:
+      requiredSourceIds.length === 0
+        ? 'missing'
+        : missingRequiredKinds.length > 0
+          ? 'incomplete'
+          : mapped.size !== requiredSourceIds.length ||
+              requiredSourceIds.some((sourceId) => !mapped.has(sourceId))
+            ? 'mapping_invalid'
+            : 'passed',
+  });
+  return Object.freeze({
+    companyName,
+    evidenceNames: Object.freeze([...new Set(required.map((source) => source.displayName))]),
+    mappedSourceIds: Object.freeze(mappedSourceIds),
+    missingRequiredKinds,
+    requiredSourceIds: Object.freeze(requiredSourceIds),
+  });
 }
 
 function updateLiejuOfficialPublication(

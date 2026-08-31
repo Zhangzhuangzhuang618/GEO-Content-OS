@@ -54,6 +54,7 @@ export {
   type DailyCitationRequest,
   type DailyCitationSelection,
 } from './daily-citation-retriever.js';
+export { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 export { validateBaijiahaoAdaptationEvent } from './baijiahao-adaptation.event.js';
 export { validatePublishingPublishedEvent } from './publishing-published.event.js';
 export {
