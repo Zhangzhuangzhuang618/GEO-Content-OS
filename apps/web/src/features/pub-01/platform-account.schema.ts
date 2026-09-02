@@ -316,6 +316,7 @@ export const BrowserPlatformAutomationPolicySchema = z
     account_id: z.string().uuid(),
     account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),
+    content_voice: z.enum(['enterprise_official', 'frontline_mover']).nullable(),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
     daily_generation_time: z.string(),
@@ -669,6 +670,7 @@ export type PlatformCode = z.infer<typeof PlatformCodeSchema>;
 export type OfficialSiteAutomationPolicy = z.infer<typeof OfficialSiteAutomationPolicySchema>;
 export type BaijiahaoAutomationPolicy = z.infer<typeof BaijiahaoAutomationPolicySchema>;
 export type BrowserPlatformAutomationPolicy = z.infer<typeof BrowserPlatformAutomationPolicySchema>;
+export type DouyinContentVoice = NonNullable<BrowserPlatformAutomationPolicy['content_voice']>;
 export type BaijiahaoBrowserSession = z.infer<typeof BaijiahaoBrowserSessionSchema>;
 export type BaijiahaoBrowserLogin = z.infer<typeof BaijiahaoBrowserLoginSchema>;
 export type DouyinBrowserSession = z.infer<typeof DouyinBrowserSessionSchema>;

@@ -181,6 +181,7 @@ const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
   account_id: ACCOUNT_ID,
   account_positioning: '',
   brand_consistency_min: 90,
+  content_voice: null,
   daily_candidate_limit: 3,
   daily_enabled: true,
   daily_generation_time: '00:30:00',

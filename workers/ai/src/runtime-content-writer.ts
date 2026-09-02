@@ -9,6 +9,7 @@ import {
   findLiejuProhibitedPromotionalTerms,
   findPublishedOwnerCompanyNames,
   sanitizeEvidenceQuoteForCustomerCopy,
+  type DouyinContentVoice,
   uniquePublishedOwnerCompanyName,
   type EnterpriseEvidenceKind,
   type LiejuForbiddenContactDetail,
@@ -103,6 +104,31 @@ const DOUYIN_SEARCH_INTENT_TITLE_RULES: Readonly<
   scheduling: { label: '工期调度', pattern: /时间|预约|工期|调度|排期/u },
   vehicle: { label: '车型选择', pattern: /车型|车辆|货车/u },
 });
+
+const DOUYIN_CONTENT_VOICE_LABELS: Readonly<Record<DouyinContentVoice, string>> = Object.freeze({
+  enterprise_official: '企业官方',
+  frontline_mover: '一线师傅',
+});
+const DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN =
+  /现场|上门|勘查|打包|清点|搬运|装卸|拆装|装车|固定|防护|通道|电梯|复位|吊装|运输|作业/u;
+const DOUYIN_ENTERPRISE_PERSONA_PATTERNS = Object.freeze([
+  /(?:^|[，。！？；\s])(?:我|本人|俺)(?:是|作为|干|做|搬|接|跑|上门|遇到|见过|觉得|建议)/u,
+  /(?:作为|身为)(?:一名|一个)?(?:搬家|搬运|吊装|运输)?师傅/u,
+]);
+const DOUYIN_FRONTLINE_TENURE_PATTERNS = Object.freeze([
+  /(?:我|本人|俺|咱).{0,16}(?:干|做|从事|入行|搬家|搬运).{0,12}(?:(?:\d+|[零一二三四五六七八九十两百]+|多|好几)年)/u,
+  /(?:作为|身为).{0,10}师傅.{0,12}(?:(?:\d+|[零一二三四五六七八九十两百]+|多|好几)年)/u,
+]);
+const DOUYIN_FRONTLINE_EXPERIENCE_PATTERNS = Object.freeze([
+  /(?:我|本人|俺|咱们|我们).{0,12}(?:昨天|今天|上次|前几天|刚刚|刚给|曾经|亲自|遇到过|见过|处理过|搬过|接过|做过)/u,
+  /(?:我|本人|俺)(?:是|作为|就是).{0,8}(?:搬家|搬运|吊装|运输)?师傅/u,
+]);
+const DOUYIN_FRONTLINE_CUSTOMER_CASE_PATTERNS = Object.freeze([
+  /(?:有一位|有个|一位|某位|这个|那位)客户(?:说|反馈|评价|告诉|家里|现场)/u,
+  /客户(?:说|反馈|评价|告诉我们)/u,
+  /(?:我|我们|本人|俺|咱们).{0,12}(?:刚给|曾为|给).{0,20}(?:客户|公司|家庭)/u,
+  /(?:这是|分享|记录|复盘|讲讲|真实|实际|最近|此前|上次).{0,8}(?:客户)?案例/u,
+]);
 
 type DouyinDirectCardSlot = (typeof DOUYIN_DIRECT_CARD_SLOTS)[number];
 
@@ -335,6 +361,7 @@ interface ContentLengthShortfall {
 
 interface TargetedTextRepairTarget {
   readonly content: ContentWriterContent;
+  readonly contentVoiceViolations: readonly string[];
   readonly id: string;
   readonly internalCustomerLanguage: readonly string[];
   readonly originalText: string;
@@ -1280,7 +1307,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         context: input.context,
         input: input.writerInput,
         maxOutputTokens: this.directMaxOutputTokens(input.context, 4_096),
-        messages: douyinDirectRepairMessages(prompt, draft, issues, targetIds),
+        messages: douyinDirectRepairMessages(prompt, draft, issues, targetIds, input.writerInput),
         outputSchema: DOUYIN_DIRECT_REPAIR_SCHEMA,
         recordUsage: (usage) => this.recordUsage(input.context, usage),
         requestId: `${input.requestId}-targeted-repair-${repairRound}`,
@@ -1553,7 +1580,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
             context: input.context,
             input: input.writerInput,
             maxOutputTokens: Math.min(8_192, adapter.capabilities().maxOutputTokens),
-            messages: targetedTextRepairMessages(prompt, targets, rejectionReason),
+            messages: targetedTextRepairMessages(
+              prompt,
+              targets,
+              input.writerInput,
+              rejectionReason,
+            ),
             outputSchema: TARGETED_TEXT_REPAIR_SCHEMA,
             recordUsage: (usage) => this.recordUsage(input.context, usage),
             requestId: `${input.requestId}-credential-${attempt}`,
@@ -1734,6 +1766,7 @@ ${CONTENT_WRITER_PLATFORM_PROMPTS_V1.douyin}
 
 Fill the semantic slots exactly:
 - Read brief.constraints.douyin_search_intent and douyin_topic_focus first. They define the one search-decision question this article must answer. Keep that intent explicit in the title and use it as the primary thread of every paragraph and card; do not fall back to a generic process or preparation article.
+- Read brief.constraints.douyin_content_voice independently from douyin_account_strategy. enterprise_official means a formal, clear and restrained company-team voice; it may use “我们” or “服务团队” but must not simulate an individual worker. frontline_mover means plain, direct field-practice wording about what to inspect and do; it must not claim a real personal identity, employment years, first-hand events, specific clients, client feedback, or customer cases.
 - Read brief.constraints.douyin_title_subject next. It is the server-bound “region + concrete scene” title subject and must appear verbatim in title. When brief.constraints.douyin_title_evidence_promise is a non-empty string, it is backed by a matching citation opportunity: preserve it verbatim in title and write one directly supported visible fact that fulfils the promise, then map that exact fact in evidence_claims. Do not replace either bound string with a synonym.
 - opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark. opening_pain must name the concrete object and problem or consequence, and must naturally contain at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 - solution_paragraphs contains exactly two substantive solution paragraphs. When the published strategy supplies the owner company name, mention it naturally in one of these two paragraphs and no more than twice in the complete description.
@@ -1775,8 +1808,10 @@ function douyinDirectRepairMessages(
   draft: DouyinDirectDraft,
   issues: readonly string[],
   targetIds: readonly string[],
+  writerInput: JsonObject,
 ): readonly ModelMessage[] {
   const values = douyinDirectTextEntries(draft);
+  const voiceInstruction = douyinContentVoiceRepairInstruction(writerInput);
   return Object.freeze([
     {
       content: `${CONTENT_WRITER_SYSTEM_PROMPT_V1}
@@ -1789,6 +1824,8 @@ This is a bounded field repair. No tools are available. Rewrite only the supplie
     },
     {
       content: `Resolve every quality issue by changing only the target fields below. Return exactly one changed, non-empty replacement for every target_id and no other IDs. Preserve all grounded facts. Do not add credentials, other company names, prices, metrics, rankings, cases, guarantees, citation IDs, Markdown, or explanation.
+
+${voiceInstruction}
 
 When a quality issue identifies internal risk-control, evidence-boundary, evidence-classification, or model-disclaimer wording, remove only that wording and preserve the useful customer-facing meaning in natural Chinese. When a quality issue gives a minimum character count, exceed that minimum by 5-10 Chinese characters while staying within the current field maximum. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 
@@ -2260,15 +2297,20 @@ function douyinDirectRepairTargets(
     }
   }
   const allowedNames = ownerCompanyNamesFromWriterInput(writerInput);
+  const contentVoice = douyinContentVoice(writerInput);
   const directContent = douyinDirectData(draft, writerInput).variants[0]!;
   for (const [targetId, text] of douyinDirectTextEntries(draft)) {
     if (
       unsupportedCredentialClaims(directContent, text, writerInput).length > 0 ||
       findDisallowedCompanyNames(text, allowedNames).length > 0 ||
-      findInternalCustomerCopyLanguage(text).length > 0
+      findInternalCustomerCopyLanguage(text).length > 0 ||
+      (contentVoice !== null && douyinContentVoiceViolations(text, contentVoice).length > 0)
     ) {
       targets.add(targetId);
     }
+  }
+  if (issues.some((issue) => issue.includes('缺少现场作业视角和可执行动作'))) {
+    targets.add('solution_paragraphs.0');
   }
   if (
     targets.size === 0 &&
@@ -2657,6 +2699,7 @@ function deterministicContentIssues(
     if (content.platform_code === 'douyin') {
       issues.push(
         ...douyinSearchIntentIssues(content, writerInput),
+        ...douyinContentVoiceIssues(content, writerInput),
         ...assessDouyinOwnerPromotion(content, ownerCompanyNames).map((finding) => finding.message),
       );
     }
@@ -2669,6 +2712,78 @@ function deterministicContentIssues(
   }
   issues.push(...credentialCitationIssues(data.master_content, writerInput));
   return Object.freeze(issues);
+}
+
+function douyinContentVoice(writerInput: JsonObject): DouyinContentVoice | null {
+  const brief = jsonObject(writerInput['brief']);
+  const constraints = brief ? jsonObject(brief['constraints']) : undefined;
+  const value = constraints?.['douyin_content_voice'];
+  return value === 'enterprise_official' || value === 'frontline_mover' ? value : null;
+}
+
+function douyinContentVoiceIssues(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): readonly string[] {
+  if (content.platform_code !== 'douyin') return [];
+  const voice = douyinContentVoice(writerInput);
+  if (!voice) return [];
+  const values = [
+    content.title,
+    content.summary,
+    content.cta,
+    ...content.blocks.map((block) => block.text),
+    ...stringValues(content.platform_meta),
+  ].filter((value): value is string => typeof value === 'string');
+  const violations = [
+    ...new Set(values.flatMap((value) => douyinContentVoiceViolations(value, voice))),
+  ];
+  if (
+    voice === 'frontline_mover' &&
+    !values.some((value) => DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(value))
+  ) {
+    violations.push('缺少现场作业视角和可执行动作');
+  }
+  const label = DOUYIN_CONTENT_VOICE_LABELS[voice];
+  return Object.freeze(
+    violations.map(
+      (violation) =>
+        `douyin:账号内容口吻“${label}”不符合要求：${violation}；只改写命中句段，其他内容保持不变`,
+    ),
+  );
+}
+
+function douyinContentVoiceViolations(text: string, voice: DouyinContentVoice): readonly string[] {
+  const violations: string[] = [];
+  if (DOUYIN_ENTERPRISE_PERSONA_PATTERNS.some((pattern) => pattern.test(text))) {
+    violations.push(
+      voice === 'enterprise_official'
+        ? '企业官方口吻不得模拟个人师傅身份或个人亲历'
+        : '一线师傅口吻不得声称真实个人身份',
+    );
+  }
+  if (voice !== 'frontline_mover') return Object.freeze([...new Set(violations)]);
+  if (DOUYIN_FRONTLINE_TENURE_PATTERNS.some((pattern) => pattern.test(text))) {
+    violations.push('不得编造个人工龄或从业年限');
+  }
+  if (DOUYIN_FRONTLINE_EXPERIENCE_PATTERNS.some((pattern) => pattern.test(text))) {
+    violations.push('不得编造个人亲历或具体作业经历');
+  }
+  if (DOUYIN_FRONTLINE_CUSTOMER_CASE_PATTERNS.some((pattern) => pattern.test(text))) {
+    violations.push('不得编造具体客户、客户评价或客户案例');
+  }
+  return Object.freeze([...new Set(violations)]);
+}
+
+function douyinContentVoiceRepairInstruction(writerInput: JsonObject): string {
+  const voice = douyinContentVoice(writerInput);
+  if (voice === 'enterprise_official') {
+    return 'Content voice is enterprise_official. Keep a formal company-team perspective; replace individual-worker identity or autobiographical wording with neutral process or service-team wording.';
+  }
+  if (voice === 'frontline_mover') {
+    return 'Content voice is frontline_mover. Use plain field-practice language about observable conditions and actions, but remove any claimed personal identity, employment years, first-hand event, specific client, client feedback, or customer case.';
+  }
+  return 'Preserve the content voice already bound in brief.constraints.';
 }
 
 function enterpriseEvidenceIssues(
@@ -2873,7 +2988,8 @@ function onlyTargetedTextRepairIssues(
       issue.includes('必须通过 citation_map 关联能直接证明每项资质的结构化企业证照') ||
       issue.includes('包含发布层禁止的具体联系方式') ||
       issue.includes('包含发布层禁止的宣传词') ||
-      issue.includes('包含内部风控或模板化免责话术')
+      issue.includes('包含内部风控或模板化免责话术') ||
+      issue.includes('账号内容口吻')
     ) {
       hasRepairableIssue = true;
       continue;
@@ -2899,6 +3015,7 @@ function targetedTextRepairTargets(
   data: ContentWriterData,
   writerInput: JsonObject,
 ): readonly TargetedTextRepairTarget[] {
+  const contentVoice = douyinContentVoice(writerInput);
   const locked = new Set(
     (Array.isArray(writerInput['locked_blocks']) ? writerInput['locked_blocks'] : []).flatMap(
       (value) => {
@@ -2925,17 +3042,23 @@ function targetedTextRepairTargets(
       const prohibitedContactDetails =
         content.platform_code === 'lieju' ? findLiejuForbiddenContactDetails(text) : [];
       const internalCustomerLanguage = findInternalCustomerCopyLanguage(text);
+      const contentVoiceViolations =
+        content.platform_code === 'douyin' && contentVoice
+          ? douyinContentVoiceViolations(text, contentVoice)
+          : [];
       if (
         unsupportedClaims.length === 0 &&
         prohibitedPromotionalTerms.length === 0 &&
         prohibitedContactDetails.length === 0 &&
-        internalCustomerLanguage.length === 0
+        internalCustomerLanguage.length === 0 &&
+        contentVoiceViolations.length === 0
       ) {
         return;
       }
       targets.push(
         Object.freeze({
           content,
+          contentVoiceViolations,
           id,
           internalCustomerLanguage,
           originalText: text,
@@ -2955,6 +3078,41 @@ function targetedTextRepairTargets(
     for (const target of jsonTextTargets(content.platform_meta, `${prefix}.platform_meta`)) {
       add(target.id, target.text, false);
     }
+    if (
+      content.platform_code === 'douyin' &&
+      contentVoice === 'frontline_mover' &&
+      ![
+        content.title,
+        content.summary,
+        content.cta,
+        ...content.blocks.map((block) => block.text),
+        ...stringValues(content.platform_meta),
+      ].some(
+        (value) => typeof value === 'string' && DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(value),
+      )
+    ) {
+      const index = content.blocks.findIndex(
+        (block, blockIndex) =>
+          block.block_type !== 'heading' &&
+          !locked.has(`${content.platform_code}:${block.block_key}`) &&
+          !targets.some((target) => target.id === `${prefix}.blocks[${blockIndex}].text`),
+      );
+      const block = index >= 0 ? content.blocks[index] : undefined;
+      if (block) {
+        targets.push(
+          Object.freeze({
+            content,
+            contentVoiceViolations: Object.freeze(['缺少现场作业视角和可执行动作']),
+            id: `${prefix}.blocks[${index}].text`,
+            internalCustomerLanguage: Object.freeze([]),
+            originalText: block.text,
+            prohibitedContactDetails: Object.freeze([]),
+            prohibitedPromotionalTerms: Object.freeze([]),
+            unsupportedClaims: Object.freeze([]),
+          }),
+        );
+      }
+    }
   };
   collect(data.master_content, 'master_content');
   data.variants.forEach((content) => collect(content, `variants.${content.platform_code}`));
@@ -2964,8 +3122,10 @@ function targetedTextRepairTargets(
 function targetedTextRepairMessages(
   prompt: ContentWriterPublishedPrompt,
   targets: readonly TargetedTextRepairTarget[],
+  writerInput: JsonObject,
   rejectionReason: string | null,
 ): readonly ModelMessage[] {
+  const voiceInstruction = douyinContentVoiceRepairInstruction(writerInput);
   return Object.freeze([
     {
       content: `${CONTENT_WRITER_SYSTEM_PROMPT_V1}
@@ -2979,6 +3139,8 @@ This is a bounded targeted repair stage. Rewrite only the supplied text targets.
     {
       content: `${prompt.taskTemplate}
 
+${voiceInstruction}
+
 For every target, return exactly one replacement. Delete every listed unsupported credential assertion; do not preserve it as a question, checklist, recommendation, quotation, example, or neutralized credential wording. Remove every listed literal phone number, WeChat ID, or QQ ID. Remove internal risk-control, evidence-classification, evidence-boundary, and model-disclaimer wording while preserving the useful customer-facing statement in natural Chinese. Do not remove a URL unless another listed issue independently requires changing it. Replace every listed prohibited promotional term with factual neutral wording that does not contain the original term. Preserve the target's remaining useful meaning and natural Chinese wording. Do not change any text outside these targets. Do not return a full article, citation map, Markdown, or explanation.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.
@@ -2989,6 +3151,7 @@ ${rejectionReason ? `The previous targeted repair was rejected: ${JSON.stringify
       content: JSON.stringify({
         targeted_text_repair_targets: targets.map((target) => ({
           original_text: target.originalText,
+          content_voice_violations: target.contentVoiceViolations,
           internal_customer_language: target.internalCustomerLanguage,
           prohibited_contact_details: target.prohibitedContactDetails,
           prohibited_promotional_terms: target.prohibitedPromotionalTerms,
@@ -3008,6 +3171,7 @@ function invalidTargetedTextRepairReason(
   output: TargetedTextRepairOutput,
   writerInput: JsonObject,
 ): string | null {
+  const contentVoice = douyinContentVoice(writerInput);
   const targetById = new Map(targets.map((target) => [target.id, target]));
   const replacements = new Map<string, TargetedTextRepairReplacement>();
   for (const replacement of output.replacements) {
@@ -3045,6 +3209,19 @@ function invalidTargetedTextRepairReason(
       findInternalCustomerCopyLanguage(replacement.replacement_text).length > 0
     ) {
       return `replacement_still_contains_internal_customer_language:${target.id}`;
+    }
+    if (
+      target.contentVoiceViolations.length > 0 &&
+      contentVoice !== null &&
+      douyinContentVoiceViolations(replacement.replacement_text, contentVoice).length > 0
+    ) {
+      return `replacement_still_violates_content_voice:${target.id}`;
+    }
+    if (
+      target.contentVoiceViolations.includes('缺少现场作业视角和可执行动作') &&
+      !DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(replacement.replacement_text)
+    ) {
+      return `replacement_still_lacks_frontline_practical_cue:${target.id}`;
     }
   }
   return null;

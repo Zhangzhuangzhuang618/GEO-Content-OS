@@ -870,6 +870,7 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   await expect(page.getByRole('img', { name: '抖音登录二维码' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '一键同步项目关键词到抖音' })).toBeVisible();
   await expect(page.getByLabel('账号内容定位')).toHaveValue('面向广州家庭客户提供搬家决策信息');
+  await expect(page.getByLabel('内容口吻')).toHaveValue('enterprise_official');
   await expect(page.getByLabel('服务范围（每行一项）')).toHaveValue('居民搬家\n跨城搬家');
   await expect(page.getByLabel('目标地区（每行一项）')).toHaveValue('广州\n佛山');
   await expect(page.getByLabel('主题池（每行一项）')).toHaveValue('高层小区家庭搬迁\n收费项目核对');
@@ -1503,6 +1504,7 @@ function browserPlatformPolicy() {
     account_id: ACCOUNT_ID,
     account_positioning: '',
     brand_consistency_min: 90,
+    content_voice: null,
     daily_candidate_limit: 3,
     daily_enabled: true,
     daily_generation_time: '00:30:00',
@@ -1569,6 +1571,7 @@ function douyinBrowserPlatformPolicy() {
   return {
     ...browserPlatformPolicy(),
     account_positioning: '面向广州家庭客户提供搬家决策信息',
+    content_voice: 'enterprise_official',
     platform_code: 'douyin',
     service_scopes: ['居民搬家', '跨城搬家'],
     target_regions: ['广州', '佛山'],

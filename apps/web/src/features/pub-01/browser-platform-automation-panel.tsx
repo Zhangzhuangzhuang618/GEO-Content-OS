@@ -14,7 +14,11 @@ import {
   saveBrowserPlatformAutomationPolicy,
   syncProjectKeywordPlatformScope,
 } from './platform-account-api';
-import type { BrowserPlatformAutomationPolicy, PlatformAccount } from './platform-account.schema';
+import type {
+  BrowserPlatformAutomationPolicy,
+  DouyinContentVoice,
+  PlatformAccount,
+} from './platform-account.schema';
 import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
 
 export function BrowserPlatformAutomationPanel({ account }: { readonly account: PlatformAccount }) {
@@ -29,6 +33,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   const [message, setMessage] = useState<string | null>(null);
   const [dailyTargetCount, setDailyTargetCount] = useState(defaultTarget);
   const [accountPositioning, setAccountPositioning] = useState('');
+  const [contentVoice, setContentVoice] = useState<DouyinContentVoice>('enterprise_official');
   const [serviceScopes, setServiceScopes] = useState('');
   const [targetRegions, setTargetRegions] = useState('');
   const [topicPool, setTopicPool] = useState('');
@@ -50,12 +55,14 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   useEffect(() => {
     setDailyTargetCount(selected?.daily_target_count ?? defaultTarget);
     setAccountPositioning(selected?.account_positioning ?? '');
+    setContentVoice(selected?.content_voice ?? 'enterprise_official');
     setServiceScopes(selected?.service_scopes.join('\n') ?? '');
     setTargetRegions(selected?.target_regions.join('\n') ?? '');
     setTopicPool(selected?.topic_pool.join('\n') ?? '');
   }, [
     defaultTarget,
     selected?.account_positioning,
+    selected?.content_voice,
     selected?.daily_target_count,
     selected?.id,
     selected?.service_scopes,
@@ -98,6 +105,7 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     const enabled = form.get('enabled') === 'on';
     const douyinStrategy = {
       accountPositioning: accountPositioning.trim(),
+      contentVoice,
       serviceScopes: parseStrategyList(serviceScopes),
       targetRegions: parseStrategyList(targetRegions),
       topicPool: parseStrategyList(topicPool),
@@ -106,11 +114,12 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       account.platform_code === 'douyin' &&
       enabled &&
       (!douyinStrategy.accountPositioning ||
+        !douyinStrategy.contentVoice ||
         !douyinStrategy.serviceScopes.length ||
         !douyinStrategy.targetRegions.length ||
         !douyinStrategy.topicPool.length)
     ) {
-      return setMessage('启用抖音自动化前，请完整填写账号定位、服务范围、地区和主题池。');
+      return setMessage('启用抖音自动化前，请完整填写账号定位、内容口吻、服务范围、地区和主题池。');
     }
     if (
       douyinStrategy.serviceScopes.length > 12 ||
@@ -326,6 +335,22 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
                 placeholder="例如：面向广州家庭与企业客户，提供可核验、重决策信息的搬迁内容"
                 value={accountPositioning}
               />
+            </label>
+            <label className="text-sm text-ink-700 md:col-span-2">
+              内容口吻
+              <select
+                className="mt-1 w-full rounded-lg border border-ink-200 px-3 py-2"
+                onChange={(event) =>
+                  setContentVoice(event.currentTarget.value as DouyinContentVoice)
+                }
+                value={contentVoice}
+              >
+                <option value="enterprise_official">企业官方</option>
+                <option value="frontline_mover">一线师傅</option>
+              </select>
+              <span className="mt-1 block text-xs leading-5 text-ink-500">
+                一线师傅口吻只采用现场实务视角，不会虚构个人工龄、亲历、客户评价或案例。
+              </span>
             </label>
             <StrategyListField
               label="服务范围"

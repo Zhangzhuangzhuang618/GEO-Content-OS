@@ -393,6 +393,13 @@
       "when": 1788336000000,
       "tag": "0055_douyin_multi_account_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1788336060000,
+      "tag": "0056_douyin_account_content_voice",
+      "breakpoints": true
     }
   ]
 }

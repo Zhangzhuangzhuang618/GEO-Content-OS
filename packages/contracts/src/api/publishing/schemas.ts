@@ -238,9 +238,12 @@ const DouyinStrategyListSchema = (maximum: number) =>
       'strategy values must be unique',
     );
 
+export const DouyinContentVoiceSchema = z.enum(['enterprise_official', 'frontline_mover']);
+
 export const BrowserPlatformAutomationPolicyRequestSchema = z
   .object({
     account_positioning: z.string().trim().min(1).max(240).optional(),
+    content_voice: DouyinContentVoiceSchema.optional(),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
     daily_generation_time: TimeOfDaySchema.default('00:30:00'),
@@ -278,6 +281,7 @@ export const BrowserPlatformAutomationPolicyRequestSchema = z
     }
     const strategyParts = [
       Boolean(value.account_positioning),
+      Boolean(value.content_voice),
       Boolean(value.service_scopes?.length),
       Boolean(value.target_regions?.length),
       Boolean(value.topic_pool?.length),
@@ -286,7 +290,7 @@ export const BrowserPlatformAutomationPolicyRequestSchema = z
       context.addIssue({
         code: 'custom',
         message:
-          'Douyin account positioning, service scopes, regions and topic pool must be complete',
+          'Douyin account positioning, content voice, service scopes, regions and topic pool must be complete',
         path: ['account_positioning'],
       });
     }
@@ -580,6 +584,7 @@ export const BrowserPlatformAutomationPolicyViewSchema = z
     account_id: UuidSchema,
     account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),
+    content_voice: DouyinContentVoiceSchema.nullable(),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
     daily_generation_time: TimeOfDaySchema,
@@ -673,6 +678,7 @@ export type BaijiahaoAutomationPolicyView = z.infer<typeof BaijiahaoAutomationPo
 export type BrowserPlatformAutomationPolicyRequest = z.infer<
   typeof BrowserPlatformAutomationPolicyRequestSchema
 >;
+export type DouyinContentVoice = z.infer<typeof DouyinContentVoiceSchema>;
 export type BrowserPlatformDailyBatchRetryRequest = z.infer<
   typeof BrowserPlatformDailyBatchRetryRequestSchema
 >;

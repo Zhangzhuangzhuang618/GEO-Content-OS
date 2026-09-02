@@ -603,7 +603,7 @@ describe('platform accounts', () => {
     ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
   });
 
-  it('requires and persists complete positioning for an enabled Douyin strategy', async () => {
+  it('requires and persists complete positioning and content voice for enabled Douyin', async () => {
     const database = requireClient(client);
     const accountId = 'a1000000-0000-4000-8000-000000000162';
     await database`
@@ -637,6 +637,7 @@ describe('platform accounts', () => {
       {
         ...base,
         account_positioning: '面向广州家庭客户提供可核验的搬家决策信息',
+        content_voice: 'frontline_mover',
         service_scopes: ['居民搬家', '跨城搬家'],
         target_regions: ['广州', '佛山'],
         topic_pool: ['高层小区家庭搬迁', '收费项目核对', '合同与赔付约定'],
@@ -646,6 +647,7 @@ describe('platform accounts', () => {
 
     expect(saved).toMatchObject({
       account_positioning: '面向广州家庭客户提供可核验的搬家决策信息',
+      content_voice: 'frontline_mover',
       service_scopes: ['居民搬家', '跨城搬家'],
       target_regions: ['广州', '佛山'],
       topic_pool: ['高层小区家庭搬迁', '收费项目核对', '合同与赔付约定'],

@@ -29098,6 +29098,15 @@
                           },
                           "account_positioning": { "type": "string", "maxLength": 240 },
                           "brand_consistency_min": { "type": "number", "const": 90 },
+                          "content_voice": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": ["enterprise_official", "frontline_mover"]
+                              },
+                              { "type": "null" }
+                            ]
+                          },
                           "daily_candidate_limit": {
                             "type": "integer",
                             "minimum": 1,
@@ -29373,6 +29382,7 @@
                           "account_id",
                           "account_positioning",
                           "brand_consistency_min",
+                          "content_voice",
                           "daily_candidate_limit",
                           "daily_enabled",
                           "daily_generation_time",
@@ -29508,6 +29518,10 @@
                 "type": "object",
                 "properties": {
                   "account_positioning": { "type": "string", "minLength": 1, "maxLength": 240 },
+                  "content_voice": {
+                    "type": "string",
+                    "enum": ["enterprise_official", "frontline_mover"]
+                  },
                   "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                   "daily_enabled": { "type": "boolean" },
                   "daily_generation_time": {
@@ -29583,6 +29597,15 @@
                         },
                         "account_positioning": { "type": "string", "maxLength": 240 },
                         "brand_consistency_min": { "type": "number", "const": 90 },
+                        "content_voice": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["enterprise_official", "frontline_mover"]
+                            },
+                            { "type": "null" }
+                          ]
+                        },
                         "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                         "daily_enabled": { "type": "boolean" },
                         "daily_generation_time": {
@@ -29843,6 +29866,7 @@
                         "account_id",
                         "account_positioning",
                         "brand_consistency_min",
+                        "content_voice",
                         "daily_candidate_limit",
                         "daily_enabled",
                         "daily_generation_time",
@@ -30036,6 +30060,15 @@
                         },
                         "account_positioning": { "type": "string", "maxLength": 240 },
                         "brand_consistency_min": { "type": "number", "const": 90 },
+                        "content_voice": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["enterprise_official", "frontline_mover"]
+                            },
+                            { "type": "null" }
+                          ]
+                        },
                         "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                         "daily_enabled": { "type": "boolean" },
                         "daily_generation_time": {
@@ -30296,6 +30329,7 @@
                         "account_id",
                         "account_positioning",
                         "brand_consistency_min",
+                        "content_voice",
                         "daily_candidate_limit",
                         "daily_enabled",
                         "daily_generation_time",
@@ -30489,6 +30523,15 @@
                         },
                         "account_positioning": { "type": "string", "maxLength": 240 },
                         "brand_consistency_min": { "type": "number", "const": 90 },
+                        "content_voice": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "enum": ["enterprise_official", "frontline_mover"]
+                            },
+                            { "type": "null" }
+                          ]
+                        },
                         "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                         "daily_enabled": { "type": "boolean" },
                         "daily_generation_time": {
@@ -30749,6 +30792,7 @@
                         "account_id",
                         "account_positioning",
                         "brand_consistency_min",
+                        "content_voice",
                         "daily_candidate_limit",
                         "daily_enabled",
                         "daily_generation_time",

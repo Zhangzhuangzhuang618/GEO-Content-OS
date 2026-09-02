@@ -4,6 +4,7 @@ import {
   enterpriseEvidenceRequiredKinds,
   findPublishedOwnerCompanyNames,
   uniquePublishedOwnerCompanyName,
+  type DouyinContentVoice,
   type EnterpriseEvidenceReference,
 } from '@geo-content-os/contracts';
 import { createHash, randomUUID } from 'node:crypto';
@@ -42,6 +43,7 @@ interface BatchRow {
   readonly accountId: string;
   readonly businessDate: string;
   readonly candidateLimit: number;
+  readonly contentVoice: string;
   readonly createdBy: string;
   readonly id: string;
   readonly platformCode: Platform;
@@ -189,6 +191,7 @@ export class BrowserPlatformDailyScheduler {
           policy.project_id AS "projectId",policy.account_id AS "accountId",
           policy.platform_code AS "platformCode",policy.created_by AS "createdBy",
           policy.account_positioning AS "accountPositioning",
+          policy.content_voice AS "contentVoice",
           policy.service_scopes AS "serviceScopes",policy.target_regions AS "targetRegions",
           policy.topic_pool AS "topicPool",
           policy.daily_target_count AS "targetCount",
@@ -408,11 +411,12 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
   if (
     batch.platformCode === 'douyin' &&
     (!batch.accountPositioning.trim() ||
+      !isDouyinContentVoice(batch.contentVoice) ||
       !batch.serviceScopes.length ||
       !batch.targetRegions.length ||
       !batch.topicPool.length)
   ) {
-    throw new Error('请先完整配置抖音账号定位、服务范围、地区和主题池。');
+    throw new Error('请先完整配置抖音账号定位、内容口吻、服务范围、地区和主题池。');
   }
   const ownerCompanyNames = findPublishedOwnerCompanyNames(brand.profile);
   const companyName =
@@ -537,6 +541,7 @@ async function createCandidate(
             ...(selection.strategy
               ? [
                   `账号内容定位为“${selection.strategy.accountPositioning}”，叙述视角、案例选择和行动建议必须符合该定位。`,
+                  douyinContentVoiceInstruction(batch.contentVoice as DouyinContentVoice),
                   `本篇只服务“${selection.strategy.selectedRegion}”的“${selection.strategy.selectedServiceScope}”需求，核心主题固定为“${selection.strategy.selectedTopic}”；不得切换到主题池中的其他主题或扩展到配置外的地区与服务。`,
                 ]
               : []),
@@ -576,6 +581,7 @@ async function createCandidate(
     ...(batch.platformCode === 'douyin'
       ? {
           douyin_daily_direct: true,
+          douyin_content_voice: batch.contentVoice,
           douyin_title_evidence_promise: angle.evidencePromise,
           douyin_title_subject: angle.titleSubject,
           douyin_search_intent: angle.key,
@@ -865,6 +871,16 @@ function douyinStrategyFocus(
     `限定服务：${strategy.selectedServiceScope}`,
     `限定主题：${strategy.selectedTopic}`,
   ].join('；');
+}
+
+export function isDouyinContentVoice(value: string): value is DouyinContentVoice {
+  return value === 'enterprise_official' || value === 'frontline_mover';
+}
+
+export function douyinContentVoiceInstruction(value: DouyinContentVoice): string {
+  return value === 'enterprise_official'
+    ? '本账号内容口吻固定为“企业官方”：使用企业服务团队的正式、清晰、克制表达；可以使用“我们”或“服务团队”，不得模拟个人师傅身份或亲历。'
+    : '本账号内容口吻固定为“一线师傅”：使用通俗直接的现场实务视角解释判断和动作；不得声称真实个人身份、工龄、亲历、具体客户、客户评价或案例。';
 }
 
 async function releaseTopicReservation(

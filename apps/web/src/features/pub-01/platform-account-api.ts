@@ -351,6 +351,7 @@ export async function saveBrowserPlatformAutomationPolicy(
   accountId: string,
   input: {
     readonly accountPositioning?: string;
+    readonly contentVoice?: 'enterprise_official' | 'frontline_mover';
     readonly dailyCandidateLimit: number;
     readonly dailyEnabled: boolean;
     readonly dailyGenerationTime: string;
@@ -372,6 +373,7 @@ export async function saveBrowserPlatformAutomationPolicy(
         ...(input.accountPositioning === undefined
           ? {}
           : { account_positioning: input.accountPositioning }),
+        ...(input.contentVoice === undefined ? {} : { content_voice: input.contentVoice }),
         daily_candidate_limit: input.dailyCandidateLimit,
         daily_enabled: input.dailyEnabled,
         daily_generation_time: input.dailyGenerationTime,

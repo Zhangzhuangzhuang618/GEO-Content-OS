@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   browserPlatformGenerationModelKey,
   candidateLimitAttentionMessage,
+  douyinContentVoiceInstruction,
   douyinDailyDecisionAngle,
   douyinEvidenceTitleOpportunity,
   douyinTitleSubject,
+  isDouyinContentVoice,
 } from './browser-platform-daily-scheduler.js';
 
 describe('browser platform daily scheduler', () => {
@@ -18,6 +20,14 @@ describe('browser platform daily scheduler', () => {
     expect(browserPlatformGenerationModelKey('douyin', config)).toBe('deepseek-v4-flash');
     expect(browserPlatformGenerationModelKey('sohu', config)).toBe('deepseek-v4-pro');
     expect(browserPlatformGenerationModelKey('lieju', config)).toBe('deepseek-v4-pro');
+  });
+
+  it('keeps account content voice separate and recognizes only supported values', () => {
+    expect(isDouyinContentVoice('enterprise_official')).toBe(true);
+    expect(isDouyinContentVoice('frontline_mover')).toBe(true);
+    expect(isDouyinContentVoice('面向企业客户')).toBe(false);
+    expect(douyinContentVoiceInstruction('enterprise_official')).toContain('企业官方');
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('不得声称真实个人身份');
   });
 
   it('reports partial scheduling and only sends the remaining quota to attention', () => {

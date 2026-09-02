@@ -268,18 +268,20 @@ describe('browser-platform daily candidate retrieval', () => {
         id,tenant_id,workspace_id,project_id,account_id,platform_code,
         enabled,daily_enabled,daily_target_count,daily_candidate_limit,
         daily_generation_time,daily_schedule_times,account_positioning,
-        service_scopes,target_regions,topic_pool,created_by
+        content_voice,service_scopes,target_regions,topic_pool,created_by
       ) VALUES
         (
           ${DOUYIN_POLICY_ONE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
           ${PROJECT_ID}::uuid,${DOUYIN_ACCOUNT_ONE_ID}::uuid,'douyin',true,true,1,1,
           TIME '00:00',ARRAY[TIME '10:00'],'服务广州家庭客户',
+          'enterprise_official',
           ARRAY['居民搬家'],ARRAY['广州'],ARRAY['高层小区家庭搬迁'],${USER_ID}::uuid
         ),
         (
           ${DOUYIN_POLICY_TWO_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
           ${PROJECT_ID}::uuid,${DOUYIN_ACCOUNT_TWO_ID}::uuid,'douyin',true,true,1,1,
           TIME '00:00',ARRAY[TIME '10:00'],'服务广州企业客户',
+          'frontline_mover',
           ARRAY['设备搬迁'],ARRAY['广州'],ARRAY['工厂设备搬迁'],${USER_ID}::uuid
         )
     `;
@@ -345,7 +347,13 @@ describe('browser-platform daily candidate retrieval', () => {
       `,
     ).rejects.toThrow(/browser_platform_automation_policies_douyin_strategy_check/u);
     const frozenStrategies = await database<
-      { accountId: string; positioning: string; selectedTopic: string }[]
+      {
+        accountId: string;
+        contentVoice: string;
+        positioning: string;
+        selectedTopic: string;
+        strategyHasContentVoice: boolean;
+      }[]
     >`
       SELECT
         event.payload_json->'data'->'writer_input'->'brief'->'constraints'
@@ -353,7 +361,11 @@ describe('browser-platform daily candidate retrieval', () => {
         event.payload_json->'data'->'writer_input'->'brief'->'constraints'
           ->'douyin_account_strategy'->>'account_positioning' AS positioning,
         event.payload_json->'data'->'writer_input'->'brief'->'constraints'
-          ->'douyin_account_strategy'->>'selected_topic' AS "selectedTopic"
+          ->'douyin_account_strategy'->>'selected_topic' AS "selectedTopic",
+        event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+          ->>'douyin_content_voice' AS "contentVoice",
+        event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+          ->'douyin_account_strategy' ? 'content_voice' AS "strategyHasContentVoice"
       FROM outbox_events AS event
       WHERE event.tenant_id=${TENANT_ID}::uuid
         AND event.event_type='content.package.generation_requested.v1'
@@ -362,13 +374,17 @@ describe('browser-platform daily candidate retrieval', () => {
     expect(frozenStrategies).toEqual([
       {
         accountId: DOUYIN_ACCOUNT_ONE_ID,
+        contentVoice: 'enterprise_official',
         positioning: '服务广州家庭客户',
         selectedTopic: '高层小区家庭搬迁',
+        strategyHasContentVoice: false,
       },
       {
         accountId: DOUYIN_ACCOUNT_TWO_ID,
+        contentVoice: 'frontline_mover',
         positioning: '服务广州企业客户',
         selectedTopic: '工厂设备搬迁',
+        strategyHasContentVoice: false,
       },
     ]);
   });

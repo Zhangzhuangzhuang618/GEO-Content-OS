@@ -167,6 +167,67 @@ describe('AI Worker runtime wiring', () => {
     expect((variant.platform_meta as JsonObject)['description']).toContain('加价或磕碰风险');
   });
 
+  it('repairs only the Douyin paragraph that fabricates a frontline worker persona', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const valid = douyinDirectDraft();
+    const fabricated =
+      '我干搬家十年，前几天刚给一位客户完成高层搬迁，客户说提前预约电梯很省事；现场还要核对停车位置、大件尺寸和装卸顺序。';
+    const repaired =
+      '现场作业前应先核对两端通道、电梯预约、停车位置和大件尺寸，再安排车辆、人员与装卸顺序，减少到场后的反复调整和临时等待；如果服务商展示客户案例，还应核对场景和服务范围是否相关。';
+    const initial = {
+      ...valid,
+      solution_paragraphs: [fabricated, valid.solution_paragraphs[1]],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: repaired, target_id: 'solution_paragraphs.0' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, undefined, {
+      douyin_content_voice: 'frontline_mover',
+    });
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-frontline-voice-repair',
+      writerInput,
+    });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('solution_paragraphs.0');
+    expect(repairPrompt).not.toContain('"target_id":"solution_paragraphs.1"');
+    expect(repairPrompt).toContain('employment years');
+    expect(repairPrompt).toContain('不得编造个人工龄或从业年限');
+    expect(repairPrompt).toContain('不得编造个人亲历或具体作业经历');
+    expect(repairPrompt).toContain('不得编造具体客户、客户评价或客户案例');
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(repaired);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(
+      valid.solution_paragraphs[1],
+    );
+    expect(result.blocks.map((block) => block.text).join('\n')).not.toContain('我干搬家十年');
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain('展示客户案例');
+    expect(pro.requests).toHaveLength(0);
+  });
+
   it('repairs Douyin evidence metadata against supplied citations and visible text', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const citationId = '73000000-0000-4000-8000-000000000061';
