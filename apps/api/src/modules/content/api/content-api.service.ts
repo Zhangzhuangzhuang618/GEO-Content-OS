@@ -1336,11 +1336,6 @@ async function buildWriterInput(
   const enterpriseEvidence = companyName
     ? await loadManualEnterpriseEvidence(client, scope, companyName, enterprisePolicy.requiredKinds)
     : null;
-  if (enterprisePlatforms.length > 0 && enterpriseEvidence?.references.length === 0) {
-    throw contentValidationInvalid(
-      'Current enterprise has no valid baseline credentials or protection evidence',
-    );
-  }
   if (enterprisePlatforms.length > 0 && enterpriseEvidence?.missingRequiredKinds.length) {
     throw contentValidationInvalid(
       'Current enterprise evidence does not satisfy the workspace completeness policy',
@@ -1369,7 +1364,7 @@ async function buildWriterInput(
       brief_id: brief.briefId,
       constraints: {
         ...brief.constraints,
-        ...(enterpriseEvidence && companyName
+        ...(enterpriseEvidence && companyName && enterpriseEvidence.references.length > 0
           ? {
               authorized_certificate_source_ids: [
                 ...new Set([

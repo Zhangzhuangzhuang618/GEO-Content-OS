@@ -316,18 +316,13 @@ export function assertEnterpriseEvidencePublishGate(claim: PublishClaim): void {
       'ENTERPRISE_NAME_INVALID: Published brand profile must contain exactly one legal enterprise name',
     );
   }
-  if (gate.requiredSourceIds.length === 0) {
-    throw new PublisherError(
-      'PUBLISHER_RENDER_BLOCKED',
-      'ENTERPRISE_EVIDENCE_MISSING: No valid baseline enterprise evidence is available',
-    );
-  }
   if (gate.missingRequiredKinds.length > 0) {
     throw new PublisherError(
       'PUBLISHER_RENDER_BLOCKED',
       'ENTERPRISE_EVIDENCE_INCOMPLETE: Baseline evidence does not satisfy the workspace completeness policy',
     );
   }
+  if (gate.requiredSourceIds.length === 0) return;
   const mapped = new Set(gate.mappedSourceIds);
   const required = new Set(gate.requiredSourceIds);
   if (

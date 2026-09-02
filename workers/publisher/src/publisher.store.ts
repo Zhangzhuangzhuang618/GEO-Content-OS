@@ -1262,10 +1262,10 @@ async function loadEnterpriseEvidencePublishGate(
     evidence_count: requiredSourceIds.length,
     evidence_source_ids: requiredSourceIds,
     validation_result:
-      requiredSourceIds.length === 0
-        ? 'missing'
-        : missingRequiredKinds.length > 0
-          ? 'incomplete'
+      missingRequiredKinds.length > 0
+        ? 'incomplete'
+        : requiredSourceIds.length === 0
+          ? 'not_configured'
           : mapped.size !== requiredSourceIds.length ||
               requiredSourceIds.some((sourceId) => !mapped.has(sourceId))
             ? 'mapping_invalid'

@@ -165,6 +165,64 @@ describe('browser-platform daily candidate retrieval', () => {
     ]);
   });
 
+  it('allows Lieju generation without an optional enterprise evidence bundle', async () => {
+    const database = requireClient(client);
+    await database`
+      DELETE FROM source_chunks
+      WHERE tenant_id=${TENANT_ID}::uuid AND source_document_id=${CERTIFICATE_SOURCE_ID}::uuid
+    `;
+    await database`
+      DELETE FROM source_documents
+      WHERE tenant_id=${TENANT_ID}::uuid AND id=${CERTIFICATE_SOURCE_ID}::uuid
+    `;
+    const requests: DailyCitationRequest[] = [];
+    const scheduler = new BrowserPlatformDailyScheduler(
+      database,
+      {
+        qualityModelKey: 'deepseek-v4-pro',
+        qualityPromptVersionId: QUALITY_PROMPT_ID,
+        qualitySkillVersion: '1.0.0',
+        rewriteModelKey: 'deepseek-v4-pro',
+        writerPromptVersionId: WRITER_PROMPT_ID,
+        writerSkillVersion: '1.0.0',
+      },
+      { tickMs: 30_000 },
+      {
+        retrieve: (input) => {
+          requests.push(input);
+          return Promise.resolve({
+            citations: [
+              { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
+            ],
+            contextHash: sha256(`context:${input.platformCode}`),
+            degraded: false,
+            queryHash: sha256(`query:${input.title}`),
+          });
+        },
+      },
+    );
+
+    await scheduler.tick();
+
+    expect(requests.map((request) => request.platformCode).sort()).toEqual(['lieju', 'sohu']);
+    expect(requests.every((request) => request.authoritySourceIds?.length === 0)).toBe(true);
+    expect(
+      await database<{ hasEnterpriseEvidence: boolean; platformCode: string }[]>`
+        SELECT
+          event.payload_json->'data'->'variant_runs'->0->>'platform_code' AS "platformCode",
+          event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+            ? 'enterprise_evidence' AS "hasEnterpriseEvidence"
+        FROM outbox_events AS event
+        WHERE event.tenant_id=${TENANT_ID}::uuid
+          AND event.event_type='content.package.generation_requested.v1'
+        ORDER BY "platformCode"
+      `,
+    ).toEqual([
+      { hasEnterpriseEvidence: false, platformCode: 'lieju' },
+      { hasEnterpriseEvidence: false, platformCode: 'sohu' },
+    ]);
+  });
+
   it('reserves distinct company-level Douyin topics and freezes each account strategy', async () => {
     const database = requireClient(client);
     await database`

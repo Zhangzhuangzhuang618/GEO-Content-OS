@@ -630,12 +630,6 @@ async function loadCandidateSeed(
     tenantId: batch.tenantId,
     workspaceId: batch.workspaceId,
   });
-  if (enterpriseEvidence.references.length === 0) {
-    throw prerequisite(
-      'ENTERPRISE_EVIDENCE_REQUIRED',
-      '当前企业没有可用于官网文章的有效基础资质或保障资料。',
-    );
-  }
   if (enterpriseEvidence.missingRequiredKinds.length > 0) {
     throw prerequisite(
       'ENTERPRISE_EVIDENCE_REQUIRED',
@@ -697,22 +691,32 @@ async function createCandidate(
       `本篇必须围绕“${keyword.term}”的“${angle.label}”展开，与同日其他文章保持不同角度。`,
       '优先使用企业第一方资料；涉及外部事实时必须使用所提供证据。',
       '不得编造价格、地址、电话、资质、客户数量、行业排名或无法核验的承诺。',
-      '服务器会确定性插入“企业资质与保障”内容块，模型不得重复罗列或改写该资料清单，不得输出内部风控、证据分类或模板化免责话术。',
+      ...(seed.enterpriseEvidence.references.length > 0
+        ? [
+            '服务器会确定性插入“企业资质与保障”内容块，模型不得重复罗列或改写该资料清单，不得输出内部风控、证据分类或模板化免责话术。',
+          ]
+        : [
+            '当前企业没有配置可用于本文的基础资质或保障资料，不得补造证照、认证、保险或赔付事实，也不得输出内部风控、证据分类或模板化免责话术。',
+          ]),
     ].join(''),
     authorized_certificate_source_ids: seed.authoritySourceIds,
     cta: null,
-    enterprise_evidence: {
-      company_name: seed.companyName,
-      customer_request_supported: seed.enterpriseEvidenceCustomerRequestSupported,
-      references: seed.enterpriseEvidence.references.map((reference) => ({
-        citation_id: reference.citationId,
-        display_name: reference.displayName,
-        kind: reference.kind,
-        source_id: reference.sourceId,
-      })),
-      schema_version: 'enterprise-evidence@1',
-      service_type: keyword.serviceType ?? keyword.term,
-    },
+    ...(seed.enterpriseEvidence.references.length > 0
+      ? {
+          enterprise_evidence: {
+            company_name: seed.companyName,
+            customer_request_supported: seed.enterpriseEvidenceCustomerRequestSupported,
+            references: seed.enterpriseEvidence.references.map((reference) => ({
+              citation_id: reference.citationId,
+              display_name: reference.displayName,
+              kind: reference.kind,
+              source_id: reference.sourceId,
+            })),
+            schema_version: 'enterprise-evidence@1',
+            service_type: keyword.serviceType ?? keyword.term,
+          },
+        }
+      : {}),
     official_site_direct: true,
     schema_version: 'brief-constraints@1',
     target_accounts_by_code: {

@@ -50,7 +50,7 @@ describe('official-site daily ten-article scheduler', () => {
     await container?.stop();
   });
 
-  it('recovers missing prerequisites, replaces a failed candidate, and schedules exactly ten qualified articles', async () => {
+  it('runs without optional enterprise evidence, replaces a failed candidate, and schedules exactly ten qualified articles', async () => {
     const database = requireClient(client);
     const scheduler = createScheduler(database);
 
@@ -74,6 +74,20 @@ describe('official-site daily ten-article scheduler', () => {
     const initial = await itemCounts(database);
     expect(initial).toEqual({ generating: 3, retired: 0, total: 3 });
     expect(await generationEventCount(database)).toBe(3);
+    expect(
+      await database<{ hasEnterpriseEvidence: boolean }[]>`
+        SELECT event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+          ? 'enterprise_evidence' AS "hasEnterpriseEvidence"
+        FROM outbox_events AS event
+        WHERE event.tenant_id=${TENANT_ID}::uuid
+          AND event.event_type='content.package.generation_requested.v1'
+        ORDER BY event.created_at,event.id
+      `,
+    ).toEqual([
+      { hasEnterpriseEvidence: false },
+      { hasEnterpriseEvidence: false },
+      { hasEnterpriseEvidence: false },
+    ]);
 
     const failed = await database<{ variantId: string }[]>`
       SELECT variant_id AS "variantId"
@@ -498,7 +512,7 @@ async function seedBrand(database: Sql): Promise<void> {
         compliance: ['只使用可核验事实'],
         cta: '联系企业获取搬家方案',
         differentiators: ['自有大型车辆30余台', '正式员工搬家师傅'],
-        positioning: '广州本地专业搬家服务',
+        positioning: '广州志远搬家有限公司提供广州本地专业搬家服务',
         tone: '专业、直接、实用',
       })},
       ${USER_ID}::uuid,now()

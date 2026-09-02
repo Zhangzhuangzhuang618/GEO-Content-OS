@@ -97,6 +97,48 @@ describe('PlatformPublisher', () => {
     ).toThrow(/INTERNAL_CUSTOMER_COPY_BLOCKED/u);
   });
 
+  it('allows official and Lieju delivery without evidence when the workspace requires none', () => {
+    const companyName = '广州甲方服务有限公司';
+    const claim = createClaim(
+      {
+        blocks: [
+          {
+            block_key: 'body',
+            block_type: 'paragraph',
+            text: '根据实际需求说明服务流程和注意事项。',
+          },
+        ],
+        schema_version: 'content-writer-data@1',
+      },
+      [],
+      [],
+      {
+        enterpriseEvidenceGate: {
+          companyName,
+          evidenceNames: [],
+          mappedSourceIds: [],
+          missingRequiredKinds: [],
+          requiredSourceIds: [],
+        },
+        ownerCompanyNames: [companyName],
+      },
+    );
+
+    expect(() => assertEnterpriseEvidencePublishGate(claim)).not.toThrow();
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({ ...claim, platformCode: 'lieju' }),
+    ).not.toThrow();
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...claim,
+        enterpriseEvidenceGate: {
+          ...claim.enterpriseEvidenceGate!,
+          missingRequiredKinds: ['business_license'],
+        },
+      }),
+    ).toThrow(/ENTERPRISE_EVIDENCE_INCOMPLETE/u);
+  });
+
   it('blocks internal risk-control language on every publishing platform', () => {
     const claim = createClaim(
       {
