@@ -553,7 +553,7 @@ async function createCandidate(
       platformInstruction,
     ].join(batch.platformCode === 'douyin' ? '\n' : ''),
     authorized_certificate_source_ids: seed.authoritySourceIds,
-    cta: batch.platformCode === 'lieju' ? '通过页面联系方式咨询具体需求' : null,
+    cta: batch.platformCode === 'lieju' ? publishedBrandCta(seed.brand.profile) : null,
     schema_version: 'brief-constraints@1',
     ...(batch.platformCode === 'lieju' &&
     seed.enterpriseEvidence &&
@@ -774,6 +774,11 @@ async function createCandidate(
       })}::text::jsonb,${requestId}
     )
   `;
+}
+
+function publishedBrandCta(profile: JsonObject): string | null {
+  const cta = profile['cta'];
+  return typeof cta === 'string' && cta.trim() ? cta.trim() : null;
 }
 
 async function selectDailyCandidate(

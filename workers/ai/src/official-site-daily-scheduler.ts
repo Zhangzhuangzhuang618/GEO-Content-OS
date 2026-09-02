@@ -700,7 +700,7 @@ async function createCandidate(
           ]),
     ].join(''),
     authorized_certificate_source_ids: seed.authoritySourceIds,
-    cta: null,
+    cta: publishedBrandCta(seed.brand.profile),
     ...(seed.enterpriseEvidence.references.length > 0
       ? {
           enterprise_evidence: {
@@ -891,6 +891,11 @@ async function createCandidate(
       ${requestId}
     )
   `;
+}
+
+function publishedBrandCta(profile: JsonObject): string | null {
+  const cta = profile['cta'];
+  return typeof cta === 'string' && cta.trim() ? cta.trim() : null;
 }
 
 async function scheduleAvailableItems(

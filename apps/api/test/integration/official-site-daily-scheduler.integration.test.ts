@@ -75,18 +75,20 @@ describe('official-site daily ten-article scheduler', () => {
     expect(initial).toEqual({ generating: 3, retired: 0, total: 3 });
     expect(await generationEventCount(database)).toBe(3);
     expect(
-      await database<{ hasEnterpriseEvidence: boolean }[]>`
+      await database<{ cta: string | null; hasEnterpriseEvidence: boolean }[]>`
         SELECT event.payload_json->'data'->'writer_input'->'brief'->'constraints'
-          ? 'enterprise_evidence' AS "hasEnterpriseEvidence"
+          ? 'enterprise_evidence' AS "hasEnterpriseEvidence",
+          event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+            ->>'cta' AS cta
         FROM outbox_events AS event
         WHERE event.tenant_id=${TENANT_ID}::uuid
           AND event.event_type='content.package.generation_requested.v1'
         ORDER BY event.created_at,event.id
       `,
     ).toEqual([
-      { hasEnterpriseEvidence: false },
-      { hasEnterpriseEvidence: false },
-      { hasEnterpriseEvidence: false },
+      { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
+      { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
+      { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
     ]);
 
     const failed = await database<{ variantId: string }[]>`

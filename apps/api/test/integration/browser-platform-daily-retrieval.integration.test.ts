@@ -133,6 +133,7 @@ describe('browser-platform daily candidate retrieval', () => {
       await database<
         {
           authorizedSourceIds: string[];
+          cta: string | null;
           chunkId: string;
           platformCode: string;
           sourceId: string;
@@ -142,6 +143,8 @@ describe('browser-platform daily candidate retrieval', () => {
           event.payload_json->'data'->'variant_runs'->0->>'platform_code' AS "platformCode",
           event.payload_json->'data'->'writer_input'->'brief'->'constraints'
             ->'authorized_certificate_source_ids' AS "authorizedSourceIds",
+          event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+            ->>'cta' AS cta,
           event.payload_json->'data'->'writer_input'->'citations'->0->>'chunk_id' AS "chunkId",
           event.payload_json->'data'->'writer_input'->'citations'->0->>'source_id' AS "sourceId"
         FROM outbox_events AS event
@@ -152,12 +155,14 @@ describe('browser-platform daily candidate retrieval', () => {
     ).toEqual([
       {
         authorizedSourceIds: [CERTIFICATE_SOURCE_ID],
+        cta: '通过页面联系方式咨询',
         chunkId: CHUNK_ID,
         platformCode: 'lieju',
         sourceId: SOURCE_ID,
       },
       {
         authorizedSourceIds: [CERTIFICATE_SOURCE_ID],
+        cta: null,
         chunkId: CHUNK_ID,
         platformCode: 'sohu',
         sourceId: SOURCE_ID,
