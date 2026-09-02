@@ -28,6 +28,10 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   const [recheckingManual, setRecheckingManual] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [dailyTargetCount, setDailyTargetCount] = useState(defaultTarget);
+  const [accountPositioning, setAccountPositioning] = useState('');
+  const [serviceScopes, setServiceScopes] = useState('');
+  const [targetRegions, setTargetRegions] = useState('');
+  const [topicPool, setTopicPool] = useState('');
   const selected = useMemo(
     () => policies.find((policy) => policy.project_id === projectId),
     [policies, projectId],
@@ -45,7 +49,19 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
 
   useEffect(() => {
     setDailyTargetCount(selected?.daily_target_count ?? defaultTarget);
-  }, [defaultTarget, selected?.daily_target_count, selected?.id]);
+    setAccountPositioning(selected?.account_positioning ?? '');
+    setServiceScopes(selected?.service_scopes.join('\n') ?? '');
+    setTargetRegions(selected?.target_regions.join('\n') ?? '');
+    setTopicPool(selected?.topic_pool.join('\n') ?? '');
+  }, [
+    defaultTarget,
+    selected?.account_positioning,
+    selected?.daily_target_count,
+    selected?.id,
+    selected?.service_scopes,
+    selected?.target_regions,
+    selected?.topic_pool,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,12 +96,38 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       return setMessage('每日目标为 1～10；候选上限不得低于目标。');
     }
     const enabled = form.get('enabled') === 'on';
+    const douyinStrategy = {
+      accountPositioning: accountPositioning.trim(),
+      serviceScopes: parseStrategyList(serviceScopes),
+      targetRegions: parseStrategyList(targetRegions),
+      topicPool: parseStrategyList(topicPool),
+    };
+    if (
+      account.platform_code === 'douyin' &&
+      enabled &&
+      (!douyinStrategy.accountPositioning ||
+        !douyinStrategy.serviceScopes.length ||
+        !douyinStrategy.targetRegions.length ||
+        !douyinStrategy.topicPool.length)
+    ) {
+      return setMessage('启用抖音自动化前，请完整填写账号定位、服务范围、地区和主题池。');
+    }
+    if (
+      douyinStrategy.serviceScopes.length > 12 ||
+      douyinStrategy.targetRegions.length > 12 ||
+      douyinStrategy.topicPool.length > 30
+    ) {
+      return setMessage('服务范围和地区最多各 12 项，主题池最多 30 项。');
+    }
     setBusy(true);
     setMessage(null);
     try {
       const saved = await saveBrowserPlatformAutomationPolicy(
         account.id,
         {
+          ...(account.platform_code === 'douyin' && douyinStrategy.accountPositioning
+            ? douyinStrategy
+            : {}),
           dailyCandidateLimit: limit,
           dailyEnabled: enabled && form.get('daily_enabled') === 'on',
           dailyGenerationTime:
@@ -273,6 +315,46 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
             {syncingKeywords ? '同步中…' : `一键同步项目关键词到${platformName}`}
           </button>
         </div>
+        {account.platform_code === 'douyin' ? (
+          <>
+            <label className="text-sm text-ink-700 md:col-span-2">
+              账号内容定位
+              <textarea
+                className="mt-1 min-h-20 w-full rounded-lg border border-ink-200 px-3 py-2"
+                maxLength={240}
+                onChange={(event) => setAccountPositioning(event.currentTarget.value)}
+                placeholder="例如：面向广州家庭与企业客户，提供可核验、重决策信息的搬迁内容"
+                value={accountPositioning}
+              />
+            </label>
+            <StrategyListField
+              label="服务范围"
+              maximum={12}
+              onChange={setServiceScopes}
+              placeholder={'居民搬家\n办公室搬迁\n设备搬迁'}
+              value={serviceScopes}
+            />
+            <StrategyListField
+              label="目标地区"
+              maximum={12}
+              onChange={setTargetRegions}
+              placeholder={'广州\n佛山'}
+              value={targetRegions}
+            />
+            <label className="text-sm text-ink-700 md:col-span-2">
+              主题池（每行一项）
+              <textarea
+                className="mt-1 min-h-28 w-full rounded-lg border border-ink-200 px-3 py-2"
+                onChange={(event) => setTopicPool(event.currentTarget.value)}
+                placeholder={'高层小区家庭搬迁\n收费项目核对\n资质与合同核验\n损坏赔付约定'}
+                value={topicPool}
+              />
+              <span className="mt-1 block text-xs leading-5 text-ink-500">
+                最多 30 项。系统每天从当前账号的主题池选取主题，并作为生成强约束。
+              </span>
+            </label>
+          </>
+        ) : null}
         <label className="text-sm text-ink-700">
           每日生成时间
           <input
@@ -473,6 +555,44 @@ function normalizeTime(value: string): string | null {
   const trimmed = value.trim();
   if (!/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/u.test(trimmed)) return null;
   return trimmed.length === 5 ? `${trimmed}:00` : trimmed;
+}
+
+function parseStrategyList(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/[\n,，]/u)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function StrategyListField({
+  label,
+  maximum,
+  onChange,
+  placeholder,
+  value,
+}: {
+  readonly label: string;
+  readonly maximum: number;
+  readonly onChange: (value: string) => void;
+  readonly placeholder: string;
+  readonly value: string;
+}) {
+  return (
+    <label className="text-sm text-ink-700">
+      {label}（每行一项）
+      <textarea
+        className="mt-1 min-h-24 w-full rounded-lg border border-ink-200 px-3 py-2"
+        onChange={(event) => onChange(event.currentTarget.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+      <span className="mt-1 block text-xs leading-5 text-ink-500">最多 {maximum} 项。</span>
+    </label>
+  );
 }
 
 function readCookie(name: string): string | null {

@@ -603,6 +603,55 @@ describe('platform accounts', () => {
     ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
   });
 
+  it('requires and persists complete positioning for an enabled Douyin strategy', async () => {
+    const database = requireClient(client);
+    const accountId = 'a1000000-0000-4000-8000-000000000162';
+    await database`
+      INSERT INTO platform_accounts(
+        id,tenant_id,workspace_id,platform_code,provider_account_id,display_name,
+        capabilities_json,publish_mode,status,timezone
+      ) VALUES(
+        ${accountId}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'douyin',
+        'douyin-strategy-162','广州家庭搬家抖音号','{"publish":true}'::jsonb,
+        'api','active','Asia/Shanghai'
+      )
+    `;
+    const policies = new BrowserPlatformAutomationPolicyService(database);
+    const base = {
+      daily_candidate_limit: 9,
+      daily_enabled: true,
+      daily_generation_time: '00:30:00',
+      daily_schedule_times: ['08:00:00', '15:30:00', '21:30:00'],
+      daily_target_count: 3,
+      enabled: true,
+      project_id: PROJECT_ID,
+    };
+
+    await expect(
+      policies.update(SCOPE, accountId, base, { requestId: 'req-douyin-policy-missing' }),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_STATE_INVALID' });
+
+    const saved = await policies.update(
+      SCOPE,
+      accountId,
+      {
+        ...base,
+        account_positioning: '面向广州家庭客户提供可核验的搬家决策信息',
+        service_scopes: ['居民搬家', '跨城搬家'],
+        target_regions: ['广州', '佛山'],
+        topic_pool: ['高层小区家庭搬迁', '收费项目核对', '合同与赔付约定'],
+      },
+      { requestId: 'req-douyin-policy-complete' },
+    );
+
+    expect(saved).toMatchObject({
+      account_positioning: '面向广州家庭客户提供可核验的搬家决策信息',
+      service_scopes: ['居民搬家', '跨城搬家'],
+      target_regions: ['广州', '佛山'],
+      topic_pool: ['高层小区家庭搬迁', '收费项目核对', '合同与赔付约定'],
+    });
+  });
+
   it('starts a new browser-platform attempt without rewriting the exhausted batch', async () => {
     const database = requireClient(client);
     const accounts = new PlatformAccountService(

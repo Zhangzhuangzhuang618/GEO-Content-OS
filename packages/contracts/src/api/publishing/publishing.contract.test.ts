@@ -124,6 +124,32 @@ describe('Publishing API frozen contract', () => {
         project_id: crypto.randomUUID(),
       }).success,
     ).toBe(false);
+    expect(
+      BrowserPlatformAutomationPolicyRequestSchema.safeParse({
+        account_positioning: '面向广州家庭客户提供搬家决策信息',
+        daily_candidate_limit: 9,
+        daily_enabled: true,
+        daily_generation_time: '00:30:00',
+        daily_schedule_times: ['08:00:00', '15:30:00', '21:30:00'],
+        daily_target_count: 3,
+        enabled: true,
+        project_id: crypto.randomUUID(),
+        service_scopes: ['居民搬家'],
+        target_regions: ['广州'],
+        topic_pool: ['高层小区家庭搬迁', '收费项目核对'],
+      }).success,
+    ).toBe(true);
+    expect(
+      BrowserPlatformAutomationPolicyRequestSchema.safeParse({
+        account_positioning: '只有定位，没有完整策略',
+        daily_candidate_limit: 3,
+        daily_enabled: true,
+        daily_schedule_times: ['09:30:00'],
+        daily_target_count: 1,
+        enabled: true,
+        project_id: crypto.randomUUID(),
+      }).success,
+    ).toBe(false);
   });
 
   it('requires evidence before confirming an unknown publish as published', () => {

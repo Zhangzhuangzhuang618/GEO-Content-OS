@@ -314,6 +314,7 @@ export const BaijiahaoAutomationPolicySchema = z
 export const BrowserPlatformAutomationPolicySchema = z
   .object({
     account_id: z.string().uuid(),
+    account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
@@ -332,7 +333,9 @@ export const BrowserPlatformAutomationPolicySchema = z
     publish_attempt_limit: z.literal(3),
     question_coverage_min: z.literal(80),
     readability_safety_min: z.literal(85),
+    service_scopes: z.array(z.string().trim().min(1).max(240)).max(12),
     tenant_id: z.string().uuid(),
+    target_regions: z.array(z.string().trim().min(1).max(240)).max(12),
     today_batch: z
       .object({
         attempt_no: z.number().int().positive(),
@@ -375,6 +378,7 @@ export const BrowserPlatformAutomationPolicySchema = z
     updated_at: z.iso.datetime(),
     version: z.number().int().positive(),
     workspace_id: z.string().uuid(),
+    topic_pool: z.array(z.string().trim().min(1).max(240)).max(30),
   })
   .strict();
 export const BrowserPlatformAutomationPolicyPageSchema = z

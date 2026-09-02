@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  saveBrowserPlatformAutomationPolicy,
   startBaijiahaoBrowserLogin,
   startDouyinBrowserLogin,
   updatePlatformAccount,
@@ -31,6 +32,47 @@ const LIEJU_ACCOUNT = {
   version: 4,
   workspace_id: '00000000-0000-4000-8000-000000000149',
 } satisfies PlatformAccount;
+
+describe('Douyin automation policy API', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('sends the complete account strategy to the browser-platform policy endpoint', async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(null, { status: 500 });
+      }),
+    );
+
+    await expect(
+      saveBrowserPlatformAutomationPolicy(
+        ACCOUNT.id,
+        {
+          accountPositioning: '面向广州家庭客户提供搬家决策信息',
+          dailyCandidateLimit: 9,
+          dailyEnabled: true,
+          dailyGenerationTime: '00:30:00',
+          dailyScheduleTimes: ['08:00:00', '15:30:00', '21:30:00'],
+          dailyTargetCount: 3,
+          enabled: true,
+          projectId: '00000000-0000-4000-8000-000000000150',
+          serviceScopes: ['居民搬家', '跨城搬家'],
+          targetRegions: ['广州', '佛山'],
+          topicPool: ['高层小区家庭搬迁', '收费项目核对'],
+        },
+        'csrf-token',
+      ),
+    ).rejects.toMatchObject({ status: 500 });
+    expect(requestBody).toMatchObject({
+      account_positioning: '面向广州家庭客户提供搬家决策信息',
+      service_scopes: ['居民搬家', '跨城搬家'],
+      target_regions: ['广州', '佛山'],
+      topic_pool: ['高层小区家庭搬迁', '收费项目核对'],
+    });
+  });
+});
 
 describe('Baijiahao browser login API', () => {
   afterEach(() => vi.unstubAllGlobals());

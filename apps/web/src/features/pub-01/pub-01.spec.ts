@@ -848,7 +848,7 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   );
   await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
     json(route, {
-      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      data: [douyinBrowserPlatformPolicy()],
       meta: { request_id: 'automation' },
     }),
   );
@@ -869,6 +869,10 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   await expect(page.getByText('状态：已登录')).toBeVisible();
   await expect(page.getByRole('img', { name: '抖音登录二维码' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '一键同步项目关键词到抖音' })).toBeVisible();
+  await expect(page.getByLabel('账号内容定位')).toHaveValue('面向广州家庭客户提供搬家决策信息');
+  await expect(page.getByLabel('服务范围（每行一项）')).toHaveValue('居民搬家\n跨城搬家');
+  await expect(page.getByLabel('目标地区（每行一项）')).toHaveValue('广州\n佛山');
+  await expect(page.getByLabel('主题池（每行一项）')).toHaveValue('高层小区家庭搬迁\n收费项目核对');
   expect(loginStartCount).toBe(0);
 });
 
@@ -904,7 +908,7 @@ test('requires explicit confirmation before replacing an active Douyin login QR'
   );
   await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
     json(route, {
-      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      data: [douyinBrowserPlatformPolicy()],
       meta: { request_id: 'automation' },
     }),
   );
@@ -967,7 +971,7 @@ test('serializes slow Douyin session polling and reports proxy failures', async 
   );
   await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
     json(route, {
-      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      data: [douyinBrowserPlatformPolicy()],
       meta: { request_id: 'automation' },
     }),
   );
@@ -1035,7 +1039,7 @@ test('completes an explicit Douyin SMS secondary verification without echoing th
   );
   await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
     json(route, {
-      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      data: [douyinBrowserPlatformPolicy()],
       meta: { request_id: 'automation' },
     }),
   );
@@ -1154,7 +1158,7 @@ test('keeps polling a Douyin verification page until its SMS input becomes ready
   );
   await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
     json(route, {
-      data: [{ ...browserPlatformPolicy(), platform_code: 'douyin' }],
+      data: [douyinBrowserPlatformPolicy()],
       meta: { request_id: 'automation' },
     }),
   );
@@ -1497,6 +1501,7 @@ function liejuAccount() {
 function browserPlatformPolicy() {
   return {
     account_id: ACCOUNT_ID,
+    account_positioning: '',
     brand_consistency_min: 90,
     daily_candidate_limit: 3,
     daily_enabled: true,
@@ -1515,7 +1520,9 @@ function browserPlatformPolicy() {
     publish_attempt_limit: 3,
     question_coverage_min: 80,
     readability_safety_min: 85,
+    service_scopes: [],
     tenant_id: TENANT_ID,
+    target_regions: [],
     today_batch: {
       attempt_no: 1,
       attempted_count: 1,
@@ -1554,6 +1561,18 @@ function browserPlatformPolicy() {
     updated_at: '2026-08-16T01:00:00.000Z',
     version: 1,
     workspace_id: WORKSPACE_ID,
+    topic_pool: [],
+  };
+}
+
+function douyinBrowserPlatformPolicy() {
+  return {
+    ...browserPlatformPolicy(),
+    account_positioning: '面向广州家庭客户提供搬家决策信息',
+    platform_code: 'douyin',
+    service_scopes: ['居民搬家', '跨城搬家'],
+    target_regions: ['广州', '佛山'],
+    topic_pool: ['高层小区家庭搬迁', '收费项目核对'],
   };
 }
 

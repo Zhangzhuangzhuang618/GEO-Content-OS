@@ -179,6 +179,7 @@ const automationPolicy: OfficialSiteAutomationPolicyView = {
 
 const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
   account_id: ACCOUNT_ID,
+  account_positioning: '',
   brand_consistency_min: 90,
   daily_candidate_limit: 3,
   daily_enabled: true,
@@ -197,7 +198,9 @@ const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
   publish_attempt_limit: 3,
   question_coverage_min: 80,
   readability_safety_min: 85,
+  service_scopes: [],
   tenant_id: TENANT_ID,
+  target_regions: [],
   today_batch: {
     attempt_no: 1,
     attempted_count: 0,
@@ -218,6 +221,7 @@ const browserAutomationPolicy: BrowserPlatformAutomationPolicyView = {
   updated_at: NOW,
   version: 1,
   workspace_id: '10000000-0000-4000-8000-000000000012',
+  topic_pool: [],
 };
 
 describe('publishing API mock E2E', () => {

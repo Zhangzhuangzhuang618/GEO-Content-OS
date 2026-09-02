@@ -350,6 +350,7 @@ export async function listBrowserPlatformAutomationPolicies(
 export async function saveBrowserPlatformAutomationPolicy(
   accountId: string,
   input: {
+    readonly accountPositioning?: string;
     readonly dailyCandidateLimit: number;
     readonly dailyEnabled: boolean;
     readonly dailyGenerationTime: string;
@@ -358,6 +359,9 @@ export async function saveBrowserPlatformAutomationPolicy(
     readonly enabled: boolean;
     readonly expectedVersion?: number;
     readonly projectId: string;
+    readonly serviceScopes?: readonly string[];
+    readonly targetRegions?: readonly string[];
+    readonly topicPool?: readonly string[];
   },
   csrf: string,
 ): Promise<BrowserPlatformAutomationPolicy> {
@@ -365,6 +369,9 @@ export async function saveBrowserPlatformAutomationPolicy(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation`,
     {
       body: JSON.stringify({
+        ...(input.accountPositioning === undefined
+          ? {}
+          : { account_positioning: input.accountPositioning }),
         daily_candidate_limit: input.dailyCandidateLimit,
         daily_enabled: input.dailyEnabled,
         daily_generation_time: input.dailyGenerationTime,
@@ -373,6 +380,9 @@ export async function saveBrowserPlatformAutomationPolicy(
         enabled: input.enabled,
         ...(input.expectedVersion === undefined ? {} : { expected_version: input.expectedVersion }),
         project_id: input.projectId,
+        ...(input.serviceScopes === undefined ? {} : { service_scopes: input.serviceScopes }),
+        ...(input.targetRegions === undefined ? {} : { target_regions: input.targetRegions }),
+        ...(input.topicPool === undefined ? {} : { topic_pool: input.topicPool }),
       }),
       credentials: 'include',
       headers: jsonWriteHeaders(csrf),

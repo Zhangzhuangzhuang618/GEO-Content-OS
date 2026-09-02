@@ -228,8 +228,19 @@ export const BaijiahaoAutomationPolicyRequestSchema = z
       });
     }
   });
+const DouyinStrategyListSchema = (maximum: number) =>
+  z
+    .array(z.string().trim().min(1).max(240))
+    .max(maximum)
+    .refine(
+      (values) =>
+        new Set(values.map((value) => value.toLocaleLowerCase('zh-CN'))).size === values.length,
+      'strategy values must be unique',
+    );
+
 export const BrowserPlatformAutomationPolicyRequestSchema = z
   .object({
+    account_positioning: z.string().trim().min(1).max(240).optional(),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
     daily_generation_time: TimeOfDaySchema.default('00:30:00'),
@@ -238,6 +249,9 @@ export const BrowserPlatformAutomationPolicyRequestSchema = z
     enabled: z.boolean(),
     expected_version: VersionSchema.optional(),
     project_id: UuidSchema,
+    service_scopes: DouyinStrategyListSchema(12).optional(),
+    target_regions: DouyinStrategyListSchema(12).optional(),
+    topic_pool: DouyinStrategyListSchema(30).optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -260,6 +274,20 @@ export const BrowserPlatformAutomationPolicyRequestSchema = z
         code: 'custom',
         message: 'daily automation requires enabled',
         path: ['daily_enabled'],
+      });
+    }
+    const strategyParts = [
+      Boolean(value.account_positioning),
+      Boolean(value.service_scopes?.length),
+      Boolean(value.target_regions?.length),
+      Boolean(value.topic_pool?.length),
+    ];
+    if (strategyParts.some(Boolean) && !strategyParts.every(Boolean)) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          'Douyin account positioning, service scopes, regions and topic pool must be complete',
+        path: ['account_positioning'],
       });
     }
   });
@@ -550,6 +578,7 @@ export const BrowserPlatformDailyBatchSummarySchema = z
 export const BrowserPlatformAutomationPolicyViewSchema = z
   .object({
     account_id: UuidSchema,
+    account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
@@ -568,7 +597,10 @@ export const BrowserPlatformAutomationPolicyViewSchema = z
     publish_attempt_limit: z.literal(3),
     question_coverage_min: z.literal(80),
     readability_safety_min: z.literal(85),
+    service_scopes: z.array(z.string().trim().min(1).max(240)).max(12),
     tenant_id: UuidSchema,
+    target_regions: z.array(z.string().trim().min(1).max(240)).max(12),
+    topic_pool: z.array(z.string().trim().min(1).max(240)).max(30),
     today_batch: BrowserPlatformDailyBatchSummarySchema.nullable(),
     updated_at: IsoDateTimeSchema,
     version: VersionSchema,

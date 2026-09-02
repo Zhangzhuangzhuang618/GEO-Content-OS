@@ -30,6 +30,11 @@ const SOHU_POLICY_ID = 'a3000000-0000-4000-8000-000000000154';
 const LIEJU_POLICY_ID = 'a4000000-0000-4000-8000-000000000154';
 const SOHU_RULE_ID = 'a5000000-0000-4000-8000-000000000154';
 const LIEJU_RULE_ID = 'a6000000-0000-4000-8000-000000000154';
+const DOUYIN_ACCOUNT_ONE_ID = 'a7000000-0000-4000-8000-000000000154';
+const DOUYIN_ACCOUNT_TWO_ID = 'a8000000-0000-4000-8000-000000000154';
+const DOUYIN_POLICY_ONE_ID = 'a9000000-0000-4000-8000-000000000154';
+const DOUYIN_POLICY_TWO_ID = 'aa000000-0000-4000-8000-000000000154';
+const DOUYIN_RULE_ID = 'ab000000-0000-4000-8000-000000000154';
 const WRITER_PROMPT_ID = '25000000-0000-4000-8000-000000000008';
 const QUALITY_PROMPT_ID = '25000000-0000-4000-8000-000000000007';
 
@@ -156,6 +161,151 @@ describe('browser-platform daily candidate retrieval', () => {
         chunkId: CHUNK_ID,
         platformCode: 'sohu',
         sourceId: SOURCE_ID,
+      },
+    ]);
+  });
+
+  it('reserves distinct company-level Douyin topics and freezes each account strategy', async () => {
+    const database = requireClient(client);
+    await database`
+      UPDATE browser_platform_automation_policies SET enabled=false,daily_enabled=false
+      WHERE tenant_id=${TENANT_ID}::uuid
+    `;
+    await database`
+      UPDATE keywords SET platform_scope=ARRAY['sohu','lieju','douyin']::varchar[]
+      WHERE id=${KEYWORD_ID}::uuid AND tenant_id=${TENANT_ID}::uuid
+    `;
+    await database`
+      INSERT INTO platform_rule_versions(
+        id,platform_code,version,rules_json,content_hash,status,created_by,published_at
+      ) VALUES(
+        ${DOUYIN_RULE_ID}::uuid,'douyin','9.0.0',
+        ${database.json({ content_kind: 'image_note', schema_version: 'platform-rules@1' })},
+        ${'d'.repeat(64)},'published',${USER_ID}::uuid,now()
+      )
+    `;
+    await database`
+      INSERT INTO platform_accounts(
+        id,tenant_id,workspace_id,platform_code,provider_account_id,display_name,
+        capabilities_json,publish_mode,status,timezone
+      ) VALUES
+        (
+          ${DOUYIN_ACCOUNT_ONE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'douyin',
+          'douyin-one-154','家庭搬家抖音号',${database.json({ publish: true })},
+          'api','active','Asia/Shanghai'
+        ),
+        (
+          ${DOUYIN_ACCOUNT_TWO_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'douyin',
+          'douyin-two-154','设备搬迁抖音号',${database.json({ publish: true })},
+          'api','active','Asia/Shanghai'
+        )
+    `;
+    await database`
+      INSERT INTO browser_platform_automation_policies(
+        id,tenant_id,workspace_id,project_id,account_id,platform_code,
+        enabled,daily_enabled,daily_target_count,daily_candidate_limit,
+        daily_generation_time,daily_schedule_times,account_positioning,
+        service_scopes,target_regions,topic_pool,created_by
+      ) VALUES
+        (
+          ${DOUYIN_POLICY_ONE_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+          ${PROJECT_ID}::uuid,${DOUYIN_ACCOUNT_ONE_ID}::uuid,'douyin',true,true,1,1,
+          TIME '00:00',ARRAY[TIME '10:00'],'服务广州家庭客户',
+          ARRAY['居民搬家'],ARRAY['广州'],ARRAY['高层小区家庭搬迁'],${USER_ID}::uuid
+        ),
+        (
+          ${DOUYIN_POLICY_TWO_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,
+          ${PROJECT_ID}::uuid,${DOUYIN_ACCOUNT_TWO_ID}::uuid,'douyin',true,true,1,1,
+          TIME '00:00',ARRAY[TIME '10:00'],'服务广州企业客户',
+          ARRAY['设备搬迁'],ARRAY['广州'],ARRAY['工厂设备搬迁'],${USER_ID}::uuid
+        )
+    `;
+    const requests: DailyCitationRequest[] = [];
+    const scheduler = new BrowserPlatformDailyScheduler(
+      database,
+      {
+        draftModelKey: 'deepseek-v4-flash',
+        qualityModelKey: 'deepseek-v4-pro',
+        qualityPromptVersionId: QUALITY_PROMPT_ID,
+        qualitySkillVersion: '1.0.0',
+        rewriteModelKey: 'deepseek-v4-pro',
+        writerPromptVersionId: WRITER_PROMPT_ID,
+        writerSkillVersion: '1.0.0',
+      },
+      { tickMs: 30_000 },
+      {
+        retrieve: (input) => {
+          requests.push(input);
+          return Promise.resolve({
+            citations: [
+              { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
+            ],
+            contextHash: sha256(`context:${input.title}`),
+            degraded: false,
+            queryHash: sha256(`query:${input.title}`),
+          });
+        },
+      },
+    );
+
+    await scheduler.tick();
+
+    expect(requests).toHaveLength(2);
+    const reservations = await database<
+      { accountId: string; keyword: string; searchIntent: string }[]
+    >`
+      SELECT account_id AS "accountId",keyword_term::text AS keyword,
+        search_intent AS "searchIntent"
+      FROM douyin_topic_reservations
+      WHERE tenant_id=${TENANT_ID}::uuid AND workspace_id=${WORKSPACE_ID}::uuid
+      ORDER BY account_id
+    `;
+    expect(reservations).toHaveLength(2);
+    expect(new Set(reservations.map((row) => `${row.keyword}:${row.searchIntent}`)).size).toBe(2);
+    await expect(
+      database`
+        INSERT INTO douyin_topic_reservations (
+          tenant_id,workspace_id,policy_id,account_id,batch_id,business_date,
+          keyword_term,search_intent
+        )
+        SELECT tenant_id,workspace_id,policy_id,account_id,batch_id,business_date,
+          keyword_term,search_intent
+        FROM douyin_topic_reservations
+        WHERE tenant_id=${TENANT_ID}::uuid
+        ORDER BY created_at,id LIMIT 1
+      `,
+    ).rejects.toThrow(/douyin_topic_reservations_company_topic_uq/u);
+    await expect(
+      database`
+        UPDATE browser_platform_automation_policies SET topic_pool=ARRAY[]::text[]
+        WHERE id=${DOUYIN_POLICY_ONE_ID}::uuid AND tenant_id=${TENANT_ID}::uuid
+      `,
+    ).rejects.toThrow(/browser_platform_automation_policies_douyin_strategy_check/u);
+    const frozenStrategies = await database<
+      { accountId: string; positioning: string; selectedTopic: string }[]
+    >`
+      SELECT
+        event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+          ->'target_accounts_by_code'->'douyin'->>'account_id' AS "accountId",
+        event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+          ->'douyin_account_strategy'->>'account_positioning' AS positioning,
+        event.payload_json->'data'->'writer_input'->'brief'->'constraints'
+          ->'douyin_account_strategy'->>'selected_topic' AS "selectedTopic"
+      FROM outbox_events AS event
+      WHERE event.tenant_id=${TENANT_ID}::uuid
+        AND event.event_type='content.package.generation_requested.v1'
+      ORDER BY "accountId"
+    `;
+    expect(frozenStrategies).toEqual([
+      {
+        accountId: DOUYIN_ACCOUNT_ONE_ID,
+        positioning: '服务广州家庭客户',
+        selectedTopic: '高层小区家庭搬迁',
+      },
+      {
+        accountId: DOUYIN_ACCOUNT_TWO_ID,
+        positioning: '服务广州企业客户',
+        selectedTopic: '工厂设备搬迁',
       },
     ]);
   });

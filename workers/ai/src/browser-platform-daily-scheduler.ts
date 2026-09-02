@@ -38,6 +38,7 @@ interface DailyKeyword {
 }
 
 interface BatchRow {
+  readonly accountPositioning: string;
   readonly accountId: string;
   readonly businessDate: string;
   readonly candidateLimit: number;
@@ -46,8 +47,11 @@ interface BatchRow {
   readonly platformCode: Platform;
   readonly policyId: string;
   readonly projectId: string;
+  readonly serviceScopes: readonly string[];
   readonly targetCount: number;
+  readonly targetRegions: readonly string[];
   readonly tenantId: string;
+  readonly topicPool: readonly string[];
   readonly version: number;
   readonly workspaceId: string;
 }
@@ -70,6 +74,23 @@ interface Seed {
   readonly enterpriseEvidenceCustomerRequestSupported: boolean;
   readonly keywords: readonly DailyKeyword[];
   readonly rule: { readonly hash: string; readonly id: string; readonly rules: JsonObject };
+}
+
+interface DouyinAccountStrategySelection {
+  readonly accountPositioning: string;
+  readonly selectedRegion: string;
+  readonly selectedServiceScope: string;
+  readonly selectedTopic: string;
+  readonly serviceScopes: readonly string[];
+  readonly targetRegions: readonly string[];
+  readonly topicPool: readonly string[];
+}
+
+interface DailyCandidateSelection {
+  readonly editorialSequenceNo: number;
+  readonly keyword: DailyKeyword;
+  readonly reservationId: string | null;
+  readonly strategy: DouyinAccountStrategySelection | null;
 }
 
 export class BrowserPlatformDailyScheduler {
@@ -167,6 +188,9 @@ export class BrowserPlatformDailyScheduler {
           batch.version,policy.id AS "policyId",policy.workspace_id AS "workspaceId",
           policy.project_id AS "projectId",policy.account_id AS "accountId",
           policy.platform_code AS "platformCode",policy.created_by AS "createdBy",
+          policy.account_positioning AS "accountPositioning",
+          policy.service_scopes AS "serviceScopes",policy.target_regions AS "targetRegions",
+          policy.topic_pool AS "topicPool",
           policy.daily_target_count AS "targetCount",
           policy.daily_candidate_limit AS "candidateLimit"
         FROM browser_platform_daily_batches AS batch
@@ -262,9 +286,15 @@ export class BrowserPlatformDailyScheduler {
             this.dailyCitations,
           );
         } catch (error) {
-          if (!(error instanceof DailyEvidenceMissingError)) throw error;
-          await attention(transaction, batch, 'AUTOMATION_PREREQUISITE_MISSING', error.message);
-          return;
+          if (error instanceof DailyEvidenceMissingError) {
+            await attention(transaction, batch, 'AUTOMATION_PREREQUISITE_MISSING', error.message);
+            return;
+          }
+          if (error instanceof DailyTopicCapacityExhaustedError) {
+            await attention(transaction, batch, 'DAILY_TOPIC_POOL_EXHAUSTED', error.message);
+            return;
+          }
+          throw error;
         }
       }
     });
@@ -375,6 +405,15 @@ async function loadSeed(transaction: postgres.TransactionSql, batch: BatchRow): 
   if (!account) throw new Error(`${batch.platformCode} 托管浏览器账号不可用。`);
   if (!keywords.length) throw new Error(`项目没有适用于 ${batch.platformCode} 的关键词。`);
   if (!knowledge.length) throw new Error('项目没有可用的已解析知识资料。');
+  if (
+    batch.platformCode === 'douyin' &&
+    (!batch.accountPositioning.trim() ||
+      !batch.serviceScopes.length ||
+      !batch.targetRegions.length ||
+      !batch.topicPool.length)
+  ) {
+    throw new Error('请先完整配置抖音账号定位、服务范围、地区和主题池。');
+  }
   const ownerCompanyNames = findPublishedOwnerCompanyNames(brand.profile);
   const companyName =
     batch.platformCode === 'lieju' ? uniquePublishedOwnerCompanyName(brand.profile) : null;
@@ -420,22 +459,38 @@ async function createCandidate(
   batch: BatchRow,
   seed: Seed,
   candidateNo: number,
-  editorialSequenceNo: number,
+  startingSequenceNo: number,
   config: OfficialSiteAutomationConfig,
   dailyCitations: DailyCitationPort,
 ) {
-  const keyword = seed.keywords[(editorialSequenceNo - 1) % seed.keywords.length]!;
-  const titleSubject = douyinTitleSubject({
-    fallbackRegion: dominantKeywordRegion(seed.keywords),
-    keyword: keyword.term,
-    region: keyword.region,
-    scene: keyword.scene,
-  });
+  const selection = await selectDailyCandidate(
+    transaction,
+    batch,
+    seed.keywords,
+    startingSequenceNo,
+  );
+  const { editorialSequenceNo, keyword } = selection;
+  const titleSubject = selection.strategy
+    ? douyinTitleSubject({
+        fallbackRegion: selection.strategy.selectedRegion,
+        keyword: selection.strategy.selectedTopic,
+        region: selection.strategy.selectedRegion,
+        scene: selection.strategy.selectedTopic,
+      })
+    : douyinTitleSubject({
+        fallbackRegion: dominantKeywordRegion(seed.keywords),
+        keyword: keyword.term,
+        region: keyword.region,
+        scene: keyword.scene,
+      });
   let angle = candidateAngle(batch, keyword.term, editorialSequenceNo, titleSubject);
   const objective = (['education', 'trust', 'awareness'] as const)[(candidateNo - 1) % 3]!;
-  const audience = `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
+  const audience = selection.strategy
+    ? `正在搜索“${keyword.term}”、位于${selection.strategy.selectedRegion}并需要${selection.strategy.selectedServiceScope}决策信息的用户`
+    : `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
+  let topicFocus = douyinStrategyFocus(angle.focus, selection.strategy);
   const evidence = await dailyCitations.retrieve({
-    angle: angle.focus,
+    angle: topicFocus,
     authoritySourceIds: seed.authoritySourceIds,
     audience,
     ...(batch.platformCode === 'lieju' && seed.enterpriseEvidence
@@ -453,6 +508,7 @@ async function createCandidate(
     workspaceId: batch.workspaceId,
   });
   if (evidence.citations.length === 0) {
+    await releaseTopicReservation(transaction, batch.tenantId, selection.reservationId);
     throw new DailyEvidenceMissingError(
       `企业资料索引中没有找到与候选“${angle.title}”相关的可用证据。`,
     );
@@ -465,6 +521,7 @@ async function createCandidate(
       titleSubject,
       douyinEvidenceTitleOpportunity(angle.key, evidence.citations),
     );
+    topicFocus = douyinStrategyFocus(angle.focus, selection.strategy);
   }
   const title = angle.title;
   const platformInstruction =
@@ -479,7 +536,13 @@ async function createCandidate(
       `围绕“${keyword.term}”的“${angle.label}”展开。`,
       ...(batch.platformCode === 'douyin'
         ? [
-            `本篇唯一搜索决策意图为“${angle.key}”，主题焦点为：${angle.focus}`,
+            `本篇唯一搜索决策意图为“${angle.key}”，主题焦点为：${topicFocus}`,
+            ...(selection.strategy
+              ? [
+                  `账号内容定位为“${selection.strategy.accountPositioning}”，叙述视角、案例选择和行动建议必须符合该定位。`,
+                  `本篇只服务“${selection.strategy.selectedRegion}”的“${selection.strategy.selectedServiceScope}”需求，核心主题固定为“${selection.strategy.selectedTopic}”；不得切换到主题池中的其他主题或扩展到配置外的地区与服务。`,
+                ]
+              : []),
             `标题必须逐字包含服务器绑定的地域与具体场景主体“${angle.titleSubject}”。`,
             ...(angle.evidencePromise
               ? [
@@ -517,7 +580,21 @@ async function createCandidate(
           douyin_title_evidence_promise: angle.evidencePromise,
           douyin_title_subject: angle.titleSubject,
           douyin_search_intent: angle.key,
-          douyin_topic_focus: angle.focus,
+          douyin_topic_focus: topicFocus,
+          ...(selection.strategy
+            ? {
+                douyin_account_strategy: {
+                  account_positioning: selection.strategy.accountPositioning,
+                  selected_region: selection.strategy.selectedRegion,
+                  selected_service_scope: selection.strategy.selectedServiceScope,
+                  selected_topic: selection.strategy.selectedTopic,
+                  service_scopes: selection.strategy.serviceScopes,
+                  schema_version: 'douyin-account-strategy@1',
+                  target_regions: selection.strategy.targetRegions,
+                  topic_pool: selection.strategy.topicPool,
+                },
+              }
+            : {}),
           server_bound_generation_context: true,
         }
       : {}),
@@ -680,7 +757,15 @@ async function createCandidate(
         batch_id: batch.id,
         candidate_no: candidateNo,
         editorial_sequence_no: editorialSequenceNo,
-        ...(batch.platformCode === 'douyin' ? { angle_key: angle.key } : {}),
+        ...(batch.platformCode === 'douyin'
+          ? {
+              angle_key: angle.key,
+              reservation_id: selection.reservationId,
+              selected_region: selection.strategy?.selectedRegion,
+              selected_service_scope: selection.strategy?.selectedServiceScope,
+              selected_topic: selection.strategy?.selectedTopic,
+            }
+          : {}),
         evidence_context_hash: evidence.contextHash,
         evidence_query_hash: evidence.queryHash,
         evidence_retrieval_degraded: evidence.degraded,
@@ -689,6 +774,104 @@ async function createCandidate(
         title,
       })}::text::jsonb,${requestId}
     )
+  `;
+}
+
+async function selectDailyCandidate(
+  transaction: postgres.TransactionSql,
+  batch: BatchRow,
+  keywords: readonly DailyKeyword[],
+  startingSequenceNo: number,
+): Promise<DailyCandidateSelection> {
+  if (batch.platformCode !== 'douyin') {
+    return Object.freeze({
+      editorialSequenceNo: startingSequenceNo,
+      keyword: keywords[(startingSequenceNo - 1) % keywords.length]!,
+      reservationId: null,
+      strategy: null,
+    });
+  }
+  for (let intentOffset = 0; intentOffset < DOUYIN_DECISION_ANGLES.length; intentOffset += 1) {
+    const editorialSequenceNo = startingSequenceNo + intentOffset;
+    const strategy = selectDouyinAccountStrategy(batch, editorialSequenceNo);
+    for (let keywordOffset = 0; keywordOffset < keywords.length; keywordOffset += 1) {
+      const keyword = keywords[(startingSequenceNo - 1 + keywordOffset) % keywords.length]!;
+      const titleSubject = douyinTitleSubject({
+        fallbackRegion: strategy.selectedRegion,
+        keyword: strategy.selectedTopic,
+        region: strategy.selectedRegion,
+        scene: strategy.selectedTopic,
+      });
+      const angle = candidateAngle(batch, keyword.term, editorialSequenceNo, titleSubject);
+      const rows = await transaction<{ id: string }[]>`
+        INSERT INTO douyin_topic_reservations (
+          tenant_id,workspace_id,policy_id,account_id,batch_id,business_date,
+          keyword_term,search_intent
+        ) VALUES (
+          ${batch.tenantId}::uuid,${batch.workspaceId}::uuid,${batch.policyId}::uuid,
+          ${batch.accountId}::uuid,${batch.id}::uuid,${batch.businessDate}::date,
+          ${keyword.term},${angle.key}
+        )
+        ON CONFLICT (
+          tenant_id,workspace_id,business_date,keyword_term,search_intent
+        ) DO NOTHING
+        RETURNING id
+      `;
+      const reservationId = rows[0]?.id;
+      if (reservationId) {
+        return Object.freeze({
+          editorialSequenceNo,
+          keyword,
+          reservationId,
+          strategy,
+        });
+      }
+    }
+  }
+  throw new DailyTopicCapacityExhaustedError(
+    '当前公司今天可用的“关键词＋搜索意图”组合已被其他抖音账号占用，请补充关键词或次日再生成。',
+  );
+}
+
+function selectDouyinAccountStrategy(
+  batch: BatchRow,
+  editorialSequenceNo: number,
+): DouyinAccountStrategySelection {
+  const index = Math.max(0, editorialSequenceNo - 1);
+  return Object.freeze({
+    accountPositioning: batch.accountPositioning.trim(),
+    selectedRegion: batch.targetRegions[index % batch.targetRegions.length]!,
+    selectedServiceScope: batch.serviceScopes[index % batch.serviceScopes.length]!,
+    selectedTopic: batch.topicPool[index % batch.topicPool.length]!,
+    serviceScopes: Object.freeze([...batch.serviceScopes]),
+    targetRegions: Object.freeze([...batch.targetRegions]),
+    topicPool: Object.freeze([...batch.topicPool]),
+  });
+}
+
+function douyinStrategyFocus(
+  focus: string,
+  strategy: DouyinAccountStrategySelection | null,
+): string {
+  if (!strategy) return focus;
+  return [
+    focus,
+    `账号定位：${strategy.accountPositioning}`,
+    `限定地区：${strategy.selectedRegion}`,
+    `限定服务：${strategy.selectedServiceScope}`,
+    `限定主题：${strategy.selectedTopic}`,
+  ].join('；');
+}
+
+async function releaseTopicReservation(
+  transaction: postgres.TransactionSql,
+  tenantId: string,
+  reservationId: string | null,
+): Promise<void> {
+  if (!reservationId) return;
+  await transaction`
+    DELETE FROM douyin_topic_reservations
+    WHERE id=${reservationId}::uuid AND tenant_id=${tenantId}::uuid
   `;
 }
 
@@ -730,6 +913,13 @@ class DailyEvidenceMissingError extends Error {
   public constructor(message: string) {
     super(message);
     this.name = 'DailyEvidenceMissingError';
+  }
+}
+
+class DailyTopicCapacityExhaustedError extends Error {
+  public constructor(message: string) {
+    super(message);
+    this.name = 'DailyTopicCapacityExhaustedError';
   }
 }
 

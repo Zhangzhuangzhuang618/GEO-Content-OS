@@ -28,6 +28,7 @@ import type {
 } from './types.js';
 
 const UNKNOWN_RECONCILIATION_GRACE_MS = 2 * 60_000;
+const AUTOMATION_LOCK_KEY = 'douyin-browser-automation';
 
 export class BrowserGatewayError extends Error {
   public constructor(
@@ -43,6 +44,7 @@ export class BrowserGatewayError extends Error {
 }
 
 export class DouyinBrowserService {
+  private readonly automationLock = new AccountLock();
   private readonly locks = new AccountLock();
 
   public constructor(
@@ -216,13 +218,15 @@ export class DouyinBrowserService {
       payload: parsed.data.payload,
       payloadHash: parsed.data.payload_hash,
     });
-    return this.locks.run(accountId, async () => {
-      try {
-        return await this.publishLocked(accountId, input);
-      } finally {
-        await this.releaseAutomationPage(accountId);
-      }
-    });
+    return this.automationLock.run(AUTOMATION_LOCK_KEY, () =>
+      this.locks.run(accountId, async () => {
+        try {
+          return await this.publishLocked(accountId, input);
+        } finally {
+          await this.releaseAutomationPage(accountId);
+        }
+      }),
+    );
   }
 
   public async status(
@@ -233,28 +237,30 @@ export class DouyinBrowserService {
     readonly status: RemotePublication['status'];
     readonly url: string | null;
   }> {
-    return this.locks.run(accountId, async () => {
-      const publication = await this.store.findPublication(accountId, externalId);
-      if (publication.status === 'published' || publication.status === 'failed') {
-        return responseStatus(publication, publication.status);
-      }
-      const session = await this.store.getSession(accountId);
-      if (publication.status === 'manual_required' && session.status !== 'authenticated') {
-        return responseStatus(publication, 'unknown');
-      }
-      let remote: RemotePublication | null;
-      try {
-        remote = await this.reconcile(session, publication);
-      } finally {
-        await this.releaseAutomationPage(accountId);
-      }
-      if (!remote) return responseStatus(publication, 'unknown');
-      const updated = await this.store.updatePublication(publication, {
-        remote,
-        status: publicationStatus(remote.status),
-      });
-      return responseStatus(updated, remote.status);
-    });
+    return this.automationLock.run(AUTOMATION_LOCK_KEY, () =>
+      this.locks.run(accountId, async () => {
+        const publication = await this.store.findPublication(accountId, externalId);
+        if (publication.status === 'published' || publication.status === 'failed') {
+          return responseStatus(publication, publication.status);
+        }
+        const session = await this.store.getSession(accountId);
+        if (publication.status === 'manual_required' && session.status !== 'authenticated') {
+          return responseStatus(publication, 'unknown');
+        }
+        let remote: RemotePublication | null;
+        try {
+          remote = await this.reconcile(session, publication);
+        } finally {
+          await this.releaseAutomationPage(accountId);
+        }
+        if (!remote) return responseStatus(publication, 'unknown');
+        const updated = await this.store.updatePublication(publication, {
+          remote,
+          status: publicationStatus(remote.status),
+        });
+        return responseStatus(updated, remote.status);
+      }),
+    );
   }
 
   public async metrics(

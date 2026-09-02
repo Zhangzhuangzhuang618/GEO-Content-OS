@@ -14,6 +14,7 @@ type Platform = 'douyin' | 'lieju' | 'sohu';
 
 interface PolicyRow {
   readonly accountId: string;
+  readonly accountPositioning: string;
   readonly attemptedCount: number | null;
   readonly batchAttemptNo: number | null;
   readonly batchBusinessDate: Date | string | null;
@@ -55,7 +56,10 @@ interface PolicyRow {
   readonly retryAllowed: boolean | null;
   readonly retiredCount: number | null;
   readonly scheduledCount: number | null;
+  readonly serviceScopes: readonly string[];
   readonly tenantId: string;
+  readonly targetRegions: readonly string[];
+  readonly topicPool: readonly string[];
   readonly updatedAt: Date | string;
   readonly version: number;
   readonly workspaceId: string;
@@ -96,6 +100,13 @@ export class BrowserPlatformAutomationPolicyService {
       if (input.enabled && (account.status !== 'active' || account.publishMode !== 'api')) {
         throw stateInvalid('启用自动化需要处于正常状态的托管浏览器账号。');
       }
+      const strategy = normalizeDouyinStrategy(input);
+      if (account.platformCode !== 'douyin' && strategy.configured) {
+        throw stateInvalid('账号内容定位仅适用于抖音自动化策略。');
+      }
+      if (account.platformCode === 'douyin' && input.enabled && !strategy.configured) {
+        throw stateInvalid('启用抖音自动化前，请完整配置账号定位、服务范围、地区和主题池。');
+      }
       const existing = await transaction<{ id: string; version: number }[]>`
         SELECT id,version FROM browser_platform_automation_policies
         WHERE tenant_id=${scope.tenantId}::uuid AND account_id=${accountId}::uuid
@@ -109,19 +120,25 @@ export class BrowserPlatformAutomationPolicyService {
         INSERT INTO browser_platform_automation_policies (
           tenant_id,workspace_id,project_id,account_id,platform_code,enabled,daily_enabled,
           daily_target_count,daily_candidate_limit,daily_generation_time,daily_schedule_times,
-          created_by
+          account_positioning,service_scopes,target_regions,topic_pool,created_by
         ) VALUES (
           ${scope.tenantId}::uuid,${account.workspaceId}::uuid,${input.project_id}::uuid,
           ${accountId}::uuid,${account.platformCode},${input.enabled},${input.daily_enabled},
           ${input.daily_target_count},${input.daily_candidate_limit},${input.daily_generation_time}::time,
-          ${transaction.array([...input.daily_schedule_times], 1083)}::time[],${scope.userId}::uuid
+          ${transaction.array([...input.daily_schedule_times], 1083)}::time[],
+          ${strategy.accountPositioning},${transaction.array([...strategy.serviceScopes])}::text[],
+          ${transaction.array([...strategy.targetRegions])}::text[],
+          ${transaction.array([...strategy.topicPool])}::text[],${scope.userId}::uuid
         )
         ON CONFLICT (tenant_id,account_id,project_id) DO UPDATE SET
           enabled=EXCLUDED.enabled,daily_enabled=EXCLUDED.daily_enabled,
           daily_target_count=EXCLUDED.daily_target_count,
           daily_candidate_limit=EXCLUDED.daily_candidate_limit,
           daily_generation_time=EXCLUDED.daily_generation_time,
-          daily_schedule_times=EXCLUDED.daily_schedule_times,version=browser_platform_automation_policies.version+1
+          daily_schedule_times=EXCLUDED.daily_schedule_times,
+          account_positioning=EXCLUDED.account_positioning,
+          service_scopes=EXCLUDED.service_scopes,target_regions=EXCLUDED.target_regions,
+          topic_pool=EXCLUDED.topic_pool,version=browser_platform_automation_policies.version+1
         RETURNING id
       `;
       const policyId = rows[0]?.id;
@@ -134,6 +151,7 @@ export class BrowserPlatformAutomationPolicyService {
           'platform_account',${accountId}::uuid,
           ${before ? JSON.stringify(before) : null}::text::jsonb,
           ${JSON.stringify({
+            account_positioning: strategy.accountPositioning,
             daily_candidate_limit: input.daily_candidate_limit,
             daily_enabled: input.daily_enabled,
             daily_generation_time: input.daily_generation_time,
@@ -142,6 +160,9 @@ export class BrowserPlatformAutomationPolicyService {
             enabled: input.enabled,
             platform_code: account.platformCode,
             project_id: input.project_id,
+            service_scopes: strategy.serviceScopes,
+            target_regions: strategy.targetRegions,
+            topic_pool: strategy.topicPool,
           })}::text::jsonb,${audit.requestId}
         )
       `;
@@ -374,6 +395,9 @@ export class BrowserPlatformAutomationPolicyService {
         policy.id,policy.tenant_id AS "tenantId",policy.workspace_id AS "workspaceId",
         policy.project_id AS "projectId",policy.account_id AS "accountId",
         policy.platform_code AS "platformCode",policy.enabled,
+        policy.account_positioning AS "accountPositioning",
+        policy.service_scopes AS "serviceScopes",policy.target_regions AS "targetRegions",
+        policy.topic_pool AS "topicPool",
         policy.daily_enabled AS "dailyEnabled",
         policy.daily_target_count AS "dailyTargetCount",
         policy.daily_candidate_limit AS "dailyCandidateLimit",
@@ -503,6 +527,7 @@ export class BrowserPlatformAutomationPolicyService {
 function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
   return {
     account_id: row.accountId,
+    account_positioning: row.accountPositioning,
     brand_consistency_min: 90,
     daily_candidate_limit: row.dailyCandidateLimit,
     daily_enabled: row.dailyEnabled,
@@ -521,7 +546,9 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
     publish_attempt_limit: 3,
     question_coverage_min: 80,
     readability_safety_min: 85,
+    service_scopes: [...row.serviceScopes],
     tenant_id: row.tenantId,
+    target_regions: [...row.targetRegions],
     today_batch:
       row.batchBusinessDate && row.batchStatus && row.batchVersion
         ? {
@@ -548,7 +575,31 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
     updated_at: new Date(row.updatedAt).toISOString(),
     version: row.version,
     workspace_id: row.workspaceId,
+    topic_pool: [...row.topicPool],
   };
+}
+
+function normalizeDouyinStrategy(input: BrowserPlatformAutomationPolicyRequest) {
+  const accountPositioning = input.account_positioning?.trim() ?? '';
+  const serviceScopes = [...(input.service_scopes ?? [])].map((value) => value.trim());
+  const targetRegions = [...(input.target_regions ?? [])].map((value) => value.trim());
+  const topicPool = [...(input.topic_pool ?? [])].map((value) => value.trim());
+  const parts = [
+    accountPositioning.length > 0,
+    serviceScopes.length > 0,
+    targetRegions.length > 0,
+    topicPool.length > 0,
+  ];
+  if (parts.some(Boolean) && !parts.every(Boolean)) {
+    throw stateInvalid('账号定位、服务范围、地区和主题池必须同时完整配置。');
+  }
+  return Object.freeze({
+    accountPositioning,
+    configured: parts.every(Boolean),
+    serviceScopes: Object.freeze(serviceScopes),
+    targetRegions: Object.freeze(targetRegions),
+    topicPool: Object.freeze(topicPool),
+  });
 }
 
 function notFound() {

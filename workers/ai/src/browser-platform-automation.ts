@@ -55,6 +55,7 @@ export interface BrowserPlatformAutomationPolicy {
   readonly questionCoverageMin: number;
   readonly readabilitySafetyMin: number;
   readonly scheduleTimes: readonly string[];
+  readonly workspaceId: string;
 }
 
 interface QualityQueueInput {
@@ -497,6 +498,7 @@ export class BrowserPlatformAutomation {
   private loadPolicy(client: AutomationSql, tenantId: string, variantId: string) {
     return client<BrowserPlatformAutomationPolicy[]>`
       SELECT policy.id,policy.account_id AS "accountId",policy.created_by AS "createdBy",
+        policy.workspace_id AS "workspaceId",
         policy.platform_code AS "platformCode",policy.geo_total_min AS "geoTotalMin",
         policy.factual_accuracy_min AS "factualAccuracyMin",
         policy.brand_consistency_min AS "brandConsistencyMin",
@@ -634,12 +636,31 @@ export class BrowserPlatformAutomation {
       SELECT id FROM browser_platform_automation_policies
       WHERE id=${policy.id}::uuid AND tenant_id=${event.tenantId}::uuid FOR UPDATE
     `;
+    if (policy.platformCode === 'douyin') {
+      await transaction`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`douyin-publish:${event.tenantId}:${policy.workspaceId}`},0)
+        )
+      `;
+    }
     const occupied = await transaction<{ scheduledAt: Date }[]>`
       SELECT job.scheduled_at AS "scheduledAt"
       FROM browser_platform_automation_runs AS automation
+      JOIN browser_platform_automation_policies AS scheduling_policy
+        ON scheduling_policy.id=automation.policy_id
+        AND scheduling_policy.tenant_id=automation.tenant_id
       JOIN publish_jobs AS job ON job.id=automation.publish_job_id AND job.tenant_id=automation.tenant_id
         AND job.status IN ('scheduled','publishing','published')
-      WHERE automation.tenant_id=${event.tenantId}::uuid AND automation.policy_id=${policy.id}::uuid
+      WHERE automation.tenant_id=${event.tenantId}::uuid
+        AND (
+          (
+            ${policy.platformCode}='douyin'
+            AND scheduling_policy.platform_code='douyin'
+            AND scheduling_policy.workspace_id=${policy.workspaceId}::uuid
+          ) OR (
+            ${policy.platformCode}<>'douyin' AND automation.policy_id=${policy.id}::uuid
+          )
+        )
         AND job.scheduled_at >= date_trunc('day',now() AT TIME ZONE 'Asia/Shanghai')
           AT TIME ZONE 'Asia/Shanghai'
     `;
@@ -647,6 +668,7 @@ export class BrowserPlatformAutomation {
       new Date(),
       policy.scheduleTimes,
       occupied.map((row) => row.scheduledAt),
+      policy.platformCode === 'douyin' ? 20 : 0,
     );
     const origin = `${policy.platformCode}_automation` as const;
     const jobs = await transaction<{ id: string; version: number }[]>`
@@ -906,8 +928,18 @@ function threshold(blocking: Set<string>, code: string, value: number, minimum: 
   if (value < minimum) blocking.add(code);
 }
 
-export function nextSchedule(now: Date, slots: readonly string[], occupied: readonly Date[]) {
+export function nextSchedule(
+  now: Date,
+  slots: readonly string[],
+  occupied: readonly Date[],
+  minimumGapMinutes = 0,
+) {
   const used = new Set(occupied.map((date) => date.toISOString()));
+  const occupiedTimes = occupied.map((date) => date.getTime());
+  const gapMs = Math.max(0, minimumGapMinutes) * 60_000;
+  const conflicts = (candidate: Date) =>
+    used.has(candidate.toISOString()) ||
+    (gapMs > 0 && occupiedTimes.some((value) => Math.abs(value - candidate.getTime()) < gapMs));
   const formatter = new Intl.DateTimeFormat('en-CA', {
     day: '2-digit',
     month: '2-digit',
@@ -920,10 +952,17 @@ export function nextSchedule(now: Date, slots: readonly string[], occupied: read
   const date = `${parts['year']}-${parts['month']}-${parts['day']}`;
   for (const slot of slots) {
     const candidate = new Date(`${date}T${slot}+08:00`);
-    if (candidate > now && !used.has(candidate.toISOString())) return candidate;
+    if (candidate <= now) continue;
+    if (gapMs === 0) {
+      if (!conflicts(candidate)) return candidate;
+      continue;
+    }
+    while (conflicts(candidate)) candidate.setTime(candidate.getTime() + gapMs);
+    return candidate;
   }
   const fallback = new Date(now.getTime() + 5 * 60_000);
-  while (used.has(fallback.toISOString())) fallback.setMinutes(fallback.getMinutes() + 5);
+  const fallbackStep = gapMs || 5 * 60_000;
+  while (conflicts(fallback)) fallback.setTime(fallback.getTime() + fallbackStep);
   return fallback;
 }
 

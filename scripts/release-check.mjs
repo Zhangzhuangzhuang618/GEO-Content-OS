@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const staticOnly = process.argv.includes('--static-only');
 const executableBaseline = Object.freeze({
-  currentTableCount: 92,
+  currentTableCount: 93,
   frozenPageCount: 32,
   frozenTableCount: 57,
-  latestMigration: '0054_enterprise_evidence_customer_copy',
-  previousMigration: '0053_douyin_image_note_automation',
+  latestMigration: '0055_douyin_multi_account_controls',
+  previousMigration: '0054_enterprise_evidence_customer_copy',
   publicEndpointCount: 170,
   skills: Object.freeze([
     'material-parser',
@@ -41,7 +41,7 @@ const commands = [
 
 assertStaticFreeze(manifest, commands);
 if (staticOnly) {
-  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T161.\n');
+  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T162.\n');
 } else {
   for (const [id, arguments_] of commands) runGate(id, arguments_);
   process.stdout.write(
@@ -119,7 +119,9 @@ function assertMigrationBaseline() {
     latestTags[0] !== executableBaseline.previousMigration ||
     latestTags[1] !== executableBaseline.latestMigration
   ) {
-    fail('current migration baseline must end with 0053 followed by 0054');
+    fail(
+      `current migration baseline must end with ${executableBaseline.previousMigration} followed by ${executableBaseline.latestMigration}`,
+    );
   }
 
   const frozenMigrationIndex = migrationFiles.indexOf('0030_freeze_v21.sql');

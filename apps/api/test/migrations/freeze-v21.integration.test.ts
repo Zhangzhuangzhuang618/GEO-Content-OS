@@ -11,7 +11,7 @@ import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 import { IDENTITY_SEED } from '../../src/modules/identity/seeds/identity.seed.js';
 
-const FREEZE_TABLE_COUNT = 92;
+const FREEZE_TABLE_COUNT = 93;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -79,7 +79,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T158 with Douyin image-note publishing state', async () => {
+  it('migrates an empty database through T162 with Douyin multi-account controls', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -128,6 +128,7 @@ describe('freeze v2.1 database verification', () => {
         'douyin_browser_sessions',
         'douyin_browser_publications',
         'douyin_browser_artifacts',
+        'douyin_topic_reservations',
         'browser_platform_automation_policies',
         'browser_platform_automation_runs',
         'browser_platform_daily_batches',
@@ -148,8 +149,8 @@ describe('freeze v2.1 database verification', () => {
       migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
     );
     expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
-      '0053_douyin_image_note_automation',
       '0054_enterprise_evidence_customer_copy',
+      '0055_douyin_multi_account_controls',
     ]);
   });
 

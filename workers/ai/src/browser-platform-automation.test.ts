@@ -130,6 +130,15 @@ describe('browser-platform automation', () => {
     );
   });
 
+  it('moves a Douyin slot until it is at least twenty minutes from another account', () => {
+    const now = new Date('2026-08-16T01:00:00.000Z');
+    const occupied = [new Date('2026-08-16T02:00:00.000Z')];
+
+    expect(nextSchedule(now, ['10:00'], occupied, 20).toISOString()).toBe(
+      '2026-08-16T02:20:00.000Z',
+    );
+  });
+
   it('queues browser-platform work with the canonical Outbox retry column', async () => {
     const statements: string[] = [];
     const automationRunId = '10000000-0000-4000-8000-000000000153';
@@ -288,5 +297,6 @@ function policy(): BrowserPlatformAutomationPolicy {
     questionCoverageMin: 80,
     readabilitySafetyMin: 85,
     scheduleTimes: ['10:00', '15:30'],
+    workspaceId: crypto.randomUUID(),
   };
 }

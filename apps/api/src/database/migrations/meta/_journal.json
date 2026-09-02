@@ -386,6 +386,13 @@
       "when": 1788163200000,
       "tag": "0054_enterprise_evidence_customer_copy",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1788336000000,
+      "tag": "0055_douyin_multi_account_controls",
+      "breakpoints": true
     }
   ]
 }

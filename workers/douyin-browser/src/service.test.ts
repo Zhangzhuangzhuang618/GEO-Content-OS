@@ -13,6 +13,7 @@ import type { PostgresDouyinBrowserStore, PublicationRow } from './store.js';
 import type { BrowserSession, DouyinPageDriver, LoginVerificationDiagnostic } from './types.js';
 
 const ACCOUNT_ID = '00000000-0000-4000-8000-000000000158';
+const SECOND_ACCOUNT_ID = '00000000-0000-4000-8000-000000000258';
 const CONTENT_VERSION_ID = '00000000-0000-4000-8000-000000000159';
 const PUBLICATION_ID = '00000000-0000-4000-8000-000000000160';
 const SESSION_ID = '00000000-0000-4000-8000-000000000161';
@@ -139,6 +140,80 @@ describe('Douyin browser service', () => {
     expect(store.loadImageAssets).toHaveBeenCalledWith(prepared, IMAGE_IDS);
     expect(submit).toHaveBeenCalledOnce();
     expect(store.insertArtifact).toHaveBeenCalledTimes(2);
+  });
+
+  it('serializes Chromium publishing across different Douyin accounts', async () => {
+    const payload = imageNotePayload();
+    const body = Buffer.from('card-image');
+    const contentHash = createHash('sha256').update(body).digest('hex');
+    let activePublishes = 0;
+    let maximumActivePublishes = 0;
+    const store = {
+      getOrCreateSession: vi.fn(async (accountId: string) => ({
+        ...browserSession(),
+        accountId,
+        profileKey: `douyin/${TENANT_ID}/${accountId}`,
+      })),
+      insertArtifact: vi.fn(async () => undefined),
+      loadImageAssets: vi.fn(async () =>
+        IMAGE_IDS.map((assetId) => ({
+          assetId,
+          contentHash,
+          mimeType: 'image/jpeg' as const,
+          objectUri: `memory://geo/${assetId}.jpg`,
+          sizeBytes: body.byteLength,
+        })),
+      ),
+      preparePublication: vi.fn(async (accountId: string) => ({
+        ...publication('prepared', 1),
+        accountId,
+      })),
+      updatePublication: vi.fn(async (current: PublicationRow) => ({
+        ...current,
+        externalId: `remote-${current.accountId}`,
+        status: 'processing' as const,
+        version: current.version + 1,
+      })),
+    } as unknown as PostgresDouyinBrowserStore;
+    const submit = vi.fn(async ({ accountId }: { accountId: string }) => {
+      activePublishes += 1;
+      maximumActivePublishes = Math.max(maximumActivePublishes, activePublishes);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      activePublishes -= 1;
+      return {
+        externalId: `remote-${accountId}`,
+        reviewReason: null,
+        status: 'processing' as const,
+        url: null,
+      };
+    });
+    const service = new DouyinBrowserService(
+      config(),
+      store,
+      {
+        capture: vi.fn(async () => Buffer.from('post-submit')),
+        release: vi.fn(async () => undefined),
+        submit,
+        verifyAuthenticated: vi.fn(async () => true),
+      } as unknown as DouyinPageDriver,
+      { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
+      {
+        getObject: vi.fn(async () => body),
+        putObject: vi.fn(async ({ key }: { key: string }) => ({ uri: `memory://geo/${key}` })),
+      } as unknown as ObjectStorageAdapter,
+    );
+    const request = (accountId: string) =>
+      service.publish(accountId, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: `douyin:image-note:${accountId}`,
+        payload,
+        payload_hash: hashDouyinPayload(payload),
+      });
+
+    await Promise.all([request(ACCOUNT_ID), request(SECOND_ACCOUNT_ID)]);
+
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(maximumActivePublishes).toBe(1);
   });
 
   it('reopens a crashed page before the pre-publish authentication check', async () => {

@@ -29096,6 +29096,7 @@
                             "format": "uuid",
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                           },
+                          "account_positioning": { "type": "string", "maxLength": 240 },
                           "brand_consistency_min": { "type": "number", "const": 90 },
                           "daily_candidate_limit": {
                             "type": "integer",
@@ -29140,10 +29141,25 @@
                           "publish_attempt_limit": { "type": "number", "const": 3 },
                           "question_coverage_min": { "type": "number", "const": 80 },
                           "readability_safety_min": { "type": "number", "const": 85 },
+                          "service_scopes": {
+                            "maxItems": 12,
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                          },
                           "tenant_id": {
                             "type": "string",
                             "format": "uuid",
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          },
+                          "target_regions": {
+                            "maxItems": 12,
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                          },
+                          "topic_pool": {
+                            "maxItems": 30,
+                            "type": "array",
+                            "items": { "type": "string", "minLength": 1, "maxLength": 240 }
                           },
                           "today_batch": {
                             "anyOf": [
@@ -29355,6 +29371,7 @@
                         },
                         "required": [
                           "account_id",
+                          "account_positioning",
                           "brand_consistency_min",
                           "daily_candidate_limit",
                           "daily_enabled",
@@ -29373,7 +29390,10 @@
                           "publish_attempt_limit",
                           "question_coverage_min",
                           "readability_safety_min",
+                          "service_scopes",
                           "tenant_id",
+                          "target_regions",
+                          "topic_pool",
                           "today_batch",
                           "updated_at",
                           "version",
@@ -29487,6 +29507,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "account_positioning": { "type": "string", "minLength": 1, "maxLength": 240 },
                   "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                   "daily_enabled": { "type": "boolean" },
                   "daily_generation_time": {
@@ -29514,6 +29535,21 @@
                     "type": "string",
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "service_scopes": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                  },
+                  "target_regions": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                  },
+                  "topic_pool": {
+                    "maxItems": 30,
+                    "type": "array",
+                    "items": { "type": "string", "minLength": 1, "maxLength": 240 }
                   }
                 },
                 "required": [
@@ -29545,6 +29581,7 @@
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                         },
+                        "account_positioning": { "type": "string", "maxLength": 240 },
                         "brand_consistency_min": { "type": "number", "const": 90 },
                         "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                         "daily_enabled": { "type": "boolean" },
@@ -29582,10 +29619,25 @@
                         "publish_attempt_limit": { "type": "number", "const": 3 },
                         "question_coverage_min": { "type": "number", "const": 80 },
                         "readability_safety_min": { "type": "number", "const": 85 },
+                        "service_scopes": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                        },
                         "tenant_id": {
                           "type": "string",
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "target_regions": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                        },
+                        "topic_pool": {
+                          "maxItems": 30,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
                         },
                         "today_batch": {
                           "anyOf": [
@@ -29789,6 +29841,7 @@
                       },
                       "required": [
                         "account_id",
+                        "account_positioning",
                         "brand_consistency_min",
                         "daily_candidate_limit",
                         "daily_enabled",
@@ -29807,7 +29860,10 @@
                         "publish_attempt_limit",
                         "question_coverage_min",
                         "readability_safety_min",
+                        "service_scopes",
                         "tenant_id",
+                        "target_regions",
+                        "topic_pool",
                         "today_batch",
                         "updated_at",
                         "version",
@@ -29978,6 +30034,7 @@
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                         },
+                        "account_positioning": { "type": "string", "maxLength": 240 },
                         "brand_consistency_min": { "type": "number", "const": 90 },
                         "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                         "daily_enabled": { "type": "boolean" },
@@ -30015,10 +30072,25 @@
                         "publish_attempt_limit": { "type": "number", "const": 3 },
                         "question_coverage_min": { "type": "number", "const": 80 },
                         "readability_safety_min": { "type": "number", "const": 85 },
+                        "service_scopes": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                        },
                         "tenant_id": {
                           "type": "string",
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "target_regions": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                        },
+                        "topic_pool": {
+                          "maxItems": 30,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
                         },
                         "today_batch": {
                           "anyOf": [
@@ -30222,6 +30294,7 @@
                       },
                       "required": [
                         "account_id",
+                        "account_positioning",
                         "brand_consistency_min",
                         "daily_candidate_limit",
                         "daily_enabled",
@@ -30240,7 +30313,10 @@
                         "publish_attempt_limit",
                         "question_coverage_min",
                         "readability_safety_min",
+                        "service_scopes",
                         "tenant_id",
+                        "target_regions",
+                        "topic_pool",
                         "today_batch",
                         "updated_at",
                         "version",
@@ -30411,6 +30487,7 @@
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                         },
+                        "account_positioning": { "type": "string", "maxLength": 240 },
                         "brand_consistency_min": { "type": "number", "const": 90 },
                         "daily_candidate_limit": { "type": "integer", "minimum": 1, "maximum": 30 },
                         "daily_enabled": { "type": "boolean" },
@@ -30448,10 +30525,25 @@
                         "publish_attempt_limit": { "type": "number", "const": 3 },
                         "question_coverage_min": { "type": "number", "const": 80 },
                         "readability_safety_min": { "type": "number", "const": 85 },
+                        "service_scopes": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                        },
                         "tenant_id": {
                           "type": "string",
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "target_regions": {
+                          "maxItems": 12,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
+                        },
+                        "topic_pool": {
+                          "maxItems": 30,
+                          "type": "array",
+                          "items": { "type": "string", "minLength": 1, "maxLength": 240 }
                         },
                         "today_batch": {
                           "anyOf": [
@@ -30655,6 +30747,7 @@
                       },
                       "required": [
                         "account_id",
+                        "account_positioning",
                         "brand_consistency_min",
                         "daily_candidate_limit",
                         "daily_enabled",
@@ -30673,7 +30766,10 @@
                         "publish_attempt_limit",
                         "question_coverage_min",
                         "readability_safety_min",
+                        "service_scopes",
                         "tenant_id",
+                        "target_regions",
+                        "topic_pool",
                         "today_batch",
                         "updated_at",
                         "version",
