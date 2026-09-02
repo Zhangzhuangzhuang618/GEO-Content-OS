@@ -669,6 +669,51 @@ describe('AI Worker runtime wiring', () => {
     expect(generatedVariant.blocks.some((block) => block.block_type === 'cta')).toBe(false);
   });
 
+  it('uses the configured CTA verbatim for Lieju even when the model rewrites it', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const output = multiPlatformContentData(['lieju'], new Set());
+    const modelVariant = output.variants[0]!;
+    const configured = '如需家庭搬家、企业搬迁、设备搬运或起重吊装服务，请联系当前企业获取方案。';
+    const adapter = new LooseMockAdapter(
+      [
+        {
+          text: JSON.stringify({
+            ...output,
+            variants: [{ ...modelVariant, cta: '联系服务商了解详情。' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const brief = baseInput['brief'] as JsonObject;
+    const writerInput = {
+      ...baseInput,
+      brief: { ...brief, constraints: { cta: configured } },
+    };
+    const masterContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-lieju-configured-cta-master-0061',
+      writerInput,
+    });
+    const generatedVariant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-configured-cta-variant-0061',
+      writerInput,
+    });
+
+    expect(generatedVariant.cta).toBe(configured);
+  });
+
   it('does not let fast mode bypass the Douyin narrative caption gate', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const repaired = multiPlatformContentData(['douyin'], new Set());

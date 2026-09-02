@@ -3394,10 +3394,23 @@ function normalizeContentWriterData(
     master_content: normalizeGeneratedContent(data.master_content),
     variants: Object.freeze(
       data.variants.map((content) =>
-        applyEnterpriseEvidenceToContent(normalizeGeneratedContent(content), writerInput),
+        applyEnterpriseEvidenceToContent(
+          applyConfiguredCtaToContent(normalizeGeneratedContent(content), writerInput),
+          writerInput,
+        ),
       ),
     ),
   });
+}
+
+function applyConfiguredCtaToContent(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): ContentWriterContent {
+  if (content.platform_code !== 'official_site' && content.platform_code !== 'lieju') {
+    return content;
+  }
+  return Object.freeze({ ...content, cta: configuredCta(writerInput) });
 }
 
 function normalizeGeneratedContent(content: ContentWriterContent): ContentWriterContent {
