@@ -347,9 +347,10 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
               >
                 <option value="enterprise_official">企业官方</option>
                 <option value="frontline_mover">一线师傅</option>
+                <option value="customer_perspective">客户口吻</option>
               </select>
               <span className="mt-1 block text-xs leading-5 text-ink-500">
-                一线师傅口吻只采用现场实务视角，不会虚构个人工龄、亲历、客户评价或案例。
+                一线师傅口吻不虚构个人履历；客户口吻只表达未成交需求和核对计划，不冒充真实消费经历或评价。
               </span>
             </label>
             <StrategyListField

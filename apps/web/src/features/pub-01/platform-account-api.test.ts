@@ -51,7 +51,7 @@ describe('Douyin automation policy API', () => {
         ACCOUNT.id,
         {
           accountPositioning: '面向广州家庭客户提供搬家决策信息',
-          contentVoice: 'frontline_mover',
+          contentVoice: 'customer_perspective',
           dailyCandidateLimit: 9,
           dailyEnabled: true,
           dailyGenerationTime: '00:30:00',
@@ -68,7 +68,7 @@ describe('Douyin automation policy API', () => {
     ).rejects.toMatchObject({ status: 500 });
     expect(requestBody).toMatchObject({
       account_positioning: '面向广州家庭客户提供搬家决策信息',
-      content_voice: 'frontline_mover',
+      content_voice: 'customer_perspective',
       service_scopes: ['居民搬家', '跨城搬家'],
       target_regions: ['广州', '佛山'],
       topic_pool: ['高层小区家庭搬迁', '收费项目核对'],

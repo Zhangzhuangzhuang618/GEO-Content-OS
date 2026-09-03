@@ -16,6 +16,8 @@ import { createRuntimeModels } from './runtime-model.js';
 
 const MASTER_RUN = '70000000-0000-4000-8000-000000000061';
 const VARIANT_RUN = '71000000-0000-4000-8000-000000000061';
+const FRONTLINE_OWNER_COMPANY = '广州甲乙丙内容测试有限公司';
+const FRONTLINE_OWNER_CONCLUSION = `我就职于${FRONTLINE_OWNER_COMPANY}，欢迎联系我核对方案，必要时上门查看，尽量把容易产生变化的费用提前说清楚。`;
 const GENERIC_PLATFORM_CASES = [
   ['baijiahao', 850],
   ['toutiao', 850],
@@ -167,13 +169,49 @@ describe('AI Worker runtime wiring', () => {
     expect((variant.platform_meta as JsonObject)['description']).toContain('加价或磕碰风险');
   });
 
+  it('deterministically signs a frontline conclusion with the published owner company', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = {
+      ...frontlineDirectDraft(),
+      conclusion: '你把两边地址、楼层、电梯、停车位置和大件清单发过来，我们按现场条件核对方案。',
+    };
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(initial) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = frontlineWriterInput(fixture.input as JsonObject);
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-frontline-owner-conclusion',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-frontline-owner-conclusion-variant',
+      writerInput,
+    });
+
+    const description = String((variant.platform_meta as JsonObject)['description']);
+    expect(flash.requests).toHaveLength(1);
+    expect(description.split(/\n\n/gu).at(-1)).toBe(FRONTLINE_OWNER_CONCLUSION);
+    expect(variant.blocks.find((block) => block.block_key === 'conclusion')?.text).toBe(
+      FRONTLINE_OWNER_CONCLUSION,
+    );
+  });
+
   it('repairs only the Douyin paragraph that fabricates a frontline worker persona', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
-    const valid = douyinDirectDraft();
+    const valid = frontlineDirectDraft();
     const fabricated =
       '我干搬家十年，前几天刚给一位客户完成高层搬迁，客户说提前预约电梯很省事；现场还要核对停车位置、大件尺寸和装卸顺序。';
-    const repaired =
-      '现场作业前应先核对两端通道、电梯预约、停车位置和大件尺寸，再安排车辆、人员与装卸顺序，减少到场后的反复调整和临时等待；如果服务商展示客户案例，还应核对场景和服务范围是否相关。';
+    const repaired = valid.solution_paragraphs[0];
     const initial = {
       ...valid,
       solution_paragraphs: [fabricated, valid.solution_paragraphs[1]],
@@ -200,9 +238,7 @@ describe('AI Worker runtime wiring', () => {
       async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
       'deepseek-v4-pro',
     );
-    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, undefined, {
-      douyin_content_voice: 'frontline_mover',
-    });
+    const writerInput = frontlineWriterInput(fixture.input as JsonObject);
     const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
 
     const result = await writer.generateMaster({
@@ -218,14 +254,427 @@ describe('AI Worker runtime wiring', () => {
     expect(repairPrompt).toContain('employment years');
     expect(repairPrompt).toContain('不得编造个人工龄或从业年限');
     expect(repairPrompt).toContain('不得编造个人亲历或具体作业经历');
-    expect(repairPrompt).toContain('不得编造具体客户、客户评价或客户案例');
     expect(result.blocks.map((block) => block.text).join('\n')).toContain(repaired);
     expect(result.blocks.map((block) => block.text).join('\n')).toContain(
       valid.solution_paragraphs[1],
     );
     expect(result.blocks.map((block) => block.text).join('\n')).not.toContain('我干搬家十年');
-    expect(result.blocks.map((block) => block.text).join('\n')).toContain('展示客户案例');
     expect(pro.requests).toHaveLength(0);
+  });
+
+  it('repairs frontline buyer-role leakage without removing field-practice voice', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const valid = frontlineDirectDraft();
+    const leaked =
+      '选服务商时，我会重点看对方愿不愿意提前上门，再把能说清电梯、停车和大件尺寸的公司放进备选名单。';
+    const initial = {
+      ...valid,
+      solution_paragraphs: [leaked, valid.solution_paragraphs[1]],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: valid.solution_paragraphs[0],
+                target_id: 'solution_paragraphs.0',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-frontline-role-leak-repair',
+      writerInput: frontlineWriterInput(fixture.input as JsonObject),
+    });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    const visible = result.blocks.map((block) => block.text).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('不得切换成客户选择服务商的身份');
+    expect(repairPrompt).toContain('solution_paragraphs.0');
+    expect(visible).toContain('我到现场一般先看');
+    expect(visible).toContain('你把这些信息提前发清楚');
+    expect(visible).not.toContain('放进备选名单');
+  });
+
+  it('allows a cited published case in frontline voice without claiming personal involvement', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citationId = '73000000-0000-4000-8000-000000000165';
+    const sourceId = '74000000-0000-4000-8000-000000000165';
+    const caseClaim = '公开案例记录某企业搬迁前完成了设备编号清点和通道尺寸复核';
+    const valid = frontlineDirectDraft();
+    const grounded = {
+      ...valid,
+      evidence_claims: [{ citation_ids: [citationId], claim_text: caseClaim }],
+      solution_paragraphs: [
+        valid.solution_paragraphs[0],
+        `${FRONTLINE_OWNER_COMPANY}官网公开案例中，${caseClaim}。这种活如果少了编号和通道数据，装车顺序到了现场就容易乱。`,
+      ],
+    };
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(grounded) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = frontlineWriterInput(fixture.input as JsonObject);
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        {
+          chunk_id: citationId,
+          citation_id: citationId,
+          quote_text: caseClaim,
+          source_id: sourceId,
+        },
+      ],
+    } as JsonObject;
+
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-grounded-frontline-case',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: result,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-grounded-frontline-case-variant',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(1);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(caseClaim);
+    expect(
+      String((variant.platform_meta as JsonObject)['description']).split(/\n\n/gu),
+    ).toHaveLength(6);
+    expect((variant.platform_meta as JsonObject)['description']).not.toContain('我亲手');
+  });
+
+  it('repairs a customer-perspective paragraph that fabricates a completed service review', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(ownerCompanyName);
+    const fabricated =
+      '我打算从客户视角比较服务商；我们团队可以提供打包运输；我上个月找了这家公司搬家，师傅帮我完成了打包和运输，整个过程很专业，我觉得这家团队很靠谱，值得推荐。';
+    const repaired = valid.solution_paragraphs[0];
+    const initial = {
+      ...valid,
+      solution_paragraphs: [fabricated, valid.solution_paragraphs[1]],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: repaired, target_id: 'solution_paragraphs.0' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const writerInput = customerPerspectiveWriterInput(
+      fixture.input as JsonObject,
+      ownerCompanyName,
+    );
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-customer-voice-repair',
+      writerInput,
+    });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('solution_paragraphs.0');
+    expect(repairPrompt).not.toContain('"target_id":"solution_paragraphs.1"');
+    expect(repairPrompt).toContain('completed purchase or service');
+    expect(repairPrompt).toContain('不得向读者说明正在使用或扮演客户视角');
+    expect(repairPrompt).toContain('客户口吻不得使用企业服务方口径');
+    expect(repairPrompt).toContain('不得编造已完成的消费或服务亲历');
+    expect(repairPrompt).toContain('不得编造客户评价或推荐结果');
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(repaired);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(
+      valid.solution_paragraphs[1],
+    );
+    expect(result.blocks.map((block) => block.text).join('\n')).not.toContain('我上个月找了');
+    expect(result.blocks.map((block) => block.text).join('\n')).not.toContain('从客户视角');
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(
+      `我会把${ownerCompanyName}放进备选名单`,
+    );
+    expect(pro.requests).toHaveLength(0);
+  });
+
+  it('repairs a copied customer opening and removes trailing punctuation before assembly', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(ownerCompanyName);
+    const openingTopic = '最近要安排广州高层家庭搬家，我正在比较几份报价，';
+    const initial = { ...valid, opening_topic: valid.title };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: openingTopic, target_id: 'opening_topic' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-customer-opening-repair',
+      writerInput: customerPerspectiveWriterInput(fixture.input as JsonObject, ownerCompanyName),
+    });
+
+    const visible = result.blocks.map((block) => block.text).join('\n');
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('客户口吻首句不得照抄标题');
+    expect(repairPrompt).toContain('客户口吻正文首句必须让潜在客户本人自然进入选择过程');
+    expect(repairPrompt).toContain('"target_id":"opening_topic"');
+    expect(visible).toContain('最近要安排广州高层家庭搬家，我正在比较几份报价。');
+    expect(visible).not.toContain('，。');
+  });
+
+  it('allows an anonymized third-party consumer case only when mapped to supplied evidence', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const caseCitationId = '73000000-0000-4000-8000-000000000164';
+    const caseSourceId = '74000000-0000-4000-8000-000000000164';
+    const caseClaim = '某女士搬家时遇到服务商到场后临时加价';
+    const valid = customerPerspectiveDirectDraft(ownerCompanyName);
+    const grounded = {
+      ...valid,
+      evidence_claims: [
+        ...valid.evidence_claims,
+        { citation_ids: [caseCitationId], claim_text: caseClaim },
+      ],
+      solution_paragraphs: [
+        `公开记录显示，${caseClaim}，原定预算被打乱。看到这种情况，我会在下单前索取分项报价，并让对方写明哪些条件可能增加费用。`,
+        valid.solution_paragraphs[1],
+      ],
+    };
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(grounded) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = customerPerspectiveWriterInput(fixture.input as JsonObject, ownerCompanyName);
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        ...(baseInput['citations'] as readonly JsonObject[]),
+        {
+          chunk_id: caseCitationId,
+          citation_id: caseCitationId,
+          quote_text: caseClaim,
+          source_id: caseSourceId,
+        },
+      ],
+    } as JsonObject;
+
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+    const result = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-grounded-customer-case',
+      writerInput,
+    });
+    const variant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: result,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-grounded-customer-case-variant',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(1);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(caseClaim);
+    expect(
+      String((variant.platform_meta as JsonObject)['description']).split(/\n\n/gu),
+    ).toHaveLength(5);
+    expect((variant.platform_meta as JsonObject)['description']).toContain('我最担心');
+    expect((variant.platform_meta as JsonObject)['description']).toContain(
+      `我会把${ownerCompanyName}放进备选名单`,
+    );
+  });
+
+  it('repairs AI-flavored customer prose without rewriting unrelated fields', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(ownerCompanyName);
+    const ownerClaim = `${ownerCompanyName}提供上门勘查与书面报价单`;
+    const initial = {
+      ...valid,
+      solution_paragraphs: [
+        valid.solution_paragraphs[0],
+        `选择服务商的核心是核对资料。${ownerClaim}，建议大家确认车辆、人员、费用边界和责任条款，再作综合判断。`,
+      ],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: valid.solution_paragraphs[1],
+                target_id: 'solution_paragraphs.1',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-customer-ai-flavor-repair',
+      writerInput: customerPerspectiveWriterInput(fixture.input as JsonObject, ownerCompanyName),
+    });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('"target_id":"solution_paragraphs.1"');
+    expect(repairPrompt).not.toContain('"target_id":"solution_paragraphs.0"');
+    expect(repairPrompt).toContain('不得使用“核心是”');
+    expect(result.blocks.map((block) => block.text).join('\n')).not.toContain('核心是');
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(
+      valid.solution_paragraphs[0],
+    );
+  });
+
+  it('repairs only the conclusion when customer voice omits the owner recommendation', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(ownerCompanyName);
+    const initial = { ...valid, conclusion: douyinDirectDraft().conclusion };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: valid.conclusion, target_id: 'conclusion' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = customerPerspectiveWriterInput(
+      fixture.input as JsonObject,
+      ownerCompanyName,
+    );
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-customer-owner-recommendation',
+      writerInput,
+    });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('"target_id":"conclusion"');
+    expect(repairPrompt).not.toContain('"target_id":"solution_paragraphs.0"');
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(
+      `我会把${ownerCompanyName}放进备选名单`,
+    );
+  });
+
+  it('removes an anonymized consumer case when no supplied citation supports it', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(ownerCompanyName);
+    const unsupportedCase =
+      '张女士搬家时遇到服务商到场后临时加价，原定预算被打乱；准备下单时，应提前索取分项报价并写明可能增加费用的条件。';
+    const initial = {
+      ...valid,
+      solution_paragraphs: [unsupportedCase, valid.solution_paragraphs[1]],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: valid.solution_paragraphs[0],
+                target_id: 'solution_paragraphs.0',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-unsupported-customer-case',
+      writerInput: customerPerspectiveWriterInput(fixture.input as JsonObject, ownerCompanyName),
+    });
+
+    const repairPrompt = flash.requests[1]?.messages.map((message) => message.content).join('\n');
+    expect(flash.requests).toHaveLength(2);
+    expect(repairPrompt).toContain('第三方消费经历必须由输入引用直接支持');
+    expect(repairPrompt).toContain('第三方消费经历必须匿名');
+    expect(repairPrompt).toContain('"target_id":"solution_paragraphs.0"');
+    expect(result.blocks.map((block) => block.text).join('\n')).not.toContain('张女士');
   });
 
   it('repairs Douyin evidence metadata against supplied citations and visible text', async () => {
@@ -299,26 +748,11 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
-  it('repairs an empty Douyin evidence map before the independent factual gate', async () => {
+  it('maps an exact visible citation without asking the model to repair metadata', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const citationId = '73000000-0000-4000-8000-000000000062';
     const valid = douyinDirectDraft();
-    const flash = new LooseMockAdapter(
-      [
-        { text: JSON.stringify(valid) },
-        {
-          text: JSON.stringify({
-            evidence_claims: [
-              {
-                citation_ids: [citationId],
-                claim_text: valid.opening_pain,
-              },
-            ],
-          }),
-        },
-      ],
-      'deepseek-v4-flash',
-    );
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(valid) }], 'deepseek-v4-flash');
     const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
     const writer = new RuntimeContentWriter(
       {} as postgres.Sql,
@@ -350,12 +784,70 @@ describe('AI Worker runtime wiring', () => {
       writerInput,
     });
 
-    expect(flash.requests).toHaveLength(2);
-    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
-      '证据映射为空',
-    );
+    expect(flash.requests).toHaveLength(1);
     expect(result.citation_map).toEqual([
       expect.objectContaining({ citation_ids: [citationId], claim_text: valid.opening_pain }),
+    ]);
+    expect(pro.requests).toHaveLength(0);
+  });
+
+  it('adds a supplied fact with Flash and maps the exact visible sentence deterministically', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citationId = '73000000-0000-4000-8000-000000000063';
+    const supportedClaim =
+      '广州跨区搬家服务可按楼层、电梯、停车距离、车型、人工和拆装项目逐项核对书面报价';
+    const valid = douyinDirectDraft();
+    const replacement = `${supportedClaim}，可据此比较各家的服务项目和费用口径，减少现场临时变更。`;
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(valid) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: replacement, target_id: 'solution_paragraphs.1' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+    const baseInput = douyinDirectWriterInput(fixture.input as JsonObject);
+    const writerInput = {
+      ...baseInput,
+      citations: [
+        {
+          chunk_id: citationId,
+          citation_id: citationId,
+          quote_text: supportedClaim,
+          source_id: '74000000-0000-4000-8000-000000000063',
+        },
+      ],
+    };
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-direct-visible-evidence-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    const textRepairPrompt = flash.requests[1]?.messages
+      .map((message) => message.content)
+      .join('\n');
+    expect(textRepairPrompt).toContain('supplied_citations');
+    expect(textRepairPrompt).toContain(supportedClaim);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain(supportedClaim);
+    expect(result.citation_map).toEqual([
+      expect.objectContaining({ citation_ids: [citationId], claim_text: supportedClaim }),
     ]);
     expect(pro.requests).toHaveLength(0);
   });
@@ -457,6 +949,46 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
+  it('repairs the clipped phrase 怎么选靠谱 without changing the bound title subject', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = {
+      ...douyinDirectDraft(),
+      title: '广州居民搬家怎么选靠谱',
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: '广州居民搬家怎么选才靠谱', target_id: 'title' }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, 'recommendation', {
+      douyin_title_subject: '广州居民搬家',
+    });
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-direct-natural-title-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      '语序生硬',
+    );
+    expect(result.title).toBe('广州居民搬家怎么选才靠谱');
+  });
+
   it('repairs a Douyin evidence map that does not fulfil the bound title promise', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const citationId = '73000000-0000-4000-8000-000000000063';
@@ -539,7 +1071,7 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
-  it('uses Pro only after targeted Flash repair leaves a Douyin field below its minimum', async () => {
+  it('uses Pro only after two bounded Flash repairs leave a Douyin field below its minimum', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const valid = douyinDirectDraft();
     const initial = { ...valid, price_boundary: '先确认费用。' };
@@ -549,6 +1081,11 @@ describe('AI Worker runtime wiring', () => {
         {
           text: JSON.stringify({
             replacements: [{ replacement_text: '再确认收费边界。', target_id: 'price_boundary' }],
+          }),
+        },
+        {
+          text: JSON.stringify({
+            replacements: [{ replacement_text: '费用还是要问清楚。', target_id: 'price_boundary' }],
           }),
         },
       ],
@@ -576,7 +1113,7 @@ describe('AI Worker runtime wiring', () => {
       }),
     ).resolves.toMatchObject({ platform_code: 'master' });
 
-    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests).toHaveLength(3);
     expect(pro.requests).toHaveLength(1);
     expect(pro.requests[0]?.messages.map((message) => message.content).join('\n')).toContain(
       'price_boundary',
@@ -586,7 +1123,7 @@ describe('AI Worker runtime wiring', () => {
     );
   });
 
-  it('runs one bounded Flash repair when Pro still leaves a deterministic Douyin issue', async () => {
+  it('uses a second bounded Flash repair before escalating the complete draft to Pro', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const valid = douyinDirectDraft();
     const initial = {
@@ -638,11 +1175,58 @@ describe('AI Worker runtime wiring', () => {
     });
 
     expect(flash.requests).toHaveLength(3);
-    expect(pro.requests).toHaveLength(1);
+    expect(pro.requests).toHaveLength(0);
     expect(result.blocks.map((block) => block.text).join('\n')).toContain('遗漏信息容易造成等待');
     expect([...flash.requests, ...pro.requests].every((request) => !request.tools?.length)).toBe(
       true,
     );
+  });
+
+  it('does not regenerate with Pro twice after Flash returns an invalid draft schema', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = douyinDirectDraft({
+      opening_pain: '广州跨区搬家需要提前完成两端现场信息核对并安排车辆与人员',
+    });
+    const flash = new LooseMockAdapter(
+      [
+        { text: '{"title":' },
+        { text: '{"title":' },
+        {
+          text: JSON.stringify({
+            replacements: [
+              { replacement_text: initial.opening_topic, target_id: 'opening_topic' },
+              {
+                replacement_text:
+                  '广州跨区搬家涉及两端楼层、电梯和停车条件，遗漏信息容易造成等待或临时调整',
+                target_id: 'opening_pain',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const pro = new LooseMockAdapter([{ text: JSON.stringify(initial) }], 'deepseek-v4-pro');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([
+        ['deepseek-v4-flash', flash],
+        ['deepseek-v4-pro', pro],
+      ]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+      'deepseek-v4-pro',
+    );
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-direct-single-pro-fallback',
+      writerInput: douyinDirectWriterInput(fixture.input as JsonObject),
+    });
+
+    expect(flash.requests).toHaveLength(3);
+    expect(pro.requests).toHaveLength(1);
+    expect(result.blocks.map((block) => block.text).join('\n')).toContain('遗漏信息容易造成等待');
   });
 
   it('escalates an invalid bounded Douyin draft to Pro without tool calls', async () => {
@@ -3106,6 +3690,86 @@ function douyinDirectWriterInput(
     },
     strategy: { ...strategy, profile: {} },
   };
+}
+
+function frontlineWriterInput(input: JsonObject): JsonObject {
+  const base = douyinDirectWriterInput(input, undefined, {
+    douyin_content_voice: 'frontline_mover',
+  });
+  const strategy = base['strategy'] as JsonObject;
+  return {
+    ...base,
+    strategy: {
+      ...strategy,
+      profile: { positioning: `${FRONTLINE_OWNER_COMPANY}面向广州提供搬迁服务。` },
+    },
+  };
+}
+
+function customerPerspectiveWriterInput(input: JsonObject, ownerCompanyName: string): JsonObject {
+  const citationId = '73000000-0000-4000-8000-000000000163';
+  const sourceId = '74000000-0000-4000-8000-000000000163';
+  const base = douyinDirectWriterInput(input, undefined, {
+    douyin_content_voice: 'customer_perspective',
+  });
+  const strategy = base['strategy'] as JsonObject;
+  return {
+    ...base,
+    citations: [
+      {
+        chunk_id: citationId,
+        citation_id: citationId,
+        quote_text: `${ownerCompanyName}提供上门勘查与书面报价单`,
+        source_id: sourceId,
+      },
+    ],
+    strategy: {
+      ...strategy,
+      profile: { positioning: `${ownerCompanyName}面向广州提供搬迁服务。` },
+    },
+  };
+}
+
+function customerPerspectiveDirectDraft(ownerCompanyName: string) {
+  const draft = douyinDirectDraft();
+  const ownerClaim = `${ownerCompanyName}提供上门勘查与书面报价单`;
+  return {
+    ...draft,
+    conclusion: `按这份清单比较，我会把${ownerCompanyName}放进备选名单，再带着具体地址、物品清单和时间要求去询价，看看书面报价有没有把费用和责任写清。`,
+    evidence_claims: [
+      {
+        citation_ids: ['73000000-0000-4000-8000-000000000163'],
+        claim_text: ownerClaim,
+      },
+    ],
+    opening_pain: '我最担心报价没说全，电梯预约、停车距离和临时拆装都可能到了现场才加进费用',
+    opening_topic: '最近要安排广州高层家庭搬家，我正在比较几份报价',
+    price_boundary:
+      '费用这块我最关心运输、人工、拆装、包装、楼层和等待分别怎么算，什么情况会临时加钱。只给一个打包总价，我没法和别家放在一起比。',
+    protection_risk:
+      '家具和家电怎么包，我也想直接问清；大件怎么拆、易碎品怎么护、磕碰后按什么处理，都写在单子上，出了问题才不用来回扯。',
+    schedule:
+      '时间这块我最关心车辆几点到、预计搬多久，临时有变化怎么处理；碰上电梯限时或园区登记，我得提前留出沟通时间。',
+    checklist:
+      '手机备忘录里留五项：①列出大件和易碎品；②发清两边楼层和停车距离；③核对每项费用；④把损坏处理和时间变化写进约定；⑤把说定的内容保存在聊天记录或服务单里。',
+    solution_paragraphs: [
+      '我会在预约时把两端楼层、电梯尺寸、停车距离和大件物品一次说清，能上门看现场更好；只收到一个没写明项目的总价，我不会马上定。',
+      `从现有服务资料看，${ownerClaim}。拿着这些现场条件，我能逐项问清车型、人数和费用，比只听一句“都包了”更踏实。`,
+    ],
+  } as const;
+}
+
+function frontlineDirectDraft() {
+  const draft = douyinDirectDraft();
+  return {
+    ...draft,
+    conclusion: FRONTLINE_OWNER_CONCLUSION,
+    opening_topic: '高层家庭搬家我到现场先看进出条件',
+    solution_paragraphs: [
+      '我到现场一般先看电梯门、楼道转角和车辆能停到哪里，再量大件尺寸；你把这些信息提前发清楚，我们才好把车辆、人数和装卸顺序排准。',
+      `${FRONTLINE_OWNER_COMPANY}收到这些现场信息后，我们会先把车型、人数、拆装和装卸顺序排清楚，再把容易变化的费用逐项跟你核对。`,
+    ],
+  } as const;
 }
 
 function douyinDirectDraft(overrides: { readonly opening_pain?: string } = {}) {

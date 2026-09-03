@@ -238,7 +238,11 @@ const DouyinStrategyListSchema = (maximum: number) =>
       'strategy values must be unique',
     );
 
-export const DouyinContentVoiceSchema = z.enum(['enterprise_official', 'frontline_mover']);
+export const DouyinContentVoiceSchema = z.enum([
+  'enterprise_official',
+  'frontline_mover',
+  'customer_perspective',
+]);
 
 export const BrowserPlatformAutomationPolicyRequestSchema = z
   .object({

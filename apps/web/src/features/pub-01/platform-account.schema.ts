@@ -316,7 +316,9 @@ export const BrowserPlatformAutomationPolicySchema = z
     account_id: z.string().uuid(),
     account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),
-    content_voice: z.enum(['enterprise_official', 'frontline_mover']).nullable(),
+    content_voice: z
+      .enum(['enterprise_official', 'frontline_mover', 'customer_perspective'])
+      .nullable(),
     daily_candidate_limit: z.number().int().min(1).max(30),
     daily_enabled: z.boolean(),
     daily_generation_time: z.string(),

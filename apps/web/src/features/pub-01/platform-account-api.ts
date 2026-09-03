@@ -351,7 +351,7 @@ export async function saveBrowserPlatformAutomationPolicy(
   accountId: string,
   input: {
     readonly accountPositioning?: string;
-    readonly contentVoice?: 'enterprise_official' | 'frontline_mover';
+    readonly contentVoice?: 'enterprise_official' | 'frontline_mover' | 'customer_perspective';
     readonly dailyCandidateLimit: number;
     readonly dailyEnabled: boolean;
     readonly dailyGenerationTime: string;

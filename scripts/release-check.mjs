@@ -11,8 +11,8 @@ const executableBaseline = Object.freeze({
   currentTableCount: 93,
   frozenPageCount: 32,
   frozenTableCount: 57,
-  latestMigration: '0056_douyin_account_content_voice',
-  previousMigration: '0055_douyin_multi_account_controls',
+  latestMigration: '0057_douyin_customer_content_voice',
+  previousMigration: '0056_douyin_account_content_voice',
   publicEndpointCount: 170,
   skills: Object.freeze([
     'material-parser',
@@ -41,7 +41,7 @@ const commands = [
 
 assertStaticFreeze(manifest, commands);
 if (staticOnly) {
-  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T163.\n');
+  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T164.\n');
 } else {
   for (const [id, arguments_] of commands) runGate(id, arguments_);
   process.stdout.write(

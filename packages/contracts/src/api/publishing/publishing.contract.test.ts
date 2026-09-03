@@ -115,6 +115,22 @@ describe('Publishing API frozen contract', () => {
     ).toBe(true);
     expect(
       BrowserPlatformAutomationPolicyRequestSchema.safeParse({
+        account_positioning: '面向广州家庭客户提供搬家决策信息',
+        content_voice: 'customer_perspective',
+        daily_candidate_limit: 3,
+        daily_enabled: true,
+        daily_generation_time: '00:30:00',
+        daily_schedule_times: ['09:30:00'],
+        daily_target_count: 1,
+        enabled: true,
+        project_id: crypto.randomUUID(),
+        service_scopes: ['居民搬家'],
+        target_regions: ['广州'],
+        topic_pool: ['高层小区家庭搬迁'],
+      }).success,
+    ).toBe(true);
+    expect(
+      BrowserPlatformAutomationPolicyRequestSchema.safeParse({
         daily_candidate_limit: 2,
         daily_enabled: true,
         daily_schedule_times: ['09:30:00'],

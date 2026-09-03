@@ -79,7 +79,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T163 with Douyin account content voice', async () => {
+  it('migrates an empty database through T164 with customer-perspective Douyin voice', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -149,8 +149,8 @@ describe('freeze v2.1 database verification', () => {
       migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
     );
     expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
-      '0055_douyin_multi_account_controls',
       '0056_douyin_account_content_voice',
+      '0057_douyin_customer_content_voice',
     ]);
   });
 

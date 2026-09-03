@@ -25,9 +25,23 @@ describe('browser platform daily scheduler', () => {
   it('keeps account content voice separate and recognizes only supported values', () => {
     expect(isDouyinContentVoice('enterprise_official')).toBe(true);
     expect(isDouyinContentVoice('frontline_mover')).toBe(true);
+    expect(isDouyinContentVoice('customer_perspective')).toBe(true);
     expect(isDouyinContentVoice('面向企业客户')).toBe(false);
     expect(douyinContentVoiceInstruction('enterprise_official')).toContain('企业官方');
-    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('不得声称真实个人身份');
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('约十年现场判断积累');
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('十年只是说话成熟度标尺');
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('我到现场一般先看');
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain(
+      '我就职于{{当前企业法定全称}}，欢迎联系我核对方案',
+    );
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('官网公开案例');
+    expect(douyinContentVoiceInstruction('frontline_mover')).toContain('不得切换');
+    expect(douyinContentVoiceInstruction('customer_perspective')).toContain('不得冒充已成交客户');
+    expect(douyinContentVoiceInstruction('customer_perspective')).toContain('不得出现“从客户视角”');
+    expect(douyinContentVoiceInstruction('customer_perspective')).toContain('第三方真实经历');
+    expect(douyinContentVoiceInstruction('customer_perspective')).toContain('我最担心');
+    expect(douyinContentVoiceInstruction('customer_perspective')).toContain('放进备选名单');
+    expect(douyinContentVoiceInstruction('customer_perspective')).toContain('核心是');
   });
 
   it('reports partial scheduling and only sends the remaining quota to attention', () => {

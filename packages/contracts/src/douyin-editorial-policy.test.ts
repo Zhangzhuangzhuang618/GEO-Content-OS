@@ -75,6 +75,32 @@ describe('Douyin editorial policy', () => {
       'title_evidence_promise',
     );
   });
+
+  it('accepts concrete customer consequences as card risk information', () => {
+    const content = validContent();
+    content.platform_meta.cards = content.platform_meta.cards.map((card) => ({
+      ...card,
+      body: card.body.replace(/风险|避免|不要|不适合|注意|否则|边界|不能|可能|警惕/gu, '').trim(),
+    }));
+    content.platform_meta.cards[3]!.body =
+      '停车距离和临时拆装没有写进报价，车辆到场后容易加价，预算会被打乱。';
+
+    expect(assessDouyinImageNoteEditorial(content).map((finding) => finding.code)).not.toContain(
+      'card_risk',
+    );
+  });
+
+  it('accepts a social-style circled-number checklist', () => {
+    const content = validContent();
+    content.platform_meta.description = content.platform_meta.description.replace(
+      /第一，.+?；第二，.+?；第三，.+?；第四，.+?。/u,
+      '手机里记四项：①拍下大件；②发清楼层；③逐项问报价；④留好书面约定。',
+    );
+
+    expect(assessDouyinImageNoteEditorial(content).map((finding) => finding.code)).not.toContain(
+      'description_tips',
+    );
+  });
 });
 
 function validContent() {

@@ -871,6 +871,9 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   await expect(page.getByRole('button', { name: '一键同步项目关键词到抖音' })).toBeVisible();
   await expect(page.getByLabel('账号内容定位')).toHaveValue('面向广州家庭客户提供搬家决策信息');
   await expect(page.getByLabel('内容口吻')).toHaveValue('enterprise_official');
+  await expect(page.getByLabel('内容口吻').getByRole('option', { name: '客户口吻' })).toHaveCount(
+    1,
+  );
   await expect(page.getByLabel('服务范围（每行一项）')).toHaveValue('居民搬家\n跨城搬家');
   await expect(page.getByLabel('目标地区（每行一项）')).toHaveValue('广州\n佛山');
   await expect(page.getByLabel('主题池（每行一项）')).toHaveValue('高层小区家庭搬迁\n收费项目核对');

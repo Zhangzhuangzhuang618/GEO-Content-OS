@@ -17,7 +17,7 @@ const SOLUTION_PATTERN = /勘测|核对|记录|评估|确认|检查|清点|测�
 const PRICE_BOUNDARY_PATTERN = /报价|费用|计费|收费|服务范围|服务边界|书面约定/u;
 const PROTECTION_PATTERN = /防护|包装|加固|保障|损坏|磕碰|风险|责任|验收/u;
 const SCHEDULE_PATTERN = /预约|响应|排期|工期|停工|调度|时间|进场|出场/u;
-const CONCLUSION_PATTERN = /结合|对照|综合|核对|确认|选择|判断|降低|避免|减少/u;
+const CONCLUSION_PATTERN = /结合|对照|综合|核对|确认|选择|判断|比较|备选|询价|咨询|降低|避免|减少/u;
 const ASSISTANT_FLAVOR_PATTERNS = [
   /^\s*(?:先说结论|直接说结论|这次只看)/u,
   /真正(?:决定|重要|关键)[^。！？!?]{0,60}(?:不是|并非)[^。！？!?]{0,60}(?:而是|是)/u,
@@ -287,7 +287,11 @@ export function assessDouyinImageNoteEditorial(
       ),
     );
   }
-  if (!/风险|避免|不要|不适合|注意|否则|边界|不能|可能|警惕/u.test(bodyText)) {
+  if (
+    !/风险|避免|不要|不适合|注意|否则|边界|不能|可能|警惕|损坏|磕碰|刮花|加价|超支|延误|纠纷/u.test(
+      bodyText,
+    )
+  ) {
     findings.push(
       finding(
         'card_risk',
@@ -577,7 +581,8 @@ function sharedMeaningfulCharacters(left: string, right: string): number {
 function practicalTipCount(value: string): number {
   const chinese = value.match(/第[一二三四五六七八九十](?=[，、：:])/gu) ?? [];
   const arabic = value.match(/(?:^|[\s；;。])\d{1,2}[.、](?=\S)/gu) ?? [];
-  return new Set([...chinese, ...arabic.map((item) => item.trim())]).size;
+  const circled = value.match(/[①②③④⑤⑥⑦⑧⑨⑩]/gu) ?? [];
+  return new Set([...chinese, ...arabic.map((item) => item.trim()), ...circled]).size;
 }
 
 function contentBlockTexts(value: unknown): readonly string[] {

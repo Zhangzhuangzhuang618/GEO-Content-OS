@@ -108,12 +108,61 @@ const DOUYIN_SEARCH_INTENT_TITLE_RULES: Readonly<
 const DOUYIN_CONTENT_VOICE_LABELS: Readonly<Record<DouyinContentVoice, string>> = Object.freeze({
   enterprise_official: '企业官方',
   frontline_mover: '一线师傅',
+  customer_perspective: '客户口吻',
 });
 const DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN =
   /现场|上门|勘查|打包|清点|搬运|装卸|拆装|装车|固定|防护|通道|电梯|复位|吊装|运输|作业/u;
+const DOUYIN_FRONTLINE_FIRST_PERSON_WORK_PATTERN =
+  /(?:我|我们).{0,24}(?:到现场|上门|看现场|看电梯|看通道|量尺寸|核对|检查|打包|搬运|装卸|拆装|装车|固定|安排车辆|排顺序|看报价单|跟客户讲)/u;
+const DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN =
+  /(?:你|您)(?:家|这边|要|可以|最好|先|别|把|拿|发|问|看|留意|记得|确认)|(?:跟|给)(?:你|您)(?:说|讲|提醒|核对)/u;
+const DOUYIN_FRONTLINE_CUSTOMER_ROLE_LEAK_PATTERNS = Object.freeze([
+  /(?:我|我家|我们家).{0,24}(?:正在|准备|打算|计划).{0,20}(?:找|选|比较|咨询).{0,16}(?:搬家公司|服务商|报价)/u,
+  /选(?:搬家公司|服务商)时[，,]?(?:我|我会|我更|我得)/u,
+  /(?:我|我家|我们家).{0,24}(?:放进|列入).{0,12}(?:备选|候选)/u,
+]);
+const DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN =
+  /(?:我|我家|我们家).{0,28}(?:准备|打算|计划|想|要|会|最怕|担心|在意|关心|看重|预算|询问|核对|确认|比较|选择|备选|候选|咨询)/u;
+const DOUYIN_CUSTOMER_SCREENING_CHOICE_PATTERN =
+  /(?:我|我家|我们家).{0,24}(?:不会|不想|不急着|更愿意|更想|宁愿|只会|才会|先|直接).{0,24}(?:定|选|找|下单|接受|考虑|比较|淘汰|问|看|核对)|(?:这种|这样的|只给).{0,24}(?:我|我家|我们家).{0,10}(?:不会|不想|不急着|不接受)/u;
+const DOUYIN_CUSTOMER_META_VOICE_PATTERNS = Object.freeze([
+  /(?:从|站在|切换到|采用|使用|以).{0,6}(?:客户|消费者|需求方)(?:的)?(?:视角|角度|立场|口吻)/u,
+  /(?:作为|身为)(?:一名|一个)?(?:客户|消费者|需求方)/u,
+  /客户(?:视角|角度|立场|口吻)/u,
+]);
+const DOUYIN_THIRD_PARTY_CASE_PATTERN =
+  /(?:(?:某|[\p{Script=Han}]{1,3})(?:先生|女士)|某(?:消费者|客户|业主)|一位(?:消费者|客户|业主)|有(?:消费者|客户|业主)).{0,40}(?:搬家|搬迁|吊装|运输|服务).{0,40}(?:遇到|遭遇|反映|投诉|出现|临时加价|损坏|延误|失联|拒赔|少件)/u;
+const DOUYIN_PUBLISHED_CASE_PATTERN =
+  /(?:官网|公开资料|资料库|已公开).{0,16}(?:案例|记录)(?:中|里|显示|提到|记录).{0,80}(?:搬家|搬迁|吊装|运输|服务|客户|家庭|企业)/u;
+const DOUYIN_IDENTIFIABLE_THIRD_PARTY_PATTERN =
+  /(?:^|[，。！？；：、\s])(?!(?:某先生|某女士))[\p{Script=Han}]{1,3}(?:先生|女士).{0,30}(?:搬家|搬迁|吊装|运输|服务)/u;
+const DOUYIN_CUSTOMER_OWNER_DECISION_PATTERN =
+  /(?:我|我家|我们家).{0,36}(?:会|愿意|可以|打算|准备).{0,24}(?:备选|候选|考虑|比较|咨询)|(?:对我来说|按我的需求).{0,40}(?:值得考虑|可列入|可以了解)/u;
+const DOUYIN_CUSTOMER_NEXT_STEP_PATTERN =
+  /(?:再|接着|下一步|然后).{0,30}(?:询价|咨询|核对|比较|联系|看.{0,8}(?:报价|方案)|发.{0,12}(?:地址|清单))/u;
+const DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS = Object.freeze([
+  /核心(?:是|在于)/u,
+  /本质上|底层逻辑/u,
+  /真正(?:重要|关键|决定)/u,
+  /(?:不是|并非).{0,36}(?:而是|而在于)/u,
+  /总的来说|综上所述|值得注意的是|下面(?:我们)?(?:来)?(?:看|说|介绍|分析|梳理)/u,
+  /选择依据(?:是|包括)|同(?:一)?口径比较才有意义/u,
+  /(?:降低|减少).{0,20}(?:风险|纠纷)|进一步(?:沟通|了解)/u,
+  /避免.{0,20}(?:造成|带来)/u,
+  /怎么选[，,](?:我|我家|我们家)/u,
+  /(?:我|我家|我们家)(?:这种|这样的).{0,10}(?:客户|消费者)/u,
+]);
 const DOUYIN_ENTERPRISE_PERSONA_PATTERNS = Object.freeze([
   /(?:^|[，。！？；\s])(?:我|本人|俺)(?:是|作为|干|做|搬|接|跑|上门|遇到|见过|觉得|建议)/u,
   /(?:作为|身为)(?:一名|一个)?(?:搬家|搬运|吊装|运输)?师傅/u,
+]);
+const DOUYIN_WORKER_IDENTITY_PATTERNS = Object.freeze([
+  /(?:我|本人|俺)(?:是|作为|就是).{0,8}(?:搬家|搬运|吊装|运输)?师傅/u,
+  /(?:作为|身为)(?:一名|一个)?(?:搬家|搬运|吊装|运输)?师傅/u,
+]);
+const DOUYIN_COMPANY_PERSONA_PATTERNS = Object.freeze([
+  /我们(?:公司|团队|服务团队)?(?:可|可以|会|将)?(?:提供|承接|派出|安排师傅|上门服务|负责执行|配备)/u,
+  /(?:本公司|本团队|本服务团队)(?:可|可以|会|将)?(?:提供|承接|派出|安排|上门|负责|配备)/u,
 ]);
 const DOUYIN_FRONTLINE_TENURE_PATTERNS = Object.freeze([
   /(?:我|本人|俺|咱).{0,16}(?:干|做|从事|入行|搬家|搬运).{0,12}(?:(?:\d+|[零一二三四五六七八九十两百]+|多|好几)年)/u,
@@ -123,11 +172,17 @@ const DOUYIN_FRONTLINE_EXPERIENCE_PATTERNS = Object.freeze([
   /(?:我|本人|俺|咱们|我们).{0,12}(?:昨天|今天|上次|前几天|刚刚|刚给|曾经|亲自|遇到过|见过|处理过|搬过|接过|做过)/u,
   /(?:我|本人|俺)(?:是|作为|就是).{0,8}(?:搬家|搬运|吊装|运输)?师傅/u,
 ]);
-const DOUYIN_FRONTLINE_CUSTOMER_CASE_PATTERNS = Object.freeze([
-  /(?:有一位|有个|一位|某位|这个|那位)客户(?:说|反馈|评价|告诉|家里|现场)/u,
-  /客户(?:说|反馈|评价|告诉我们)/u,
-  /(?:我|我们|本人|俺|咱们).{0,12}(?:刚给|曾为|给).{0,20}(?:客户|公司|家庭)/u,
-  /(?:这是|分享|记录|复盘|讲讲|真实|实际|最近|此前|上次).{0,8}(?:客户)?案例/u,
+const DOUYIN_CUSTOMER_EXPERIENCE_PATTERNS = Object.freeze([
+  /(?:我|我们|本人|我家).{0,18}(?:之前|上次|曾经).{0,18}(?:找的|选的|请的|用的|搬家时|搬迁时)/u,
+  /(?:我|我们|本人|我家).{0,18}(?:找过|找了|选了|选择了|请过|请了|用过|用了|体验过|委托过|委托了|下过单|下了单|合作过|搬过|搬完了)/u,
+  /(?:师傅|客服|团队|公司).{0,12}(?:给我|帮我|替我).{0,16}(?:完成了|搬完|搬了|打包了|拆装了|运输了|吊装了|处理了)/u,
+  /(?:我的|我家的|我们家的)(?:真实|实际|亲身|亲历)?(?:搬家|搬迁|吊装|运输|服务)?(?:经历|体验|案例|记录|复盘)/u,
+  /(?:分享|记录|复盘)(?:一下)?(?:我|我们|我家).{0,12}(?:搬家|搬迁|吊装|运输|服务)/u,
+  /(?:综合)?(?:比较|对比|了解|看|筛)(?:了|一圈)?下来/u,
+]);
+const DOUYIN_CUSTOMER_REVIEW_PATTERNS = Object.freeze([
+  /(?:我|我们|本人).{0,16}(?:觉得|认为|体验下来|用下来).{0,20}(?:这家|该公司|师傅|团队).{0,16}(?:满意|专业|靠谱|不错|值得推荐|推荐)/u,
+  /(?:搬完后|服务结束后|体验下来|用下来|合作下来).{0,20}(?:满意|专业|靠谱|省心|不错|推荐)/u,
 ]);
 
 type DouyinDirectCardSlot = (typeof DOUYIN_DIRECT_CARD_SLOTS)[number];
@@ -209,6 +264,15 @@ const DOUYIN_DIRECT_MINIMUM_LENGTHS: Readonly<Record<string, number>> = Object.f
   'solution_paragraphs.0': 55,
   'solution_paragraphs.1': 55,
   title: 6,
+});
+const DOUYIN_CUSTOMER_DIRECT_MINIMUM_LENGTHS: Readonly<Record<string, number>> = Object.freeze({
+  checklist: 68,
+  conclusion: 42,
+  price_boundary: 48,
+  protection_risk: 48,
+  schedule: 42,
+  'solution_paragraphs.0': 48,
+  'solution_paragraphs.1': 48,
 });
 
 const DOUYIN_DIRECT_CARD_SCHEMA: JsonObject = Object.freeze({
@@ -1165,6 +1229,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
     }
 
     let draft = stage.output;
+    const stageUsedFallback = stage.usages.at(-1)?.modelKey === fallbackModelKey;
     let evaluation = evaluateDouyinDirectDraft(input, draft, stage.usages);
     if (evaluation.issues.length === 0) return evaluation.output;
 
@@ -1203,31 +1268,24 @@ export class RuntimeContentWriter implements ContentWriterPort {
       }
     }
 
-    if (fallbackModelKey) {
-      const fallback = await this.runDouyinDirectDraft(
-        input,
-        prompt,
-        fallbackModelKey,
-        { candidate: draft, issues: evaluation.issues },
-        1,
-      );
-      draft = fallback.output;
-      evaluation = evaluateDouyinDirectDraft(input, draft, fallback.usages);
-      if (evaluation.issues.length === 0) return evaluation.output;
-
-      const fallbackRepairTargets = douyinDirectRepairTargets(
+    // Give the primary low-cost model one more bounded field-only pass before
+    // escalating the complete draft. Customer voice commonly needs two small,
+    // independent corrections (for example opening tone, then conclusion), and
+    // regenerating the whole article with Pro is both less stable and wasteful.
+    if (stage.usages.at(-1)?.modelKey === input.context.modelKey) {
+      const secondRepairTargets = douyinDirectRepairTargets(
         draft,
         evaluation.issues,
         input.writerInput,
       );
-      if (fallbackRepairTargets.length > 0) {
+      if (secondRepairTargets.length > 0) {
         try {
           const repaired = await this.runDouyinDirectRepair(
             input,
             prompt,
             draft,
             evaluation.issues,
-            fallbackRepairTargets,
+            secondRepairTargets,
             2,
           );
           draft = repaired.output;
@@ -1246,6 +1304,61 @@ export class RuntimeContentWriter implements ContentWriterPort {
             draft,
             evaluation.issues,
             2,
+          );
+          draft = repaired.output;
+          evaluation = evaluateDouyinDirectDraft(input, draft, repaired.usages);
+          if (evaluation.issues.length === 0) return evaluation.output;
+        } catch (error) {
+          if (!isStructuredOutputFailure(error)) throw error;
+        }
+      }
+    }
+
+    if (fallbackModelKey) {
+      if (!stageUsedFallback) {
+        const fallback = await this.runDouyinDirectDraft(
+          input,
+          prompt,
+          fallbackModelKey,
+          { candidate: draft, issues: evaluation.issues },
+          1,
+        );
+        draft = fallback.output;
+        evaluation = evaluateDouyinDirectDraft(input, draft, fallback.usages);
+        if (evaluation.issues.length === 0) return evaluation.output;
+      }
+
+      const fallbackRepairTargets = douyinDirectRepairTargets(
+        draft,
+        evaluation.issues,
+        input.writerInput,
+      );
+      if (fallbackRepairTargets.length > 0) {
+        try {
+          const repaired = await this.runDouyinDirectRepair(
+            input,
+            prompt,
+            draft,
+            evaluation.issues,
+            fallbackRepairTargets,
+            3,
+          );
+          draft = repaired.output;
+          evaluation = evaluateDouyinDirectDraft(input, draft, repaired.usages);
+          if (evaluation.issues.length === 0) return evaluation.output;
+        } catch (error) {
+          if (!isStructuredOutputFailure(error)) throw error;
+        }
+      }
+
+      if (hasDouyinDirectEvidenceIssues(evaluation.issues)) {
+        try {
+          const repaired = await this.runDouyinDirectEvidenceRepair(
+            input,
+            prompt,
+            draft,
+            evaluation.issues,
+            3,
           );
           evaluation = evaluateDouyinDirectDraft(input, repaired.output, repaired.usages);
           if (evaluation.issues.length === 0) return evaluation.output;
@@ -1771,13 +1884,15 @@ ${CONTENT_WRITER_PLATFORM_PROMPTS_V1.douyin}
 
 Fill the semantic slots exactly:
 - Read brief.constraints.douyin_search_intent and douyin_topic_focus first. They define the one search-decision question this article must answer. Keep that intent explicit in the title and use it as the primary thread of every paragraph and card; do not fall back to a generic process or preparation article.
-- Read brief.constraints.douyin_content_voice independently from douyin_account_strategy. enterprise_official means a formal, clear and restrained company-team voice; it may use “我们” or “服务团队” but must not simulate an individual worker. frontline_mover means plain, direct field-practice wording about what to inspect and do; it must not claim a real personal identity, employment years, first-hand events, specific clients, client feedback, or customer cases.
+- Read brief.constraints.douyin_content_voice independently from douyin_account_strategy. enterprise_official means a formal, clear and restrained company-team voice; it may use “我们” or “服务团队” but must not simulate an individual worker. frontline_mover means a seasoned mover speaking directly to a customer in plain workshop language. Use the judgment and conversational rhythm expected from roughly ten years around moving sites: “我到现场一般先看……”“你把……发过来，我先帮你排一下……”. The ten-year reference is a writing benchmark, not permission to print a biography: do not invent a personal name, exact employment years, or a one-off first-hand event. Generic first-person work methods are required and are not a personal-history claim. The narrator's employer is the one legal owner company supplied by the published brand profile; this affiliation may be stated, but no other personal identity may be invented. Do not switch into buyer language such as “选服务商时，我会……” or “我会把某公司放进备选名单”. If a supplied citation directly records a relevant published company or consumer case, use at most one concise case, preserve a directly supported visible fact in evidence_claims, and discuss what the customer should notice; never say the narrator personally handled it. customer_perspective means the unfinished decision process of a real prospective buyer, written like a person screening providers rather than a company teaching a lesson. Let the buyer reveal a concrete concern, reject a vague option, compare something visible, and state the next thing they will ask or check. Use varied first-person wording such as “我最怕……”“这种报价我不会马上定”“我更想先看……”“我会把……放进备选名单”. This is not role-play metadata, so never write “从客户视角”“站在客户角度”“作为客户” or explain the selected voice. Never pretend a purchase or service already happened or invent first-hand experience, a review, a recommendation result or a customer case. If a supplied citation directly documents a relevant third-party consumer experience, prefer at most one such case, summarize it with an anonymized subject such as “某先生”“某女士” or “某位消费者”, and immediately connect it to the buyer's matching concern and screening action. Copy the supported fact verbatim into evidence_claims with the supporting citation ID.
 - Read brief.constraints.douyin_title_subject next. It is the server-bound “region + concrete scene” title subject and must appear verbatim in title. When brief.constraints.douyin_title_evidence_promise is a non-empty string, it is backed by a matching citation opportunity: preserve it verbatim in title and write one directly supported visible fact that fulfils the promise, then map that exact fact in evidence_claims. Do not replace either bound string with a synonym.
-- opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark. opening_pain must name the concrete object and problem or consequence, and must naturally contain at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
-- solution_paragraphs contains exactly two substantive solution paragraphs. When the published strategy supplies the owner company name, mention it naturally in one of these two paragraphs and no more than twice in the complete description.
-- price_boundary, protection_risk, schedule, checklist, and conclusion each become one separate paragraph. checklist must contain at least three explicit numbered actions using 第一、第二、第三. conclusion must give a practical selection basis.
+- Keep the title grammatical after joining the bound subject and decision question. Write “怎么选才靠谱”, never the clipped phrase “怎么选靠谱”.
+- opening_topic and opening_pain become the two sentences of paragraph 1. Each field must contain one sentence fragment without an internal sentence-ending mark. opening_topic must not copy the title; for customer_perspective it should sound like a person entering a decision, not a second SEO headline. opening_pain must name the concrete object and problem or consequence, and must naturally contain at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
+- solution_paragraphs contains exactly two substantive solution fields. When the published strategy supplies the owner company name, mention it naturally in one of these two fields and no more than twice in the complete description. The article still promotes that owner company: for frontline_mover, speak as a member of the service side and explain how “我们” handle the customer's concrete concern using only published brand facts or supplied citations; conclusion must use the exact structure “我就职于{{当前企业法定全称}}，欢迎联系我核对方案，必要时上门查看，尽量把容易产生变化的费用提前说清楚。” The server replaces the company placeholder deterministically from the one published owner name. Do not recommend the owner from a buyer's shortlist. For customer_perspective, connect only owner strengths supplied by the published brand profile or citations to the buyer's concrete concerns, then name the owner in conclusion with a natural first-person shortlist decision such as “我会把××放进备选名单”. Credentials and other claims that require external proof must be supported by supplied citations. Never promote another company and never invent the recommendation basis.
+- price_boundary, protection_risk, schedule, checklist, and conclusion each hold one distinct piece of information. checklist must contain at least three explicit numbered actions; use 第一、第二、第三 for enterprise_official, use short job-site reminders for frontline_mover, and use the lighter social-post form ①②③ for customer_perspective. For frontline_mover the server combines the fields into six uneven paragraphs: at least one field must use a generic first-person work method and the complete description must address the customer as “你” or “您”. Write like a mover explaining the job face to face, not a lecturer issuing repeated “建议、应当、需要” instructions. For customer_perspective the server combines these fields into five paragraphs with deliberately uneven weight: price_boundary starts the third paragraph and schedule starts the fourth. Keep both paragraphs inside the buyer's live decision context, but do not force every field to begin with “我”; opening, one clear middle screening choice, and conclusion are the three required first-person anchors. Write adjacent fields so they flow naturally when joined. Do not begin several fields with the same shell such as “我会”“我最关心”“选择服务商时”“建议”“应当” or “需要”. conclusion must give a practical selection basis.
 - cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. These are technical safety slots, not seven independent article themes. Make every slot explain a different condition, comparison, boundary, or action for the selected search intent; for example, a pricing article uses the slots for price-impacting conditions, like-for-like comparison, included responsibility, waiting-charge boundaries, and a quote-check checklist.
-- Keep every field inside its production range: title 6–26 characters; opening_topic 10–35; opening_pain 20–70; each solution paragraph 55–95; price_boundary and protection_risk 55–100; schedule 50–90; checklist 80–130; conclusion 50–90. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
+- Keep every field inside its production range: title 6–26 characters; opening_topic 10–35; opening_pain 20–70; normally each solution field is 55–95, price_boundary and protection_risk are 55–100, schedule is 50–90, checklist is 80–130, and conclusion is 50–90. For customer_perspective, shorter human sentences are intentional: solution fields may be 48–95, price_boundary and protection_risk 48–100, schedule 42–90, checklist 68–130, and conclusion 42–90; the assembled description must still meet the full 420–900 character gate. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
+- Keep Chinese prose human and slightly uneven. Avoid essay scaffolding and assistant phrases such as “核心是”“本质上”“真正重要的是”“总的来说”“综上所述”“选择依据是”“进一步沟通”, mechanical binary contrasts, and repeated “观点＋解释＋总结” paragraph shapes. Prefer concrete worries and objects—money added on site, a sofa that cannot turn through a doorway, the truck arrival time, what is written on the quote—over abstract strings of “风险、边界、责任、建议、应当、需要、确认”. Use shorter sentences and allow one paragraph to be noticeably shorter than the others. In frontline_mover, sound like a worker talking across the doorway: name what you look at, what the customer should send, and what changes the work; do not announce the role, explain the selected voice, write “选服务商时，我会”, or turn every paragraph into a balanced checklist. In customer_perspective, at least one middle paragraph must contain an actual consumer preference, refusal, or screening choice, such as “这种总价我不会马上定” or “能把这些写清楚的，我才会继续比较”. Vary first-person phrasing and use the exact phrase “我会” no more than four times in the whole description; never repeat it in every numbered checklist item. Do not claim a completed comparison with phrases such as “综合比较下来”“看下来” or “筛下来”, do not label the narrator as “我这种客户”, and end with the next verification action—send the real addresses and item list, request a quote, or compare the actual written plan—before deciding.
 - evidence_claims is optional evidence metadata, not extra prose. Include an item only when claim_text appears verbatim in another returned text field and every citation_id comes from content_writer_input.citations. Use [] when no supplied citation directly supports a public claim. Never cite a first-party assertion merely to make it appear independent.
 - “真实场景、真实案例、现场实录、收费对比、资质核验、合同条款解读、口碑参考” are evidence promises. Use them in the title only when an evidence_claim directly supports the promised content; otherwise use a neutral verification method, selection standard, or comparison dimension. Never create an unsupported ranking, reputation conclusion, or competitor list.
 
@@ -1832,7 +1947,7 @@ This is a bounded field repair. No tools are available. Rewrite only the supplie
 
 ${voiceInstruction}
 
-When a quality issue identifies internal risk-control, evidence-boundary, evidence-classification, or model-disclaimer wording, remove only that wording and preserve the useful customer-facing meaning in natural Chinese. When a quality issue gives a minimum character count, exceed that minimum by 5-10 Chinese characters while staying within the current field maximum. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
+When a quality issue says the evidence map is empty because no supplied fact is visible, copy one concise complete factual sentence or clause exactly from supplied_citations.quote_text into the target and connect it naturally; do not print the citation ID. When the complete description is below 420 characters, add one concrete 15-30 character detail to the supplied target instead of rewriting or padding every paragraph. When a specific field has a minimum character count, exceed that field minimum by 5-10 Chinese characters while staying within its maximum. When a quality issue identifies internal risk-control, evidence-boundary, evidence-classification, or model-disclaimer wording, remove only that wording and preserve the useful customer-facing meaning in natural Chinese. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
       role: 'user',
@@ -1845,6 +1960,13 @@ Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
           original_text: values.get(targetId),
           target_id: targetId,
         })),
+        ...(issues.some((issue) => issue.includes('证据映射为空'))
+          ? {
+              supplied_citations: Array.isArray(writerInput['citations'])
+                ? writerInput['citations']
+                : [],
+            }
+          : {}),
       }),
       role: 'user',
     },
@@ -1894,18 +2016,25 @@ function evaluateDouyinDirectDraft(
   draft: DouyinDirectDraft,
   usages: readonly ModelUsage[],
 ): { readonly issues: readonly string[]; readonly output: ContentWriterOutput } {
+  const evaluatedDraft = withRequiredDouyinFrontlineConclusion(
+    withExactVisibleDouyinEvidenceClaims(draft, input.writerInput),
+    input.writerInput,
+  );
   const data = normalizeContentWriterData(
-    douyinDirectData(draft, input.writerInput),
+    douyinDirectData(evaluatedDraft, input.writerInput),
     input.writerInput,
   );
   const assessment = assessContentWriterContents(data.variants, 'quality');
-  const minimumLengthIssues = douyinDirectMinimumLengthIssues(draft);
+  const minimumLengthIssues = douyinDirectMinimumLengthIssues(evaluatedDraft, input.writerInput);
   const issues = Object.freeze([
     ...new Set([
       ...minimumLengthIssues,
       ...nonRedundantDouyinDirectAssessmentIssues(assessment.issues, minimumLengthIssues),
       ...rewriteDeterministicIssues(data, input.writerInput),
-      ...douyinDirectEvidenceIssues(draft, input.writerInput),
+      ...douyinDirectEvidenceIssues(evaluatedDraft, input.writerInput),
+      ...douyinGroundedThirdPartyCaseIssues(evaluatedDraft, input.writerInput),
+      ...douyinFrontlineNaturalVoiceIssues(evaluatedDraft, input.writerInput),
+      ...douyinCustomerNaturalVoiceIssues(evaluatedDraft, input.writerInput),
     ]),
   ]);
   if (issues.length === 0) {
@@ -1922,14 +2051,21 @@ function evaluateDouyinDirectDraft(
   });
 }
 
-function douyinDirectMinimumLengthIssues(draft: DouyinDirectDraft): readonly string[] {
+function douyinDirectMinimumLengthIssues(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): readonly string[] {
   const values = douyinDirectTextEntries(draft);
+  const customerPerspective = douyinContentVoice(writerInput) === 'customer_perspective';
   return Object.freeze(
     Object.entries(DOUYIN_DIRECT_MINIMUM_LENGTHS).flatMap(([targetId, minimum]) => {
+      const effectiveMinimum = customerPerspective
+        ? (DOUYIN_CUSTOMER_DIRECT_MINIMUM_LENGTHS[targetId] ?? minimum)
+        : minimum;
       const actual = [...(values.get(targetId) ?? '').trim()].length;
-      return actual < minimum
+      return actual < effectiveMinimum
         ? [
-            `douyin:字段 ${targetId} 仅 ${actual} 个字符，至少需要 ${minimum} 个 [repair_target=${targetId}]`,
+            `douyin:字段 ${targetId} 仅 ${actual} 个字符，至少需要 ${effectiveMinimum} 个 [repair_target=${targetId}]`,
           ]
         : [];
     }),
@@ -1969,6 +2105,7 @@ function nonRedundantDouyinDirectAssessmentIssues(
 }
 
 function douyinDirectData(draft: DouyinDirectDraft, writerInput: JsonObject): ContentWriterData {
+  const contentVoice = douyinContentVoice(writerInput);
   const opening = `${sentenceFragment(draft.opening_topic)}。${sentenceFragment(
     draft.opening_pain,
   )}。`;
@@ -2048,16 +2185,34 @@ function douyinDirectData(draft: DouyinDirectDraft, writerInput: JsonObject): Co
       ];
     }),
   );
-  const description = [
-    opening,
-    solutionOne,
-    solutionTwo,
-    price,
-    protection,
-    schedule,
-    checklist,
-    conclusion,
-  ].join('\n\n');
+  const description =
+    contentVoice === 'customer_perspective'
+      ? [
+          opening,
+          `${solutionOne}${solutionTwo}`,
+          `${price}${protection}`,
+          `${schedule}${checklist}`,
+          conclusion,
+        ].join('\n\n')
+      : contentVoice === 'frontline_mover'
+        ? [
+            opening,
+            `${solutionOne}${solutionTwo}`,
+            `${price}${protection}`,
+            schedule,
+            checklist,
+            conclusion,
+          ].join('\n\n')
+        : [
+            opening,
+            solutionOne,
+            solutionTwo,
+            price,
+            protection,
+            schedule,
+            checklist,
+            conclusion,
+          ].join('\n\n');
   const variant = Object.freeze({
     blocks,
     citation_map: citationMap,
@@ -2177,6 +2332,147 @@ function douyinDirectEvidenceIssues(
   return Object.freeze(issues);
 }
 
+function douyinGroundedThirdPartyCaseIssues(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): readonly string[] {
+  const voice = douyinContentVoice(writerInput);
+  if (voice !== 'customer_perspective' && voice !== 'frontline_mover') return [];
+  const supplied = suppliedCitationIds(writerInput);
+  const suppliedDetails = suppliedCitations(writerInput);
+  return Object.freeze(
+    [...douyinDirectTextEntries(draft)].flatMap(([targetId, text]) => {
+      if (
+        !DOUYIN_THIRD_PARTY_CASE_PATTERN.test(text) &&
+        !DOUYIN_PUBLISHED_CASE_PATTERN.test(text)
+      ) {
+        return [];
+      }
+      const normalizedText = normalizeContentText(text);
+      const grounded = draft.evidence_claims.some((claim) => {
+        const normalizedClaim = normalizeContentText(claim.claim_text);
+        return (
+          normalizedClaim.length > 0 &&
+          normalizedText.includes(normalizedClaim) &&
+          claim.citation_ids.length > 0 &&
+          claim.citation_ids.every((citationId) => supplied.has(citationId)) &&
+          claim.citation_ids.some((citationId) => {
+            const quoteText = suppliedDetails.get(citationId)?.quoteText;
+            return Boolean(quoteText && normalizeContentText(quoteText).includes(normalizedClaim));
+          })
+        );
+      });
+      return grounded
+        ? []
+        : [
+            `douyin:${voice === 'frontline_mover' ? '一线师傅引用的公开案例' : '第三方消费经历'}必须由输入引用直接支持并完成证据映射，否则删除案例、保留通用风险说明 [repair_target=${targetId}]`,
+          ];
+    }),
+  );
+}
+
+function douyinFrontlineNaturalVoiceIssues(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): readonly string[] {
+  if (douyinContentVoice(writerInput) !== 'frontline_mover') return [];
+  const issues: string[] = [];
+  const owners = ownerCompanyNamesFromWriterInput(writerInput);
+  if (owners.length !== 1) {
+    issues.push(
+      'douyin:一线师傅口吻必须从已发布品牌资料识别且只能识别一个任职企业法定名称，不能生成无主体或主体冲突的推广内容',
+    );
+  }
+  const entries = [...douyinDirectTextEntries(draft)];
+  if (!entries.some(([, text]) => DOUYIN_FRONTLINE_FIRST_PERSON_WORK_PATTERN.test(text))) {
+    issues.push(
+      'douyin:一线师傅口吻缺少面对客户讲现场做法的第一人称表达，例如“我到现场一般先看电梯和停车位置” [repair_target=solution_paragraphs.0]',
+    );
+  }
+  if (!entries.some(([, text]) => DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN.test(text))) {
+    issues.push(
+      'douyin:一线师傅口吻必须直接对客户说话，至少自然使用一次“你”或“您”并给出具体动作 [repair_target=conclusion]',
+    );
+  }
+  for (const [targetId, text] of entries) {
+    if (DOUYIN_FRONTLINE_CUSTOMER_ROLE_LEAK_PATTERNS.some((pattern) => pattern.test(text))) {
+      issues.push(
+        `douyin:一线师傅口吻不得写成客户正在挑选服务商，把该句改成师傅向客户解释现场做法 [repair_target=${targetId}]`,
+      );
+    }
+    if (DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS.some((pattern) => pattern.test(text))) {
+      issues.push(
+        `douyin:一线师傅口吻不得使用论文式、总结式或二元对照套话，改成面对客户的具体现场表达 [repair_target=${targetId}]`,
+      );
+    }
+  }
+  return Object.freeze([...new Set(issues)]);
+}
+
+function douyinCustomerNaturalVoiceIssues(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): readonly string[] {
+  if (douyinContentVoice(writerInput) !== 'customer_perspective') return [];
+  const issues: string[] = [];
+  if (
+    normalizeContentText(draft.opening_topic) === normalizeContentText(draft.title) ||
+    normalizeContentText(draft.opening_topic).replace(/[，,：:；;、]+$/gu, '') ===
+      normalizeContentText(draft.title)
+  ) {
+    issues.push(
+      'douyin:客户口吻首句不得照抄标题；改成一条自然的未成交场景开场，并保留标题主题 [repair_target=opening_topic]',
+    );
+  }
+  if (!DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN.test(draft.opening_topic)) {
+    issues.push(
+      'douyin:客户口吻正文首句必须让潜在客户本人自然进入选择过程，例如“最近要搬家，我正在比较几份报价”，不得写成第二个标题或角色说明 [repair_target=opening_topic]',
+    );
+  }
+  const middleFields = [
+    ['solution_paragraphs.0', draft.solution_paragraphs[0]],
+    ['solution_paragraphs.1', draft.solution_paragraphs[1]],
+    ['price_boundary', draft.price_boundary],
+    ['protection_risk', draft.protection_risk],
+    ['schedule', draft.schedule],
+    ['checklist', draft.checklist],
+  ] as const;
+  if (!middleFields.some(([, text]) => DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN.test(text))) {
+    issues.push(
+      'douyin:客户口吻正文缺少自然的未成交决策动作，改成“我会先问清……”一类表达，不得编造亲历 [repair_target=solution_paragraphs.0]',
+    );
+  }
+  if (!middleFields.some(([, text]) => DOUYIN_CUSTOMER_SCREENING_CHOICE_PATTERN.test(text))) {
+    issues.push(
+      'douyin:客户口吻正文必须出现一次真实的筛选态度，例如拒绝模糊总价、愿意继续比较可核对的方案，而不是全篇向读者讲教程 [repair_target=solution_paragraphs.0]',
+    );
+  }
+  let firstPersonWillCount = 0;
+  for (const [targetId, text] of middleFields) {
+    const count = text.match(/我会/gu)?.length ?? 0;
+    if (count > 1 || firstPersonWillCount + count > 3) {
+      issues.push(
+        `douyin:客户口吻重复使用“我会”显得机械；该字段改用“我最关心”“我得问清”“拿到报价后”等自然说法，且不要在编号项中反复写主语 [repair_target=${targetId}]`,
+      );
+    } else {
+      firstPersonWillCount += count;
+    }
+  }
+  for (const [targetId, text] of [
+    ['opening_topic', draft.opening_topic],
+    ['opening_pain', draft.opening_pain],
+    ...middleFields,
+    ['conclusion', draft.conclusion],
+  ] as const) {
+    if (DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS.some((pattern) => pattern.test(text))) {
+      issues.push(
+        `douyin:客户口吻不得使用“核心是”、“本质上”、“真正重要的是”或总结式助手套话，保留具体顾虑和行动 [repair_target=${targetId}]`,
+      );
+    }
+  }
+  return Object.freeze(issues);
+}
+
 function requiredDouyinTitleEvidencePromise(writerInput: JsonObject): string | null {
   const brief = jsonObject(writerInput['brief']);
   const constraints = brief ? jsonObject(brief['constraints']) : undefined;
@@ -2245,6 +2541,17 @@ function douyinDirectRepairTargets(
       targets.add(explicitTarget);
       continue;
     }
+    if (
+      issue.includes('证据映射为空') &&
+      !douyinDraftContainsSuppliedCitationText(draft, writerInput)
+    ) {
+      targets.add('solution_paragraphs.1');
+      continue;
+    }
+    if (issue.includes('正文仅') || issue.includes('platform_meta.description 必须为')) {
+      targets.add(douyinNarrativeExpansionTarget(draft));
+      continue;
+    }
     if (isDouyinEvidenceOnlyIssue(issue, requiredEvidencePromise)) continue;
     if (issue.includes('标题')) targets.add('title');
     if (issue.includes('第一段') || issue.includes('第一句') || issue.includes('第二句话')) {
@@ -2292,11 +2599,9 @@ function douyinDirectRepairTargets(
       allCards.forEach((id) => targets.add(id));
     if (
       issue.includes('必须使用 5–8 个') ||
-      issue.includes('platform_meta.description 必须为') ||
       issue.includes('主文案与话题合计') ||
       issue.includes('不得直接复制') ||
-      issue.includes('助手') ||
-      issue.includes('正文仅')
+      issue.includes('助手')
     ) {
       narrative.forEach((id) => targets.add(id));
     }
@@ -2314,7 +2619,15 @@ function douyinDirectRepairTargets(
       targets.add(targetId);
     }
   }
-  if (issues.some((issue) => issue.includes('缺少现场作业视角和可执行动作'))) {
+  if (
+    issues.some(
+      (issue) =>
+        issue.includes('缺少现场作业视角和可执行动作') ||
+        issue.includes('缺少师傅面对客户讲现场做法的第一人称表达') ||
+        issue.includes('缺少直接面向客户的“你”或“您”及具体动作') ||
+        issue.includes('缺少潜在客户未成交时的第一人称顾虑或决策动作'),
+    )
+  ) {
     targets.add('solution_paragraphs.0');
   }
   if (
@@ -2327,6 +2640,22 @@ function douyinDirectRepairTargets(
     narrative.forEach((id) => targets.add(id));
   }
   return Object.freeze([...targets]);
+}
+
+function douyinNarrativeExpansionTarget(draft: DouyinDirectDraft): string {
+  const candidates = [
+    ['solution_paragraphs.0', draft.solution_paragraphs[0], 95],
+    ['price_boundary', draft.price_boundary, 100],
+    ['schedule', draft.schedule, 90],
+    ['protection_risk', draft.protection_risk, 100],
+    ['solution_paragraphs.1', draft.solution_paragraphs[1], 95],
+    ['checklist', draft.checklist, 130],
+    ['conclusion', draft.conclusion, 90],
+  ] as const;
+  return (
+    candidates.find(([, text, maximum]) => maximum - [...text.trim()].length >= 15)?.[0] ??
+    'solution_paragraphs.0'
+  );
 }
 
 function isDouyinEvidenceOnlyIssue(issue: string, requiredPromise: string | null): boolean {
@@ -2412,7 +2741,7 @@ function douyinDirectVisibleText(draft: DouyinDirectDraft): string {
 }
 
 function sentenceFragment(value: string): string {
-  return value.trim().replace(/[。！？!?]+$/gu, '');
+  return value.trim().replace(/[。！？!?，,：:；;、]+$/gu, '');
 }
 
 function paragraphText(value: string): string {
@@ -2707,6 +3036,7 @@ function deterministicContentIssues(
         ...douyinSearchIntentIssues(content, writerInput),
         ...douyinContentVoiceIssues(content, writerInput),
         ...assessDouyinOwnerPromotion(content, ownerCompanyNames).map((finding) => finding.message),
+        ...douyinCustomerOwnerRecommendationIssues(content, writerInput),
       );
     }
     if (
@@ -2743,7 +3073,26 @@ function douyinContentVoice(writerInput: JsonObject): DouyinContentVoice | null 
   const brief = jsonObject(writerInput['brief']);
   const constraints = brief ? jsonObject(brief['constraints']) : undefined;
   const value = constraints?.['douyin_content_voice'];
-  return value === 'enterprise_official' || value === 'frontline_mover' ? value : null;
+  return value === 'enterprise_official' ||
+    value === 'frontline_mover' ||
+    value === 'customer_perspective'
+    ? value
+    : null;
+}
+
+function requiredDouyinFrontlineConclusion(writerInput: JsonObject): string | null {
+  if (douyinContentVoice(writerInput) !== 'frontline_mover') return null;
+  const owners = ownerCompanyNamesFromWriterInput(writerInput);
+  if (owners.length !== 1) return null;
+  return `我就职于${owners[0]!}，欢迎联系我核对方案，必要时上门查看，尽量把容易产生变化的费用提前说清楚。`;
+}
+
+function withRequiredDouyinFrontlineConclusion(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): DouyinDirectDraft {
+  const conclusion = requiredDouyinFrontlineConclusion(writerInput);
+  return conclusion ? Object.freeze({ ...draft, conclusion }) : draft;
 }
 
 function douyinContentVoiceIssues(
@@ -2769,6 +3118,24 @@ function douyinContentVoiceIssues(
   ) {
     violations.push('缺少现场作业视角和可执行动作');
   }
+  if (
+    voice === 'frontline_mover' &&
+    !values.some((value) => DOUYIN_FRONTLINE_FIRST_PERSON_WORK_PATTERN.test(value))
+  ) {
+    violations.push('缺少师傅面对客户讲现场做法的第一人称表达');
+  }
+  if (
+    voice === 'frontline_mover' &&
+    !values.some((value) => DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN.test(value))
+  ) {
+    violations.push('缺少直接面向客户的“你”或“您”及具体动作');
+  }
+  if (
+    voice === 'customer_perspective' &&
+    !values.some((value) => DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN.test(value))
+  ) {
+    violations.push('缺少潜在客户未成交时的第一人称顾虑或决策动作');
+  }
   const label = DOUYIN_CONTENT_VOICE_LABELS[voice];
   return Object.freeze(
     violations.map(
@@ -2780,22 +3147,48 @@ function douyinContentVoiceIssues(
 
 function douyinContentVoiceViolations(text: string, voice: DouyinContentVoice): readonly string[] {
   const violations: string[] = [];
-  if (DOUYIN_ENTERPRISE_PERSONA_PATTERNS.some((pattern) => pattern.test(text))) {
-    violations.push(
-      voice === 'enterprise_official'
-        ? '企业官方口吻不得模拟个人师傅身份或个人亲历'
-        : '一线师傅口吻不得声称真实个人身份',
-    );
+  if (
+    voice === 'enterprise_official' &&
+    DOUYIN_ENTERPRISE_PERSONA_PATTERNS.some((pattern) => pattern.test(text))
+  ) {
+    violations.push('企业官方口吻不得模拟个人师傅身份或个人亲历');
+  }
+  if (voice === 'customer_perspective') {
+    if (DOUYIN_CUSTOMER_META_VOICE_PATTERNS.some((pattern) => pattern.test(text))) {
+      violations.push('不得向读者说明正在使用或扮演客户视角');
+    }
+    if (DOUYIN_IDENTIFIABLE_THIRD_PARTY_PATTERN.test(text)) {
+      violations.push('第三方消费经历必须匿名为“某先生”“某女士”或“某位消费者”');
+    }
+    if (DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS.some((pattern) => pattern.test(text))) {
+      violations.push('不得使用论文式、总结式或二元对照的模板套话');
+    }
+    if (DOUYIN_WORKER_IDENTITY_PATTERNS.some((pattern) => pattern.test(text))) {
+      violations.push('客户口吻不得模拟服务人员身份');
+    }
+    if (DOUYIN_COMPANY_PERSONA_PATTERNS.some((pattern) => pattern.test(text))) {
+      violations.push('客户口吻不得使用企业服务方口径');
+    }
+    if (DOUYIN_CUSTOMER_EXPERIENCE_PATTERNS.some((pattern) => pattern.test(text))) {
+      violations.push('不得编造已完成的消费或服务亲历');
+    }
+    if (DOUYIN_CUSTOMER_REVIEW_PATTERNS.some((pattern) => pattern.test(text))) {
+      violations.push('不得编造客户评价或推荐结果');
+    }
+    return Object.freeze([...new Set(violations)]);
   }
   if (voice !== 'frontline_mover') return Object.freeze([...new Set(violations)]);
+  if (DOUYIN_FRONTLINE_CUSTOMER_ROLE_LEAK_PATTERNS.some((pattern) => pattern.test(text))) {
+    violations.push('一线师傅口吻不得切换成客户选择服务商的身份');
+  }
+  if (DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS.some((pattern) => pattern.test(text))) {
+    violations.push('不得使用论文式、总结式或二元对照的模板套话');
+  }
   if (DOUYIN_FRONTLINE_TENURE_PATTERNS.some((pattern) => pattern.test(text))) {
     violations.push('不得编造个人工龄或从业年限');
   }
   if (DOUYIN_FRONTLINE_EXPERIENCE_PATTERNS.some((pattern) => pattern.test(text))) {
     violations.push('不得编造个人亲历或具体作业经历');
-  }
-  if (DOUYIN_FRONTLINE_CUSTOMER_CASE_PATTERNS.some((pattern) => pattern.test(text))) {
-    violations.push('不得编造具体客户、客户评价或客户案例');
   }
   return Object.freeze([...new Set(violations)]);
 }
@@ -2806,9 +3199,47 @@ function douyinContentVoiceRepairInstruction(writerInput: JsonObject): string {
     return 'Content voice is enterprise_official. Keep a formal company-team perspective; replace individual-worker identity or autobiographical wording with neutral process or service-team wording.';
   }
   if (voice === 'frontline_mover') {
-    return 'Content voice is frontline_mover. Use plain field-practice language about observable conditions and actions, but remove any claimed personal identity, employment years, first-hand event, specific client, client feedback, or customer case.';
+    return 'Content voice is frontline_mover. Rewrite like a seasoned mover speaking directly to a customer: use a generic first-person work method such as “我到现场一般先看……” and address the customer as “你” or “您”. Ten years is a writing-maturity benchmark, not a biography; remove invented names, employment years, and one-off first-hand events. The only allowed personal affiliation is the required conclusion “我就职于{{当前企业法定全称}}，欢迎联系我核对方案，必要时上门查看，尽量把容易产生变化的费用提前说清楚。” using the one owner name from the published brand profile. Do not switch into buyer language such as “选服务商时，我会……” or “放进备选名单”. A published company or consumer case may remain only when supplied evidence directly supports a visible mapped fact; never claim the narrator personally handled it. Remove essay scaffolding and repeated formal advice wording.';
+  }
+  if (voice === 'customer_perspective') {
+    return 'Content voice is customer_perspective. Write the unfinished decision process of a real prospective buyer with varied natural first-person wording such as “我最担心……”, “我得问清……”, and “我会把……放进备选名单”. Remove role metadata such as “从客户视角”, “站在客户角度”, or “作为客户”. Remove essay scaffolding, assistant summaries, mechanical contrast shells, repeated “我会”, repeated formal advice wording, and false completed-decision phrases such as “综合比较下来”. Remove any invented completed purchase or service, first-hand experience, review, recommendation result, customer case, or service-worker persona. A third-party consumer experience may remain only when supplied evidence directly supports it, the person is anonymized, and the exact visible fact is mapped to that citation. Keep the owner-company shortlist decision grounded in the published brand profile or supplied evidence, and end with the next quote or plan check before deciding; credentials and other externally verifiable claims still require citations.';
   }
   return 'Preserve the content voice already bound in brief.constraints.';
+}
+
+function douyinCustomerOwnerRecommendationIssues(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): readonly string[] {
+  if (
+    content.platform_code !== 'douyin' ||
+    douyinContentVoice(writerInput) !== 'customer_perspective'
+  ) {
+    return [];
+  }
+  const owners = ownerCompanyNamesFromWriterInput(writerInput);
+  if (owners.length !== 1) {
+    return Object.freeze([
+      'douyin:客户口吻必须从已发布品牌资料识别且只能识别一个本企业法定名称，不能生成无主体或主体冲突的推广内容',
+    ]);
+  }
+  const description = jsonObject(content.platform_meta)?.['description'];
+  const paragraphs =
+    typeof description === 'string'
+      ? description
+          .split(/\n\s*\n/gu)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean)
+      : [];
+  const conclusion = paragraphs.at(-1) ?? '';
+  const owner = owners[0]!;
+  return conclusion.includes(owner) &&
+    DOUYIN_CUSTOMER_OWNER_DECISION_PATTERN.test(conclusion) &&
+    DOUYIN_CUSTOMER_NEXT_STEP_PATTERN.test(conclusion)
+    ? []
+    : Object.freeze([
+        `douyin:客户口吻最后一段必须基于当前品牌资料或输入证据，以未成交客户的第一人称自然把当前企业“${owner}”列入备选、比较或咨询对象，并说明下一步将询价或核对实际方案后再决定；不得写成企业自荐或虚构用后评价 [repair_target=conclusion]`,
+      ]);
 }
 
 function enterpriseEvidenceIssues(
@@ -2852,6 +3283,11 @@ function douyinSearchIntentIssues(
   const brief = jsonObject(writerInput['brief']);
   const constraints = brief ? jsonObject(brief['constraints']) : undefined;
   const issues: string[] = [];
+  if (/(?:怎么|如何)选靠谱/u.test(content.title)) {
+    issues.push(
+      'douyin:标题中的“怎么选靠谱”语序生硬，应改成“怎么选才靠谱”或其他自然问法，同时保留绑定标题主体 [repair_target=title]',
+    );
+  }
   const intent = constraints?.['douyin_search_intent'];
   if (typeof intent === 'string') {
     const rule = DOUYIN_SEARCH_INTENT_TITLE_RULES[intent];
@@ -2953,6 +3389,46 @@ function suppliedCitations(
       return typeof id === 'string' && typeof quote === 'string' && typeof sourceId === 'string'
         ? [[id, { quoteText: quote, sourceId }] as const]
         : [];
+    }),
+  );
+}
+
+function withExactVisibleDouyinEvidenceClaims(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): DouyinDirectDraft {
+  if (draft.evidence_claims.length > 0) return draft;
+  const visible = normalizeContentText(douyinDirectVisibleText(draft));
+  const evidenceClaims = [...suppliedCitations(writerInput)].flatMap(
+    ([citationId, { quoteText }]) => {
+      const claimText = [quoteText, ...quoteText.split(/[。！？!?；;\n]+/u)]
+        .map((part) => part.trim())
+        .find((part) => {
+          const normalized = normalizeContentText(part);
+          const length = [...part].length;
+          return length >= 12 && length <= 240 && visible.includes(normalized);
+        });
+      return claimText
+        ? [Object.freeze({ citation_ids: Object.freeze([citationId]), claim_text: claimText })]
+        : [];
+    },
+  );
+  if (evidenceClaims.length === 0) return draft;
+  return Object.freeze({
+    ...draft,
+    evidence_claims: Object.freeze(evidenceClaims.slice(0, 12)),
+  });
+}
+
+function douyinDraftContainsSuppliedCitationText(
+  draft: DouyinDirectDraft,
+  writerInput: JsonObject,
+): boolean {
+  const visible = normalizeContentText(douyinDirectVisibleText(draft));
+  return [...suppliedCitations(writerInput).values()].some(({ quoteText }) =>
+    [quoteText, ...quoteText.split(/[。！？!?；;\n]+/u)].some((part) => {
+      const normalized = normalizeContentText(part);
+      return [...normalized].length >= 12 && visible.includes(normalized);
     }),
   );
 }
@@ -3106,6 +3582,64 @@ function targetedTextRepairTargets(
     if (
       content.platform_code === 'douyin' &&
       contentVoice === 'frontline_mover' &&
+      (() => {
+        const values = [
+          content.title,
+          content.summary,
+          content.cta,
+          ...content.blocks.map((block) => block.text),
+          ...stringValues(content.platform_meta),
+        ].filter((value): value is string => typeof value === 'string');
+        return (
+          !values.some((value) => DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(value)) ||
+          !values.some((value) => DOUYIN_FRONTLINE_FIRST_PERSON_WORK_PATTERN.test(value)) ||
+          !values.some((value) => DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN.test(value))
+        );
+      })()
+    ) {
+      const values = [
+        content.title,
+        content.summary,
+        content.cta,
+        ...content.blocks.map((block) => block.text),
+        ...stringValues(content.platform_meta),
+      ].filter((value): value is string => typeof value === 'string');
+      const missing = [
+        ...(!values.some((value) => DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(value))
+          ? ['缺少现场作业视角和可执行动作']
+          : []),
+        ...(!values.some((value) => DOUYIN_FRONTLINE_FIRST_PERSON_WORK_PATTERN.test(value))
+          ? ['缺少师傅面对客户讲现场做法的第一人称表达']
+          : []),
+        ...(!values.some((value) => DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN.test(value))
+          ? ['缺少直接面向客户的“你”或“您”及具体动作']
+          : []),
+      ];
+      const index = content.blocks.findIndex(
+        (block, blockIndex) =>
+          block.block_type !== 'heading' &&
+          !locked.has(`${content.platform_code}:${block.block_key}`) &&
+          !targets.some((target) => target.id === `${prefix}.blocks[${blockIndex}].text`),
+      );
+      const block = index >= 0 ? content.blocks[index] : undefined;
+      if (block) {
+        targets.push(
+          Object.freeze({
+            content,
+            contentVoiceViolations: Object.freeze(missing),
+            id: `${prefix}.blocks[${index}].text`,
+            internalCustomerLanguage: Object.freeze([]),
+            originalText: block.text,
+            prohibitedContactDetails: Object.freeze([]),
+            prohibitedPromotionalTerms: Object.freeze([]),
+            unsupportedClaims: Object.freeze([]),
+          }),
+        );
+      }
+    }
+    if (
+      content.platform_code === 'douyin' &&
+      contentVoice === 'customer_perspective' &&
       ![
         content.title,
         content.summary,
@@ -3113,7 +3647,8 @@ function targetedTextRepairTargets(
         ...content.blocks.map((block) => block.text),
         ...stringValues(content.platform_meta),
       ].some(
-        (value) => typeof value === 'string' && DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(value),
+        (value) =>
+          typeof value === 'string' && DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN.test(value),
       )
     ) {
       const index = content.blocks.findIndex(
@@ -3127,7 +3662,7 @@ function targetedTextRepairTargets(
         targets.push(
           Object.freeze({
             content,
-            contentVoiceViolations: Object.freeze(['缺少现场作业视角和可执行动作']),
+            contentVoiceViolations: Object.freeze(['缺少潜在客户未成交时的第一人称顾虑或决策动作']),
             id: `${prefix}.blocks[${index}].text`,
             internalCustomerLanguage: Object.freeze([]),
             originalText: block.text,
@@ -3247,6 +3782,24 @@ function invalidTargetedTextRepairReason(
       !DOUYIN_FRONTLINE_PRACTICAL_CUE_PATTERN.test(replacement.replacement_text)
     ) {
       return `replacement_still_lacks_frontline_practical_cue:${target.id}`;
+    }
+    if (
+      target.contentVoiceViolations.includes('缺少师傅面对客户讲现场做法的第一人称表达') &&
+      !DOUYIN_FRONTLINE_FIRST_PERSON_WORK_PATTERN.test(replacement.replacement_text)
+    ) {
+      return `replacement_still_lacks_frontline_first_person_work:${target.id}`;
+    }
+    if (
+      target.contentVoiceViolations.includes('缺少直接面向客户的“你”或“您”及具体动作') &&
+      !DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN.test(replacement.replacement_text)
+    ) {
+      return `replacement_still_lacks_frontline_customer_address:${target.id}`;
+    }
+    if (
+      target.contentVoiceViolations.includes('缺少潜在客户未成交时的第一人称顾虑或决策动作') &&
+      !DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN.test(replacement.replacement_text)
+    ) {
+      return `replacement_still_lacks_customer_decision_cue:${target.id}`;
     }
   }
   return null;
