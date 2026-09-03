@@ -13,7 +13,8 @@ import type {
 
 const SELECTORS = Object.freeze({
   abstract: 'textarea[placeholder*="摘要"], textarea[data-field="abstract"]',
-  aiGenerated: 'label:has-text("采用AI生成内容")',
+  accountRestricted: 'text=/您的账号已被封停|账号已被封停/u',
+  aiGeneratedLegacy: 'label:has-text("采用AI生成内容")',
   authenticated: '[data-testid="account-menu"], .user-info, .user-name',
   authenticatedManage:
     '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list',
@@ -26,6 +27,8 @@ const SELECTORS = Object.freeze({
     '[data-testid="content-list"], [class*="client_pages_content_v2_components_articleList"], .content-list',
   contentListEmpty: 'text=/暂无内容/u',
   contentTable: 'table',
+  currentSmartCreation: 'text="智能创作"',
+  currentSmartCreationControl: 'label:has-text("自动生成摘要"), label:has-text("图文转动态")',
   contentRow:
     '[data-publication-row], [class*="client_pages_content_v2_components_articleItem"], .content-item, tr',
   cover:
@@ -55,6 +58,7 @@ export class PageDriverError extends Error {
     public readonly code:
       | 'AUTH_REQUIRED'
       | 'CAPTCHA_REQUIRED'
+      | 'ACCOUNT_RESTRICTED'
       | 'MULTIPLE_MATCHES'
       | 'PAGE_SIGNATURE_CHANGED'
       | 'PUBLISH_STATE_UNKNOWN',
@@ -277,7 +281,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       stage = 'fill_fingerprint';
       await fillOptional(page, SELECTORS.fingerprint, input.contentFingerprint);
       stage = 'mark_ai_generated';
-      await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
+      await markAiGenerated(page);
       stage = 'verify_pre_submit';
       await this.rejectCaptcha(page);
       stage = 'capture_pre_submit';
@@ -285,7 +289,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
       stage = 'persist_pre_submit';
       await beforeSubmit(preSubmit);
       stage = 'mark_ai_generated';
-      await checkRequired(page, SELECTORS.aiGenerated, 'Baijiahao AI-generated declaration');
+      await markAiGenerated(page);
       stage = 'submit';
       const acknowledged = await submitAndWaitForAcknowledgement(
         page,
@@ -509,6 +513,7 @@ export class PlaywrightBaijiahaoPageDriver implements BaijiahaoPageDriver {
   }
 
   private async rejectCaptcha(page: Page): Promise<void> {
+    await rejectAccountRestriction(page);
     if (
       await page
         .locator(SELECTORS.captcha)
@@ -770,7 +775,12 @@ async function uploadCover(
     await replace.click();
   }
   const dialog = page.getByRole('dialog').filter({ hasText: '本地上传' }).first();
-  await dialog.waitFor({ state: 'visible', timeout: timeoutMs });
+  try {
+    await dialog.waitFor({ state: 'visible', timeout: timeoutMs });
+  } catch (error) {
+    await rejectAccountRestriction(page);
+    throw error;
+  }
   const locator = dialog.locator(SELECTORS.cover).first();
   if ((await locator.count()) === 0) {
     throw new PageDriverError(
@@ -790,9 +800,50 @@ async function waitForCoverPreview(page: Page, timeoutMs: number): Promise<void>
       .first()
       .waitFor({ state: 'visible', timeout: timeoutMs });
   } catch {
+    await rejectAccountRestriction(page);
     throw new PageDriverError(
       'PAGE_SIGNATURE_CHANGED',
       'Baijiahao cover upload did not produce a ready preview',
+    );
+  }
+}
+
+async function markAiGenerated(page: Page): Promise<void> {
+  const legacy = page.locator(SELECTORS.aiGeneratedLegacy).first();
+  if (await legacy.isVisible().catch(() => false)) {
+    await checkRequired(page, SELECTORS.aiGeneratedLegacy, 'Baijiahao AI-generated declaration');
+    return;
+  }
+  const [sectionVisible, currentControlVisible] = await Promise.all([
+    page
+      .locator(SELECTORS.currentSmartCreation)
+      .first()
+      .isVisible()
+      .catch(() => false),
+    page
+      .locator(SELECTORS.currentSmartCreationControl)
+      .first()
+      .isVisible()
+      .catch(() => false),
+  ]);
+  if (sectionVisible && currentControlVisible) return;
+  throw new PageDriverError(
+    'PAGE_SIGNATURE_CHANGED',
+    'Baijiahao AI disclosure area no longer matches a supported editor signature',
+  );
+}
+
+async function rejectAccountRestriction(page: Page): Promise<void> {
+  if (
+    await page
+      .locator(SELECTORS.accountRestricted)
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    throw new PageDriverError(
+      'ACCOUNT_RESTRICTED',
+      'Baijiahao reports that this account is restricted from publishing',
     );
   }
 }

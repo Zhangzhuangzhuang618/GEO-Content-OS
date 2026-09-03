@@ -139,6 +139,54 @@ describe('browser-platform automation', () => {
     );
   });
 
+  it('keeps later configured Douyin slots before creating shifted slots', () => {
+    const now = new Date('2026-08-15T23:00:00.000Z');
+    const occupied = [new Date('2026-08-16T00:00:00.000Z')];
+
+    expect(nextSchedule(now, ['08:00', '15:30', '21:30'], occupied, 20).toISOString()).toBe(
+      '2026-08-16T07:30:00.000Z',
+    );
+  });
+
+  it('round-robins shifted Douyin slots after every configured slot is occupied', () => {
+    const now = new Date('2026-08-15T23:00:00.000Z');
+    const occupied = [
+      new Date('2026-08-16T00:00:00.000Z'),
+      new Date('2026-08-16T07:30:00.000Z'),
+      new Date('2026-08-16T13:30:00.000Z'),
+      new Date('2026-08-16T00:20:00.000Z'),
+    ];
+
+    expect(nextSchedule(now, ['08:00', '15:30', '21:30'], occupied, 20).toISOString()).toBe(
+      '2026-08-16T07:50:00.000Z',
+    );
+  });
+
+  it('spreads four Douyin accounts across all configured windows before each shift round', () => {
+    const now = new Date('2026-08-15T23:00:00.000Z');
+    const slots = ['08:00', '15:30', '21:30'];
+    const occupied: Date[] = [];
+
+    for (let index = 0; index < 12; index += 1) {
+      occupied.push(nextSchedule(now, slots, occupied, 20));
+    }
+
+    expect(occupied.map((date) => date.toISOString())).toEqual([
+      '2026-08-16T00:00:00.000Z',
+      '2026-08-16T07:30:00.000Z',
+      '2026-08-16T13:30:00.000Z',
+      '2026-08-16T00:20:00.000Z',
+      '2026-08-16T07:50:00.000Z',
+      '2026-08-16T13:50:00.000Z',
+      '2026-08-16T00:40:00.000Z',
+      '2026-08-16T08:10:00.000Z',
+      '2026-08-16T14:10:00.000Z',
+      '2026-08-16T01:00:00.000Z',
+      '2026-08-16T08:30:00.000Z',
+      '2026-08-16T14:30:00.000Z',
+    ]);
+  });
+
   it('queues browser-platform work with the canonical Outbox retry column', async () => {
     const statements: string[] = [];
     const automationRunId = '10000000-0000-4000-8000-000000000153';
@@ -212,6 +260,11 @@ describe('browser-platform automation', () => {
       },
       platform_codes: ['lieju'],
     });
+    expect(
+      ((rewrite['brief'] as Record<string, unknown>)['constraints'] as Record<string, string>)[
+        'additional_instructions'
+      ],
+    ).toContain('必须使用至少一条');
   });
 
   it('keeps the Douyin image-note contract when rebuilding rewrite input', () => {

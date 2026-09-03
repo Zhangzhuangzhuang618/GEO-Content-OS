@@ -20,6 +20,8 @@ type SubmittedPublication = {
 
 describe('Baijiahao local browser simulator', () => {
   let baseUrl = '';
+  let accountRestricted = false;
+  let currentSmartCreation = false;
   let duplicateRows = false;
   let editorStartsAtHome = false;
   let manageStartsAtHome = false;
@@ -30,6 +32,8 @@ describe('Baijiahao local browser simulator', () => {
   let validManageSignature = true;
 
   beforeEach(async () => {
+    accountRestricted = false;
+    currentSmartCreation = false;
     duplicateRows = false;
     editorStartsAtHome = false;
     manageStartsAtHome = false;
@@ -47,6 +51,8 @@ describe('Baijiahao local browser simulator', () => {
         () => editorStartsAtHome,
         () => validManageSignature,
         () => manageStartsAtHome,
+        () => currentSmartCreation,
+        () => accountRestricted,
         (value) => {
           submitted = value;
         },
@@ -331,6 +337,72 @@ describe('Baijiahao local browser simulator', () => {
     }
   });
 
+  it('supports the current smart-creation editor when the legacy AI declaration is absent', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      currentSmartCreation = true;
+
+      await expect(
+        driver.submit(
+          {
+            accountId,
+            contentFingerprint: 'e'.repeat(64),
+            images: [],
+            payload: {
+              abstract: '新版智能创作编辑器摘要',
+              body_html: '<p>正文</p>',
+              body_asset_ids: [],
+              body_text: '用于验证新版智能创作编辑器的正文内容。',
+              citation_links: [],
+              content_type: 'news',
+              cover_asset_id: null,
+              platform_code: 'baijiahao',
+              rule_version: 'baijiahao-render-rules@1.1.0',
+              schema_version: 'baijiahao-payload@2',
+              tags: ['新版', '智能创作', '发布'],
+              title: '新版智能创作编辑器测试',
+            },
+            profilePath,
+            storageStateJson: await driver.exportStorageState(accountId),
+          },
+          async () => undefined,
+        ),
+      ).resolves.toMatchObject({ externalId: 'simulator-145', status: 'processing' });
+      expect(submitted).toMatchObject({
+        aiGenerated: true,
+        fingerprint: 'e'.repeat(64),
+        title: '新版智能创作编辑器测试',
+      });
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('classifies an account-ban dialog before attempting editor operations', async () => {
+    const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
+    const accountId = '00000000-0000-4000-8000-000000000145';
+    const profilePath = join(profileRoot, accountId);
+    try {
+      const login = await driver.startLogin(accountId, profilePath);
+      expect(await driver.waitForAuthentication(accountId, login.expiresAt)).toBe(true);
+      accountRestricted = true;
+
+      await expect(
+        driver.verifyPublishReady(
+          accountId,
+          profilePath,
+          await driver.exportStorageState(accountId),
+        ),
+      ).rejects.toMatchObject({ code: 'ACCOUNT_RESTRICTED' });
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('releases an account context and restores a fresh one from encrypted state', async () => {
     const driver = new PlaywrightBaijiahaoPageDriver(config(baseUrl, profileRoot));
     const accountId = '00000000-0000-4000-8000-000000000145';
@@ -483,6 +555,8 @@ function route(
   editorStartsAtHome: () => boolean,
   hasManageSignature: () => boolean,
   manageStartsAtHome: () => boolean,
+  usesCurrentSmartCreation: () => boolean,
+  isAccountRestricted: () => boolean,
   saveSubmitted: (value: SubmittedPublication) => void,
 ): void {
   if (request.url === '/v2/api/qrcode') {
@@ -561,7 +635,16 @@ function route(
       <input data-field="tags"><input data-field="fingerprint">
       <select data-field="category"><option value="news">news</option></select>
       <label data-testid="not-original"><input type="radio" name="original">非原创</label>
-      <label><input type="checkbox" data-testid="ai-generated">采用AI生成内容</label>
+      ${
+        usesCurrentSmartCreation()
+          ? '<section><span>智能创作</span><label><input type="checkbox">自动生成摘要</label><label><input type="checkbox">图文转动态</label></section>'
+          : '<label><input type="checkbox" data-testid="ai-generated">采用AI生成内容</label>'
+      }
+      ${
+        isAccountRestricted()
+          ? '<div role="dialog"><h2>您的账号已被封停</h2><p>如有问题，请点击按钮进行申诉。</p></div>'
+          : ''
+      }
       <button type="button">定时发布</button>
       <button data-testid="submit">发布</button>
       <script>
@@ -639,17 +722,20 @@ function route(
           }
           document.querySelector('[data-testid=body-image-dialog]').style.display='none';
         };
+        const aiGenerated=document.querySelector('[data-testid=ai-generated]');
         document.querySelector('[data-field=tags]').addEventListener('input',()=>{
-          document.querySelector('[data-testid=ai-generated]').checked=false;
+          if(aiGenerated) aiGenerated.checked=false;
         });
         let aiClickAttempts=0;
-        document.querySelector('[data-testid=ai-generated]').addEventListener('click',(event)=>{
-          aiClickAttempts+=1;
-          if(aiClickAttempts===1) event.preventDefault();
-        });
+        if(aiGenerated) {
+          aiGenerated.addEventListener('click',(event)=>{
+            aiClickAttempts+=1;
+            if(aiClickAttempts===1) event.preventDefault();
+          });
+        }
         document.querySelector('[data-testid=submit]').onclick=async()=>{
           const publishResponse=await fetch('/pcui/article/publish?type=news&callback=bjhpublish',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({
-            aiGenerated:document.querySelector('[data-testid=ai-generated]').checked,
+            aiGenerated:aiGenerated ? aiGenerated.checked : true,
             bodyInputRegistered:document.querySelector('#ueditor_0').contentDocument.body.innerText.length>0,
             bodyModelRegistered:window.UE_V2.instants.ueditorInstant0.hasContents(),
             bodyImagesUploaded:document.querySelector('#ueditor_0').contentDocument.body.querySelectorAll('img').length,

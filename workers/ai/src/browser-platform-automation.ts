@@ -792,7 +792,7 @@ export function buildBrowserPlatformRewriteInput(
     : [];
   const additional =
     platformCode === 'lieju'
-      ? '这是列举网自动化分类信息。标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务、自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。不得在正文写具体电话或手机号、微信/QQ账号，不得使用极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
+      ? '这是列举网自动化分类信息。标题保持5-30字并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许明确介绍本企业服务、自然提示通过页面联系方式咨询，并保留与正文相关的外部网址或官方核验链接；品牌、事实和资质表述必须与当前企业资料及引用证据一致。输入提供citations时，正文必须使用至少一条与当前选题直接相关、可由引用完整支持的事实并写入citation_map；重写后仍然可见且未改变的原事实声明必须保留原引用映射，不得为了凑数错配引用。不得在正文写具体电话或手机号、微信/QQ账号，不得使用极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。'
       : platformCode === 'douyin'
         ? '这是抖音自动化图文。继续服从原 brief.constraints.douyin_search_intent 与 douyin_topic_focus：标题、主文案和全部卡片必须共同回答该唯一搜索决策意图，不得在重写时退回泛化流程或准备文。brief.constraints.douyin_title_subject 存在时，标题必须逐字保留该地域与具体场景主体；brief.constraints.douyin_title_evidence_promise 存在时，标题必须逐字保留该证据承诺，正文必须提供引用直接支持的对应可见事实并完成 citation_map。保持 platform_meta.content_kind=image_note 以及6-9张封面、正文、总结卡片；现场核对、报价或服务边界、防护风险、预约工期、实操清单和结论是当前主题的安全技术槽位，必须分别解释该主题的条件和边界，删除长段拆页、模板标题与同义重复。description 是420-900字、5-8个自然段的独立发布主文案，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，第二至第三段给解决方案并在资料支持时自然提及一次本企业全称，随后讲清费用边界、防护风险和工期安排，倒数第二段至少3条编号避坑点，最后给选择依据；不得复制摘要、正文块或卡片，也不得使用助手腔。未绑定的“真实场景、收费对比、资质核验、合同条款解读、口碑参考”等标题证据承诺必须有输入资料和 citation_map 直接支持，否则改为核对方法、选择标准或比较维度。只修复当前质量报告指出的问题；不得伪造热点、排行、亲历、用户评价或无证据资质，AI创作标识由发布器如实设置。'
         : '这是搜狐号自动化图文。不得声明原创，不得伪造热点、排行、亲历或用户评价。';
@@ -950,15 +950,21 @@ export function nextSchedule(
     formatter.formatToParts(now).map((part) => [part.type, part.value]),
   );
   const date = `${parts['year']}-${parts['month']}-${parts['day']}`;
-  for (const slot of slots) {
-    const candidate = new Date(`${date}T${slot}+08:00`);
-    if (candidate <= now) continue;
-    if (gapMs === 0) {
+  const configured = slots
+    .map((slot) => new Date(`${date}T${slot}+08:00`))
+    .filter((candidate) => candidate > now)
+    .sort((left, right) => left.getTime() - right.getTime());
+  if (gapMs === 0) {
+    for (const candidate of configured) {
       if (!conflicts(candidate)) return candidate;
-      continue;
     }
-    while (conflicts(candidate)) candidate.setTime(candidate.getTime() + gapMs);
-    return candidate;
+  } else if (configured.length > 0) {
+    for (let offset = 0; ; offset += gapMs) {
+      for (const base of configured) {
+        const candidate = new Date(base.getTime() + offset);
+        if (!conflicts(candidate)) return candidate;
+      }
+    }
   }
   const fallback = new Date(now.getTime() + 5 * 60_000);
   const fallbackStep = gapMs || 5 * 60_000;

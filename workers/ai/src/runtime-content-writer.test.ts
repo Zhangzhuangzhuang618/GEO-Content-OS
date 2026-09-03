@@ -775,6 +775,146 @@ describe('AI Worker runtime wiring', () => {
     expect(generatedVariant.cta).toBe(configured);
   });
 
+  it('requires a grounded citation when Lieju input provides citation evidence', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citation = (fixture.input['citations'] as readonly JsonObject[])[0]!;
+    const citationId = citation['citation_id'] as string;
+    const claimText = citation['quote_text'] as string;
+    const uncited = multiPlatformContentData(['lieju'], new Set());
+    const variant = uncited.variants[0]!;
+    const cited = {
+      ...uncited,
+      variants: [
+        {
+          ...variant,
+          blocks: variant.blocks.map((block, index) =>
+            index === variant.blocks.length - 1
+              ? { ...block, text: `${block.text}${claimText}` }
+              : block,
+          ),
+          citation_map: [
+            {
+              citation_ids: [citationId],
+              claim_key: 'grounded-source-fact',
+              claim_text: claimText,
+            },
+          ],
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(uncited) }, { text: JSON.stringify(cited) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseWriterInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const baseBrief = baseWriterInput['brief'] as JsonObject;
+    const writerInput = {
+      ...baseWriterInput,
+      brief: { ...baseBrief, constraints: { require_grounded_citation: true } },
+      citations: fixture.input['citations'],
+    } as JsonObject;
+    const masterContext = context(MASTER_RUN, null);
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-lieju-grounded-citation-master-0170',
+      writerInput,
+    });
+    const generatedVariant = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-grounded-citation-variant-0170',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    expect(adapter.requests[1]!.messages.map((message) => message.content).join('\n')).toContain(
+      '至少一条与当前选题直接相关',
+    );
+    expect(generatedVariant.citation_map).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ citation_ids: [citationId], claim_text: claimText }),
+      ]),
+    );
+  });
+
+  it('preserves a Lieju citation when its visible claim survives a quality rewrite', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citation = (fixture.input['citations'] as readonly JsonObject[])[0]!;
+    const citationId = citation['citation_id'] as string;
+    const claimText = citation['quote_text'] as string;
+    const base = multiPlatformContentData(['lieju'], new Set());
+    const baseVariant = base.variants[0]!;
+    const blocks = baseVariant.blocks.map((block, index) =>
+      index === baseVariant.blocks.length - 1
+        ? { ...block, text: `${block.text}${claimText}` }
+        : block,
+    );
+    const currentContent = {
+      ...baseVariant,
+      blocks,
+      citation_map: [
+        {
+          citation_ids: [citationId],
+          claim_key: 'grounded-source-fact',
+          claim_text: claimText,
+        },
+      ],
+      schema_version: 'content-writer-data@1' as const,
+    } as unknown as GeneratedContent;
+    const rewritten = {
+      ...base,
+      variants: [
+        {
+          ...baseVariant,
+          blocks,
+          citation_map: [],
+          title: '搬家前如何核对服务安排',
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(rewritten) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseWriterInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const baseBrief = baseWriterInput['brief'] as JsonObject;
+    const writerInput = {
+      ...baseWriterInput,
+      brief: { ...baseBrief, constraints: { require_grounded_citation: true } },
+      citations: fixture.input['citations'],
+    } as JsonObject;
+
+    const generatedVariant = await writer.rewriteBrowserPlatformVariant({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+      currentContent,
+      issues: ['只调整标题表达，保留正文事实及其引用。'],
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-preserve-visible-citation-0171',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(1);
+    expect(generatedVariant.title).toBe('搬家前如何核对服务安排');
+    expect(generatedVariant.citation_map).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ citation_ids: [citationId], claim_text: claimText }),
+      ]),
+    );
+  });
+
   it('does not let fast mode bypass the Douyin narrative caption gate', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const repaired = multiPlatformContentData(['douyin'], new Set());

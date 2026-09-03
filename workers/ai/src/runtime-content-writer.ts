@@ -660,6 +660,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         ...(input.platformCode === 'lieju'
           ? [
               '标题保持 5-30 字，并以用户问题或解决方法为中心，自然使用“如何、怎么、指南、方法、哪些”等问法之一。允许介绍本企业服务、使用“通过页面联系方式咨询”等中性引导，以及保留与正文相关的外部网址和官方核验链接；品牌、事实和资质表述不是列举网平台默认禁区，但必须与当前企业资料及引用证据一致。不得在正文写具体电话或手机号、微信/QQ 账号，不得添加极限词、排名、竞品贬损、虚假价格、虚假资质、虚构案例、客户评价或结果保证。',
+              '输入提供 citations 时，正文必须保留至少一条与当前选题直接相关、可由引用完整支持的事实，并在 citation_map 中映射；不得为了凑数错配引用。重写后仍然可见且未改变的原事实声明必须保留原引用映射。',
               '列举网发布层按字面拦截最好、最佳、首选、任何含“百分百”的表达、100%保证和明确排名宣传。即使这些词出现在否定、引用或举例中，也必须删除原词并改写为不含该词的中性表达。',
             ]
           : input.platformCode === 'douyin'
@@ -1428,6 +1429,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
       ...(input.signal ? { signal: input.signal } : {}),
       temperature: input.context.modelPolicy === 'quality' ? 0.25 : 0.35,
     } as const;
+    const normalize = (value: ContentWriterOutput) =>
+      preserveVisibleLiejuCitationMappings(
+        normalizeContentWriterOutput(value, input.writerInput),
+        revision?.candidate,
+        input.writerInput,
+      );
     let result = await runWithStructuredOutputRetry(skill, invocation, structuredFallback);
     if (result.output.status === 'failed') {
       throw new GenerationWorkerError(
@@ -1437,13 +1444,13 @@ export class RuntimeContentWriter implements ContentWriterPort {
       );
     }
     const validationPolicy = revision ? 'quality' : input.context.modelPolicy;
-    let output = normalizeContentWriterOutput(result.output, input.writerInput);
+    let output = normalize(result.output);
     let assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     let deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     let targetedRepairRejection: string | null = null;
     if (onlyInternalCustomerCopyIssues(assessment.issues, deterministicIssues)) {
       const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
-      output = normalizeContentWriterOutput(targetedRepair.output, input.writerInput);
+      output = normalize(targetedRepair.output);
       targetedRepairRejection = targetedRepair.rejectionReason;
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -1473,9 +1480,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
       shortfalls &&
       (deterministicIssues.length === 0 || onlyUnchangedRewriteIssues(deterministicIssues))
     ) {
-      output = normalizeContentWriterOutput(
+      output = normalize(
         await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls),
-        input.writerInput,
       );
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -1500,12 +1506,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
       },
       structuredFallback,
     );
-    output = normalizeContentWriterOutput(result.output, input.writerInput);
+    output = normalize(result.output);
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
     deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
     if (onlyTargetedTextRepairIssues(assessment.issues, deterministicIssues)) {
       const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
-      output = normalizeContentWriterOutput(targetedRepair.output, input.writerInput);
+      output = normalize(targetedRepair.output);
       targetedRepairRejection = targetedRepair.rejectionReason;
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -1515,9 +1521,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
       shortfalls &&
       (deterministicIssues.length === 0 || onlyUnchangedRewriteIssues(deterministicIssues))
     ) {
-      output = normalizeContentWriterOutput(
+      output = normalize(
         await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls),
-        input.writerInput,
       );
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
       deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
@@ -1540,7 +1545,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
           },
           structuredFallback,
         );
-        output = normalizeContentWriterOutput(result.output, input.writerInput);
+        output = normalize(result.output);
         assessment = assessContentWriterContents(output.data.variants, validationPolicy);
         deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
         if (assessment.passed && deterministicIssues.length === 0) return output;
@@ -2694,6 +2699,7 @@ function deterministicContentIssues(
     );
   }
   for (const content of data.variants) {
+    issues.push(...liejuCitationIssues(content, writerInput));
     issues.push(...enterpriseEvidenceIssues(content, writerInput));
     issues.push(...credentialCitationIssues(content, writerInput));
     if (content.platform_code === 'douyin') {
@@ -2712,6 +2718,25 @@ function deterministicContentIssues(
   }
   issues.push(...credentialCitationIssues(data.master_content, writerInput));
   return Object.freeze(issues);
+}
+
+function liejuCitationIssues(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): readonly string[] {
+  const brief = jsonObject(writerInput['brief']);
+  const constraints = brief ? jsonObject(brief['constraints']) : undefined;
+  if (
+    content.platform_code !== 'lieju' ||
+    constraints?.['require_grounded_citation'] !== true ||
+    suppliedCitationIds(writerInput).size === 0
+  ) {
+    return [];
+  }
+  if (content.citation_map.length > 0) return [];
+  return Object.freeze([
+    'lieju:输入已提供引用资料，正文必须使用至少一条与当前选题直接相关、可完整支持可见事实的引用并写入 citation_map；不得错配引用或只返回无引用的泛化建议',
+  ]);
 }
 
 function douyinContentVoice(writerInput: JsonObject): DouyinContentVoice | null {
@@ -3560,6 +3585,49 @@ function normalizeContentWriterOutput(
   return Object.freeze({
     ...output,
     data: normalizeContentWriterData(output.data, writerInput),
+  });
+}
+
+function preserveVisibleLiejuCitationMappings(
+  output: ContentWriterOutput,
+  previous: ContentWriterRevision['candidate'] | undefined,
+  writerInput: JsonObject,
+): ContentWriterOutput {
+  if (!previous) return output;
+  const previousLieju = previous.variants.find((content) => content.platform_code === 'lieju');
+  if (!previousLieju || previousLieju.citation_map.length === 0) return output;
+  const supplied = suppliedCitationIds(writerInput);
+  const variants = output.data.variants.map((content) => {
+    if (content.platform_code !== 'lieju') return content;
+    const visibleText = [
+      content.title,
+      content.summary,
+      content.cta,
+      ...content.blocks.map((block) => block.text),
+      ...stringValues(content.platform_meta),
+    ].filter((value): value is string => typeof value === 'string');
+    const existingKeys = new Set(content.citation_map.map((mapping) => mapping.claim_key));
+    const preserved = previousLieju.citation_map.filter(
+      (mapping) =>
+        !existingKeys.has(mapping.claim_key) &&
+        mapping.citation_ids.length > 0 &&
+        mapping.citation_ids.every((citationId) => supplied.has(citationId)) &&
+        visibleText.some((text) => contentClaimMatches(text, mapping.claim_text)),
+    );
+    if (preserved.length === 0) return content;
+    return Object.freeze({
+      ...content,
+      citation_map: Object.freeze([
+        ...content.citation_map,
+        ...preserved.map((mapping) =>
+          Object.freeze({ ...mapping, citation_ids: Object.freeze([...mapping.citation_ids]) }),
+        ),
+      ]),
+    });
+  });
+  return Object.freeze({
+    ...output,
+    data: Object.freeze({ ...output.data, variants: Object.freeze(variants) }),
   });
 }
 
