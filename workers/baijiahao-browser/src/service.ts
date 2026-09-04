@@ -24,6 +24,11 @@ import type {
 } from './types.js';
 
 const RESUBMIT_GRACE_MS = 2 * 60_000;
+const RECOVERABLE_PUBLISH_ATTENTION_CODES = new Set([
+  'BROWSER_RUNTIME_FAILED',
+  'EDITOR_OPERATION_FAILED',
+  'PAGE_SIGNATURE_CHANGED',
+]);
 
 export class BrowserGatewayError extends Error {
   public constructor(
@@ -266,22 +271,20 @@ export class BaijiahaoBrowserService {
     try {
       let session = await this.store.getOrCreateSession(accountId);
       if (session.status === 'attention_required') {
-        throw new BrowserGatewayError(
-          423,
-          'SESSION_ATTENTION_REQUIRED',
-          'Baijiahao browser automation is paused for manual attention; login has not been marked expired',
-        );
+        if (!canRecoverPublishAttention(session)) {
+          throw new BrowserGatewayError(
+            423,
+            'SESSION_ATTENTION_REQUIRED',
+            'Baijiahao browser automation is paused for manual attention; login has not been marked expired',
+          );
+        }
       }
-      if (session.status !== 'authenticated') {
+      if (session.status !== 'authenticated' && session.status !== 'attention_required') {
         throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login is required');
       }
       const storageStateJson = await this.decryptState(session);
       browserUsed = true;
-      const authenticated = await this.driver.verifyAuthenticated(
-        accountId,
-        this.profilePath(session),
-        storageStateJson,
-      );
+      const authenticated = await this.verifySessionBeforePublish(session, storageStateJson);
       if (!authenticated) {
         session = await this.requireReauth(session, 'LOGIN_EXPIRED');
         void session;
@@ -613,6 +616,48 @@ export class BaijiahaoBrowserService {
     }
   }
 
+  private async verifySessionBeforePublish(
+    session: BrowserSession,
+    storageStateJson: string | null,
+  ): Promise<boolean> {
+    try {
+      return session.status === 'attention_required'
+        ? await this.driver.verifyPublishReady(
+            session.accountId,
+            this.profilePath(session),
+            storageStateJson,
+          )
+        : await this.driver.verifyAuthenticated(
+            session.accountId,
+            this.profilePath(session),
+            storageStateJson,
+          );
+    } catch (error) {
+      if (error instanceof PageDriverError && error.code === 'AUTH_REQUIRED') {
+        await this.requireReauth(session, 'LOGIN_EXPIRED');
+        throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Baijiahao browser login has expired');
+      }
+      const code = sessionVerificationErrorCode(error);
+      console.error('Baijiahao publish preflight failed', {
+        account_id: session.accountId,
+        error: safeBrowserError(error),
+        error_code: code,
+      });
+      await this.store.markSession(session, {
+        error: { code, schema_version: 'baijiahao-browser-error@1' },
+        status: 'attention_required',
+      });
+      if (error instanceof PageDriverError) {
+        throw new BrowserGatewayError(423, error.code, error.message);
+      }
+      throw new BrowserGatewayError(
+        503,
+        'BROWSER_GATEWAY_UNAVAILABLE',
+        'Baijiahao publish preflight failed',
+      );
+    }
+  }
+
   private async persistAuthenticatedSession(session: BrowserSession): Promise<BrowserSession> {
     const encrypted = await this.credentials.encrypt(
       await this.driver.exportStorageState(session.accountId),
@@ -709,6 +754,11 @@ function sessionView(session: BrowserSession): Readonly<Record<string, unknown>>
 
 function canVerifySession(session: BrowserSession): boolean {
   return session.status === 'authenticated' || session.status === 'attention_required';
+}
+
+function canRecoverPublishAttention(session: BrowserSession): boolean {
+  const code = session.lastError?.['code'];
+  return typeof code === 'string' && RECOVERABLE_PUBLISH_ATTENTION_CODES.has(code);
 }
 
 function publicationStatus(status: RemotePublication['status']): PublicationClaim['status'] {

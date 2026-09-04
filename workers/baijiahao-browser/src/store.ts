@@ -108,7 +108,7 @@ export class PostgresBaijiahaoBrowserStore {
         profile_key AS "profileKey", storage_state_ciphertext AS "storageStateCiphertext",
         storage_state_key_version AS "storageStateKeyVersion",
         qr_expires_at AS "qrExpiresAt", authenticated_at AS "authenticatedAt",
-        last_verified_at AS "lastVerifiedAt", version
+        last_error_json AS "lastError", last_verified_at AS "lastVerifiedAt", version
     `;
     const updated = rows[0];
     if (!updated) throw new BrowserStoreError('CONFLICT', 'Browser session changed concurrently');
@@ -343,7 +343,8 @@ function selectSession(
     SELECT id, tenant_id AS "tenantId", account_id AS "accountId", status,
       profile_key AS "profileKey", storage_state_ciphertext AS "storageStateCiphertext",
       storage_state_key_version AS "storageStateKeyVersion", qr_expires_at AS "qrExpiresAt",
-      authenticated_at AS "authenticatedAt", last_verified_at AS "lastVerifiedAt", version
+      authenticated_at AS "authenticatedAt", last_error_json AS "lastError",
+      last_verified_at AS "lastVerifiedAt", version
     FROM baijiahao_browser_sessions WHERE account_id=${accountId}::uuid
     ${lock ? sql`FOR UPDATE` : sql``}
   `;

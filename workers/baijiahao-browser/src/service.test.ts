@@ -468,7 +468,10 @@ describe('Baijiahao browser service', () => {
   });
 
   it('keeps browser attention separate from login expiry before publishing', async () => {
-    const attention = browserSession('attention_required');
+    const attention = {
+      ...browserSession('attention_required'),
+      lastError: { code: 'ACCOUNT_RESTRICTED' },
+    };
     const store = {
       getOrCreateSession: vi.fn(async () => attention),
     } as unknown as PostgresBaijiahaoBrowserStore;
@@ -506,6 +509,163 @@ describe('Baijiahao browser service', () => {
       }),
     ).rejects.toMatchObject({ code: 'SESSION_ATTENTION_REQUIRED', statusCode: 423 });
     expect(driver.verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('rechecks and clears a recoverable technical pause before publishing', async () => {
+    const attention = Object.freeze({
+      ...browserSession('attention_required'),
+      lastError: { code: 'PAGE_SIGNATURE_CHANGED' },
+    });
+    const authenticated = Object.freeze({
+      ...attention,
+      lastError: null,
+      status: 'authenticated' as const,
+      version: 2,
+    });
+    const publication = Object.freeze({
+      accountId: ACCOUNT_ID,
+      contentVersionId: CONTENT_VERSION_ID,
+      externalId: 'published-after-recovery',
+      externalUrl: 'https://baijiahao.example/published-after-recovery',
+      id: PUBLICATION_ID,
+      idempotencyKey: 'baijiahao-recoverable-attention',
+      publishJobId: '00000000-0000-4000-8000-000000000150',
+      sessionId: SESSION_ID,
+      status: 'published' as const,
+      tenantId: TENANT_ID,
+      version: 1,
+    });
+    const markSession = vi.fn(async () => authenticated);
+    const store = {
+      getOrCreateSession: vi.fn(async () => attention),
+      markSession,
+      preparePublication: vi.fn(async () => publication),
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      exportStorageState: vi.fn(async () => '{"cookies":[{"name":"BDUSS"}]}'),
+      release: vi.fn(async () => undefined),
+      verifyPublishReady: vi.fn(async () => true),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+      encrypt: vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-encrypted-state',
+        credentialKeyVersion: 'test-v2',
+      })),
+    } as unknown as CredentialEnvelopeService;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+    const payload = {
+      abstract: '用于验证百家号技术暂停自动恢复。',
+      body_asset_ids: [],
+      body_html: '<p>用于验证百家号技术暂停自动恢复。</p>',
+      body_text: '用于验证百家号技术暂停自动恢复。',
+      citation_links: [],
+      content_type: 'news',
+      cover_asset_id: null,
+      platform_code: 'baijiahao' as const,
+      rule_version: 'baijiahao-render-rules@1.1.0' as const,
+      schema_version: 'baijiahao-payload@2' as const,
+      tags: ['百家号', '技术恢复', '验证'],
+      title: '百家号技术暂停自动恢复验证',
+    };
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: publication.idempotencyKey,
+        payload,
+        payload_hash: hashBaijiahaoPayload(payload),
+      }),
+    ).resolves.toEqual({
+      external_id: publication.externalId,
+      status: 'published',
+      url: publication.externalUrl,
+    });
+    expect(driver.verifyPublishReady).toHaveBeenCalledOnce();
+    expect(markSession).toHaveBeenCalledWith(attention, {
+      error: null,
+      lastVerifiedAt: expect.any(Date),
+      status: 'authenticated',
+      storageStateCiphertext: 'refreshed-encrypted-state',
+      storageStateKeyVersion: 'test-v2',
+    });
+    expect(store.preparePublication).toHaveBeenCalledOnce();
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
+  });
+
+  it('keeps a recovered account restriction blocked before preparing a publication', async () => {
+    const attention = Object.freeze({
+      ...browserSession('attention_required'),
+      lastError: { code: 'EDITOR_OPERATION_FAILED' },
+    });
+    const restricted = Object.freeze({
+      ...attention,
+      lastError: { code: 'ACCOUNT_RESTRICTED' },
+      version: 2,
+    });
+    const markSession = vi.fn(async () => restricted);
+    const preparePublication = vi.fn();
+    const store = {
+      getOrCreateSession: vi.fn(async () => attention),
+      markSession,
+      preparePublication,
+    } as unknown as PostgresBaijiahaoBrowserStore;
+    const driver = {
+      release: vi.fn(async () => undefined),
+      verifyPublishReady: vi.fn(async () => {
+        throw new PageDriverError(
+          'ACCOUNT_RESTRICTED',
+          'Baijiahao reports that this account is restricted from publishing',
+        );
+      }),
+    } as unknown as BaijiahaoPageDriver;
+    const credentials = {
+      decrypt: vi.fn(async () => '{}'),
+    } as unknown as CredentialEnvelopeService;
+    const service = new BaijiahaoBrowserService(
+      config(),
+      store,
+      driver,
+      credentials,
+      {} as ObjectStorageAdapter,
+    );
+    const payload = {
+      abstract: '用于验证百家号账号限制不会被自动绕过。',
+      body_asset_ids: [],
+      body_html: '<p>用于验证百家号账号限制不会被自动绕过。</p>',
+      body_text: '用于验证百家号账号限制不会被自动绕过。',
+      citation_links: [],
+      content_type: 'news',
+      cover_asset_id: null,
+      platform_code: 'baijiahao' as const,
+      rule_version: 'baijiahao-render-rules@1.1.0' as const,
+      schema_version: 'baijiahao-payload@2' as const,
+      tags: ['百家号', '账号限制', '验证'],
+      title: '百家号账号限制阻断验证',
+    };
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'baijiahao-account-restricted',
+        payload,
+        payload_hash: hashBaijiahaoPayload(payload),
+      }),
+    ).rejects.toMatchObject({ code: 'ACCOUNT_RESTRICTED', statusCode: 423 });
+    expect(markSession).toHaveBeenCalledWith(attention, {
+      error: { code: 'ACCOUNT_RESTRICTED', schema_version: 'baijiahao-browser-error@1' },
+      status: 'attention_required',
+    });
+    expect(preparePublication).not.toHaveBeenCalled();
+    expect(driver.release).toHaveBeenCalledWith(ACCOUNT_ID);
+    errorLog.mockRestore();
   });
 
   it('keeps an acknowledged publication pending when list reconciliation changes signature', async () => {
@@ -1037,6 +1197,7 @@ function browserSession(status: BrowserSession['status']): BrowserSession {
     accountId: ACCOUNT_ID,
     authenticatedAt: hasAuthenticatedState ? new Date('2026-08-02T00:00:00.000Z') : null,
     id: SESSION_ID,
+    lastError: null,
     lastVerifiedAt: hasAuthenticatedState ? new Date('2026-08-02T00:00:00.000Z') : null,
     profileKey: `baijiahao/${TENANT_ID}/${ACCOUNT_ID}`,
     qrExpiresAt: null,

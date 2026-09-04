@@ -7,6 +7,7 @@ export interface BrowserSession {
   readonly accountId: string;
   readonly authenticatedAt: Date | null;
   readonly id: string;
+  readonly lastError: Readonly<Record<string, unknown>> | null;
   readonly lastVerifiedAt: Date | null;
   readonly profileKey: string;
   readonly qrExpiresAt: Date | null;
