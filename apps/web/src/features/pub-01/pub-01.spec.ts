@@ -9,6 +9,7 @@ import {
 const TENANT_ID = '10000000-0000-4000-8000-000000000091';
 const WORKSPACE_ID = '20000000-0000-4000-8000-000000000091';
 const ACCOUNT_ID = '30000000-0000-4000-8000-000000000091';
+const SECOND_ACCOUNT_ID = '30000000-0000-4000-8000-000000000092';
 const PROJECT_ID = '40000000-0000-4000-8000-000000000091';
 const POLICY_ID = '50000000-0000-4000-8000-000000000091';
 const MANUAL_RUN_ID = '60000000-0000-4000-8000-000000000091';
@@ -880,6 +881,178 @@ test('shows authenticated Douyin image-note automation without starting a new lo
   expect(loginStartCount).toBe(0);
 });
 
+test('explains an initially expired Douyin login or verification page without assigning a cause', async ({
+  page,
+}) => {
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [douyinBrowserPlatformPolicy()],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`, (route) =>
+    json(route, {
+      data: {
+        account_id: ACCOUNT_ID,
+        authenticated_at: null,
+        last_verified_at: null,
+        qr_expires_at: null,
+        status: 'reauth',
+        version: 2,
+      },
+      meta: { request_id: 'douyin-session-reauth' },
+    }),
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+
+  await expect(page.getByText('状态：登录已失效')).toBeVisible();
+  await expect(
+    page.getByText('该账号登录态或未完成的验证页面已失效，需要重新扫码。'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: '重新扫码' })).toBeVisible();
+});
+
+test('isolates Douyin login state and pending requests when switching accounts', async ({
+  page,
+}) => {
+  const firstAccount = { ...douyinAccount(), display_name: '抖音账号甲' };
+  const secondAccount = {
+    ...douyinAccount(),
+    display_name: '抖音账号乙',
+    id: SECOND_ACCOUNT_ID,
+  };
+  const verification = {
+    available_methods: ['sms_code'],
+    captured_at: '2026-09-04T00:00:00.000Z',
+    challenge_type: 'sms_code',
+    has_code_input: true,
+    page_origin: 'https://creator.douyin.com',
+    page_path: '/passport/safe/verify',
+    page_signature: 'a'.repeat(64),
+    sms_resend_available: true,
+  };
+  let firstVerificationStartedResolve: (() => void) | undefined;
+  let releaseFirstVerification: (() => void) | undefined;
+  const firstVerificationStarted = new Promise<void>((resolve) => {
+    firstVerificationStartedResolve = resolve;
+  });
+  const firstVerificationReleased = new Promise<void>((resolve) => {
+    releaseFirstVerification = resolve;
+  });
+
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [firstAccount, secondAccount], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  for (const accountId of [ACCOUNT_ID, SECOND_ACCOUNT_ID]) {
+    await page.route(`**/api/v1/platform-accounts/${accountId}/content-automation`, (route) =>
+      json(route, {
+        data: [{ ...douyinBrowserPlatformPolicy(), account_id: accountId }],
+        meta: { request_id: `automation-${accountId}` },
+      }),
+    );
+    await page.route(`**/api/v1/platform-accounts/${accountId}/douyin-browser-session`, (route) =>
+      json(route, {
+        data: {
+          account_id: accountId,
+          authenticated_at: null,
+          last_verified_at: null,
+          qr_expires_at: null,
+          status: 'attention_required',
+          verification,
+          version: 1,
+        },
+        meta: { request_id: `session-${accountId}` },
+      }),
+    );
+  }
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session/login`,
+    async (route) => {
+      firstVerificationStartedResolve?.();
+      await firstVerificationReleased;
+      await json(route, {
+        data: {
+          account_id: ACCOUNT_ID,
+          authenticated_at: null,
+          last_verified_at: null,
+          qr_expires_at: '2099-09-04T00:00:00.000Z',
+          qr_image_data_url:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          status: 'qr_ready',
+          version: 2,
+        },
+        meta: { request_id: 'first-account-delayed-verification' },
+      });
+    },
+  );
+  await page.route(
+    `**/api/v1/platform-accounts/${SECOND_ACCOUNT_ID}/douyin-browser-session/login`,
+    (route) =>
+      json(route, {
+        data: {
+          account_id: SECOND_ACCOUNT_ID,
+          authenticated_at: '2026-09-04T00:01:00.000Z',
+          last_verified_at: '2026-09-04T00:01:00.000Z',
+          qr_expires_at: null,
+          status: 'authenticated',
+          version: 2,
+        },
+        meta: { request_id: 'second-account-verification' },
+      }),
+  );
+
+  await page.goto('/pub-01');
+  const automationButtons = page.getByRole('button', { name: '抖音图文自动化' });
+  await automationButtons.first().click();
+  await expect(page.getByText('当前账号：抖音账号甲')).toBeVisible();
+  await page.getByLabel('短信验证码').fill('654321');
+  await page.getByRole('button', { name: '提交验证码' }).click();
+  await firstVerificationStarted;
+
+  await automationButtons.nth(1).click();
+  await expect(page.getByText('当前账号：抖音账号乙')).toBeVisible();
+  await expect(page.getByLabel('短信验证码')).toHaveValue('');
+  await page.getByLabel('短信验证码').fill('123456');
+  await page.getByRole('button', { name: '提交验证码' }).click();
+  await expect(page.getByText('状态：已登录')).toBeVisible();
+  await expect(page.getByText('抖音二次验证已完成，登录快照已安全保存。')).toBeVisible();
+
+  const delayedResponse = page.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      response.url().endsWith(`/${ACCOUNT_ID}/douyin-browser-session/login`),
+  );
+  releaseFirstVerification?.();
+  await (await delayedResponse).finished();
+  await page.waitForTimeout(100);
+
+  await expect(page.getByText('当前账号：抖音账号乙')).toBeVisible();
+  await expect(page.getByText('状态：已登录')).toBeVisible();
+  await expect(page.getByRole('img', { name: '抖音登录二维码' })).toHaveCount(0);
+  await expect(page.getByText('验证码尚未通过，请核对后重试。')).toHaveCount(0);
+});
+
 test('requires explicit confirmation before replacing an active Douyin login QR', async ({
   page,
 }) => {
@@ -1197,6 +1370,102 @@ test('keeps polling a Douyin verification page until its SMS input becomes ready
   await expect(page.getByRole('heading', { name: '需要完成二次验证' })).toBeVisible();
   await expect(page.getByLabel('短信验证码')).toBeVisible({ timeout: 7_000 });
   expect(sessionReads).toBeGreaterThanOrEqual(2);
+});
+
+test('clears temporary Douyin verification state when polling reports reauth', async ({ page }) => {
+  let sessionReads = 0;
+  const verification = {
+    available_methods: ['sms_code', 'original_device_scan'],
+    captured_at: '2026-09-04T00:00:00.000Z',
+    challenge_type: 'sms_code',
+    has_code_input: true,
+    page_origin: 'https://creator.douyin.com',
+    page_path: '/passport/safe/verify',
+    page_signature: 'a'.repeat(64),
+    sms_resend_available: true,
+  };
+  await page.route('**/api/v1/platform-accounts**', (route) =>
+    json(route, { data: [douyinAccount()], meta: { request_id: 'account-list' } }),
+  );
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, {
+      data: [
+        { id: PROJECT_ID, name: '抖音图文项目', status: 'active', workspace_id: WORKSPACE_ID },
+      ],
+      meta: { next_cursor: null, request_id: 'projects' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/content-automation`, (route) =>
+    json(route, {
+      data: [douyinBrowserPlatformPolicy()],
+      meta: { request_id: 'automation' },
+    }),
+  );
+  await page.route(`**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session`, (route) => {
+    sessionReads += 1;
+    if (sessionReads === 2) {
+      return json(route, {
+        data: {
+          account_id: ACCOUNT_ID,
+          authenticated_at: null,
+          last_verified_at: null,
+          qr_expires_at: null,
+          status: 'reauth',
+          version: 3,
+        },
+        meta: { request_id: 'douyin-session-interrupted' },
+      });
+    }
+    return json(route, {
+      data: {
+        account_id: ACCOUNT_ID,
+        authenticated_at: null,
+        last_verified_at: null,
+        qr_expires_at: null,
+        status: 'attention_required',
+        verification,
+        version: sessionReads === 1 ? 1 : 4,
+      },
+      meta: { request_id: `douyin-session-attention-${sessionReads}` },
+    });
+  });
+  await page.route(
+    `**/api/v1/platform-accounts/${ACCOUNT_ID}/douyin-browser-session/login`,
+    (route) =>
+      json(route, {
+        data: {
+          account_id: ACCOUNT_ID,
+          authenticated_at: null,
+          last_verified_at: null,
+          qr_expires_at: '2099-09-04T00:00:00.000Z',
+          qr_image_data_url:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          status: 'attention_required',
+          verification: { ...verification, challenge_type: 'original_device_scan' },
+          version: 2,
+        },
+        meta: { request_id: 'douyin-device-verification' },
+      }),
+  );
+
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '抖音图文自动化' }).click();
+  await page.getByLabel('短信验证码').fill('654321');
+  await page.getByRole('button', { name: '获取原设备验证二维码' }).click();
+  await expect(page.getByRole('img', { name: '抖音登录二维码' })).toBeVisible();
+  await expect(page.getByLabel('短信验证码')).toHaveValue('654321');
+
+  await expect(page.getByText('当前二次验证页面已中断，需要重新扫码。')).toBeVisible({
+    timeout: 7_000,
+  });
+  await expect(page.getByText('状态：登录已失效')).toBeVisible();
+  await expect(page.getByRole('img', { name: '抖音登录二维码' })).toHaveCount(0);
+  await expect(page.getByLabel('短信验证码')).toHaveCount(0);
+
+  await page.getByRole('button', { name: '核验登录态' }).click();
+  await expect(page.getByLabel('短信验证码')).toBeVisible();
+  await expect(page.getByLabel('短信验证码')).toHaveValue('');
+  await expect(page.getByRole('img', { name: '抖音登录二维码' })).toHaveCount(0);
 });
 
 test('retries a prerequisite-blocked Sohu daily batch after explicit confirmation', async ({

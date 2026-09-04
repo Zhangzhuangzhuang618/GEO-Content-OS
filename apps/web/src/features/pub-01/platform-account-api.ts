@@ -611,10 +611,7 @@ export async function startDouyinBrowserLogin(
   try {
     return await requestDouyinBrowserLogin(account, csrf, reauthenticate, input);
   } catch (error) {
-    if (
-      !(error instanceof PlatformAccountRequestError) ||
-      error.code !== 'PLATFORM_ACCOUNT_VERSION_CONFLICT'
-    ) {
+    if (!(error instanceof PlatformAccountRequestError) || error.code !== 'VERSION_CONFLICT') {
       throw error;
     }
     const latest = (

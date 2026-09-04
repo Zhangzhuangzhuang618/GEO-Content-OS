@@ -375,6 +375,7 @@ export function PlatformAccountManager() {
         ) : automationAccount.platform_code === 'douyin' ? (
           <DouyinBrowserPanel
             account={automationAccount}
+            key={automationAccount.id}
             onClose={() => setAutomationAccount(null)}
           />
         ) : (

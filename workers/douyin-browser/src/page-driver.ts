@@ -83,6 +83,8 @@ const SMS_SEND_CONTROL_LABELS = Object.freeze([
 ]);
 const SMS_VERIFY_CONTROL_LABELS = Object.freeze(['验证', '确定', '提交', '完成', '下一步']);
 const SMS_VERIFICATION_TRANSITION_TIMEOUT_MS = 5_000;
+const LOGIN_VERIFICATION_SCREENSHOT_TIMEOUT_MS = 5_000;
+const LOGIN_VERIFICATION_CLEANUP_TIMEOUT_MS = 1_000;
 
 interface WorkListEvidence {
   readonly externalId: string;
@@ -186,19 +188,28 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
   ): Promise<LoginVerificationDiagnostic | null>;
   public async inspectLoginVerification(
     accountId: string,
-    options: { readonly captureScreenshot: false },
+    options: { readonly captureScreenshot: false; readonly includeUnknown?: boolean },
   ): Promise<LoginVerificationSnapshot | null>;
   public async inspectLoginVerification(
     accountId: string,
-    options?: { readonly captureScreenshot: false },
+    options?: { readonly captureScreenshot: false; readonly includeUnknown?: boolean },
   ): Promise<LoginVerificationSnapshot | null> {
     const page = this.pages.get(accountId);
     if (!page || page.isClosed()) {
       throw new PageDriverError('AUTH_REQUIRED', 'Douyin browser challenge is unavailable');
     }
-    return options?.captureScreenshot === false
-      ? inspectLoginVerificationPage(page, false)
-      : inspectLoginVerificationPage(page);
+    if (options?.captureScreenshot === false) {
+      const snapshot = await inspectLoginVerificationPage(page, false);
+      if (snapshot || !options.includeUnknown || (await this.isAuthenticated(page))) {
+        return snapshot;
+      }
+      return unknownLoginVerificationSnapshot(page);
+    }
+    const diagnostic = await inspectLoginVerificationPage(page);
+    if (diagnostic || (await this.isAuthenticated(page))) {
+      return diagnostic;
+    }
+    return captureUnknownLoginVerificationPage(page);
   }
 
   public async submitLoginVerification(
@@ -304,25 +315,26 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
           'Douyin SMS verification submit control is covered by another security challenge',
         );
       }
+      const deadline = Date.now() + this.config.navigationTimeoutMs;
       try {
-        await code.fill(input.sms_code);
-        await submit.click();
+        await code.fill(input.sms_code, { timeout: remainingTimeout(deadline) });
+        await submit.click({ timeout: remainingTimeout(deadline) });
       } catch {
-        await code.fill('').catch(() => undefined);
+        await clearVerificationCode(code);
         throw new PageDriverError(
           'CAPTCHA_REQUIRED',
           'Douyin SMS verification controls changed before submission',
         );
       }
-      const deadline = Date.now() + this.config.navigationTimeoutMs;
       while (Date.now() < deadline) {
-        if (!(await hasLoginVerificationIndicators(page)) && (await this.isAuthenticated(page))) {
-          return null;
+        if (!(await hasLoginVerificationIndicators(page))) {
+          if (await this.confirmAuthenticatedAfterVerification(page, deadline)) return null;
+          break;
         }
         await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
       }
       const diagnostic = await inspectLoginVerificationPage(page);
-      await code.fill('').catch(() => undefined);
+      await clearVerificationCode(code);
       if (!diagnostic) {
         throw new PageDriverError(
           'PAGE_SIGNATURE_CHANGED',
@@ -582,7 +594,17 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
   }
 
   private async waitForAuthenticationResolution(page: Page): Promise<boolean> {
-    const deadline = Date.now() + Math.min(this.config.navigationTimeoutMs, 10_000);
+    return this.waitForAuthenticationResolutionWithin(
+      page,
+      Math.min(this.config.navigationTimeoutMs, 10_000),
+    );
+  }
+
+  private async waitForAuthenticationResolutionWithin(
+    page: Page,
+    timeoutMs: number,
+  ): Promise<boolean> {
+    const deadline = Date.now() + Math.max(1, timeoutMs);
     while (Date.now() < deadline) {
       await this.rejectCaptcha(page);
       if (await this.isAuthenticated(page)) return true;
@@ -598,6 +620,23 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
     }
     return false;
+  }
+
+  private async confirmAuthenticatedAfterVerification(
+    page: Page,
+    deadline: number,
+  ): Promise<boolean> {
+    if (await this.isAuthenticated(page)) return true;
+    if (Date.now() >= deadline) return false;
+    try {
+      await page.goto(this.config.editorUrl, {
+        timeout: remainingTimeout(deadline),
+        waitUntil: 'domcontentloaded',
+      });
+    } catch {
+      return false;
+    }
+    return this.waitForAuthenticationResolutionWithin(page, remainingTimeout(deadline));
   }
 
   private async waitForManagePageReady(page: Page, expectedTitle: string): Promise<void> {
@@ -889,10 +928,14 @@ async function inspectLoginVerificationPage(
     await uniqueVisibleControl(page, ['使用原设备扫码', '原设备扫码'], dialog),
   );
   const codeInput = verificationCodeInput(page, dialog);
-  const codeInputVisible = await codeInput.isVisible().catch(() => false);
-  const codeInputEnabled = await codeInput.isEnabled().catch(() => false);
-  const codeInputEditable = await codeInput.isEditable().catch(() => false);
-  const codeInputHitTarget = await isLocatorHitTarget(codeInput);
+  const codeInputVisible = Boolean(dialog && (await codeInput.isVisible().catch(() => false)));
+  const codeInputEnabled = Boolean(
+    codeInputVisible && (await codeInput.isEnabled().catch(() => false)),
+  );
+  const codeInputEditable = Boolean(
+    codeInputVisible && (await codeInput.isEditable().catch(() => false)),
+  );
+  const codeInputHitTarget = Boolean(codeInputVisible && (await isLocatorHitTarget(codeInput)));
   const codeInputActionable =
     codeInputVisible && codeInputEnabled && codeInputEditable && codeInputHitTarget;
   const hasCodeInput = codeInputVisible && codeInputEnabled && codeInputEditable;
@@ -1068,6 +1111,7 @@ async function captureLoginVerificationScreenshot(
         outline-offset: -4px !important;
       }
     `,
+    timeout: LOGIN_VERIFICATION_SCREENSHOT_TIMEOUT_MS,
     type: 'png' as const,
   };
   try {
@@ -1079,6 +1123,71 @@ async function captureLoginVerificationScreenshot(
       .evaluate((element, attribute) => element.removeAttribute(attribute), summaryAttribute)
       .catch(() => undefined);
   }
+}
+
+async function captureUnknownLoginVerificationPage(
+  page: Page,
+): Promise<LoginVerificationDiagnostic> {
+  const snapshot = unknownLoginVerificationSnapshot(page);
+  return Object.freeze({
+    ...snapshot,
+    screenshotPng: await captureLoginVerificationScreenshot(page, null, snapshot.controlEvidence),
+  });
+}
+
+function unknownLoginVerificationSnapshot(page: Page): LoginVerificationSnapshot {
+  const controlEvidence: LoginVerificationSnapshot['controlEvidence'] = Object.freeze({
+    codeInputActionable: false,
+    codeInputEditable: false,
+    codeInputEnabled: false,
+    codeInputHitTarget: false,
+    codeInputStepActionable: false,
+    codeInputVisible: false,
+    faceVerificationOptionVisible: false,
+    foregroundDialogVisible: false,
+    originalDeviceOptionVisible: false,
+    receiveSmsOptionVisible: false,
+    sendSmsOptionVisible: false,
+    submitControlActionable: false,
+    submitControlEnabled: false,
+    submitControlHitTarget: false,
+    submitControlVisible: false,
+    visualCaptchaVisible: false,
+  });
+  const current = new URL(page.url());
+  const pageSignature = createHash('sha256')
+    .update(
+      JSON.stringify({
+        available_methods: [],
+        challenge_type: 'unknown',
+        control_evidence: controlEvidence,
+        has_code_input: false,
+        page_origin: current.origin,
+        page_path: current.pathname,
+      }),
+    )
+    .digest('hex');
+  return Object.freeze({
+    availableMethods: Object.freeze([]),
+    capturedAt: new Date(),
+    challengeType: 'unknown',
+    controlEvidence,
+    hasCodeInput: false,
+    pageOrigin: current.origin,
+    pagePath: current.pathname,
+    pageSignature,
+    qrPng: null,
+    smsResendAvailable: false,
+  });
+}
+
+async function clearVerificationCode(input: Locator): Promise<void> {
+  if ((await input.count()) === 0) return;
+  await input.fill('', { timeout: LOGIN_VERIFICATION_CLEANUP_TIMEOUT_MS }).catch(() => undefined);
+}
+
+function remainingTimeout(deadline: number): number {
+  return Math.max(1, deadline - Date.now());
 }
 
 async function clickSmsVerificationControl(control: Locator, message: string): Promise<void> {

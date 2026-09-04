@@ -30,6 +30,17 @@ import type {
 const UNKNOWN_RECONCILIATION_GRACE_MS = 2 * 60_000;
 const AUTOMATION_LOCK_KEY = 'douyin-browser-automation';
 
+interface PersistedBrowserSessionSnapshot {
+  readonly session: BrowserSession;
+  readonly storageStateJson: string;
+}
+
+interface BrowserContextLifecycle {
+  session: BrowserSession | null;
+  used: boolean;
+  retain: boolean;
+}
+
 export class BrowserGatewayError extends Error {
   public constructor(
     public readonly statusCode: 400 | 401 | 404 | 409 | 423 | 503,
@@ -74,6 +85,7 @@ export class DouyinBrowserService {
     if (input.method !== 'qr') return this.submitLoginVerification(accountId, input);
     return this.locks.run(accountId, async () => {
       const session = await this.store.getOrCreateSession(accountId);
+      let retainContext = false;
       try {
         if (session.status === 'qr_ready' || session.status === 'attention_required') {
           await this.driver.release(accountId);
@@ -87,6 +99,7 @@ export class DouyinBrowserService {
           qrExpiresAt: result.expiresAt,
           status: 'qr_ready',
         });
+        retainContext = true;
         void this.finishLogin(pending, result.expiresAt);
         return Object.freeze({
           ...sessionView(pending),
@@ -94,10 +107,8 @@ export class DouyinBrowserService {
         });
       } catch (error) {
         if (error instanceof PageDriverError) {
-          const status =
-            error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED'
-              ? 'attention_required'
-              : session.status;
+          retainContext = isLiveLoginAttentionError(error);
+          const status = retainContext ? 'attention_required' : session.status;
           const diagnostic =
             status === 'attention_required'
               ? await this.captureLoginDiagnostic(session, error.code).catch(() => null)
@@ -113,6 +124,8 @@ export class DouyinBrowserService {
           throw new BrowserGatewayError(423, error.code, error.message);
         }
         throw error;
+      } finally {
+        if (!retainContext) await this.releaseBrowserContext(accountId);
       }
     });
   }
@@ -135,10 +148,12 @@ export class DouyinBrowserService {
     return this.locks.run(accountId, async () => {
       const current = await this.store.getSession(accountId);
       if (!canVerifySession(current)) return sessionView(current);
+      let retainContext = current.status === 'attention_required';
       const verify = async () => {
         if (current.status === 'attention_required') {
           const live = await this.driver.inspectLoginVerification(accountId, {
             captureScreenshot: false,
+            includeUnknown: true,
           });
           if (live) return sessionView(current, verificationView(live));
         }
@@ -153,15 +168,11 @@ export class DouyinBrowserService {
             : sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
         }
         if (current.status === 'attention_required') {
+          retainContext = false;
           return sessionView(await this.persistAuthenticatedSession(current));
         }
-        return sessionView(
-          await this.store.markSession(current, {
-            error: null,
-            lastVerifiedAt: new Date(),
-            status: 'authenticated',
-          }),
-        );
+        retainContext = false;
+        return sessionView((await this.persistVerifiedSessionSnapshot(current)).session);
       };
       try {
         try {
@@ -176,6 +187,7 @@ export class DouyinBrowserService {
           return await verify();
         }
       } catch (error) {
+        retainContext = isLiveLoginAttentionError(error);
         const code = sessionVerificationErrorCode(error);
         console.error('Douyin browser session verification failed', {
           account_id: accountId,
@@ -195,6 +207,8 @@ export class DouyinBrowserService {
           }),
           await this.storedVerificationView(current),
         );
+      } finally {
+        if (!retainContext) await this.releaseBrowserContext(accountId);
       }
     });
   }
@@ -233,10 +247,14 @@ export class DouyinBrowserService {
     });
     return this.automationLock.run(AUTOMATION_LOCK_KEY, () =>
       this.locks.run(accountId, async () => {
+        const browser = { retain: false, session: null, used: false };
+        let succeeded = false;
         try {
-          return await this.publishLocked(accountId, input);
+          const response = await this.publishLocked(accountId, input, browser);
+          succeeded = true;
+          return response;
         } finally {
-          await this.releaseAutomationPage(accountId);
+          await this.finalizeBrowserContext(accountId, browser, succeeded);
         }
       }),
     );
@@ -257,14 +275,17 @@ export class DouyinBrowserService {
           return responseStatus(publication, publication.status);
         }
         const session = await this.store.getSession(accountId);
-        if (publication.status === 'manual_required' && session.status !== 'authenticated') {
+        if (session.status !== 'authenticated') {
           return responseStatus(publication, 'unknown');
         }
+        const browser = { retain: false, session, used: false };
+        let succeeded = false;
         let remote: RemotePublication | null;
         try {
-          remote = await this.reconcile(session, publication);
+          remote = await this.reconcile(session, publication, browser);
+          succeeded = true;
         } finally {
-          await this.releaseAutomationPage(accountId);
+          await this.finalizeBrowserContext(accountId, browser, succeeded);
         }
         if (!remote) return responseStatus(publication, 'unknown');
         const updated = await this.store.updatePublication(publication, {
@@ -295,6 +316,7 @@ export class DouyinBrowserService {
   private async publishLocked(
     accountId: string,
     input: BrowserPublishInput,
+    browser: BrowserContextLifecycle,
   ): Promise<{
     readonly external_id: string;
     readonly status: 'processing' | 'published';
@@ -305,12 +327,11 @@ export class DouyinBrowserService {
     let authenticationVerified = false;
     if (isRecoverableRuntimeAttention(session)) {
       storageStateJson = await this.decryptState(session);
-      if (await this.verifyAuthenticatedForPublish(session, storageStateJson)) {
-        session = await this.store.markSession(session, {
-          error: null,
-          lastVerifiedAt: new Date(),
-          status: 'authenticated',
-        });
+      if (await this.verifyAuthenticatedForPublish(session, storageStateJson, browser)) {
+        const verified = await this.persistVerifiedSessionSnapshot(session);
+        session = verified.session;
+        storageStateJson = verified.storageStateJson;
+        browser.session = session;
         authenticationVerified = true;
       } else {
         session = await this.requireReauth(session, 'LOGIN_EXPIRED');
@@ -329,13 +350,16 @@ export class DouyinBrowserService {
       throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login is required');
     }
     storageStateJson ??= await this.decryptState(session);
-    if (
-      !authenticationVerified &&
-      !(await this.verifyAuthenticatedForPublish(session, storageStateJson))
-    ) {
-      session = await this.requireReauth(session, 'LOGIN_EXPIRED');
-      void session;
-      throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login has expired');
+    if (!authenticationVerified) {
+      if (!(await this.verifyAuthenticatedForPublish(session, storageStateJson, browser))) {
+        session = await this.requireReauth(session, 'LOGIN_EXPIRED');
+        void session;
+        throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login has expired');
+      }
+      const verified = await this.persistVerifiedSessionSnapshot(session);
+      session = verified.session;
+      storageStateJson = verified.storageStateJson;
+      browser.session = session;
     }
 
     const contentFingerprint = sha256(
@@ -351,7 +375,7 @@ export class DouyinBrowserService {
       );
     }
     if (publication.status !== 'prepared') {
-      const remote = await this.reconcile(session, publication);
+      const remote = await this.reconcile(session, publication, browser);
       if (remote) {
         const updated = await this.store.updatePublication(publication, {
           remote,
@@ -418,7 +442,7 @@ export class DouyinBrowserService {
       return publishResponse(updated, remote.status === 'published' ? 'published' : 'processing');
     } catch (error) {
       if (error instanceof PageDriverError) {
-        throw await this.handlePageDriverFailure(session, publication, error);
+        throw await this.handlePageDriverFailure(session, publication, error, browser);
       }
       if (error instanceof PageDriverOperationError) {
         throw await this.handleOperationFailure(session, publication, error);
@@ -462,6 +486,7 @@ export class DouyinBrowserService {
   private async verifyAuthenticatedForPublish(
     session: BrowserSession,
     storageStateJson: string | null,
+    browser: BrowserContextLifecycle,
   ): Promise<boolean> {
     const verify = () =>
       this.driver.verifyAuthenticated(
@@ -469,24 +494,53 @@ export class DouyinBrowserService {
         this.profilePath(session),
         storageStateJson,
       );
+    browser.used = true;
     try {
-      return await verify();
+      try {
+        return await verify();
+      } catch (error) {
+        if (!isRecoverableBrowserRuntimeFailure(error)) throw error;
+        console.warn('Douyin browser recovered a crashed pre-publish page', {
+          account_id: session.accountId,
+          error: safeBrowserError(error),
+        });
+        await this.driver.release(session.accountId);
+        return await verify();
+      }
     } catch (error) {
-      if (!isRecoverableBrowserRuntimeFailure(error)) throw error;
-      console.warn('Douyin browser recovered a crashed pre-publish page', {
-        account_id: session.accountId,
-        error: safeBrowserError(error),
-      });
-      await this.driver.release(session.accountId);
-      return verify();
+      if (!(error instanceof PageDriverError)) throw error;
+      if (!(await this.persistConfirmedLoginAttention(session, error, browser))) throw error;
+      throw new BrowserGatewayError(423, error.code, error.message);
     }
   }
 
-  private async releaseAutomationPage(accountId: string): Promise<void> {
+  private async finalizeBrowserContext(
+    accountId: string,
+    browser: BrowserContextLifecycle,
+    succeeded: boolean,
+  ): Promise<void> {
+    if (!browser.used || browser.retain) return;
+    if (succeeded && browser.session?.status === 'authenticated') {
+      try {
+        const snapshot = await this.persistVerifiedSessionSnapshot(browser.session);
+        browser.session = snapshot.session;
+      } catch (error) {
+        console.warn('Douyin browser could not persist the final authenticated session snapshot', {
+          account_id: accountId,
+          error: safeBrowserError(error),
+          stage: 'persist_final_storage_state',
+        });
+        return;
+      }
+    }
+    await this.releaseBrowserContext(accountId);
+  }
+
+  private async releaseBrowserContext(accountId: string): Promise<void> {
     try {
       await this.driver.release(accountId);
     } catch (error) {
-      console.warn('Douyin browser could not release an automated page', {
+      console.warn('Douyin browser could not release a context', {
         account_id: accountId,
         error: safeBrowserError(error),
       });
@@ -500,8 +554,11 @@ export class DouyinBrowserService {
       readonly submittedAt?: Date | null;
       readonly title?: string;
     },
+    browser: BrowserContextLifecycle,
   ): Promise<RemotePublication | null> {
     try {
+      const storageStateJson = await this.decryptState(session);
+      browser.used = true;
       const result = await this.driver.reconcile(
         session.accountId,
         this.profilePath(session),
@@ -510,7 +567,7 @@ export class DouyinBrowserService {
           submittedAfter: new Date((publication.submittedAt?.getTime() ?? Date.now()) - 60_000),
           title: publication.title ?? '',
         },
-        await this.decryptState(session),
+        storageStateJson,
       );
       if (result) {
         await this.saveArtifact(
@@ -522,7 +579,7 @@ export class DouyinBrowserService {
       return result;
     } catch (error) {
       if (error instanceof PageDriverError) {
-        throw await this.handlePageDriverFailure(session, publication, error);
+        throw await this.handlePageDriverFailure(session, publication, error, browser);
       }
       throw error;
     }
@@ -532,6 +589,7 @@ export class DouyinBrowserService {
     session: BrowserSession,
     publication: PublicationClaim,
     error: PageDriverError,
+    browser: BrowserContextLifecycle,
   ): Promise<BrowserGatewayError> {
     if (error.code === 'PUBLISH_STATE_UNKNOWN') {
       await this.store.updatePublication(publication, { status: 'unknown' });
@@ -541,15 +599,42 @@ export class DouyinBrowserService {
       await this.requireReauth(session, 'LOGIN_EXPIRED');
       return new BrowserGatewayError(409, error.code, error.message);
     }
-    await this.store.markSession(session, {
-      error: { code: error.code, schema_version: 'douyin-browser-error@1' },
-      status: 'attention_required',
-    });
+    if (!(await this.persistConfirmedLoginAttention(session, error, browser))) {
+      await this.store.markSession(session, {
+        error: { code: error.code, schema_version: 'douyin-browser-error@1' },
+        status: 'attention_required',
+      });
+    }
     const updated = await this.store.updatePublication(publication, {
       status: 'manual_required',
     });
     await this.captureAttention(updated).catch(() => undefined);
     return new BrowserGatewayError(423, error.code, error.message);
+  }
+
+  private async persistConfirmedLoginAttention(
+    session: BrowserSession,
+    error: PageDriverError,
+    browser: BrowserContextLifecycle,
+  ): Promise<boolean> {
+    if (!isLiveLoginAttentionError(error)) return false;
+    if (error.code === 'PAGE_SIGNATURE_CHANGED') {
+      const live = await this.driver
+        .inspectLoginVerification(session.accountId, { captureScreenshot: false })
+        .catch(() => null);
+      if (!live) return false;
+    }
+    browser.retain = true;
+    const captured = await this.captureLoginDiagnostic(session, error.code).catch(() => null);
+    await this.store.markSession(session, {
+      error: captured?.error ?? {
+        code: error.code,
+        schema_version: 'douyin-browser-error@1',
+      },
+      qrExpiresAt: null,
+      status: 'attention_required',
+    });
+    return true;
   }
 
   private async handleOperationFailure(
@@ -603,9 +688,13 @@ export class DouyinBrowserService {
         account_id: accountId,
         method: input.method,
       });
+      let retainContext = false;
       try {
         const diagnostic = await this.driver.submitLoginVerification(accountId, input);
-        if (!diagnostic) return sessionView(await this.persistAuthenticatedSession(session));
+        if (!diagnostic) {
+          return sessionView(await this.persistAuthenticatedSession(session));
+        }
+        retainContext = true;
         const captured = await this.persistLoginDiagnostic(session, 'CAPTCHA_REQUIRED', diagnostic);
         const updated = await this.store.markSession(session, {
           error: captured.error,
@@ -622,6 +711,7 @@ export class DouyinBrowserService {
         });
       } catch (error) {
         if (!(error instanceof PageDriverError)) throw error;
+        retainContext = isLiveLoginAttentionError(error);
         const captured = await this.captureLoginDiagnostic(session, error.code).catch(() => null);
         await this.store.markSession(session, {
           error: captured?.error ?? {
@@ -632,6 +722,8 @@ export class DouyinBrowserService {
           status: 'attention_required',
         });
         throw new BrowserGatewayError(423, error.code, error.message);
+      } finally {
+        if (!retainContext) await this.releaseBrowserContext(accountId);
       }
     });
   }
@@ -768,15 +860,19 @@ export class DouyinBrowserService {
       await this.locks.run(session.accountId, async () => {
         const current = await this.store.getSession(session.accountId);
         if (!isCurrentQrAttempt(current, session, expiresAt)) return;
-        if (!authenticated) {
-          await this.store.markSession(current, {
-            error: { code: 'QR_EXPIRED', schema_version: 'douyin-browser-error@1' },
-            qrExpiresAt: null,
-            status: 'login_required',
-          });
-          return;
+        try {
+          if (!authenticated) {
+            await this.store.markSession(current, {
+              error: { code: 'QR_EXPIRED', schema_version: 'douyin-browser-error@1' },
+              qrExpiresAt: null,
+              status: 'login_required',
+            });
+            return;
+          }
+          await this.persistAuthenticatedSession(current);
+        } finally {
+          await this.releaseBrowserContext(session.accountId);
         }
-        await this.persistAuthenticatedSession(current);
       });
     } catch (error) {
       const errorCode = loginVerificationErrorCode(error);
@@ -784,29 +880,33 @@ export class DouyinBrowserService {
         await this.locks.run(session.accountId, async () => {
           const current = await this.store.getSession(session.accountId);
           if (!isCurrentQrAttempt(current, session, expiresAt)) return;
-          if (
-            error instanceof PageDriverError &&
-            (error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED')
-          ) {
-            console.warn('Douyin browser login requires additional verification', {
-              account_id: session.accountId,
-              error_code: errorCode,
+          const retainContext = isLiveLoginAttentionError(error);
+          try {
+            if (retainContext) {
+              console.warn('Douyin browser login requires additional verification', {
+                account_id: session.accountId,
+                error_code: errorCode,
+              });
+            } else {
+              console.error('Douyin browser login verification failed', {
+                account_id: session.accountId,
+                error: safeBrowserError(error),
+              });
+            }
+            const captured = await this.captureLoginDiagnostic(current, errorCode).catch(
+              () => null,
+            );
+            await this.store.markSession(current, {
+              error: captured?.error ?? {
+                code: errorCode,
+                schema_version: 'douyin-browser-error@1',
+              },
+              qrExpiresAt: null,
+              status: 'attention_required',
             });
-          } else {
-            console.error('Douyin browser login verification failed', {
-              account_id: session.accountId,
-              error: safeBrowserError(error),
-            });
+          } finally {
+            if (!retainContext) await this.releaseBrowserContext(session.accountId);
           }
-          const captured = await this.captureLoginDiagnostic(current, errorCode).catch(() => null);
-          await this.store.markSession(current, {
-            error: captured?.error ?? {
-              code: errorCode,
-              schema_version: 'douyin-browser-error@1',
-            },
-            qrExpiresAt: null,
-            status: 'attention_required',
-          });
         });
       } catch (persistenceError) {
         console.error('Douyin browser login failure state could not be persisted', {
@@ -818,20 +918,28 @@ export class DouyinBrowserService {
   }
 
   private async persistAuthenticatedSession(session: BrowserSession): Promise<BrowserSession> {
-    const encrypted = await this.credentials.encrypt(
-      await this.driver.exportStorageState(session.accountId),
-    );
-    const authenticated = await this.store.markSession(session, {
-      authenticatedAt: new Date(),
+    const snapshot = await this.persistVerifiedSessionSnapshot(session, true);
+    await this.store.markAccountActive(session.accountId, session.tenantId);
+    return snapshot.session;
+  }
+
+  private async persistVerifiedSessionSnapshot(
+    session: BrowserSession,
+    refreshAuthenticatedAt = false,
+  ): Promise<PersistedBrowserSessionSnapshot> {
+    const verifiedAt = new Date();
+    const storageStateJson = await this.driver.exportStorageState(session.accountId);
+    const encrypted = await this.credentials.encrypt(storageStateJson);
+    const verified = await this.store.markSession(session, {
+      ...(refreshAuthenticatedAt ? { authenticatedAt: verifiedAt } : {}),
       error: null,
-      lastVerifiedAt: new Date(),
+      lastVerifiedAt: verifiedAt,
       qrExpiresAt: null,
       status: 'authenticated',
       storageStateCiphertext: encrypted.credentialCiphertext,
       storageStateKeyVersion: encrypted.credentialKeyVersion,
     });
-    await this.store.markAccountActive(session.accountId, session.tenantId);
-    return authenticated;
+    return Object.freeze({ session: verified, storageStateJson });
   }
 
   private async requireReauth(session: BrowserSession, code: string): Promise<BrowserSession> {
@@ -1009,6 +1117,13 @@ function loginVerificationErrorCode(error: unknown): string {
   if (error instanceof PageDriverError) return error.code;
   if (error instanceof CredentialEnvelopeError) return 'CREDENTIAL_ENVELOPE_INVALID';
   return 'LOGIN_VERIFICATION_FAILED';
+}
+
+function isLiveLoginAttentionError(error: unknown): error is PageDriverError {
+  return (
+    error instanceof PageDriverError &&
+    (error.code === 'CAPTCHA_REQUIRED' || error.code === 'PAGE_SIGNATURE_CHANGED')
+  );
 }
 
 function publicationStatus(status: RemotePublication['status']): PublicationClaim['status'] {

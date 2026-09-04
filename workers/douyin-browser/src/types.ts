@@ -136,7 +136,7 @@ export interface DouyinPageDriver {
   inspectLoginVerification(accountId: string): Promise<LoginVerificationDiagnostic | null>;
   inspectLoginVerification(
     accountId: string,
-    options: { readonly captureScreenshot: false },
+    options: { readonly captureScreenshot: false; readonly includeUnknown?: boolean },
   ): Promise<LoginVerificationSnapshot | null>;
   release(accountId: string): Promise<void>;
   reconcile(

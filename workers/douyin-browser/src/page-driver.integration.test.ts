@@ -32,6 +32,7 @@ const PNG = Buffer.from(
 describe('Douyin local browser simulator', () => {
   let baseUrl = '';
   let duplicateRows = false;
+  let editorNavigationCount = 0;
   let insertEditorZeroWidthSeparators = false;
   let postSubmitChallenge = false;
   let profileRoot = '';
@@ -41,12 +42,15 @@ describe('Douyin local browser simulator', () => {
 
   beforeEach(async () => {
     duplicateRows = false;
+    editorNavigationCount = 0;
     insertEditorZeroWidthSeparators = false;
     postSubmitChallenge = false;
     realisticRows = false;
     submitted = null;
     profileRoot = await mkdtemp(join(tmpdir(), 'geo-douyin-e2e-'));
     server = createServer((request, response) => {
+      const url = new URL(request.url ?? '/', `http://${request.headers.host ?? '127.0.0.1'}`);
+      if (url.pathname === '/content/upload') editorNavigationCount += 1;
       void route(
         request,
         response,
@@ -366,6 +370,87 @@ describe('Douyin local browser simulator', () => {
     }
   });
 
+  it('confirms SMS authentication through the editor when the verification dialog disappears', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?sms=landing`,
+        navigationTimeoutMs: 2_000,
+      }),
+    );
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, join(profileRoot, `${ACCOUNT_ID}-landing`));
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        { code: 'CAPTCHA_REQUIRED' },
+      );
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({ challengeType: 'sms_code', hasCodeInput: true });
+
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, {
+          method: 'verification_sms_verify',
+          sms_code: '654321',
+        }),
+      ).resolves.toBeNull();
+      expect(await driver.exportStorageState(ACCOUNT_ID)).toContain('douyin-auth');
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('captures an unknown post-verification page without exceeding the navigation budget', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?sms=unknown`,
+        navigationTimeoutMs: 1_000,
+      }),
+    );
+    try {
+      const login = await driver.startLogin(ACCOUNT_ID, join(profileRoot, `${ACCOUNT_ID}-unknown`));
+      await expect(driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).rejects.toMatchObject(
+        { code: 'CAPTCHA_REQUIRED' },
+      );
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, { method: 'verification_sms_send' }),
+      ).resolves.toMatchObject({ challengeType: 'sms_code', hasCodeInput: true });
+
+      const startedAt = Date.now();
+      await expect(
+        driver.submitLoginVerification(ACCOUNT_ID, {
+          method: 'verification_sms_verify',
+          sms_code: '654321',
+        }),
+      ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED' });
+      expect(Date.now() - startedAt).toBeLessThan(3_000);
+      await expect(driver.inspectLoginVerification(ACCOUNT_ID)).resolves.toMatchObject({
+        challengeType: 'unknown',
+        hasCodeInput: false,
+        pagePath: '/login',
+        screenshotPng: expect.any(Uint8Array),
+      });
+      const navigationCountBeforePolling = editorNavigationCount;
+      await expect(
+        driver.inspectLoginVerification(ACCOUNT_ID, {
+          captureScreenshot: false,
+          includeUnknown: true,
+        }),
+      ).resolves.toMatchObject({
+        challengeType: 'unknown',
+        hasCodeInput: false,
+        pagePath: '/login',
+      });
+      expect(editorNavigationCount).toBe(navigationCountBeforePolling);
+      await expect(
+        driver.inspectLoginVerification(ACCOUNT_ID, { captureScreenshot: false }),
+      ).resolves.toBeNull();
+      expect(editorNavigationCount).toBe(navigationCountBeforePolling);
+    } finally {
+      await driver.close();
+    }
+  });
+
   it('selects receive-SMS in an unmarked choice overlay before checking a covered input', async () => {
     const driver = new PlaywrightDouyinPageDriver(
       Object.freeze({
@@ -639,6 +724,8 @@ async function route(
     const smsBackground = smsMode === 'background';
     const smsDelayed = smsMode === 'delayed';
     const smsDirect = smsMode === 'direct';
+    const smsLanding = smsMode === 'landing';
+    const smsUnknown = smsMode === 'unknown';
     const verificationContainerId = smsMode === 'unmarked' ? 'identity-choice' : 'uc-second-verify';
     const verificationContainerAttributes =
       smsMode === 'unmarked'
@@ -665,8 +752,10 @@ async function route(
                 if(!document.querySelector('.mobile-value'))document.querySelector('#${verificationContainerId}').insertAdjacentHTML('beforeend','<p class="mobile-value">138****5678</p><button id="verify-code">验证</button>');
                 document.querySelector('#verify-code').onclick=()=>{
                   if(document.querySelector('#verification-code').value!=='654321')return;
-                  document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');
-                  if(${JSON.stringify(smsBackground)})document.querySelector('#${verificationContainerId}').remove();
+                  if(!${JSON.stringify(smsUnknown)})document.cookie='douyin-auth=yes; path=/';
+                  history.replaceState(null,'','${smsUnknown ? '/after-verification' : '/creator'}');
+                  if(${JSON.stringify(smsLanding || smsUnknown)})document.body.innerHTML='<main>验证处理中</main>';
+                  else if(${JSON.stringify(smsBackground)})document.querySelector('#${verificationContainerId}').remove();
                   else document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>';
                 };
                 setTimeout(()=>{send.disabled=false;send.textContent='重新发送验证码'},1000);
@@ -679,7 +768,9 @@ async function route(
              document.querySelector('#${verificationContainerId}').innerHTML='<h2>使用原设备扫码</h2><img class="verification-qr" aria-label="二次验证二维码" src="/qrcode.svg">';
            };
          },200)`
-      : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
+      : url.searchParams.has('stalled')
+        ? ''
+        : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
          setTimeout(()=>{document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>'},1200)`;
     return html(
       response,
@@ -693,7 +784,7 @@ async function route(
     );
   }
   if (url.pathname === '/content/upload') {
-    if (!authenticated(request)) return redirect(response, '/login');
+    if (!authenticated(request)) return redirect(response, '/login?stalled=1');
     return redirect(response, '/content/post/image?enter_from=publish_page&type=new');
   }
   if (url.pathname === '/content/post/image') {

@@ -31,13 +31,34 @@ export function DouyinBrowserPanel({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
+  const accountGeneration = useRef(0);
+
+  useEffect(() => {
+    const generation = ++accountGeneration.current;
+    setSession(null);
+    setLogin(null);
+    setSmsCode('');
+    setLoading(true);
+    setBusy(false);
+    setMessage(null);
+    inFlight.current = false;
+    return () => {
+      if (accountGeneration.current === generation) accountGeneration.current += 1;
+      inFlight.current = false;
+    };
+  }, [account.id]);
 
   useEffect(() => {
     const controller = new AbortController();
+    const generation = accountGeneration.current;
     void getDouyinBrowserSession(account.id, controller.signal)
-      .then(setSession)
+      .then((next) => {
+        if (!controller.signal.aborted && accountGeneration.current === generation) {
+          setSession(next);
+        }
+      })
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && accountGeneration.current === generation) {
           setMessage(
             error instanceof PlatformAccountRequestError && error.status === 404
               ? '尚未建立抖音托管会话。'
@@ -46,7 +67,9 @@ export function DouyinBrowserPanel({
         }
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted && accountGeneration.current === generation) {
+          setLoading(false);
+        }
       });
     return () => controller.abort();
   }, [account.id]);
@@ -56,11 +79,12 @@ export function DouyinBrowserPanel({
     const waitingForAttentionResolution = session?.status === 'attention_required';
     if (!waitingForPrimaryQr && !waitingForAttentionResolution) return;
     const controller = new AbortController();
+    const generation = accountGeneration.current;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       try {
         const next = await getDouyinBrowserSession(account.id, controller.signal);
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || accountGeneration.current !== generation) return;
         setSession(next);
         if (next.status === 'authenticated') {
           setLogin(null);
@@ -70,6 +94,10 @@ export function DouyinBrowserPanel({
           if (!waitingForAttentionResolution) {
             setMessage('抖音要求二次验证，请在下方选择短信验证或原设备扫码。');
           }
+        } else if (waitingForAttentionResolution && next.status === 'reauth') {
+          setLogin(null);
+          setSmsCode('');
+          setMessage('当前二次验证页面已中断，需要重新扫码。');
         } else {
           const expiryMessage = douyinQrExpiryMessage(waitingForPrimaryQr, next.status);
           if (expiryMessage) {
@@ -78,14 +106,16 @@ export function DouyinBrowserPanel({
           }
         }
       } catch (error) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || accountGeneration.current !== generation) return;
         setMessage(
           error instanceof PlatformAccountRequestError
             ? `抖音登录状态读取失败（HTTP ${error.status}），系统将自动重试。`
             : '抖音登录状态读取失败，系统将自动重试。',
         );
       } finally {
-        if (!controller.signal.aborted) timer = setTimeout(() => void poll(), 3_000);
+        if (!controller.signal.aborted && accountGeneration.current === generation) {
+          timer = setTimeout(() => void poll(), 3_000);
+        }
       }
     };
     timer = setTimeout(() => void poll(), 3_000);
@@ -109,31 +139,36 @@ export function DouyinBrowserPanel({
     }
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+    const generation = accountGeneration.current;
     inFlight.current = true;
     setBusy(true);
     setSmsCode('');
     setMessage(null);
     try {
       const next = await startDouyinBrowserLogin(account, csrf, session?.status === 'reauth');
+      if (accountGeneration.current !== generation) return;
       setSession(next);
       setLogin(next);
       setMessage(next.status === 'authenticated' ? '抖音登录已确认。' : '请使用抖音扫描二维码。');
     } catch (error) {
+      if (accountGeneration.current !== generation) return;
       const latest = await getDouyinBrowserSession(account.id).catch(() => null);
+      if (accountGeneration.current !== generation) return;
       if (latest) setSession(latest);
       setMessage(
         error instanceof PlatformAccountRequestError &&
           (error.status === 423 || error.details?.['reason'] === 'CAPTCHA_REQUIRED')
           ? '抖音要求二次验证，请使用下方验证方式继续。'
-          : error instanceof PlatformAccountRequestError &&
-              error.code === 'PLATFORM_ACCOUNT_VERSION_CONFLICT'
+          : error instanceof PlatformAccountRequestError && error.code === 'VERSION_CONFLICT'
             ? '账号状态刚刚发生变化，请再次点击生成二维码。'
             : '启动抖音登录失败，请检查 API 与抖音浏览器 Worker。',
       );
     } finally {
-      inFlight.current = false;
-      setBusy(false);
-      setLoading(false);
+      if (accountGeneration.current === generation) {
+        inFlight.current = false;
+        setBusy(false);
+        setLoading(false);
+      }
     }
   }
 
@@ -141,6 +176,7 @@ export function DouyinBrowserPanel({
     if (inFlight.current) return;
     const csrf = readCookie('geo_csrf');
     if (!csrf) return setMessage('安全令牌尚未就绪，请刷新页面后重试。');
+    const generation = accountGeneration.current;
     inFlight.current = true;
     setBusy(true);
     setMessage(null);
@@ -148,6 +184,7 @@ export function DouyinBrowserPanel({
       input.method === 'verification_sms_send' && Boolean(session?.verification?.has_code_input);
     try {
       const next = await startDouyinBrowserLogin(account, csrf, account.status === 'reauth', input);
+      if (accountGeneration.current !== generation) return;
       setSession(next);
       setLogin(next);
       if (next.status === 'authenticated') {
@@ -169,7 +206,9 @@ export function DouyinBrowserPanel({
         setMessage('验证码尚未通过，请核对后重试。');
       }
     } catch (error) {
+      if (accountGeneration.current !== generation) return;
       const latest = await getDouyinBrowserSession(account.id).catch(() => null);
+      if (accountGeneration.current !== generation) return;
       if (latest) setSession(latest);
       const verificationBlocked = isDouyinVerificationBlocked(error);
       setMessage(
@@ -182,21 +221,26 @@ export function DouyinBrowserPanel({
             : '二次验证操作失败，请稍后重试。',
       );
     } finally {
-      inFlight.current = false;
-      setBusy(false);
+      if (accountGeneration.current === generation) {
+        inFlight.current = false;
+        setBusy(false);
+      }
     }
   }
 
   async function refresh() {
+    const generation = accountGeneration.current;
     setBusy(true);
     try {
       const next = await getDouyinBrowserSession(account.id);
+      if (accountGeneration.current !== generation) return;
       setSession(next);
       setMessage(`登录态已核验：${sessionLabel(next.status)}。`);
     } catch {
+      if (accountGeneration.current !== generation) return;
       setMessage('实时核验失败，请检查 API 与抖音浏览器 Worker 日志。');
     } finally {
-      setBusy(false);
+      if (accountGeneration.current === generation) setBusy(false);
     }
   }
 
@@ -205,6 +249,7 @@ export function DouyinBrowserPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-ink-950">抖音图文自动发布</h2>
+          <p className="mt-1 text-sm font-medium text-ink-700">当前账号：{account.display_name}</p>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-ink-500">
             系统生成 3:4 图文卡片并通过独立托管浏览器发布。只声明实际使用的 AI
             辅助，不会自动勾选原创。
@@ -221,6 +266,11 @@ export function DouyinBrowserPanel({
         <p className="mt-1 text-xs text-ink-500">
           最近核验：{formatDateTime(session?.last_verified_at)}
         </p>
+        {!loading && session?.status === 'reauth' ? (
+          <p className="mt-2 text-sm leading-6 text-amber-900">
+            该账号登录态或未完成的验证页面已失效，需要重新扫码。
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           {session?.status !== 'qr_ready' &&
           (session?.status !== 'attention_required' || !session.verification) ? (

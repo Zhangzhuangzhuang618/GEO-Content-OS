@@ -162,7 +162,7 @@ describe('Douyin browser login API', () => {
         new Response(
           JSON.stringify({
             error: {
-              code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT',
+              code: 'VERSION_CONFLICT',
               message: '账号版本已变化',
               request_id: '00000000-0000-4000-8000-000000000159',
             },
