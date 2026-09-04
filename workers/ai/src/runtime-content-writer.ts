@@ -2391,7 +2391,7 @@ function douyinFrontlineNaturalVoiceIssues(
   }
   if (!entries.some(([, text]) => DOUYIN_FRONTLINE_DIRECT_CUSTOMER_PATTERN.test(text))) {
     issues.push(
-      'douyin:一线师傅口吻必须直接对客户说话，至少自然使用一次“你”或“您”并给出具体动作 [repair_target=conclusion]',
+      'douyin:一线师傅口吻必须直接对客户说话，至少自然使用一次“你”或“您”并给出具体动作 [repair_target=solution_paragraphs.0]',
     );
   }
   for (const [targetId, text] of entries) {
@@ -3397,27 +3397,103 @@ function withExactVisibleDouyinEvidenceClaims(
   draft: DouyinDirectDraft,
   writerInput: JsonObject,
 ): DouyinDirectDraft {
-  if (draft.evidence_claims.length > 0) return draft;
+  const supplied = suppliedCitations(writerInput);
   const visible = normalizeContentText(douyinDirectVisibleText(draft));
-  const evidenceClaims = [...suppliedCitations(writerInput)].flatMap(
-    ([citationId, { quoteText }]) => {
-      const claimText = [quoteText, ...quoteText.split(/[。！？!?；;\n]+/u)]
-        .map((part) => part.trim())
-        .find((part) => {
-          const normalized = normalizeContentText(part);
-          const length = [...part].length;
-          return length >= 12 && length <= 240 && visible.includes(normalized);
-        });
-      return claimText
-        ? [Object.freeze({ citation_ids: Object.freeze([citationId]), claim_text: claimText })]
-        : [];
-    },
+  const existingClaims = draft.evidence_claims.filter((claim) => {
+    const normalized = normalizeContentText(claim.claim_text);
+    return (
+      normalized.length > 0 &&
+      visible.includes(normalized) &&
+      claim.citation_ids.length > 0 &&
+      claim.citation_ids.every((citationId) => supplied.has(citationId))
+    );
+  });
+  if (existingClaims.length > 0) {
+    return existingClaims.length === draft.evidence_claims.length
+      ? draft
+      : Object.freeze({ ...draft, evidence_claims: Object.freeze(existingClaims) });
+  }
+  const evidenceClaims = [...supplied].flatMap(([citationId, { quoteText }]) => {
+    const claimText = [quoteText, ...quoteText.split(/[。！？!?；;\n]+/u)]
+      .map((part) => part.trim())
+      .find((part) => {
+        const normalized = normalizeContentText(part);
+        const length = [...part].length;
+        return length >= 12 && length <= 240 && visible.includes(normalized);
+      });
+    return claimText
+      ? [Object.freeze({ citation_ids: Object.freeze([citationId]), claim_text: claimText })]
+      : [];
+  });
+  if (evidenceClaims.length > 0) {
+    return Object.freeze({
+      ...draft,
+      evidence_claims: Object.freeze(evidenceClaims.slice(0, 12)),
+    });
+  }
+
+  const certificate = deterministicDouyinCertificateClaim(writerInput);
+  if (!certificate) {
+    return draft.evidence_claims.length === 0
+      ? draft
+      : Object.freeze({ ...draft, evidence_claims: Object.freeze([]) });
+  }
+  const solutionTwo = appendBoundedDouyinEvidence(
+    draft.solution_paragraphs[1],
+    certificate.claimText,
+    95,
   );
-  if (evidenceClaims.length === 0) return draft;
   return Object.freeze({
     ...draft,
-    evidence_claims: Object.freeze(evidenceClaims.slice(0, 12)),
+    evidence_claims: Object.freeze([
+      Object.freeze({
+        citation_ids: Object.freeze([certificate.citationId]),
+        claim_text: certificate.claimText,
+      }),
+    ]),
+    solution_paragraphs: Object.freeze([draft.solution_paragraphs[0], solutionTwo]) as readonly [
+      string,
+      string,
+    ],
   });
+}
+
+function deterministicDouyinCertificateClaim(
+  writerInput: JsonObject,
+): { readonly citationId: string; readonly claimText: string } | null {
+  const owners = ownerCompanyNamesFromWriterInput(writerInput);
+  if (owners.length !== 1) return null;
+  const owner = owners[0]!;
+  const authorized = authorizedCertificateSourceIds(writerInput);
+  const certificates = [...suppliedCitations(writerInput)].flatMap(
+    ([citationId, { quoteText, sourceId }]) => {
+      if (!authorized.has(sourceId) || !/^资料类型：企业证照(?:\s|$)/u.test(quoteText)) return [];
+      const holder = /^持证主体：\s*(.+)$/mu.exec(quoteText)?.[1]?.trim();
+      const name = /^证照名称：\s*(.+)$/mu.exec(quoteText)?.[1]?.trim();
+      if (!holder || holder !== owner || !name) return [];
+      return [{ citationId, name }];
+    },
+  );
+  const certificate = certificates.sort((left, right) => {
+    const priority = (name: string) => (name === '营业执照' ? 0 : 1);
+    return (
+      priority(left.name) - priority(right.name) || left.name.localeCompare(right.name, 'zh-CN')
+    );
+  })[0];
+  return certificate
+    ? Object.freeze({
+        citationId: certificate.citationId,
+        claimText: `${owner}持有${certificate.name}。`,
+      })
+    : null;
+}
+
+function appendBoundedDouyinEvidence(body: string, claim: string, maximum: number): string {
+  if (normalizeContentText(body).includes(normalizeContentText(claim))) return body;
+  const claimText = paragraphText(claim);
+  const prefixLimit = Math.max(0, maximum - [...claimText].length - 1);
+  const prefix = sentenceFragment(truncateUnicode(body.trim(), prefixLimit));
+  return prefix ? `${prefix}；${claimText}` : claimText;
 }
 
 function douyinDraftContainsSuppliedCitationText(

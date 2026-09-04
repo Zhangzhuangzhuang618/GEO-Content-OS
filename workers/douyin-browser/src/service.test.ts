@@ -241,7 +241,7 @@ describe('Douyin browser service', () => {
     } as unknown as PostgresDouyinBrowserStore;
     const verifyAuthenticated = vi
       .fn()
-      .mockRejectedValueOnce(new Error('page.goto: Page crashed'))
+      .mockRejectedValueOnce(new Error('locator.count: Target crashed'))
       .mockResolvedValueOnce(true);
     const release = vi.fn(async () => undefined);
     const submit = vi.fn(async () => ({
@@ -279,6 +279,210 @@ describe('Douyin browser service', () => {
     expect(release).toHaveBeenCalledTimes(2);
     expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
     expect(submit).toHaveBeenCalledOnce();
+    warning.mockRestore();
+  });
+
+  it('recovers a persisted browser runtime attention state before scheduled publishing', async () => {
+    const payload = imageNotePayload();
+    const body = Buffer.from('card-image');
+    const contentHash = createHash('sha256').update(body).digest('hex');
+    const attention = Object.freeze({
+      ...browserSession(),
+      lastError: {
+        code: 'BROWSER_RUNTIME_FAILED',
+        schema_version: 'douyin-browser-error@1',
+      },
+      status: 'attention_required' as const,
+    });
+    const authenticated = Object.freeze({
+      ...attention,
+      lastError: null,
+      status: 'authenticated' as const,
+      version: attention.version + 1,
+    });
+    const processing = {
+      ...publication('processing', 2),
+      externalId: 'remote-note-recovered',
+    };
+    const markSession = vi.fn(async () => authenticated);
+    const store = {
+      getOrCreateSession: vi.fn(async () => attention),
+      insertArtifact: vi.fn(async () => undefined),
+      loadImageAssets: vi.fn(async () =>
+        IMAGE_IDS.map((assetId) => ({
+          assetId,
+          contentHash,
+          mimeType: 'image/jpeg' as const,
+          objectUri: `memory://geo/${assetId}.jpg`,
+          sizeBytes: body.byteLength,
+        })),
+      ),
+      markSession,
+      preparePublication: vi.fn(async () => publication('prepared', 1)),
+      updatePublication: vi.fn(async () => processing),
+    } as unknown as PostgresDouyinBrowserStore;
+    const verifyAuthenticated = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('locator.count: Target crashed'))
+      .mockResolvedValueOnce(true);
+    const release = vi.fn(async () => undefined);
+    const submit = vi.fn(async () => ({
+      externalId: 'remote-note-recovered',
+      reviewReason: null,
+      status: 'processing' as const,
+      url: null,
+    }));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      store,
+      {
+        capture: vi.fn(async () => Buffer.from('post-submit')),
+        release,
+        submit,
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
+      {
+        getObject: vi.fn(async () => body),
+        putObject: vi.fn(async ({ key }: { key: string }) => ({ uri: `memory://geo/${key}` })),
+      } as unknown as ObjectStorageAdapter,
+    );
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'douyin:image-note:recover-persisted-runtime-attention',
+        payload,
+        payload_hash: hashDouyinPayload(payload),
+      }),
+    ).resolves.toMatchObject({ external_id: 'remote-note-recovered', status: 'processing' });
+    expect(verifyAuthenticated).toHaveBeenCalledTimes(2);
+    expect(markSession).toHaveBeenCalledWith(
+      attention,
+      expect.objectContaining({ error: null, status: 'authenticated' }),
+    );
+    expect(submit).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledTimes(2);
+    warning.mockRestore();
+  });
+
+  it('keeps a genuine manual challenge blocked before scheduled publishing', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      lastError: { code: 'CAPTCHA_REQUIRED', schema_version: 'douyin-browser-error@1' },
+      status: 'attention_required' as const,
+    });
+    const verifyAuthenticated = vi.fn();
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getOrCreateSession: vi.fn(async () => attention),
+        markSession: vi.fn(),
+      } as unknown as PostgresDouyinBrowserStore,
+      { verifyAuthenticated } as unknown as DouyinPageDriver,
+      { decrypt: vi.fn() } as unknown as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'douyin:image-note:manual-challenge-remains-blocked',
+        payload: imageNotePayload(),
+        payload_hash: hashDouyinPayload(imageNotePayload()),
+      }),
+    ).rejects.toMatchObject({ code: 'SESSION_ATTENTION_REQUIRED', statusCode: 423 });
+    expect(verifyAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('reopens a crashed page once while polling an authenticated session', async () => {
+    const session = browserSession();
+    const authenticated = Object.freeze({ ...session, version: session.version + 1 });
+    const markSession = vi.fn(async () => authenticated);
+    const verifyAuthenticated = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('locator.count: Target crashed'))
+      .mockResolvedValueOnce(true);
+    const release = vi.fn(async () => undefined);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getSession: vi.fn(async () => session),
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        release,
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'authenticated',
+    });
+    expect(verifyAuthenticated).toHaveBeenCalledTimes(2);
+    expect(release).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
+    expect(markSession).toHaveBeenCalledOnce();
+    warning.mockRestore();
+  });
+
+  it('reopens a crashed verification page once and restores an authenticated session', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      status: 'attention_required' as const,
+    });
+    const authenticated = Object.freeze({
+      ...attention,
+      status: 'authenticated' as const,
+      storageStateCiphertext: 'new-ciphertext',
+      storageStateKeyVersion: 'local-v2',
+      version: attention.version + 1,
+    });
+    const markSession = vi.fn(async () => authenticated);
+    const inspectLoginVerification = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('locator.count: Target crashed'))
+      .mockResolvedValueOnce(null);
+    const verifyAuthenticated = vi.fn(async () => true);
+    const release = vi.fn(async () => undefined);
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getSession: vi.fn(async () => attention),
+        markAccountActive: vi.fn(async () => undefined),
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        exportStorageState: vi.fn(async () => '{"cookies":[]}'),
+        inspectLoginVerification,
+        release,
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      {
+        decrypt: vi.fn(async () => '{}'),
+        encrypt: vi.fn(async () => ({
+          credentialCiphertext: 'new-ciphertext',
+          credentialKeyVersion: 'local-v2',
+        })),
+      } as unknown as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'authenticated',
+    });
+    expect(inspectLoginVerification).toHaveBeenCalledTimes(2);
+    expect(verifyAuthenticated).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+    expect(markSession).toHaveBeenCalledWith(
+      attention,
+      expect.objectContaining({ status: 'authenticated' }),
+    );
     warning.mockRestore();
   });
 

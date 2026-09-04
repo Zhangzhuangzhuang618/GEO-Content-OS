@@ -135,7 +135,7 @@ export class DouyinBrowserService {
     return this.locks.run(accountId, async () => {
       const current = await this.store.getSession(accountId);
       if (!canVerifySession(current)) return sessionView(current);
-      try {
+      const verify = async () => {
         if (current.status === 'attention_required') {
           const live = await this.driver.inspectLoginVerification(accountId, {
             captureScreenshot: false,
@@ -162,6 +162,19 @@ export class DouyinBrowserService {
             status: 'authenticated',
           }),
         );
+      };
+      try {
+        try {
+          return await verify();
+        } catch (error) {
+          if (!isRecoverableBrowserRuntimeFailure(error)) throw error;
+          console.warn('Douyin browser recovered a crashed session status page', {
+            account_id: accountId,
+            error: safeBrowserError(error),
+          });
+          await this.driver.release(accountId);
+          return await verify();
+        }
       } catch (error) {
         const code = sessionVerificationErrorCode(error);
         console.error('Douyin browser session verification failed', {
@@ -288,6 +301,23 @@ export class DouyinBrowserService {
     readonly url: string | null;
   }> {
     let session = await this.store.getOrCreateSession(accountId);
+    let storageStateJson: string | null = null;
+    let authenticationVerified = false;
+    if (isRecoverableRuntimeAttention(session)) {
+      storageStateJson = await this.decryptState(session);
+      if (await this.verifyAuthenticatedForPublish(session, storageStateJson)) {
+        session = await this.store.markSession(session, {
+          error: null,
+          lastVerifiedAt: new Date(),
+          status: 'authenticated',
+        });
+        authenticationVerified = true;
+      } else {
+        session = await this.requireReauth(session, 'LOGIN_EXPIRED');
+        void session;
+        throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login has expired');
+      }
+    }
     if (session.status === 'attention_required') {
       throw new BrowserGatewayError(
         423,
@@ -298,8 +328,11 @@ export class DouyinBrowserService {
     if (session.status !== 'authenticated') {
       throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login is required');
     }
-    const storageStateJson = await this.decryptState(session);
-    if (!(await this.verifyAuthenticatedForPublish(session, storageStateJson))) {
+    storageStateJson ??= await this.decryptState(session);
+    if (
+      !authenticationVerified &&
+      !(await this.verifyAuthenticatedForPublish(session, storageStateJson))
+    ) {
       session = await this.requireReauth(session, 'LOGIN_EXPIRED');
       void session;
       throw new BrowserGatewayError(409, 'AUTH_REQUIRED', 'Douyin browser login has expired');
@@ -952,6 +985,14 @@ function canVerifySession(session: BrowserSession): boolean {
   return session.status === 'authenticated' || session.status === 'attention_required';
 }
 
+function isRecoverableRuntimeAttention(session: BrowserSession): boolean {
+  return (
+    session.status === 'attention_required' &&
+    session.lastError?.['code'] === 'BROWSER_RUNTIME_FAILED' &&
+    Boolean(session.storageStateCiphertext && session.storageStateKeyVersion)
+  );
+}
+
 function isCurrentQrAttempt(
   current: BrowserSession,
   expected: BrowserSession,
@@ -1074,7 +1115,7 @@ function isRecoverablePublishRuntimeFailure(error: unknown): boolean {
 }
 
 function isRecoverableBrowserRuntimeFailure(error: unknown): boolean {
-  return /(?:Page crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
+  return /(?:(?:Page|Target) crashed|Target page, context or browser has been closed|Browser has been closed)/iu.test(
     runtimeFailureText(error, 3),
   );
 }
