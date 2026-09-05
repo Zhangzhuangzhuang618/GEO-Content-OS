@@ -84,7 +84,7 @@ export const DouyinContentSchema = z.union([
     .object({
       ...DouyinContentBaseShape,
       platform_meta: DouyinImageNotePlatformMetaSchema,
-      title: z.string().trim().min(2).max(30),
+      title: z.string().trim().min(2).max(20),
     })
     .strict(),
   z
@@ -139,7 +139,7 @@ export const DouyinImageNotePayloadSchema = z
     platform_code: z.literal(DOUYIN_PLATFORM_CODE),
     rule_version: z.literal(DOUYIN_RENDER_RULE_VERSION),
     schema_version: z.literal(DOUYIN_IMAGE_NOTE_PAYLOAD_SCHEMA_VERSION),
-    title: z.string().trim().min(2).max(30),
+    title: z.string().trim().min(2).max(20),
     topics: z.array(z.string().trim().min(1).max(40)).min(1).max(20).refine(unique),
   })
   .strict();
@@ -282,7 +282,7 @@ const contentDefinition = {
       properties: {
         ...contentBaseProperties,
         platform_meta: imageNotePlatformMetaDefinition,
-        title: { maxLength: 30, minLength: 2, type: 'string' },
+        title: { maxLength: 20, minLength: 2, type: 'string' },
       },
       required: contentRequired,
       type: 'object',
@@ -362,7 +362,7 @@ const imageNotePayloadDefinition = {
     platform_code: { const: DOUYIN_PLATFORM_CODE },
     rule_version: { const: DOUYIN_RENDER_RULE_VERSION },
     schema_version: { const: DOUYIN_IMAGE_NOTE_PAYLOAD_SCHEMA_VERSION },
-    title: { maxLength: 30, minLength: 2, type: 'string' },
+    title: { maxLength: 20, minLength: 2, type: 'string' },
     topics: {
       items: { maxLength: 40, minLength: 1, type: 'string' },
       maxItems: 20,

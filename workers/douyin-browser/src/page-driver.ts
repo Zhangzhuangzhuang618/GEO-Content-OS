@@ -91,6 +91,8 @@ interface WorkListEvidence {
   readonly url: string;
 }
 
+type AuthenticationState = 'authenticated' | 'login_required' | 'unknown';
+
 export class PageDriverError extends Error {
   public constructor(
     public readonly code:
@@ -140,7 +142,9 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
     await this.rejectCaptcha(page);
     const expiresAt = new Date(Date.now() + 180_000);
-    if (await this.isAuthenticated(page)) return { expiresAt, qrPng: Buffer.alloc(0) };
+    if ((await this.authenticationState(page)) === 'authenticated') {
+      return { expiresAt, qrPng: Buffer.alloc(0) };
+    }
 
     const qr = page.locator(SELECTORS.qr).first();
     if (!(await qr.isVisible().catch(() => false))) {
@@ -154,16 +158,27 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
 
   public async waitForAuthentication(accountId: string, expiresAt: Date): Promise<boolean> {
     const page = this.pages.get(accountId);
-    if (!page) return false;
+    if (!page) {
+      throw new PageDriverError(
+        'PAGE_SIGNATURE_CHANGED',
+        'Douyin login page is unavailable before authentication can be resolved',
+      );
+    }
+    let lastState: AuthenticationState = 'login_required';
     while (Date.now() < expiresAt.getTime()) {
       await this.rejectCaptcha(page);
-      if (await this.isAuthenticated(page)) {
+      lastState = await this.authenticationState(page);
+      if (lastState === 'authenticated') {
         await page.goto(this.config.editorUrl, { waitUntil: 'domcontentloaded' });
         return this.waitForAuthenticationResolution(page);
       }
       await page.waitForTimeout(Math.min(500, Math.max(1, expiresAt.getTime() - Date.now())));
     }
-    return false;
+    if (lastState === 'login_required') return false;
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Douyin login finished on a page without explicit authentication or login evidence',
+    );
   }
 
   public async verifyAuthenticated(
@@ -200,13 +215,17 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     }
     if (options?.captureScreenshot === false) {
       const snapshot = await inspectLoginVerificationPage(page, false);
-      if (snapshot || !options.includeUnknown || (await this.isAuthenticated(page))) {
+      if (
+        snapshot ||
+        !options.includeUnknown ||
+        (await this.authenticationState(page)) === 'authenticated'
+      ) {
         return snapshot;
       }
       return unknownLoginVerificationSnapshot(page);
     }
     const diagnostic = await inspectLoginVerificationPage(page);
-    if (diagnostic || (await this.isAuthenticated(page))) {
+    if (diagnostic || (await this.authenticationState(page)) === 'authenticated') {
       return diagnostic;
     }
     return captureUnknownLoginVerificationPage(page);
@@ -546,7 +565,7 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
       }
       await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
     }
-    if (!(await this.isAuthenticated(page))) {
+    if ((await this.authenticationState(page)) === 'login_required') {
       throw new PageDriverError('AUTH_REQUIRED', 'Douyin browser login is required');
     }
     throw new PageDriverError(
@@ -555,7 +574,7 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     );
   }
 
-  private async isAuthenticated(page: Page): Promise<boolean> {
+  private async authenticationState(page: Page): Promise<AuthenticationState> {
     if (
       await page
         .locator(SELECTORS.imageInput)
@@ -563,7 +582,7 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
         .isVisible()
         .catch(() => false)
     ) {
-      return true;
+      return 'authenticated';
     }
     if (
       await page
@@ -572,7 +591,7 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
         .isVisible()
         .catch(() => false)
     ) {
-      return true;
+      return 'authenticated';
     }
     if (
       await page
@@ -581,16 +600,18 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
         .isVisible()
         .catch(() => false)
     ) {
-      return false;
+      return 'login_required';
     }
-    if (page.url().includes('/login')) return false;
+    if (isLoginPageUrl(page.url())) return 'login_required';
     const body = await page
       .locator('body')
       .innerText()
       .catch(() => '');
     return AUTHENTICATED_MARKER_SETS.some((markers) =>
       markers.every((marker) => body.includes(marker)),
-    );
+    )
+      ? 'authenticated'
+      : 'unknown';
   }
 
   private async waitForAuthenticationResolution(page: Page): Promise<boolean> {
@@ -607,26 +628,22 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     const deadline = Date.now() + Math.max(1, timeoutMs);
     while (Date.now() < deadline) {
       await this.rejectCaptcha(page);
-      if (await this.isAuthenticated(page)) return true;
-      if (
-        await page
-          .locator(SELECTORS.loginContainer)
-          .first()
-          .isVisible()
-          .catch(() => false)
-      ) {
-        return false;
-      }
+      const state = await this.authenticationState(page);
+      if (state === 'authenticated') return true;
+      if (state === 'login_required') return false;
       await page.waitForTimeout(Math.min(250, Math.max(1, deadline - Date.now())));
     }
-    return false;
+    throw new PageDriverError(
+      'PAGE_SIGNATURE_CHANGED',
+      'Douyin page did not expose explicit authentication or login evidence',
+    );
   }
 
   private async confirmAuthenticatedAfterVerification(
     page: Page,
     deadline: number,
   ): Promise<boolean> {
-    if (await this.isAuthenticated(page)) return true;
+    if ((await this.authenticationState(page)) === 'authenticated') return true;
     if (Date.now() >= deadline) return false;
     try {
       await page.goto(this.config.editorUrl, {
@@ -676,6 +693,14 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     if (visualChallenge || smsIdentityChallenge) {
       throw new PageDriverError('CAPTCHA_REQUIRED', 'Douyin requires manual security verification');
     }
+  }
+}
+
+function isLoginPageUrl(value: string): boolean {
+  try {
+    return /(?:^|\/)login(?:\/|$)/u.test(new URL(value).pathname);
+  } catch {
+    return false;
   }
 }
 

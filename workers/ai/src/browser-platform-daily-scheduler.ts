@@ -1112,7 +1112,7 @@ export function douyinDailyDecisionAngle(input: {
 function boundedDouyinTitleSubject(value: string, suffix: string): string {
   const normalized = value.normalize('NFC').replace(/\s+/gu, '').trim();
   const suffixLength = [...suffix].length;
-  const subjectLimit = Math.max(1, 26 - suffixLength);
+  const subjectLimit = Math.max(1, 20 - suffixLength);
   return [...normalized].slice(0, subjectLimit).join('');
 }
 

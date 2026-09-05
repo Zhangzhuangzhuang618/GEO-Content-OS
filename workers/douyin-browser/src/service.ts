@@ -151,11 +151,15 @@ export class DouyinBrowserService {
       let retainContext = current.status === 'attention_required';
       const verify = async () => {
         if (current.status === 'attention_required') {
-          const live = await this.driver.inspectLoginVerification(accountId, {
-            captureScreenshot: false,
-            includeUnknown: true,
-          });
-          if (live) return sessionView(current, verificationView(live));
+          try {
+            const live = await this.driver.inspectLoginVerification(accountId, {
+              captureScreenshot: false,
+              includeUnknown: true,
+            });
+            if (live) return sessionView(current, verificationView(live));
+          } catch (error) {
+            if (!shouldRecheckPersistedAuthentication(current, error)) throw error;
+          }
         }
         const authenticated = await this.driver.verifyAuthenticated(
           accountId,
@@ -163,9 +167,11 @@ export class DouyinBrowserService {
           await this.decryptState(current),
         );
         if (!authenticated) {
-          return current.status === 'attention_required'
-            ? sessionView(current, await this.storedVerificationView(current))
-            : sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
+          if (current.status === 'attention_required' && !hasPersistedAuthentication(current)) {
+            return sessionView(current, await this.storedVerificationView(current));
+          }
+          retainContext = false;
+          return sessionView(await this.requireReauth(current, 'LOGIN_EXPIRED'));
         }
         if (current.status === 'attention_required') {
           retainContext = false;
@@ -509,7 +515,14 @@ export class DouyinBrowserService {
       }
     } catch (error) {
       if (!(error instanceof PageDriverError)) throw error;
-      if (!(await this.persistConfirmedLoginAttention(session, error, browser))) throw error;
+      if (await this.persistConfirmedLoginAttention(session, error, browser)) {
+        throw new BrowserGatewayError(423, error.code, error.message);
+      }
+      if (error.code !== 'PAGE_SIGNATURE_CHANGED') throw error;
+      await this.store.markSession(session, {
+        error: { code: error.code, schema_version: 'douyin-browser-error@1' },
+        status: 'attention_required',
+      });
       throw new BrowserGatewayError(423, error.code, error.message);
     }
   }
@@ -1091,6 +1104,20 @@ function isMaskedMobile(value: unknown): value is string {
 
 function canVerifySession(session: BrowserSession): boolean {
   return session.status === 'authenticated' || session.status === 'attention_required';
+}
+
+function hasPersistedAuthentication(session: BrowserSession): boolean {
+  return Boolean(
+    session.authenticatedAt && session.storageStateCiphertext && session.storageStateKeyVersion,
+  );
+}
+
+function shouldRecheckPersistedAuthentication(session: BrowserSession, error: unknown): boolean {
+  return (
+    hasPersistedAuthentication(session) &&
+    error instanceof PageDriverError &&
+    error.code === 'AUTH_REQUIRED'
+  );
 }
 
 function isRecoverableRuntimeAttention(session: BrowserSession): boolean {

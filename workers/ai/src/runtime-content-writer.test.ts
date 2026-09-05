@@ -884,13 +884,132 @@ describe('AI Worker runtime wiring', () => {
       writerInput,
     });
 
-    const claimText = `${ownerCompanyName}持有营业执照。`;
+    const claimText = '该企业持有营业执照。';
     expect(flash.requests).toHaveLength(1);
     expect(result.citation_map).toEqual([
       expect.objectContaining({ citation_ids: [citationId], claim_text: claimText }),
     ]);
     expect(result.blocks.map((block) => block.text).join('\n')).toContain(claimText);
     expect(pro.requests).toHaveLength(0);
+  });
+
+  it('keeps the frontline owner-name limit when adding an authorized certificate fact', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const citationId = '73000000-0000-4000-8000-000000000065';
+    const sourceId = '74000000-0000-4000-8000-000000000065';
+    const flash = new LooseMockAdapter(
+      [{ text: JSON.stringify(frontlineDirectDraft()) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = frontlineWriterInput(fixture.input as JsonObject);
+    const brief = baseInput['brief'] as JsonObject;
+    const constraints = brief['constraints'] as JsonObject;
+    const writerInput = {
+      ...baseInput,
+      brief: {
+        ...brief,
+        constraints: { ...constraints, authorized_certificate_source_ids: [sourceId] },
+      },
+      citations: [
+        {
+          chunk_id: citationId,
+          citation_id: citationId,
+          quote_text: `资料类型：企业证照\n证照名称：营业执照\n持证主体：${FRONTLINE_OWNER_COMPANY}`,
+          source_id: sourceId,
+        },
+      ],
+    } as JsonObject;
+
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-frontline-certificate-owner-limit',
+      writerInput,
+    });
+    const result = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-frontline-certificate-owner-limit-variant',
+      writerInput,
+    });
+
+    const description = String((result.platform_meta as JsonObject)['description']);
+    expect(flash.requests).toHaveLength(1);
+    expect(description.split(FRONTLINE_OWNER_COMPANY)).toHaveLength(3);
+    expect(description).toContain('该企业持有营业执照。');
+    expect(description.split(/\n\n/gu).at(-1)).toBe(FRONTLINE_OWNER_CONCLUSION);
+    expect(result.citation_map).toEqual([
+      expect.objectContaining({
+        citation_ids: [citationId],
+        claim_text: '该企业持有营业执照。',
+      }),
+    ]);
+  });
+
+  it('keeps the customer owner-name limit when adding an authorized certificate fact', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const ownerCompanyName = '广州志远搬家服务有限公司';
+    const citationId = '73000000-0000-4000-8000-000000000066';
+    const sourceId = '74000000-0000-4000-8000-000000000066';
+    const draft = { ...customerPerspectiveDirectDraft(ownerCompanyName), evidence_claims: [] };
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(draft) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = customerPerspectiveWriterInput(fixture.input as JsonObject, ownerCompanyName);
+    const brief = baseInput['brief'] as JsonObject;
+    const constraints = brief['constraints'] as JsonObject;
+    const writerInput = {
+      ...baseInput,
+      brief: {
+        ...brief,
+        constraints: { ...constraints, authorized_certificate_source_ids: [sourceId] },
+      },
+      citations: [
+        {
+          chunk_id: citationId,
+          citation_id: citationId,
+          quote_text: `资料类型：企业证照\n证照名称：营业执照\n持证主体：${ownerCompanyName}`,
+          source_id: sourceId,
+        },
+      ],
+    } as JsonObject;
+
+    const masterContext = { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const };
+    const master = await writer.generateMaster({
+      context: masterContext,
+      requestId: 'runtime-douyin-customer-certificate-owner-limit',
+      writerInput,
+    });
+    const result = await writer.generateVariant({
+      context: { ...masterContext, runId: VARIANT_RUN },
+      masterContent: master,
+      platformCode: 'douyin',
+      requestId: 'runtime-douyin-customer-certificate-owner-limit-variant',
+      writerInput,
+    });
+
+    const description = String((result.platform_meta as JsonObject)['description']);
+    expect(flash.requests).toHaveLength(1);
+    expect(description.split(ownerCompanyName)).toHaveLength(3);
+    expect(description).toContain('该企业持有营业执照。');
+    expect(description.split(/\n\n/gu).at(-1)).toContain(`我会把${ownerCompanyName}放进备选名单`);
+    expect(result.citation_map).toEqual([
+      expect.objectContaining({
+        citation_ids: [citationId],
+        claim_text: '该企业持有营业执照。',
+      }),
+    ]);
   });
 
   it('adds a supplied fact with Flash and maps the exact visible sentence deterministically', async () => {
@@ -1852,6 +1971,101 @@ describe('AI Worker runtime wiring', () => {
     expect(retryPrompt).toContain('质量报告驱动重写结果与待修改版本完全相同');
     expect(adapter.requests.every((request) => !request.tools?.length)).toBe(true);
     expect(variant.summary).toBe(rewritten.variants[0]!.summary);
+  });
+
+  it('rejects an unchanged Baijiahao rewrite against the complete persisted baseline', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const original = multiPlatformContentData(['baijiahao'], new Set());
+    const currentVariant = {
+      ...original.variants[0]!,
+      hashtags: ['搬家指南'],
+      platform_meta: { source: 'daily-batch' },
+      schema_version: 'content-writer-data@1' as const,
+    } as unknown as GeneratedContent;
+    const unchanged = {
+      ...original,
+      variants: [
+        {
+          ...original.variants[0]!,
+          hashtags: ['搬家指南'],
+          platform_meta: { source: 'daily-batch' },
+        },
+      ],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(unchanged) }, { text: JSON.stringify(unchanged) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+
+    await expect(
+      writer.rewriteBaijiahaoVariant({
+        context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+        currentContent: currentVariant,
+        issues: ['质量问题 BLOCK fact.unsupported；修改建议：删除无证据事实'],
+        requestId: 'runtime-baijiahao-complete-unchanged-baseline',
+        sourceContent: {
+          ...original.master_content,
+          schema_version: 'content-writer-data@1' as const,
+        } as unknown as GeneratedContent,
+        sourceMode: 'independent',
+        writerInput: multiPlatformWriterInput(fixture.input as JsonObject, ['baijiahao']),
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONTENT_QUALITY_INSUFFICIENT',
+      message: expect.stringContaining('质量报告驱动重写结果与待修改版本完全相同'),
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+  });
+
+  it('retries a Lieju no-op after restoring the configured CTA, then accepts a real edit', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const original = multiPlatformContentData(['lieju'], new Set());
+    const configuredCta = '可通过页面联系方式咨询具体方案。';
+    const currentContent = {
+      ...original.variants[0]!,
+      cta: configuredCta,
+      schema_version: 'content-writer-data@1' as const,
+    } as unknown as GeneratedContent;
+    const repaired = {
+      ...original,
+      variants: [{ ...original.variants[0]!, title: '搬家服务细节怎么核对' }],
+    };
+    const adapter = new LooseMockAdapter(
+      [{ text: JSON.stringify(original) }, { text: JSON.stringify(repaired) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const baseInput = multiPlatformWriterInput(fixture.input as JsonObject, ['lieju']);
+    const brief = baseInput['brief'] as JsonObject;
+    const writerInput = {
+      ...baseInput,
+      brief: { ...brief, constraints: { cta: configuredCta } },
+    } as JsonObject;
+
+    const rewritten = await writer.rewriteBrowserPlatformVariant({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' },
+      currentContent,
+      issues: ['质量问题 BLOCK format.direct_answer；修改建议：调整标题'],
+      platformCode: 'lieju',
+      requestId: 'runtime-lieju-complete-unchanged-baseline',
+      writerInput,
+    });
+
+    expect(adapter.requests).toHaveLength(2);
+    expect(rewritten.title).toBe('搬家服务细节怎么核对');
+    expect(rewritten.cta).toBe(configuredCta);
   });
 
   it('passes Lieju lexical blockers into the browser-platform rewrite prompt', async () => {

@@ -85,7 +85,7 @@ describe('browser platform daily scheduler', () => {
     });
 
     expect(angle.title).toMatch(/收费怎么核对$/u);
-    expect([...angle.title].length).toBeLessThanOrEqual(26);
+    expect([...angle.title].length).toBeLessThanOrEqual(20);
     expect(angle.title).not.toContain('仓储运输服务选择');
   });
 
@@ -124,6 +124,6 @@ describe('browser platform daily scheduler', () => {
       title: '广州异地搬家资质核验清单',
       titleSubject: '广州异地搬家',
     });
-    expect([...angle.title].length).toBeLessThanOrEqual(26);
+    expect([...angle.title].length).toBeLessThanOrEqual(20);
   });
 });

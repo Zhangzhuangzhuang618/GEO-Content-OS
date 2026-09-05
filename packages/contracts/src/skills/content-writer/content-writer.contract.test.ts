@@ -87,7 +87,7 @@ describe('content-writer contract v1.0.0', () => {
     }
   });
 
-  it('rejects legacy Douyin payloads before they reach the editorial gate', () => {
+  it('rejects legacy Douyin payloads and enforces the image-note title boundary', () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const source = fixture.output.data.variants[0]!;
     const legacy = {
@@ -117,12 +117,18 @@ describe('content-writer contract v1.0.0', () => {
             description: '说明'.repeat(210),
             topics: ['广州搬迁', '设备搬运', '工厂搬迁'],
           },
+          title: '搬'.repeat(20),
         },
       ],
+    };
+    const overLimit = {
+      ...valid,
+      variants: [{ ...valid.variants[0], title: '搬'.repeat(21) }],
     };
 
     expect(guard.check(CONTENT_WRITER_DATA_SCHEMA, legacy)).toMatchObject({ valid: false });
     expect(guard.check(CONTENT_WRITER_DATA_SCHEMA, valid)).toMatchObject({ valid: true });
+    expect(guard.check(CONTENT_WRITER_DATA_SCHEMA, overLimit)).toMatchObject({ valid: false });
   });
 
   it('requires every emitted citation mapping to reference supplied evidence', () => {

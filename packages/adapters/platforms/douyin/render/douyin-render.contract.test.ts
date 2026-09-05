@@ -102,7 +102,10 @@ describe('douyin render contract', () => {
 
   it('enforces the creator-center title boundary for image notes only', async () => {
     const imageNote = (await imageNoteInput()) as { content: { title: string } };
-    imageNote.content.title = '抖音图文标题'.repeat(6);
+    imageNote.content.title = '搬'.repeat(20);
+    expect(codes(validateDouyinContent(imageNote))).not.toContain('PAYLOAD_SCHEMA_INVALID');
+
+    imageNote.content.title = '搬'.repeat(21);
     expect(codes(validateDouyinContent(imageNote))).toContain('PAYLOAD_SCHEMA_INVALID');
 
     const legacy = (await readJson('douyin.valid.input.json')) as { content: { title: string } };

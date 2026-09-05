@@ -1,4 +1,4 @@
-import { EMBEDDING_DIMENSION } from '@geo-content-os/adapter-embedding';
+import { EMBEDDING_DIMENSION, featureVector } from '@geo-content-os/adapter-embedding';
 import { DisabledRerankAdapter } from '@geo-content-os/adapter-rerank';
 import { InMemoryStorageAdapter } from '@geo-content-os/adapter-storage';
 import { SafeWebFetchAdapter, WebFetchBlockedError } from '@geo-content-os/adapter-web-fetch';
@@ -144,7 +144,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
     restoreRuntime();
   });
 
-  test('completes a Mock Brief through eight-platform delivery and metrics', async () => {
+  test('completes a Mock Brief through seven-platform delivery and metrics', async () => {
     const database = requireClient(client);
     const state: JourneyState = {
       accounts: new Map(),
@@ -241,7 +241,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
       `;
       expect(rows[0]).toEqual({
         chunks: 1,
-        embeddings: 1,
+        embeddings: 2,
         ingestStatus: 'succeeded',
         sourceStatus: 'active',
       });
@@ -581,7 +581,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
         );
         state.jobs.push({ id: job.id, platformCode: variant.platformCode });
       }
-      const platform = new RecordingPlatform();
+      const platform = new RecordingPlatform(database);
       const storage = new InMemoryStorageAdapter('system-publisher-143');
       for (const job of state.jobs) {
         const event = await publishEvent(database, job.id);
@@ -593,14 +593,28 @@ test.describe('AC-001..AC-016 system acceptance', () => {
           },
           credentials,
         );
-        await expect(worker.run(event)).resolves.toMatchObject({
+        let result;
+        try {
+          result = await worker.run(event);
+        } catch (error) {
+          const rows = await database<{ lastError: Record<string, unknown> | null }[]>`
+            SELECT last_error_json AS "lastError" FROM publish_jobs WHERE id=${job.id}::uuid
+          `;
+          throw new Error(
+            `${job.platformCode} publishing failed: ${JSON.stringify(rows[0]?.lastError ?? null)}`,
+            { cause: error },
+          );
+        }
+        expect(result).toMatchObject({
           disposition: 'processed',
-          mode: job.platformCode === 'official_site' ? 'api' : 'export',
+          mode: isSystemApiPlatform(job.platformCode) ? 'api' : 'export',
         });
         await expect(worker.run(event)).resolves.toMatchObject({ disposition: 'completed' });
       }
-      expect(platform.apiCalls).toHaveLength(1);
-      expect(platform.apiCalls[0]?.idempotencyKey).toBe('system-publish-official_site-143');
+      expect(platform.apiCalls).toHaveLength(3);
+      expect(
+        platform.apiCalls.find((claim) => claim.platformCode === 'official_site')?.idempotencyKey,
+      ).toBe('system-publish-official_site-143');
     });
 
     await test.step('AC-012 exports have deterministic manifests and checksums', async () => {
@@ -610,7 +624,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
         SELECT content_hash AS "contentHash", manifest_json AS manifest, object_uri AS "objectUri"
         FROM export_artifacts ORDER BY object_uri
       `;
-      expect(state.artifacts).toHaveLength(6);
+      expect(state.artifacts).toHaveLength(4);
       for (const artifact of state.artifacts) {
         expect(artifact.contentHash).toMatch(/^[0-9a-f]{64}$/u);
         expect(artifact.manifest).toMatchObject({
@@ -681,7 +695,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
         SELECT count(*)::integer AS count FROM pg_tables
         WHERE schemaname='public' AND tablename<>'__drizzle_migrations'
       `;
-      expect(tables[0]?.count).toBe(57);
+      expect(tables[0]?.count).toBe(93);
       const before = await database<{ count: number }[]>`
         SELECT count(*)::integer AS count FROM tenants
       `;
@@ -718,7 +732,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
       `;
       expect(final[0]).toEqual({
         apiAttempts: 1,
-        exports: 6,
+        exports: 4,
         metrics: 7,
         packageStatus: 'published',
         publishedVariants: 7,
@@ -817,15 +831,64 @@ class WarningQualityEvaluator implements QualityEvaluatorPort {
 class RecordingPlatform implements PublisherPlatformPort {
   public readonly apiCalls: PublishClaim[] = [];
 
+  public constructor(private readonly database: Sql) {}
+
   public async deliver(claim: PublishClaim): Promise<PlatformDelivery> {
     if (claim.publishMode === 'api') {
       this.apiCalls.push(claim);
+      const externalId = `external-${claim.jobId}`;
+      const url = `https://example.com/posts/${claim.jobId}`;
+      if (claim.platformCode === 'baijiahao') {
+        const sessions = await this.database<{ id: string }[]>`
+          INSERT INTO baijiahao_browser_sessions(
+            tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+          ) VALUES(
+            ${claim.tenantId}::uuid,${claim.accountId}::uuid,'authenticated',
+            ${`tenants/system/accounts/${claim.accountId}`},now(),now()
+          )
+          RETURNING id
+        `;
+        await this.database`
+          INSERT INTO baijiahao_browser_publications(
+            tenant_id,session_id,account_id,publish_job_id,content_version_id,
+            idempotency_key,payload_hash,content_fingerprint,title,status,
+            external_post_id,external_url,field_summary_json,submitted_at,last_reconciled_at
+          ) VALUES(
+            ${claim.tenantId}::uuid,${sessions[0]!.id}::uuid,${claim.accountId}::uuid,
+            ${claim.jobId}::uuid,${claim.contentVersionId}::uuid,${claim.idempotencyKey},
+            ${claim.payloadHash},${claim.payloadHash},${systemPublicationTitle(claim)},'published',
+            ${externalId},${url},'{}'::jsonb,now(),now()
+          )
+        `;
+      } else if (claim.platformCode === 'douyin') {
+        const sessions = await this.database<{ id: string }[]>`
+          INSERT INTO douyin_browser_sessions(
+            tenant_id,account_id,status,profile_key,authenticated_at,last_verified_at
+          ) VALUES(
+            ${claim.tenantId}::uuid,${claim.accountId}::uuid,'authenticated',
+            ${`tenants/system/accounts/${claim.accountId}`},now(),now()
+          )
+          RETURNING id
+        `;
+        await this.database`
+          INSERT INTO douyin_browser_publications(
+            tenant_id,session_id,account_id,publish_job_id,content_version_id,
+            idempotency_key,payload_hash,content_fingerprint,title,status,
+            external_post_id,external_url,field_summary_json,submitted_at,last_reconciled_at
+          ) VALUES(
+            ${claim.tenantId}::uuid,${sessions[0]!.id}::uuid,${claim.accountId}::uuid,
+            ${claim.jobId}::uuid,${claim.contentVersionId}::uuid,${claim.idempotencyKey},
+            ${claim.payloadHash},${claim.payloadHash},${systemPublicationTitle(claim)},'published',
+            ${externalId},${url},'{}'::jsonb,now(),now()
+          )
+        `;
+      }
       return {
-        externalId: `external-${claim.jobId}`,
+        externalId,
         mode: 'api',
         payloadHash: claim.payloadHash,
         response: { accepted: true },
-        url: `https://example.com/posts/${claim.jobId}`,
+        url,
       };
     }
     return {
@@ -843,6 +906,11 @@ class RecordingPlatform implements PublisherPlatformPort {
 async function seedSystem(database: Sql, passwordHash: string): Promise<void> {
   await seedFreezeV21(database);
   await seedFreezeV21(database);
+  await database`
+    UPDATE workspaces
+    SET settings_json = settings_json || '{"official_site_service_phone":"02085627757"}'::jsonb
+    WHERE id=${WORKSPACE_ID}::uuid
+  `;
   await database`
     UPDATE users SET password_hash=${passwordHash},status='active' WHERE id=${OWNER_ID}::uuid
   `;
@@ -889,7 +957,7 @@ async function seedSystem(database: Sql, passwordHash: string): Promise<void> {
         compliance: ['Every factual claim must be traceable'],
         cta: 'Request an assessment',
         differentiators: ['Traceable evidence'],
-        positioning: 'Evidence-led enterprise content',
+        positioning: '广州系统内容有限公司提供 evidence-led enterprise content',
         tone: 'Professional and direct',
       })},
       ${OWNER_ID},now()
@@ -940,6 +1008,14 @@ async function seedSystem(database: Sql, passwordHash: string): Promise<void> {
     INSERT INTO embeddings(tenant_id,chunk_id,model_key,dimension,embedding)
     VALUES(${TENANT_ID},${CHUNK_ID},'system-embedding',${EMBEDDING_DIMENSION},${vector}::vector)
   `;
+  const localVector = `[${featureVector(SOURCE_TEXT).join(',')}]`;
+  await database`
+    INSERT INTO embeddings(tenant_id,chunk_id,model_key,dimension,embedding)
+    VALUES(
+      ${TENANT_ID},${CHUNK_ID},'embedding-local-ngram-v1',${EMBEDDING_DIMENSION},
+      ${localVector}::vector
+    )
+  `;
   await seedPrompt(database, QUALITY_PROMPT_ID, 'quality-checker');
   await seedPrompt(database, FACT_PROMPT_ID, 'fact-checker');
 }
@@ -952,7 +1028,7 @@ async function seedPrompt(database: Sql, id: string, skillName: string): Promise
       id,skill_name,version,schema_version,system_prompt,task_template,
       content_hash,status,created_by,published_at,published_by
     ) VALUES(
-      ${id},${skillName},'1.0.0','prompt@1',${system},${task},${sha256(`${system}\n${task}`)},
+      ${id},${skillName},'143.0.0','prompt@1',${system},${task},${sha256(`${system}\n${task}`)},
       'published',${OWNER_ID},now(),${OWNER_ID}
     )
   `;
@@ -1022,7 +1098,8 @@ async function createPackageAndGenerate(
       },
     },
   );
-  expect(generated.status()).toBe(202);
+  const generatedBody = await generated.json();
+  expect(generated.status(), JSON.stringify(generatedBody)).toBe(202);
   const variants = await requireClient(client)<VariantRow[]>`
     SELECT id,platform_code AS "platformCode" FROM content_variants
     WHERE package_id=${packageData.id}::uuid ORDER BY platform_code
@@ -1130,7 +1207,7 @@ async function seedPlatformAccounts(
 ): Promise<void> {
   for (const platformCode of PLATFORMS) {
     const id = randomUUID();
-    const api = platformCode === 'official_site';
+    const api = isSystemApiPlatform(platformCode);
     await database`
       INSERT INTO platform_accounts(
         id,tenant_id,workspace_id,platform_code,display_name,credential_ciphertext,
@@ -1146,6 +1223,15 @@ async function seedPlatformAccounts(
     `;
     state.accounts.set(platformCode, id);
   }
+}
+
+function isSystemApiPlatform(platformCode: PlatformCode): boolean {
+  return ['official_site', 'baijiahao', 'douyin'].includes(platformCode);
+}
+
+function systemPublicationTitle(claim: PublishClaim): string {
+  const title = claim.content['title'];
+  return typeof title === 'string' && title.trim() ? title.trim() : `System ${claim.platformCode}`;
 }
 
 async function generationEvent(database: Sql, packageId: string): Promise<GenerationEvent> {

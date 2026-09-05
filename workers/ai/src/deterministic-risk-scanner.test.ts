@@ -166,14 +166,38 @@ describe('deterministic pre-publish risk scanner', () => {
     );
   });
 
-  it('does not mistake generic address guidance ending in 型号 for a detailed address', () => {
+  it.each([
+    '记录搬运地址、搬入地址、物品名称、数量、品牌型号后再签字。',
+    '地址、停车与搬运路线需要逐项核对。',
+    '地址、楼层、电梯、物品清单和计划时间，再核验道路限行。',
+    '地址与搬运路线需要逐项核对。',
+    '地址和搬运路线需要逐项核对。',
+    '记录地址以及后续搬运路线。',
+    '地址：所在市，工业园区进场规则也要确认。',
+    '地址等信息与工业园区要求需确认。',
+    '地址和联系人手机号需要逐项核对。',
+    '地址：所在市，工业园区的进场规则也要确认。',
+    '地址、楼层和大厦物业进场时间需要确认。',
+    '地址、楼层、物品编号123号需要逐项核对。',
+    '地址、设备序号12号及搬运路线需要记录。',
+    '地址和物品编号123号需要逐项核对。',
+    '地址与设备序号12号及搬运路线需要记录。',
+    '地址以及账单号2026号和联系人需要确认。',
+    '地址和品牌型号123号需要记录。',
+    '地址：设备序号12号及搬运路线需要记录。',
+    '地址信息和物品编号为123号需要逐项核对。',
+    '记录地址信息与品牌型号A123号后再签字。',
+    '地址信息及工单序号第12号需要确认。',
+    '地址和运输线路88号需要逐项核对。',
+  ])('does not mistake generic address guidance for a detailed address: %s', (text) => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),
       citations: [],
       content: content({
-        blocks: [block('checklist', '记录搬运地址、搬入地址、物品名称、数量、品牌型号后再签字。')],
+        blocks: [block('checklist', text)],
+        platform_code: 'lieju',
       }),
-      platformCode: 'official_site',
+      platformCode: 'lieju',
     });
 
     expect(issues.map((item) => item.rule_id)).not.toContain(
@@ -181,14 +205,27 @@ describe('deterministic pre-publish risk scanner', () => {
     );
   });
 
-  it('continues to block an unsupported detailed street address', () => {
+  it.each([
+    '公司地址：广州市天河区体育西路123号。',
+    '办公点位于广州市越秀区北京街88号。',
+    '服务点坐落于广州市海珠区新港中路某大厦。',
+    '仓库地址：广州市白云区某物流园区。',
+    '公司地址：广东省广州市天河区，体育西路123号。',
+    '公司地址和平路88号。',
+    '公司地址：广东省，广州市，天河区，体育西路123号。',
+    '公司地址：广州市天河区88号。',
+    '办公地址：广州市天河区珠江新城88号。',
+    '仓库位于广州市白云区石井镇12号。',
+    '公司地址：广东省广州市天河区，珠江新城88号。',
+  ])('continues to block an unsupported detailed address: %s', (text) => {
     const issues = scanDeterministicRisks({
       brandProfile: brand(),
       citations: [],
       content: content({
-        blocks: [block('address', '公司地址：广州市天河区体育西路123号。')],
+        blocks: [block('address', text)],
+        platform_code: 'lieju',
       }),
-      platformCode: 'official_site',
+      platformCode: 'lieju',
     });
 
     expect(issues.map((item) => item.rule_id)).toContain('deterministic.fact.unsupported_address');

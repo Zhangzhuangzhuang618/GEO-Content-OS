@@ -80,6 +80,13 @@ describe('Douyin local browser simulator', () => {
     await rm(profileRoot, { force: true, recursive: true });
   });
 
+  it('does not classify a missing login page as an expired login', async () => {
+    const driver = new PlaywrightDouyinPageDriver(config(baseUrl, profileRoot));
+    await expect(
+      driver.waitForAuthentication(ACCOUNT_ID, new Date(Date.now() + 100)),
+    ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED' });
+  });
+
   it('logs in, uploads ordered cards, declares AI, submits once and reconciles', async () => {
     const driver = new PlaywrightDouyinPageDriver(config(baseUrl, profileRoot));
     const profilePath = join(profileRoot, ACCOUNT_ID);
@@ -294,6 +301,65 @@ describe('Douyin local browser simulator', () => {
           await driver.exportStorageState(ACCOUNT_ID),
         ),
       ).resolves.toBeNull();
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('does not classify an unrecognized editor page as logged out', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        editorUrl: `${baseUrl}/unsupported-editor?return_to=/login`,
+        navigationTimeoutMs: 1_000,
+      }),
+    );
+    try {
+      await expect(
+        driver.verifyAuthenticated(
+          ACCOUNT_ID,
+          join(profileRoot, `${ACCOUNT_ID}-unsupported-editor`),
+          null,
+        ),
+      ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED' });
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('does not classify an unrecognized post-scan page as an expired login', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/login?unknown_after_scan=1`,
+      }),
+    );
+    try {
+      await driver.startLogin(ACCOUNT_ID, join(profileRoot, `${ACCOUNT_ID}-unknown-after-scan`));
+      await expect(
+        driver.waitForAuthentication(ACCOUNT_ID, new Date(Date.now() + 1_000)),
+      ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED' });
+    } finally {
+      await driver.close();
+    }
+  });
+
+  it('classifies an explicit login page as logged out', async () => {
+    const driver = new PlaywrightDouyinPageDriver(
+      Object.freeze({
+        ...config(baseUrl, profileRoot),
+        editorUrl: `${baseUrl}/login?stalled=1`,
+        navigationTimeoutMs: 1_000,
+      }),
+    );
+    try {
+      await expect(
+        driver.verifyAuthenticated(
+          ACCOUNT_ID,
+          join(profileRoot, `${ACCOUNT_ID}-explicit-login`),
+          null,
+        ),
+      ).resolves.toBe(false);
     } finally {
       await driver.close();
     }
@@ -726,6 +792,7 @@ async function route(
     const smsDirect = smsMode === 'direct';
     const smsLanding = smsMode === 'landing';
     const smsUnknown = smsMode === 'unknown';
+    const unknownAfterScan = url.searchParams.has('unknown_after_scan');
     const verificationContainerId = smsMode === 'unmarked' ? 'identity-choice' : 'uc-second-verify';
     const verificationContainerAttributes =
       smsMode === 'unmarked'
@@ -768,9 +835,11 @@ async function route(
              document.querySelector('#${verificationContainerId}').innerHTML='<h2>使用原设备扫码</h2><img class="verification-qr" aria-label="二次验证二维码" src="/qrcode.svg">';
            };
          },200)`
-      : url.searchParams.has('stalled')
-        ? ''
-        : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
+      : unknownAfterScan
+        ? `setTimeout(()=>{history.replaceState(null,'','/unsupported-after-scan');document.body.innerHTML='<main>新版扫码结果页正在加载</main>'},1200)`
+        : url.searchParams.has('stalled')
+          ? ''
+          : `setTimeout(()=>history.replaceState(null,'','/login?qr_refresh=1'),200);
          setTimeout(()=>{document.cookie='douyin-auth=yes; path=/';history.replaceState(null,'','/creator');document.body.innerHTML='<div class="user-info">发布作品 作品管理</div>'},1200)`;
     return html(
       response,
@@ -923,6 +992,9 @@ async function route(
       `<main id="manage-root"><p>加载中</p></main>
        <script>setTimeout(async()=>{await ${waitForList};document.querySelector('#manage-root').innerHTML=${JSON.stringify(loaded)}},700)</script>`,
     );
+  }
+  if (url.pathname === '/unsupported-editor') {
+    return html(response, '<main>新版创作者页面正在加载</main>');
   }
   response.writeHead(404);
   response.end('not found');

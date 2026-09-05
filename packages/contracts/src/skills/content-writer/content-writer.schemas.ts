@@ -212,7 +212,7 @@ export const CONTENT_WRITER_DATA_SCHEMA: JsonSchema = Object.freeze({
                 required: ['content_kind', 'description', 'topics', 'cards'],
                 type: 'object',
               },
-              title: { maxLength: 26, minLength: 6, type: 'string' },
+              title: { maxLength: 20, minLength: 6, type: 'string' },
             },
           },
         },

@@ -10,6 +10,19 @@ describe('Douyin editorial policy', () => {
     expect(assessDouyinImageNoteEditorial(validContent())).toEqual([]);
   });
 
+  it('enforces the 20-character creator-center image-note title limit', () => {
+    const content = validContent();
+    content.title = '搬'.repeat(20);
+    expect(assessDouyinImageNoteEditorial(content).map((finding) => finding.code)).not.toContain(
+      'title_length',
+    );
+
+    content.title = '搬'.repeat(21);
+    expect(assessDouyinImageNoteEditorial(content).map((finding) => finding.code)).toContain(
+      'title_length',
+    );
+  });
+
   it('reports the same editorial blockers for a short manual edit', () => {
     const content = validContent();
     content.platform_meta.description = '搬家前先核对现场。';

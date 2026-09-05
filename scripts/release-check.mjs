@@ -11,8 +11,8 @@ const executableBaseline = Object.freeze({
   currentTableCount: 93,
   frozenPageCount: 32,
   frozenTableCount: 57,
-  latestMigration: '0057_douyin_customer_content_voice',
-  previousMigration: '0056_douyin_account_content_voice',
+  latestMigration: '0058_douyin_image_note_title_limit',
+  previousMigration: '0057_douyin_customer_content_voice',
   publicEndpointCount: 170,
   skills: Object.freeze([
     'material-parser',

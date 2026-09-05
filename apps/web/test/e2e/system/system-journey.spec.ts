@@ -1,8 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 const stages = [
-  { heading: 'Brief 列表', path: '/cont-01' },
-  { heading: '审核队列', path: '/rev-01' },
+  { heading: '内容需求', path: '/cont-01' },
+  { heading: '待审核内容', path: '/rev-01' },
   { heading: '平台账号', path: '/pub-01' },
   { heading: '数据总览', path: '/anl-01' },
 ] as const;

@@ -66,13 +66,13 @@ export function assessDouyinImageNoteEditorial(
   const value = record(content);
   const title = stringValue(value?.['title']);
   const titleLength = [...title.trim()].length;
-  if (titleLength < 6 || titleLength > 26) {
+  if (titleLength < 6 || titleLength > 20) {
     findings.push(
       finding(
         'title_length',
         'title',
-        `douyin:标题为 ${titleLength} 个字符，必须为 6–26 个字符`,
-        '将标题调整为 6–26 个字符，并保留明确主题。',
+        `douyin:标题为 ${titleLength} 个字符，必须为 6–20 个字符`,
+        '将标题调整为 6–20 个字符，并保留明确主题。',
       ),
     );
   }

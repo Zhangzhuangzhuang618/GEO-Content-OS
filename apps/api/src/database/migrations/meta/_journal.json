@@ -407,6 +407,13 @@
       "when": 1788422400000,
       "tag": "0057_douyin_customer_content_voice",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1788589800000,
+      "tag": "0058_douyin_image_note_title_limit",
+      "breakpoints": true
     }
   ]
 }

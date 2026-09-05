@@ -70,6 +70,26 @@ describe('Douyin browser service', () => {
     ).rejects.toMatchObject({ code: 'CONTENT_KIND_UNSUPPORTED', statusCode: 409 });
   });
 
+  it('rejects a frozen image-note payload with a 21-character title before opening the browser', async () => {
+    const service = new DouyinBrowserService(
+      config(),
+      {} as PostgresDouyinBrowserStore,
+      {} as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+    const payload = { ...imageNotePayload(), title: '搬'.repeat(21) };
+
+    await expect(
+      service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'douyin:image-note:title-over-limit',
+        payload,
+        payload_hash: hashDouyinPayload(payload),
+      }),
+    ).rejects.toMatchObject({ code: 'SCHEMA_INVALID', statusCode: 400 });
+  });
+
   it('uploads frozen images in payload order and records pre-submit evidence', async () => {
     const payload = imageNotePayload();
     const session = browserSession();
@@ -875,7 +895,7 @@ describe('Douyin browser service', () => {
     warning.mockRestore();
   });
 
-  it('releases an unconfirmed pre-publish page-signature failure', async () => {
+  it('pauses on an unrecognized pre-publish page without requiring reauthentication', async () => {
     const session = browserSession();
     const markSession = vi.fn();
     const preparePublication = vi.fn();
@@ -906,11 +926,17 @@ describe('Douyin browser service', () => {
         payload: imageNotePayload(),
         payload_hash: hashDouyinPayload(imageNotePayload()),
       }),
-    ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED' });
+    ).rejects.toMatchObject({ code: 'PAGE_SIGNATURE_CHANGED', statusCode: 423 });
     expect(inspectLoginVerification).toHaveBeenCalledWith(ACCOUNT_ID, {
       captureScreenshot: false,
     });
-    expect(markSession).not.toHaveBeenCalled();
+    expect(markSession).toHaveBeenCalledWith(session, {
+      error: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'douyin-browser-error@1',
+      },
+      status: 'attention_required',
+    });
     expect(preparePublication).not.toHaveBeenCalled();
     expect(release).toHaveBeenCalledOnce();
   });
@@ -1069,6 +1095,115 @@ describe('Douyin browser service', () => {
     warning.mockRestore();
   });
 
+  it('rechecks persisted authentication when editor attention no longer has a live page', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      lastError: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'douyin-browser-error@1',
+      },
+      status: 'attention_required' as const,
+    });
+    const authenticated = Object.freeze({
+      ...attention,
+      lastError: null,
+      status: 'authenticated' as const,
+      storageStateCiphertext: 'refreshed-ciphertext',
+      storageStateKeyVersion: 'local-v2',
+      version: attention.version + 1,
+    });
+    const markAccountReauth = vi.fn();
+    const markSession = vi.fn(async () => authenticated);
+    const verifyAuthenticated = vi.fn(async () => true);
+    const release = vi.fn(async () => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getSession: vi.fn(async () => attention),
+        markAccountActive: vi.fn(async () => undefined),
+        markAccountReauth,
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        exportStorageState: vi.fn(async () => '{"cookies":[]}'),
+        inspectLoginVerification: vi.fn(async () => {
+          throw new PageDriverError('AUTH_REQUIRED', 'challenge unavailable');
+        }),
+        release,
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      {
+        decrypt: vi.fn(async () => '{}'),
+        encrypt: vi.fn(async () => ({
+          credentialCiphertext: 'refreshed-ciphertext',
+          credentialKeyVersion: 'local-v2',
+        })),
+      } as unknown as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+      status: 'authenticated',
+    });
+    expect(verifyAuthenticated).toHaveBeenCalledOnce();
+    expect(markSession).toHaveBeenCalledWith(
+      attention,
+      expect.objectContaining({ error: null, status: 'authenticated' }),
+    );
+    expect(markAccountReauth).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('requires reauthentication when persisted editor attention resolves to an explicit login page', async () => {
+    const attention = Object.freeze({
+      ...browserSession(),
+      lastError: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'douyin-browser-error@1',
+      },
+      status: 'attention_required' as const,
+    });
+    const reauth = Object.freeze({
+      ...attention,
+      lastError: { code: 'LOGIN_EXPIRED', schema_version: 'douyin-browser-error@1' },
+      status: 'reauth' as const,
+      version: attention.version + 1,
+    });
+    const markAccountReauth = vi.fn(async () => undefined);
+    const markSession = vi.fn(async () => reauth);
+    const verifyAuthenticated = vi.fn(async () => false);
+    const release = vi.fn(async () => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getSession: vi.fn(async () => attention),
+        markAccountReauth,
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification: vi.fn(async () => {
+          throw new PageDriverError('AUTH_REQUIRED', 'challenge unavailable');
+        }),
+        release,
+        verifyAuthenticated,
+      } as unknown as DouyinPageDriver,
+      { decrypt: vi.fn(async () => '{}') } as unknown as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({ status: 'reauth' });
+    expect(verifyAuthenticated).toHaveBeenCalledOnce();
+    expect(markAccountReauth).toHaveBeenCalledWith(ACCOUNT_ID, TENANT_ID);
+    expect(markSession).toHaveBeenCalledWith(
+      attention,
+      expect.objectContaining({
+        error: { code: 'LOGIN_EXPIRED', schema_version: 'douyin-browser-error@1' },
+        status: 'reauth',
+      }),
+    );
+    expect(release).toHaveBeenCalledOnce();
+  });
+
   it('persists an asynchronous QR verification failure for operator recovery', async () => {
     const failureLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const initial = Object.freeze({
@@ -1132,6 +1267,62 @@ describe('Douyin browser service', () => {
     );
     expect(release).toHaveBeenCalledOnce();
     failureLog.mockRestore();
+  });
+
+  it('keeps an unrecognized post-scan page in attention instead of requiring login', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const initial = Object.freeze({
+      ...browserSession(),
+      authenticatedAt: null,
+      status: 'login_required' as const,
+    });
+    const expiresAt = new Date(Date.now() + 60_000);
+    const pending = Object.freeze({
+      ...initial,
+      qrExpiresAt: expiresAt,
+      status: 'qr_ready' as const,
+      version: 2,
+    });
+    const attention = Object.freeze({
+      ...pending,
+      lastError: {
+        code: 'PAGE_SIGNATURE_CHANGED',
+        schema_version: 'douyin-browser-error@1',
+      },
+      qrExpiresAt: null,
+      status: 'attention_required' as const,
+      version: 3,
+    });
+    const markSession = vi.fn().mockResolvedValueOnce(pending).mockResolvedValueOnce(attention);
+    const release = vi.fn(async () => undefined);
+    const service = new DouyinBrowserService(
+      config(),
+      {
+        getOrCreateSession: vi.fn(async () => initial),
+        getSession: vi.fn(async () => pending),
+        markSession,
+      } as unknown as PostgresDouyinBrowserStore,
+      {
+        inspectLoginVerification: vi.fn(async () => null),
+        release,
+        startLogin: vi.fn(async () => ({ expiresAt, qrPng: Buffer.from('qr') })),
+        waitForAuthentication: vi.fn(async () => {
+          throw new PageDriverError('PAGE_SIGNATURE_CHANGED', 'unknown post-scan page');
+        }),
+      } as unknown as DouyinPageDriver,
+      {} as CredentialEnvelopeService,
+      {} as ObjectStorageAdapter,
+    );
+
+    await expect(service.startLogin(ACCOUNT_ID)).resolves.toMatchObject({ status: 'qr_ready' });
+    await vi.waitFor(() => expect(markSession).toHaveBeenCalledTimes(2));
+    expect(markSession.mock.calls[1]?.[1]).toMatchObject({
+      error: { code: 'PAGE_SIGNATURE_CHANGED' },
+      qrExpiresAt: null,
+      status: 'attention_required',
+    });
+    expect(release).not.toHaveBeenCalled();
+    warning.mockRestore();
   });
 
   it('releases the browser context when a QR login expires', async () => {
@@ -1527,7 +1718,7 @@ describe('Douyin browser service', () => {
     expect(markAccountReauth).not.toHaveBeenCalled();
   });
 
-  it('requires a fresh login when the in-memory verification page no longer exists', async () => {
+  it('requires a fresh login when a pre-authentication verification page no longer exists', async () => {
     const attention = Object.freeze({
       ...browserSession(),
       authenticatedAt: null,

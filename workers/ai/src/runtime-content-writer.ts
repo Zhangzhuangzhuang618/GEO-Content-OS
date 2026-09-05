@@ -353,7 +353,7 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
       minItems: 2,
       type: 'array',
     },
-    title: { maxLength: 26, type: 'string' },
+    title: { maxLength: 20, type: 'string' },
     topics: {
       items: { maxLength: 40, type: 'string' },
       maxItems: 8,
@@ -689,7 +689,11 @@ export class RuntimeContentWriter implements ContentWriterPort {
         ...input.issues,
       ]),
     });
-    const output = await this.execute(input, revision);
+    const output = await this.execute(
+      input,
+      revision,
+      input.currentContent ? [modelRevisionContent(input.currentContent)] : undefined,
+    );
     const variant = output.data.variants.find(
       (candidate) => candidate.platform_code === 'baijiahao',
     );
@@ -739,7 +743,9 @@ export class RuntimeContentWriter implements ContentWriterPort {
         ...input.issues,
       ]),
     });
-    const output = await this.execute(input, revision);
+    const output = await this.execute(input, revision, [
+      modelRevisionContent(input.currentContent),
+    ]);
     const variant = output.data.variants.find(
       (candidate) => candidate.platform_code === input.platformCode,
     );
@@ -1486,6 +1492,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
       readonly writerInput: JsonObject;
     },
     revision?: ContentWriterRevision,
+    rewriteBaselines?: readonly ContentWriterContent[],
   ): Promise<ContentWriterOutput> {
     input = Object.freeze({
       ...input,
@@ -1548,6 +1555,8 @@ export class RuntimeContentWriter implements ContentWriterPort {
         revision?.candidate,
         input.writerInput,
       );
+    const deterministicIssuesFor = (data: ContentWriterData) =>
+      rewriteDeterministicIssues(data, input.writerInput, revision, rewriteBaselines);
     let result = await runWithStructuredOutputRetry(skill, invocation, structuredFallback);
     if (result.output.status === 'failed') {
       throw new GenerationWorkerError(
@@ -1559,14 +1568,14 @@ export class RuntimeContentWriter implements ContentWriterPort {
     const validationPolicy = revision ? 'quality' : input.context.modelPolicy;
     let output = normalize(result.output);
     let assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-    let deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    let deterministicIssues = deterministicIssuesFor(output.data);
     let targetedRepairRejection: string | null = null;
     if (onlyInternalCustomerCopyIssues(assessment.issues, deterministicIssues)) {
       const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
       output = normalize(targetedRepair.output);
       targetedRepairRejection = targetedRepair.rejectionReason;
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+      deterministicIssues = deterministicIssuesFor(output.data);
       if (assessment.passed && deterministicIssues.length === 0) return output;
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
@@ -1597,7 +1606,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls),
       );
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+      deterministicIssues = deterministicIssuesFor(output.data);
       if (assessment.passed && deterministicIssues.length === 0) return output;
       throw new GenerationWorkerError(
         'CONTENT_QUALITY_INSUFFICIENT',
@@ -1621,13 +1630,13 @@ export class RuntimeContentWriter implements ContentWriterPort {
     );
     output = normalize(result.output);
     assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-    deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+    deterministicIssues = deterministicIssuesFor(output.data);
     if (onlyTargetedTextRepairIssues(assessment.issues, deterministicIssues)) {
       const targetedRepair = await this.repairDeterministicTextTargets(input, prompt, output);
       output = normalize(targetedRepair.output);
       targetedRepairRejection = targetedRepair.rejectionReason;
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+      deterministicIssues = deterministicIssuesFor(output.data);
     }
     shortfalls = contentLengthShortfalls(assessment.issues);
     if (
@@ -1638,7 +1647,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         await this.expandContentWriterLengthShortfalls(input, prompt, output, shortfalls),
       );
       assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-      deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+      deterministicIssues = deterministicIssuesFor(output.data);
     }
     if (
       !revision &&
@@ -1660,7 +1669,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
         );
         output = normalize(result.output);
         assessment = assessContentWriterContents(output.data.variants, validationPolicy);
-        deterministicIssues = rewriteDeterministicIssues(output.data, input.writerInput, revision);
+        deterministicIssues = deterministicIssuesFor(output.data);
         if (assessment.passed && deterministicIssues.length === 0) return output;
       }
     }
@@ -1891,7 +1900,7 @@ Fill the semantic slots exactly:
 - solution_paragraphs contains exactly two substantive solution fields. When the published strategy supplies the owner company name, mention it naturally in one of these two fields and no more than twice in the complete description. The article still promotes that owner company: for frontline_mover, speak as a member of the service side and explain how “我们” handle the customer's concrete concern using only published brand facts or supplied citations; conclusion must use the exact structure “我就职于{{当前企业法定全称}}，欢迎联系我核对方案，必要时上门查看，尽量把容易产生变化的费用提前说清楚。” The server replaces the company placeholder deterministically from the one published owner name. Do not recommend the owner from a buyer's shortlist. For customer_perspective, connect only owner strengths supplied by the published brand profile or citations to the buyer's concrete concerns, then name the owner in conclusion with a natural first-person shortlist decision such as “我会把××放进备选名单”. Credentials and other claims that require external proof must be supported by supplied citations. Never promote another company and never invent the recommendation basis.
 - price_boundary, protection_risk, schedule, checklist, and conclusion each hold one distinct piece of information. checklist must contain at least three explicit numbered actions; use 第一、第二、第三 for enterprise_official, use short job-site reminders for frontline_mover, and use the lighter social-post form ①②③ for customer_perspective. For frontline_mover the server combines the fields into six uneven paragraphs: at least one field must use a generic first-person work method and the complete description must address the customer as “你” or “您”. Write like a mover explaining the job face to face, not a lecturer issuing repeated “建议、应当、需要” instructions. For customer_perspective the server combines these fields into five paragraphs with deliberately uneven weight: price_boundary starts the third paragraph and schedule starts the fourth. Keep both paragraphs inside the buyer's live decision context, but do not force every field to begin with “我”; opening, one clear middle screening choice, and conclusion are the three required first-person anchors. Write adjacent fields so they flow naturally when joined. Do not begin several fields with the same shell such as “我会”“我最关心”“选择服务商时”“建议”“应当” or “需要”. conclusion must give a practical selection basis.
 - cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. These are technical safety slots, not seven independent article themes. Make every slot explain a different condition, comparison, boundary, or action for the selected search intent; for example, a pricing article uses the slots for price-impacting conditions, like-for-like comparison, included responsibility, waiting-charge boundaries, and a quote-check checklist.
-- Keep every field inside its production range: title 6–26 characters; opening_topic 10–35; opening_pain 20–70; normally each solution field is 55–95, price_boundary and protection_risk are 55–100, schedule is 50–90, checklist is 80–130, and conclusion is 50–90. For customer_perspective, shorter human sentences are intentional: solution fields may be 48–95, price_boundary and protection_risk 48–100, schedule 42–90, checklist 68–130, and conclusion 42–90; the assembled description must still meet the full 420–900 character gate. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
+- Keep every field inside its production range: title 6–20 characters; opening_topic 10–35; opening_pain 20–70; normally each solution field is 55–95, price_boundary and protection_risk are 55–100, schedule is 50–90, checklist is 80–130, and conclusion is 50–90. For customer_perspective, shorter human sentences are intentional: solution fields may be 48–95, price_boundary and protection_risk 48–100, schedule 42–90, checklist 68–130, and conclusion 42–90; the assembled description must still meet the full 420–900 character gate. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
 - Keep Chinese prose human and slightly uneven. Avoid essay scaffolding and assistant phrases such as “核心是”“本质上”“真正重要的是”“总的来说”“综上所述”“选择依据是”“进一步沟通”, mechanical binary contrasts, and repeated “观点＋解释＋总结” paragraph shapes. Prefer concrete worries and objects—money added on site, a sofa that cannot turn through a doorway, the truck arrival time, what is written on the quote—over abstract strings of “风险、边界、责任、建议、应当、需要、确认”. Use shorter sentences and allow one paragraph to be noticeably shorter than the others. In frontline_mover, sound like a worker talking across the doorway: name what you look at, what the customer should send, and what changes the work; do not announce the role, explain the selected voice, write “选服务商时，我会”, or turn every paragraph into a balanced checklist. In customer_perspective, at least one middle paragraph must contain an actual consumer preference, refusal, or screening choice, such as “这种总价我不会马上定” or “能把这些写清楚的，我才会继续比较”. Vary first-person phrasing and use the exact phrase “我会” no more than four times in the whole description; never repeat it in every numbered checklist item. Do not claim a completed comparison with phrases such as “综合比较下来”“看下来” or “筛下来”, do not label the narrator as “我这种客户”, and end with the next verification action—send the real addresses and item list, request a quote, or compare the actual written plan—before deciding.
 - evidence_claims is optional evidence metadata, not extra prose. Include an item only when claim_text appears verbatim in another returned text field and every citation_id comes from content_writer_input.citations. Use [] when no supplied citation directly supports a public claim. Never cite a first-party assertion merely to make it appear independent.
 - “真实场景、真实案例、现场实录、收费对比、资质核验、合同条款解读、口碑参考” are evidence promises. Use them in the title only when an evidence_claim directly supports the promised content; otherwise use a neutral verification method, selection standard, or comparison dimension. Never create an unsupported ranking, reputation conclusion, or competitor list.
@@ -3483,7 +3492,7 @@ function deterministicDouyinCertificateClaim(
   return certificate
     ? Object.freeze({
         citationId: certificate.citationId,
-        claimText: `${owner}持有${certificate.name}。`,
+        claimText: `该企业持有${certificate.name}。`,
       })
     : null;
 }
@@ -3530,10 +3539,11 @@ function rewriteDeterministicIssues(
   data: ContentWriterData,
   writerInput: JsonObject,
   revision?: ContentWriterRevision,
+  rewriteBaselines?: readonly ContentWriterContent[],
 ): readonly string[] {
   const issues = [...deterministicContentIssues(data, writerInput)];
   if (!revision) return Object.freeze(issues);
-  for (const current of revision.candidate.variants) {
+  for (const current of rewriteBaselines ?? revision.candidate.variants) {
     const rewritten = data.variants.find(
       (candidate) => candidate.platform_code === current.platform_code,
     );

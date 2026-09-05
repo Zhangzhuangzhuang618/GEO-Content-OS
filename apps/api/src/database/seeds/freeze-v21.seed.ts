@@ -16,6 +16,7 @@ const PLATFORMS = [
 export const FREEZE_V21_SEED = Object.freeze({
   citationSafePromptVersionId: '25000000-0000-4000-8000-000000000004',
   enterpriseEvidencePromptVersionId: '25000000-0000-4000-8000-000000000009',
+  douyinRuleVersionId: '26000000-0000-4000-8000-000000000012',
   liejuRuleVersionId: '26000000-0000-4000-8000-000000000010',
   qualityAutomationPromptVersionId: '25000000-0000-4000-8000-000000000007',
   qualityPromptVersionId: '25000000-0000-4000-8000-000000000005',
@@ -391,7 +392,7 @@ export async function seedFreezeV21(client: DatabaseClient): Promise<void> {
       require_citations: true,
       content_kind: 'image_note',
       title_min_characters: 2,
-      title_max_characters: 30,
+      title_max_characters: 20,
       card_count_min: 5,
       card_count_max: 10,
       declare_ai_generated: true,
@@ -403,15 +404,21 @@ export async function seedFreezeV21(client: DatabaseClient): Promise<void> {
         id, platform_code, version, rules_json, content_hash, status,
         created_by, published_at, change_summary, published_by
       ) VALUES (
-        '26000000-0000-4000-8000-000000000011',
+        '26000000-0000-4000-8000-000000000012',
         'douyin',
-        '1.1.0',
+        '1.2.0',
         ${serializedDouyinImageNoteRules}::text::jsonb,
-        ${sha256(serializedDouyinImageNoteRules)},
+        encode(
+          digest(
+            convert_to((${serializedDouyinImageNoteRules}::text::jsonb)::text, 'UTF8'),
+            'sha256'
+          ),
+          'hex'
+        ),
         'published',
         ${IDENTITY_SEED.userId},
-        TIMESTAMPTZ '2026-08-26T00:00:00Z',
-        'Add Douyin image-note generation and managed browser publishing rules',
+        TIMESTAMPTZ '2026-09-05T06:30:00Z',
+        'Align Douyin image-note titles with the Creator Center 20-character limit',
         ${IDENTITY_SEED.userId}
       )
       ON CONFLICT DO NOTHING

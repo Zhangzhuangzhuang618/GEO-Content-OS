@@ -281,7 +281,7 @@ describe('browser-platform automation', () => {
       citations: [],
       generation_mode: 'draft',
       locked_blocks: [],
-      platform_rules_by_code: { douyin: { rules: { title_max_characters: 30 } } },
+      platform_rules_by_code: { douyin: { rules: { title_max_characters: 20 } } },
       strategy: { profile: { positioning: '广州示例搬家有限公司提供搬迁服务。' } },
     };
 

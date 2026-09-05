@@ -79,7 +79,7 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through T164 with customer-perspective Douyin voice', async () => {
+  it('migrates an empty database through the 20-character Douyin image-note rule', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -149,8 +149,8 @@ describe('freeze v2.1 database verification', () => {
       migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
     );
     expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
-      '0056_douyin_account_content_voice',
       '0057_douyin_customer_content_voice',
+      '0058_douyin_image_note_title_limit',
     ]);
   });
 
@@ -160,6 +160,7 @@ describe('freeze v2.1 database verification', () => {
     const [summary] = await client<
       {
         invitedOwners: number;
+        douyinRules: number;
         liejuRules: number;
         modelRates: number;
         projects: number;
@@ -176,11 +177,13 @@ describe('freeze v2.1 database verification', () => {
         (SELECT count(*)::integer FROM projects WHERE id = ${FREEZE_V21_SEED.projectId}) AS projects,
         (SELECT count(*)::integer FROM model_rate_cards WHERE id = ${FREEZE_V21_SEED.modelRateCardId}) AS "modelRates",
         (SELECT count(*)::integer FROM prompt_versions WHERE id = ${FREEZE_V21_SEED.qualityAutomationPromptVersionId} AND skill_name = 'quality-checker' AND version = '1.2.0' AND status = 'published' AND content_hash = encode(digest(convert_to(system_prompt || E'\n' || task_template,'UTF8'),'sha256'),'hex')) AS "qualityAutomationPrompts",
+        (SELECT count(*)::integer FROM platform_rule_versions WHERE id = ${FREEZE_V21_SEED.douyinRuleVersionId} AND platform_code = 'douyin' AND version = '1.2.0' AND status = 'published' AND rules_json->>'title_max_characters' = '20' AND content_hash = encode(digest(convert_to(rules_json::text,'UTF8'),'sha256'),'hex')) AS "douyinRules",
         (SELECT count(*)::integer FROM platform_rule_versions WHERE id = ${FREEZE_V21_SEED.liejuRuleVersionId} AND platform_code = 'lieju' AND version = '1.0.0' AND status = 'published' AND content_hash = encode(digest(convert_to(rules_json::text,'UTF8'),'sha256'),'hex')) AS "liejuRules",
         (SELECT count(*)::integer FROM platform_rule_versions WHERE status = 'published') AS rules
     `;
 
     expect(summary).toEqual({
+      douyinRules: 1,
       invitedOwners: 1,
       liejuRules: 1,
       modelRates: 1,
