@@ -121,6 +121,10 @@ interface QualityRewriteRow extends QualityReportRow {
   readonly inputHash: string;
 }
 
+interface LockedContentVariantView extends ContentVariantView {
+  readonly platformAccountId: string | null;
+}
+
 interface GenerationRuntime {
   readonly modelKey: string;
   readonly promptVersionId: string;
@@ -962,6 +966,13 @@ export class ContentApiService {
         )
       : null;
     const targetAccountId = generationTargetAccountId(writerInput, variant.platformCode);
+    if (
+      variant.platformAccountId !== null &&
+      targetAccountId !== null &&
+      variant.platformAccountId !== targetAccountId
+    ) {
+      throw contentStateInvalid('Variant target account does not match the Brief target account');
+    }
     const inputHash = sha256(
       canonicalJson({
         locks,
@@ -1355,7 +1366,7 @@ async function buildWriterInput(
   const rules = readPlatformRules(platformCodes);
   const targetAccounts =
     process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] === 'true'
-      ? await loadGenerationTargetAccounts(client, scope, platformCodes)
+      ? await loadGenerationTargetAccounts(client, scope, platformCodes, brief.constraints)
       : {};
   const locked = await loadLockedBlocks(client, scope.tenantId, null, lockedBlockKeys, packageId);
   return {
@@ -1628,6 +1639,7 @@ async function loadGenerationTargetAccounts(
   client: SqlClient,
   scope: ContentScope,
   platformCodes: readonly PlatformCode[],
+  briefConstraints: Readonly<Record<string, JsonValue>>,
 ): Promise<Record<string, JsonValue>> {
   const rows = await client<
     {
@@ -1655,15 +1667,37 @@ async function loadGenerationTargetAccounts(
       AND account.deleted_at IS NULL
     ORDER BY account.platform_code, account.id
   `;
+  const hasFrozenTargets = Object.prototype.hasOwnProperty.call(
+    briefConstraints,
+    'target_accounts_by_code',
+  );
+  const frozenTargets = jsonRecord(briefConstraints['target_accounts_by_code']);
+  if (hasFrozenTargets && !frozenTargets) {
+    throw contentStateInvalid('Brief target accounts are invalid');
+  }
   const targets: Record<string, JsonValue> = {};
   for (const platformCode of platformCodes) {
     const candidates = rows.filter((row) => row.platformCode === platformCode);
-    if (candidates.length !== 1) {
+    const hasFrozenTarget = frozenTargets
+      ? Object.prototype.hasOwnProperty.call(frozenTargets, platformCode)
+      : false;
+    const frozenTarget = hasFrozenTarget ? jsonRecord(frozenTargets?.[platformCode]) : null;
+    const frozenAccountId = frozenTarget?.['account_id'];
+    if (hasFrozenTarget && typeof frozenAccountId !== 'string') {
+      throw contentStateInvalid(`Platform ${platformCode} target account is invalid`);
+    }
+    const account = hasFrozenTarget
+      ? candidates.find((candidate) => candidate.id === frozenAccountId)
+      : candidates.length === 1
+        ? candidates[0]
+        : undefined;
+    if (!account) {
       throw contentStateInvalid(
-        `Platform ${platformCode} requires exactly one active account before generation`,
+        hasFrozenTarget
+          ? `Platform ${platformCode} target account is unavailable`
+          : `Platform ${platformCode} requires exactly one active account before generation`,
       );
     }
-    const account = candidates[0]!;
     targets[platformCode] = {
       account_id: account.id,
       capabilities: account.capabilities,
@@ -1902,10 +1936,11 @@ async function lockPackage(client: TransactionSql, tenantId: string, packageId: 
 }
 
 async function lockVariant(client: TransactionSql, tenantId: string, variantId: string) {
-  const rows = await client<ContentVariantView[]>`
+  const rows = await client<LockedContentVariantView[]>`
     SELECT id, tenant_id AS "tenantId", package_id AS "packageId", platform_code AS "platformCode",
       current_content_version_id AS "currentContentVersionId", status, is_required AS "isRequired",
-      quality_score::text AS "qualityScore", version, created_at AS "createdAt", updated_at AS "updatedAt"
+      platform_account_id AS "platformAccountId",quality_score::text AS "qualityScore",version,
+      created_at AS "createdAt",updated_at AS "updatedAt"
     FROM content_variants WHERE id = ${variantId}::uuid AND tenant_id = ${tenantId}::uuid FOR UPDATE
   `;
   return rows[0];
