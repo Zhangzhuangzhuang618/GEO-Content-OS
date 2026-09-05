@@ -353,7 +353,9 @@ const DOUYIN_DIRECT_DRAFT_SCHEMA: JsonObject = Object.freeze({
       minItems: 2,
       type: 'array',
     },
-    title: { maxLength: 20, type: 'string' },
+    // Keep a small draft envelope so 21–26-character titles can reach the
+    // field-only editorial repair. The assembled output still enforces 20.
+    title: { maxLength: 26, type: 'string' },
     topics: {
       items: { maxLength: 40, type: 'string' },
       maxItems: 8,

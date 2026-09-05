@@ -1170,6 +1170,54 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
+  it('routes a 21-character Douyin draft title through targeted repair before final validation', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const initial = {
+      ...douyinDirectDraft(),
+      title: '广州服务流程与双方责任分工时间安排怎么确认',
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                replacement_text: '广州服务流程与双方责任分工排期怎么定',
+                target_id: 'title',
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const writerInput = douyinDirectWriterInput(fixture.input as JsonObject, 'scheduling', {
+      douyin_title_subject: '广州服务流程与双方责任分工',
+    });
+
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'runtime-douyin-direct-overlong-title-repair',
+      writerInput,
+    });
+
+    expect(flash.requests).toHaveLength(2);
+    expect(JSON.stringify(flash.requests[0]?.responseFormat)).toContain('"maxLength":26');
+    expect(flash.requests[1]?.messages.map((message) => message.content).join('\n')).toContain(
+      '标题为 21 个字符，必须为 6–20 个字符',
+    );
+    const title = String(result.title);
+    expect(title).toBe('广州服务流程与双方责任分工排期怎么定');
+    expect([...title].length).toBeLessThanOrEqual(20);
+  });
+
   it('repairs the clipped phrase 怎么选靠谱 without changing the bound title subject', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const initial = {
