@@ -4,6 +4,7 @@ export type BrowserSessionStatus =
   'login_required' | 'qr_ready' | 'authenticated' | 'reauth' | 'attention_required' | 'disabled';
 
 export interface BrowserSession {
+  readonly accountNickname?: string | null;
   readonly accountId: string;
   readonly authenticatedAt: Date | null;
   readonly id: string;
@@ -130,6 +131,7 @@ export interface LoginStartResult {
 }
 
 export interface DouyinPageDriver {
+  readAccountNickname(accountId: string): Promise<string | null>;
   capture(accountId: string): Promise<Uint8Array>;
   close(): Promise<void>;
   exportStorageState(accountId: string): Promise<string>;

@@ -1013,6 +1013,7 @@ test('isolates Douyin login state and pending requests when switching accounts',
         data: {
           account_id: SECOND_ACCOUNT_ID,
           authenticated_at: '2026-09-04T00:01:00.000Z',
+          account_nickname: '真实抖音昵称乙',
           last_verified_at: '2026-09-04T00:01:00.000Z',
           qr_expires_at: null,
           status: 'authenticated',
@@ -1037,6 +1038,7 @@ test('isolates Douyin login state and pending requests when switching accounts',
   await page.getByRole('button', { name: '提交验证码' }).click();
   await expect(page.getByText('状态：已登录')).toBeVisible();
   await expect(page.getByText('抖音二次验证已完成，登录快照已安全保存。')).toBeVisible();
+  await expect(page.getByText('抖音用户名：真实抖音昵称乙')).toBeVisible();
 
   const delayedResponse = page.waitForResponse(
     (response) =>

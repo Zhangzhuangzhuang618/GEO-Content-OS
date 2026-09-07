@@ -376,7 +376,10 @@ export function PlatformAccountManager() {
           <DouyinBrowserPanel
             account={automationAccount}
             key={automationAccount.id}
-            onClose={() => setAutomationAccount(null)}
+            onClose={() => {
+              setAutomationAccount(null);
+              void load(filters);
+            }}
           />
         ) : (
           <OfficialSiteAutomationPanel
@@ -1090,6 +1093,11 @@ function AccountCard({
             </h3>
             <StatusBadge status={account.status} />
           </div>
+          {account.platform_code === 'douyin' ? (
+            <p className="mt-2 text-sm text-ink-700">
+              抖音用户名：{account.account_nickname ?? '尚未获取'}
+            </p>
+          ) : null}
           <p className="mt-2 text-sm text-ink-600">
             {modeLabel(account.publish_mode)} · {capabilitySummary(account.capabilities)}
           </p>

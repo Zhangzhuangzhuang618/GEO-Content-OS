@@ -16,6 +16,7 @@ export const PlatformAccountStatusSchema = z.enum(['active', 'reauth', 'disabled
 
 export const PlatformAccountSchema = z
   .object({
+    account_nickname: z.string().min(1).max(120).nullable().optional(),
     capabilities: z.record(z.string(), z.unknown()),
     created_at: z.iso.datetime(),
     display_name: z.string().min(1).max(120),
@@ -190,6 +191,7 @@ export const DouyinLoginVerificationSchema = z
   })
   .strict();
 export const DouyinBrowserSessionSchema = BaijiahaoBrowserSessionSchema.extend({
+  account_nickname: z.string().min(1).max(120).nullable().optional(),
   verification: DouyinLoginVerificationSchema.nullable().optional(),
 }).strict();
 export const DouyinBrowserLoginSchema = DouyinBrowserSessionSchema.extend({

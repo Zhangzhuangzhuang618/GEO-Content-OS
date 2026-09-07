@@ -28,6 +28,7 @@ import type {
 
 type Client = DatabaseClient | TransactionSql;
 interface Row {
+  readonly account_nickname?: string | null;
   readonly capabilities_json: Readonly<Record<string, unknown>>;
   readonly created_at: Date | string;
   readonly credential_ciphertext: string | null;
@@ -103,7 +104,7 @@ export class PlatformAccountService {
   ): Promise<readonly PlatformAccountView[]> {
     const rows = await this.database<
       Row[]
-    >`SELECT account.* FROM platform_accounts account WHERE account.tenant_id=${scope.tenantId}::uuid AND account.deleted_at IS NULL AND has_project_scope_access(account.tenant_id,account.workspace_id,NULL,${scope.userId}::uuid) AND (${filter.workspaceId ?? null}::uuid IS NULL OR account.workspace_id=${filter.workspaceId ?? null}::uuid) AND (${filter.platformCode ?? null}::varchar IS NULL OR account.platform_code=${filter.platformCode ?? null}) AND (${filter.status ?? null}::varchar IS NULL OR account.status=${filter.status ?? null}) ORDER BY account.platform_code,account.display_name,account.id`;
+    >`SELECT account.*, session.account_nickname FROM platform_accounts account LEFT JOIN douyin_browser_sessions session ON session.account_id=account.id AND session.tenant_id=account.tenant_id WHERE account.tenant_id=${scope.tenantId}::uuid AND account.deleted_at IS NULL AND has_project_scope_access(account.tenant_id,account.workspace_id,NULL,${scope.userId}::uuid) AND (${filter.workspaceId ?? null}::uuid IS NULL OR account.workspace_id=${filter.workspaceId ?? null}::uuid) AND (${filter.platformCode ?? null}::varchar IS NULL OR account.platform_code=${filter.platformCode ?? null}) AND (${filter.status ?? null}::varchar IS NULL OR account.status=${filter.status ?? null}) ORDER BY account.platform_code,account.display_name,account.id`;
     return Object.freeze(rows.map(map));
   }
   public async refresh(
@@ -509,6 +510,7 @@ function map(row: Row): PlatformAccountView {
     capabilities: row.capabilities_json,
     created_at: isoDate(row.created_at),
     display_name: row.display_name,
+    ...(row.account_nickname === undefined ? {} : { account_nickname: row.account_nickname }),
     id: row.id,
     platform_code: row.platform_code,
     provider_account_id: row.provider_account_id,

@@ -147,6 +147,7 @@ describe('Douyin browser service', () => {
     const release = vi.fn(async () => undefined);
     const driver = {
       capture: vi.fn(async () => Buffer.from('post-submit')),
+      readAccountNickname: vi.fn(async () => null),
       exportStorageState,
       release,
       submit,
@@ -267,6 +268,7 @@ describe('Douyin browser service', () => {
         preparePublication: vi.fn(async () => published),
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState,
         release,
         verifyAuthenticated: vi.fn(async () => true),
@@ -346,6 +348,7 @@ describe('Douyin browser service', () => {
       } as unknown as PostgresDouyinBrowserStore,
       {
         capture: vi.fn(async () => Buffer.from('captcha-page')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         inspectLoginVerification,
         release,
@@ -426,6 +429,7 @@ describe('Douyin browser service', () => {
       } as unknown as PostgresDouyinBrowserStore,
       {
         capture: vi.fn(async () => Buffer.from('editor-page')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         inspectLoginVerification,
         release,
@@ -518,6 +522,7 @@ describe('Douyin browser service', () => {
       store,
       {
         capture: vi.fn(async () => Buffer.from('post-submit')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         release: vi.fn(async () => undefined),
         submit,
@@ -590,6 +595,7 @@ describe('Douyin browser service', () => {
       store,
       {
         capture: vi.fn(async () => Buffer.from('post-submit')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         release,
         submit,
@@ -679,6 +685,7 @@ describe('Douyin browser service', () => {
       store,
       {
         capture: vi.fn(async () => Buffer.from('post-submit')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         release,
         submit,
@@ -941,62 +948,70 @@ describe('Douyin browser service', () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
-  it('releases the browser context after checking an authenticated session', async () => {
-    const session = browserSession();
-    const verified = Object.freeze({ ...session, version: session.version + 1 });
-    const exportStorageState = vi.fn(async () => '{"cookies":[{"name":"sid","value":"fresh"}]}');
-    const encrypt = vi.fn(async () => ({
-      credentialCiphertext: 'refreshed-ciphertext',
-      credentialKeyVersion: 'local-v2',
-    }));
-    const markSession = vi.fn(async (current: BrowserSession, changes: unknown) => {
-      void current;
-      void changes;
-      return verified;
-    });
-    const release = vi.fn(async () => undefined);
-    const service = new DouyinBrowserService(
-      config(),
-      {
-        getSession: vi.fn(async () => session),
-        markSession,
-      } as unknown as PostgresDouyinBrowserStore,
-      {
-        exportStorageState,
-        release,
-        verifyAuthenticated: vi.fn(async () => true),
-      } as unknown as DouyinPageDriver,
-      { decrypt: vi.fn(async () => '{}'), encrypt } as unknown as CredentialEnvelopeService,
-      {} as ObjectStorageAdapter,
-    );
+  it.each(['nickname', 'missing', 'error'])(
+    'keeps authentication and releases the context when nickname lookup returns %s',
+    async (result) => {
+      const session = browserSession();
+      const verified = Object.freeze({ ...session, version: session.version + 1 });
+      const exportStorageState = vi.fn(async () => '{"cookies":[{"name":"sid","value":"fresh"}]}');
+      const encrypt = vi.fn(async () => ({
+        credentialCiphertext: 'refreshed-ciphertext',
+        credentialKeyVersion: 'local-v2',
+      }));
+      const markSession = vi.fn(async (current: BrowserSession, changes: unknown) => {
+        void current;
+        void changes;
+        return verified;
+      });
+      const release = vi.fn(async () => undefined);
+      const service = new DouyinBrowserService(
+        config(),
+        {
+          getSession: vi.fn(async () => session),
+          markSession,
+        } as unknown as PostgresDouyinBrowserStore,
+        {
+          readAccountNickname: vi.fn(async () => {
+            if (result === 'error') throw new Error('nickname page unavailable');
+            return result === 'nickname' ? '当前抖音昵称' : null;
+          }),
+          exportStorageState,
+          release,
+          verifyAuthenticated: vi.fn(async () => true),
+        } as unknown as DouyinPageDriver,
+        { decrypt: vi.fn(async () => '{}'), encrypt } as unknown as CredentialEnvelopeService,
+        {} as ObjectStorageAdapter,
+      );
 
-    await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
-      authenticated_at: session.authenticatedAt?.toISOString(),
-      status: 'authenticated',
-    });
-    expect(encrypt).toHaveBeenCalledWith('{"cookies":[{"name":"sid","value":"fresh"}]}');
-    expect(markSession).toHaveBeenCalledWith(
-      session,
-      expect.objectContaining({
-        error: null,
+      await expect(service.sessionStatus(ACCOUNT_ID)).resolves.toMatchObject({
+        authenticated_at: session.authenticatedAt?.toISOString(),
         status: 'authenticated',
-        storageStateCiphertext: 'refreshed-ciphertext',
-        storageStateKeyVersion: 'local-v2',
-      }),
-    );
-    expect(markSession.mock.calls[0]?.[1]).not.toHaveProperty('authenticatedAt');
-    expect(exportStorageState.mock.invocationCallOrder[0]).toBeLessThan(
-      encrypt.mock.invocationCallOrder[0]!,
-    );
-    expect(encrypt.mock.invocationCallOrder[0]).toBeLessThan(
-      markSession.mock.invocationCallOrder[0]!,
-    );
-    expect(markSession.mock.invocationCallOrder[0]).toBeLessThan(
-      release.mock.invocationCallOrder[0]!,
-    );
-    expect(release).toHaveBeenCalledOnce();
-    expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
-  });
+      });
+      expect(encrypt).toHaveBeenCalledWith('{"cookies":[{"name":"sid","value":"fresh"}]}');
+      expect(markSession).toHaveBeenCalledWith(
+        session,
+        expect.objectContaining({
+          error: null,
+          status: 'authenticated',
+          storageStateCiphertext: 'refreshed-ciphertext',
+          storageStateKeyVersion: 'local-v2',
+          accountNickname: result === 'nickname' ? '当前抖音昵称' : null,
+        }),
+      );
+      expect(markSession.mock.calls[0]?.[1]).not.toHaveProperty('authenticatedAt');
+      expect(exportStorageState.mock.invocationCallOrder[0]).toBeLessThan(
+        encrypt.mock.invocationCallOrder[0]!,
+      );
+      expect(encrypt.mock.invocationCallOrder[0]).toBeLessThan(
+        markSession.mock.invocationCallOrder[0]!,
+      );
+      expect(markSession.mock.invocationCallOrder[0]).toBeLessThan(
+        release.mock.invocationCallOrder[0]!,
+      );
+      expect(release).toHaveBeenCalledOnce();
+      expect(release).toHaveBeenCalledWith(ACCOUNT_ID);
+    },
+  );
 
   it('reopens a crashed page once while polling an authenticated session', async () => {
     const session = browserSession();
@@ -1015,6 +1030,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         release,
         verifyAuthenticated,
@@ -1067,6 +1083,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         inspectLoginVerification,
         release,
@@ -1125,6 +1142,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         inspectLoginVerification: vi.fn(async () => {
           throw new PageDriverError('AUTH_REQUIRED', 'challenge unavailable');
@@ -1405,6 +1423,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState,
         release,
         startLogin: vi.fn(async () => ({ expiresAt, qrPng: Buffer.from('qr') })),
@@ -1968,6 +1987,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[{"name":"sid","value":"safe"}]}'),
         release,
         submitLoginVerification,
@@ -2026,6 +2046,7 @@ describe('Douyin browser service', () => {
         markSession,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         inspectLoginVerification: vi.fn(async () => null),
         release,
@@ -2073,6 +2094,7 @@ describe('Douyin browser service', () => {
     } as unknown as PostgresDouyinBrowserStore;
     const driver = {
       capture: vi.fn(async () => Buffer.from('unresolved-state')),
+      readAccountNickname: vi.fn(async () => null),
       exportStorageState: vi.fn(async () => '{"cookies":[]}'),
       reconcile: vi.fn(async () => null),
       release: vi.fn(async () => undefined),
@@ -2156,6 +2178,7 @@ describe('Douyin browser service', () => {
       store,
       {
         capture: vi.fn(async () => Buffer.from('reconciled-publication')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState,
         reconcile,
         release,
@@ -2234,6 +2257,7 @@ describe('Douyin browser service', () => {
       } as unknown as PostgresDouyinBrowserStore,
       {
         capture: vi.fn(async () => Buffer.from('reconciled-publication')),
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => {
           throw new Error('final snapshot unavailable');
         }),
@@ -2290,6 +2314,7 @@ describe('Douyin browser service', () => {
         updatePublication,
       } as unknown as PostgresDouyinBrowserStore,
       {
+        readAccountNickname: vi.fn(async () => null),
         exportStorageState: vi.fn(async () => '{"cookies":[]}'),
         reconcile,
         release,
@@ -2497,6 +2522,7 @@ describe('Douyin browser service', () => {
       updatePublication: vi.fn(),
     } as unknown as PostgresDouyinBrowserStore;
     const driver = {
+      readAccountNickname: vi.fn(async () => null),
       exportStorageState: vi.fn(async () => '{"cookies":[]}'),
       release: vi.fn(async () => undefined),
       submit: vi.fn(),

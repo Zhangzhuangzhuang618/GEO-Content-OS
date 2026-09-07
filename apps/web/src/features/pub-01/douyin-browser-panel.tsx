@@ -250,6 +250,9 @@ export function DouyinBrowserPanel({
         <div>
           <h2 className="text-xl font-semibold text-ink-950">抖音图文自动发布</h2>
           <p className="mt-1 text-sm font-medium text-ink-700">当前账号：{account.display_name}</p>
+          <p className="mt-1 text-sm text-ink-700">
+            抖音用户名：{loading ? '读取中' : (session?.account_nickname ?? '尚未获取')}
+          </p>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-ink-500">
             系统生成 3:4 图文卡片并通过独立托管浏览器发布。只声明实际使用的 AI
             辅助，不会自动勾选原创。

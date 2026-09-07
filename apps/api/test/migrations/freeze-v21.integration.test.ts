@@ -79,7 +79,17 @@ describe('freeze v2.1 database verification', () => {
     await container?.stop();
   });
 
-  it('migrates an empty database through the 20-character Douyin image-note rule', async () => {
+  it('stores optional Douyin nicknames without changing existing session requirements', async () => {
+    if (!client) throw new Error('Database client did not start');
+    const columns = await client`
+      SELECT is_nullable, character_maximum_length FROM information_schema.columns
+      WHERE table_schema='public' AND table_name='douyin_browser_sessions'
+        AND column_name='account_nickname'
+    `;
+    expect(columns).toEqual([{ is_nullable: 'YES', character_maximum_length: 120 }]);
+  });
+
+  it('migrates an empty database through the Douyin account nickname column', async () => {
     if (!client) throw new Error('Database client did not start');
 
     const tables = await client<{ tablename: string }[]>`
@@ -149,8 +159,8 @@ describe('freeze v2.1 database verification', () => {
       migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
     );
     expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
-      '0057_douyin_customer_content_voice',
       '0058_douyin_image_note_title_limit',
+      '0059_douyin_account_nickname',
     ]);
   });
 

@@ -414,6 +414,13 @@
       "when": 1788589800000,
       "tag": "0058_douyin_image_note_title_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1788758400000,
+      "tag": "0059_douyin_account_nickname",
+      "breakpoints": true
     }
   ]
 }

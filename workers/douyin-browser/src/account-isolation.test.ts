@@ -36,6 +36,10 @@ describe('Douyin multi-account login isolation', () => {
       }
       const updated = Object.freeze({
         ...session,
+        accountNickname:
+          input.accountNickname === undefined
+            ? (session.accountNickname ?? null)
+            : input.accountNickname,
         authenticatedAt:
           input.authenticatedAt === undefined ? session.authenticatedAt : input.authenticatedAt,
         lastError: input.error === undefined ? null : input.error,
@@ -76,6 +80,9 @@ describe('Douyin multi-account login isolation', () => {
     );
     const driver = {
       close: vi.fn(async () => undefined),
+      readAccountNickname: vi.fn(async (accountId: string) =>
+        accountId === FIRST_ACCOUNT_ID ? '昵称甲' : '昵称乙',
+      ),
       exportStorageState,
       release,
       startLogin,
@@ -131,6 +138,7 @@ describe('Douyin multi-account login isolation', () => {
     });
     expect(requireSession(sessions, FIRST_ACCOUNT_ID)).toMatchObject({
       accountId: FIRST_ACCOUNT_ID,
+      accountNickname: '昵称甲',
       status: 'authenticated',
       storageStateCiphertext: `ciphertext:${FIRST_ACCOUNT_ID}`,
       storageStateKeyVersion: 'account-one-v1',
@@ -151,6 +159,7 @@ describe('Douyin multi-account login isolation', () => {
     expect(requireSession(sessions, SECOND_ACCOUNT_ID)).toMatchObject({
       accountId: SECOND_ACCOUNT_ID,
       status: 'authenticated',
+      accountNickname: '昵称乙',
       storageStateCiphertext: `ciphertext:${SECOND_ACCOUNT_ID}`,
       storageStateKeyVersion: 'account-two-v1',
     });
@@ -168,6 +177,7 @@ describe('Douyin multi-account login isolation', () => {
 });
 
 interface SessionUpdate {
+  readonly accountNickname?: string | null;
   readonly authenticatedAt?: Date | null;
   readonly error?: Readonly<Record<string, unknown>> | null;
   readonly lastVerifiedAt?: Date | null;

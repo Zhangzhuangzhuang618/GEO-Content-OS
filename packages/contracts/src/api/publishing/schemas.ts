@@ -64,6 +64,7 @@ export const PlatformAccountQuerySchema = z
   .strict();
 export const PlatformAccountViewSchema = z
   .object({
+    account_nickname: z.string().min(1).max(120).nullable().optional(),
     capabilities: z.record(z.string(), z.unknown()),
     created_at: IsoDateTimeSchema,
     display_name: z.string(),
@@ -441,6 +442,7 @@ export const DouyinLoginVerificationSchema = z
   })
   .strict();
 export const DouyinBrowserSessionViewSchema = BaijiahaoBrowserSessionViewSchema.extend({
+  account_nickname: z.string().min(1).max(120).nullable().optional(),
   verification: DouyinLoginVerificationSchema.nullable().optional(),
 }).strict();
 export const DouyinBrowserLoginViewSchema = DouyinBrowserSessionViewSchema.extend({

@@ -66,6 +66,7 @@ export class PostgresDouyinBrowserStore {
   public async markSession(
     session: BrowserSession,
     input: {
+      readonly accountNickname?: string | null;
       readonly authenticatedAt?: Date | null;
       readonly error?: Readonly<Record<string, unknown>> | null;
       readonly lastVerifiedAt?: Date | null;
@@ -79,6 +80,7 @@ export class PostgresDouyinBrowserStore {
       input.error === null || input.error === undefined ? null : JSON.stringify(input.error);
     const rows = await this.client<BrowserSession[]>`
       UPDATE douyin_browser_sessions SET
+        account_nickname=${input.accountNickname === undefined ? (session.accountNickname ?? null) : input.accountNickname},
         status=${input.status},
         qr_expires_at=${input.qrExpiresAt === undefined ? session.qrExpiresAt : input.qrExpiresAt},
         authenticated_at=${
@@ -102,6 +104,7 @@ export class PostgresDouyinBrowserStore {
       WHERE id=${session.id}::uuid AND tenant_id=${session.tenantId}::uuid
         AND version=${session.version}
       RETURNING id, tenant_id AS "tenantId", account_id AS "accountId", status,
+        account_nickname AS "accountNickname",
         profile_key AS "profileKey", storage_state_ciphertext AS "storageStateCiphertext",
         storage_state_key_version AS "storageStateKeyVersion",
         qr_expires_at AS "qrExpiresAt", authenticated_at AS "authenticatedAt",
@@ -323,6 +326,7 @@ function selectSession(
 ): Promise<BrowserSession[]> {
   return sql<BrowserSession[]>`
     SELECT id, tenant_id AS "tenantId", account_id AS "accountId", status,
+      account_nickname AS "accountNickname",
       profile_key AS "profileKey", storage_state_ciphertext AS "storageStateCiphertext",
       storage_state_key_version AS "storageStateKeyVersion", qr_expires_at AS "qrExpiresAt",
       authenticated_at AS "authenticatedAt", last_verified_at AS "lastVerifiedAt",

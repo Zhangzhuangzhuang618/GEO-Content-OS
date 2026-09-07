@@ -198,6 +198,27 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     return JSON.stringify(await context.storageState());
   }
 
+  public async readAccountNickname(accountId: string): Promise<string | null> {
+    const context = this.contexts.get(accountId);
+    if (!context) return null;
+    // The verified Creator Center home header contains the full nickname. Do not
+    // navigate the publishing or verification page, or read names from content.
+    const page = await context.newPage();
+    try {
+      await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
+      const nickname = page.locator('button[class^="account-trigger-"] span[class^="name-"]');
+      await nickname.first().waitFor({ state: 'visible', timeout: 8_000 });
+      if ((await nickname.count()) !== 1) return null;
+      if ((await this.authenticationState(page)) !== 'authenticated') return null;
+      const value = (await nickname.innerText()).trim();
+      return value && value.length <= 120 && !/\p{Cc}/u.test(value) ? value : null;
+    } catch {
+      return null;
+    } finally {
+      await page.close().catch(() => undefined);
+    }
+  }
+
   public async inspectLoginVerification(
     accountId: string,
   ): Promise<LoginVerificationDiagnostic | null>;

@@ -308,6 +308,19 @@ describe('Publishing API frozen contract', () => {
     };
     expect(DouyinBrowserSessionViewSchema.safeParse(safeSession).success).toBe(true);
     expect(
+      DouyinBrowserSessionViewSchema.parse({ ...safeSession, account_nickname: '真实昵称' })
+        .account_nickname,
+    ).toBe('真实昵称');
+    expect(
+      DouyinBrowserSessionViewSchema.safeParse({ ...safeSession, account_nickname: null }).success,
+    ).toBe(true);
+    expect(
+      DouyinBrowserSessionViewSchema.safeParse({
+        ...safeSession,
+        account_nickname: '长'.repeat(121),
+      }).success,
+    ).toBe(false);
+    expect(
       DouyinBrowserSessionViewSchema.safeParse({
         ...safeSession,
         verification: { ...safeSession.verification, mobile: '13800138000' },

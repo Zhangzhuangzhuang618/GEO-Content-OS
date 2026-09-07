@@ -14,6 +14,7 @@ describe('platform account serialization', () => {
         credential_ciphertext: null,
         credential_key_version: null,
         display_name: '官网账号',
+        account_nickname: '真实抖音昵称',
         id: 'b1000000-0000-4000-8000-000000000001',
         platform_code: 'official_site',
         provider_account_id: null,
@@ -41,6 +42,7 @@ describe('platform account serialization', () => {
     });
 
     expect(result[0]).toMatchObject({
+      account_nickname: '真实抖音昵称',
       created_at: '2026-07-18T08:50:48.000Z',
       token_expires_at: '2026-08-18T08:50:48.000Z',
       updated_at: '2026-07-18T08:51:00.000Z',

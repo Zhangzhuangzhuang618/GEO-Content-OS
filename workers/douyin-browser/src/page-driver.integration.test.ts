@@ -80,6 +80,30 @@ describe('Douyin local browser simulator', () => {
     await rm(profileRoot, { force: true, recursive: true });
   });
 
+  it.each(['normal', 'duplicate', 'missing'])(
+    'reads only the current account header nickname (%s)',
+    async (mode) => {
+      const driver = new PlaywrightDouyinPageDriver({
+        ...config(baseUrl, profileRoot),
+        loginUrl: `${baseUrl}/nickname-home?mode=${mode}`,
+      });
+      try {
+        const login = await driver.startLogin(ACCOUNT_ID, join(profileRoot, ACCOUNT_ID));
+        expect(await driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).toBe(true);
+        const before = editorNavigationCount;
+        expect(await driver.readAccountNickname(ACCOUNT_ID)).toBe(
+          mode === 'normal' ? '真实抖音昵称甲' : null,
+        );
+        expect(editorNavigationCount).toBe(before);
+        expect(
+          JSON.parse(await driver.exportStorageState(ACCOUNT_ID)).cookies.length,
+        ).toBeGreaterThan(0);
+      } finally {
+        await driver.close();
+      }
+    },
+  );
+
   it('does not classify a missing login page as an expired login', async () => {
     const driver = new PlaywrightDouyinPageDriver(config(baseUrl, profileRoot));
     await expect(
@@ -783,6 +807,18 @@ async function route(
       '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240"><rect width="240" height="240" fill="white"/><rect x="20" y="20" width="200" height="200" fill="black"/></svg>',
     );
     return;
+  }
+  if (url.pathname === '/nickname-home') {
+    if (!authenticated(request)) return redirect(response, '/login');
+    const mode = url.searchParams.get('mode');
+    const header =
+      '<button class="account-trigger-aErEPn"><span class="name-_lSSDc">真实抖音昵称甲</span></button>';
+    return html(
+      response,
+      '<div class="user-info">发布作品 作品管理</div><span class="name-other">作品中的名称</span>' +
+        (mode === 'missing' ? '' : header) +
+        (mode === 'duplicate' ? header : ''),
+    );
   }
   if (url.pathname === '/login') {
     const smsMode = url.searchParams.get('sms');

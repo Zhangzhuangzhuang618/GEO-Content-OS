@@ -95,6 +95,7 @@ export class DouyinBrowserService {
           return sessionView(await this.persistAuthenticatedSession(session));
         }
         const pending = await this.store.markSession(session, {
+          accountNickname: null,
           error: null,
           qrExpiresAt: result.expiresAt,
           status: 'qr_ready',
@@ -941,10 +942,15 @@ export class DouyinBrowserService {
     refreshAuthenticatedAt = false,
   ): Promise<PersistedBrowserSessionSnapshot> {
     const verifiedAt = new Date();
+    const accountNickname =
+      refreshAuthenticatedAt || !session.accountNickname
+        ? await this.driver.readAccountNickname(session.accountId).catch(() => null)
+        : session.accountNickname;
     const storageStateJson = await this.driver.exportStorageState(session.accountId);
     const encrypted = await this.credentials.encrypt(storageStateJson);
     const verified = await this.store.markSession(session, {
       ...(refreshAuthenticatedAt ? { authenticatedAt: verifiedAt } : {}),
+      accountNickname,
       error: null,
       lastVerifiedAt: verifiedAt,
       qrExpiresAt: null,
@@ -1037,6 +1043,7 @@ function sessionView(
 ): Readonly<Record<string, unknown>> {
   return Object.freeze({
     account_id: session.accountId,
+    account_nickname: session.accountNickname ?? null,
     authenticated_at: session.authenticatedAt?.toISOString() ?? null,
     last_verified_at: session.lastVerifiedAt?.toISOString() ?? null,
     qr_expires_at: session.qrExpiresAt?.toISOString() ?? null,
