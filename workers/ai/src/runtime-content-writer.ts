@@ -52,6 +52,7 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 
 import { contentHash } from './generation.content.js';
+import { supportsDouyinPriceComparison } from './douyin-price-evidence.js';
 import {
   findExternalCredentialClaims,
   hasExternalCredentialEvidence,
@@ -122,9 +123,9 @@ const DOUYIN_FRONTLINE_CUSTOMER_ROLE_LEAK_PATTERNS = Object.freeze([
   /(?:我|我家|我们家).{0,24}(?:放进|列入).{0,12}(?:备选|候选)/u,
 ]);
 const DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN =
-  /(?:我|我家|我们家).{0,28}(?:准备|打算|计划|想|要|会|最怕|担心|在意|关心|看重|预算|询问|核对|确认|比较|选择|备选|候选|咨询)/u;
+  /(?:我|我家|我们家).{0,28}(?:准备|打算|计划|想|要|会|最怕|担心|在意|关心|看重|预算|询问|问清|询价|筛选|挑选|考虑|核对|确认|比较|选择|备选|候选|咨询)/u;
 const DOUYIN_CUSTOMER_SCREENING_CHOICE_PATTERN =
-  /(?:我|我家|我们家).{0,24}(?:不会|不想|不急着|更愿意|更想|宁愿|只会|才会|先|直接).{0,24}(?:定|选|找|下单|接受|考虑|比较|淘汰|问|看|核对)|(?:这种|这样的|只给).{0,24}(?:我|我家|我们家).{0,10}(?:不会|不想|不急着|不接受)/u;
+  /(?:我|我家|我们家).{0,24}(?:不会|不想|不急着|更愿意|更想|宁愿|只会|才会|先|直接).{0,24}(?:定|选|找|下单|接受|考虑|比较|淘汰|问|看|核对)|(?:这种|这样的|只给).{0,24}(?:我|我家|我们家).{0,10}(?:不会|不想|不急着|不接受)|(?:我|我家|我们家).{0,12}(?:不考虑|不接受|拒绝|排除).{0,30}(?:总价|报价|方案|公司|服务商)/u;
 const DOUYIN_CUSTOMER_META_VOICE_PATTERNS = Object.freeze([
   /(?:从|站在|切换到|采用|使用|以).{0,6}(?:客户|消费者|需求方)(?:的)?(?:视角|角度|立场|口吻)/u,
   /(?:作为|身为)(?:一名|一个)?(?:客户|消费者|需求方)/u,
@@ -139,7 +140,7 @@ const DOUYIN_IDENTIFIABLE_THIRD_PARTY_PATTERN =
 const DOUYIN_CUSTOMER_OWNER_DECISION_PATTERN =
   /(?:我|我家|我们家).{0,36}(?:会|愿意|可以|打算|准备).{0,24}(?:备选|候选|考虑|比较|咨询)|(?:对我来说|按我的需求).{0,40}(?:值得考虑|可列入|可以了解)/u;
 const DOUYIN_CUSTOMER_NEXT_STEP_PATTERN =
-  /(?:再|接着|下一步|然后).{0,30}(?:询价|咨询|核对|比较|联系|看.{0,8}(?:报价|方案)|发.{0,12}(?:地址|清单))/u;
+  /(?:再|接着|下一步|然后).{0,30}(?:询价|咨询|核对|比较|联系|看.{0,8}(?:报价|方案)|发.{0,12}(?:地址|清单))|(?:拿|带|发|提供).{0,24}(?:地址|清单).{0,30}(?:书面方案|书面报价|询价|核对).{0,16}(?:再定|再决定)/u;
 const DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS = Object.freeze([
   /核心(?:是|在于)/u,
   /本质上|底层逻辑/u,
@@ -1904,7 +1905,7 @@ Fill the semantic slots exactly:
 - cards has exactly the seven server-ordered slots cover, conditions, pricing, protection, schedule, checklist, summary. These are technical safety slots, not seven independent article themes. Make every slot explain a different condition, comparison, boundary, or action for the selected search intent; for example, a pricing article uses the slots for price-impacting conditions, like-for-like comparison, included responsibility, waiting-charge boundaries, and a quote-check checklist.
 - Keep every field inside its production range: title 6–20 characters; opening_topic 10–35; opening_pain 20–70; normally each solution field is 55–95, price_boundary and protection_risk are 55–100, schedule is 50–90, checklist is 80–130, and conclusion is 50–90. For customer_perspective, shorter human sentences are intentional: solution fields may be 48–95, price_boundary and protection_risk 48–100, schedule 42–90, checklist 68–130, and conclusion 42–90; the assembled description must still meet the full 420–900 character gate. For cards, cover heading/body are 6–22/12–46, body-card heading/body are 4–16/24–88, and summary heading/body are 4–16/30–96.
 - Keep Chinese prose human and slightly uneven. Avoid essay scaffolding and assistant phrases such as “核心是”“本质上”“真正重要的是”“总的来说”“综上所述”“选择依据是”“进一步沟通”, mechanical binary contrasts, and repeated “观点＋解释＋总结” paragraph shapes. Prefer concrete worries and objects—money added on site, a sofa that cannot turn through a doorway, the truck arrival time, what is written on the quote—over abstract strings of “风险、边界、责任、建议、应当、需要、确认”. Use shorter sentences and allow one paragraph to be noticeably shorter than the others. In frontline_mover, sound like a worker talking across the doorway: name what you look at, what the customer should send, and what changes the work; do not announce the role, explain the selected voice, write “选服务商时，我会”, or turn every paragraph into a balanced checklist. In customer_perspective, at least one middle paragraph must contain an actual consumer preference, refusal, or screening choice, such as “这种总价我不会马上定” or “能把这些写清楚的，我才会继续比较”. Vary first-person phrasing and use the exact phrase “我会” no more than four times in the whole description; never repeat it in every numbered checklist item. Do not claim a completed comparison with phrases such as “综合比较下来”“看下来” or “筛下来”, do not label the narrator as “我这种客户”, and end with the next verification action—send the real addresses and item list, request a quote, or compare the actual written plan—before deciding.
-- evidence_claims is optional evidence metadata, not extra prose. Include an item only when claim_text appears verbatim in another returned text field and every citation_id comes from content_writer_input.citations. Use [] when no supplied citation directly supports a public claim. Never cite a first-party assertion merely to make it appear independent.
+- evidence_claims is evidence metadata, not extra prose. When content_writer_input.citations is nonempty, the completed draft must include at least one topic-relevant fact directly supported by a supplied citation in visible prose and map that exact text in evidence_claims. Plan this fact before writing; an empty mapping will fail the generation gate. Every claim_text must appear verbatim in another returned text field and every citation_id must come from content_writer_input.citations. Do not copy competitor promotions, unsupported credentials or unrelated prices just to fill a mapping. If no supplied citation supports a usable fact, do not fabricate one or force a match; the draft cannot pass until suitable evidence is supplied. Use [] for a draft without supplied citations. Never cite a first-party assertion merely to make it appear independent.
 - “真实场景、真实案例、现场实录、收费对比、资质核验、合同条款解读、口碑参考” are evidence promises. Use them in the title only when an evidence_claim directly supports the promised content; otherwise use a neutral verification method, selection standard, or comparison dimension. Never create an unsupported ranking, reputation conclusion, or competitor list.
 
 Return only the shallow JSON object. Do not return master_content, variants, platform_meta, card_key, kind, block_key, block_type, schema_version, envelope fields, Markdown, or commentary.`,
@@ -2046,6 +2047,7 @@ function evaluateDouyinDirectDraft(
       ...douyinGroundedThirdPartyCaseIssues(evaluatedDraft, input.writerInput),
       ...douyinFrontlineNaturalVoiceIssues(evaluatedDraft, input.writerInput),
       ...douyinCustomerNaturalVoiceIssues(evaluatedDraft, input.writerInput),
+      ...douyinDirectBrandIssues(evaluatedDraft, input.writerInput),
     ]),
   ]);
   if (issues.length === 0) {
@@ -2343,6 +2345,24 @@ function douyinDirectEvidenceIssues(
   return Object.freeze(issues);
 }
 
+function douyinDirectBrandIssues(draft: DouyinDirectDraft, writerInput: JsonObject): string[] {
+  const banned = jsonObject(jsonObject(writerInput['strategy'])?.['profile'])?.['banned'];
+  if (!Array.isArray(banned)) return [];
+  const phrases = banned.filter(
+    (value): value is string => typeof value === 'string' && !!value.trim(),
+  );
+  return [...douyinDirectTextEntries(draft)].flatMap(([target, value]) =>
+    phrases
+      .filter((phrase) =>
+        value.toLocaleLowerCase('zh-CN').includes(phrase.trim().toLocaleLowerCase('zh-CN')),
+      )
+      .map(
+        (phrase) =>
+          `douyin:内容包含企业禁用表述“${phrase}”；仅改写命中字段，保留其他事实和段落 [repair_target=${target}]`,
+      ),
+  );
+}
+
 function douyinGroundedThirdPartyCaseIssues(
   draft: DouyinDirectDraft,
   writerInput: JsonObject,
@@ -2504,10 +2524,7 @@ function douyinEvidencePromiseCitationSupports(promise: string, quoteText: strin
     return /资料类型：企业证照|资质|证照|许可证|营业执照|证书/u.test(quoteText);
   }
   if (promise === '收费对比') {
-    return (
-      /收费|费用|报价|计费|价格/u.test(quoteText) &&
-      (quoteText.match(/\d+(?:\.\d+)?(?:\s*[-–—]\s*\d+(?:\.\d+)?)?\s*元/gu)?.length ?? 0) >= 2
-    );
+    return supportsDouyinPriceComparison(quoteText);
   }
   if (promise === '合同条款解读') return /合同|条款|约定/u.test(quoteText);
   if (promise === '真实场景') {

@@ -11,6 +11,34 @@ import {
 } from './browser-platform-daily-scheduler.js';
 
 describe('browser platform daily scheduler', () => {
+  it('does not bind a fee comparison title from a package price and gift value', () => {
+    const promise = douyinEvidenceTitleOpportunity('pricing', [
+      {
+        chunkId: 'chunk-1',
+        sourceId: 'source-1',
+        quoteText: '办公室基础搬迁费用低至4800元，签约即赠价值500元保洁服务。',
+      },
+    ]);
+    expect(promise).toBeNull();
+    const angle = douyinDailyDecisionAngle({
+      businessDate: '2026-08-30',
+      candidateNo: 3,
+      targetCount: 3,
+      keyword: '广州搬家公司',
+      evidencePromise: promise,
+    });
+    expect(angle.title).not.toContain('收费对比');
+    expect(
+      douyinEvidenceTitleOpportunity('pricing', [
+        {
+          chunkId: 'chunk-2',
+          sourceId: 'source-2',
+          quoteText: '同一清单的费用对比：仅运输4800元，含打包6000元。',
+        },
+      ]),
+    ).toBe('收费对比');
+  });
+
   it('uses Flash only for the bounded Douyin daily draft', () => {
     const config = {
       draftModelKey: 'deepseek-v4-flash',

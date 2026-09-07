@@ -12,6 +12,7 @@ import type postgres from 'postgres';
 
 import type { OfficialSiteAutomationConfig } from './config.js';
 import type { DailyCitation, DailyCitationPort } from './daily-citation-retriever.js';
+import { supportsDouyinPriceComparison } from './douyin-price-evidence.js';
 import { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 import type { JsonObject } from './generation.types.js';
 
@@ -1147,12 +1148,7 @@ export function douyinEvidenceTitleOpportunity(
   if (intent === 'contract' && /资料类型：(?:服务)?合同/u.test(evidence)) return '合同条款解读';
   if (
     (intent === 'pricing' || intent === 'comparison') &&
-    citations.some(
-      (citation) =>
-        /收费|费用|报价|计费|价格/u.test(citation.quoteText) &&
-        (citation.quoteText.match(/\d+(?:\.\d+)?(?:\s*[-–—]\s*\d+(?:\.\d+)?)?\s*元/gu)?.length ??
-          0) >= 2,
-    )
+    citations.some((citation) => supportsDouyinPriceComparison(citation.quoteText))
   ) {
     return '收费对比';
   }

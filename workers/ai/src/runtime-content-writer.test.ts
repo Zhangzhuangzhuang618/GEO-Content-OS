@@ -477,6 +477,89 @@ describe('AI Worker runtime wiring', () => {
     expect(pro.requests).toHaveLength(0);
   });
 
+  it('accepts natural screening, refusal and next-step wording without rewriting the draft', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const owner = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(owner);
+    const draft = {
+      ...valid,
+      opening_topic: '广州高层家庭搬家前，我正在筛选能写清费用明细的公司',
+      solution_paragraphs: [
+        '我不考虑只给总价、不列收费明细的搬家公司。两端楼层、电梯尺寸、停车距离和大件物品先整理成清单，让对方核对车型、人数和装卸安排。',
+        valid.solution_paragraphs[1],
+      ],
+      conclusion: `我会把${owner}放进备选，拿地址和物品清单请他们出书面方案后再定，具体费用、到场时间和损坏处理也得一并写清楚。`,
+    };
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(draft) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'natural-customer-screening',
+      writerInput: customerPerspectiveWriterInput(fixture.input as JsonObject, owner),
+    });
+    expect(flash.requests).toHaveLength(1);
+    const visible = result.blocks.map((block) => block.text).join('\n');
+    expect(visible).toContain(draft.opening_topic);
+    expect(visible).toContain(draft.solution_paragraphs[0]);
+    expect(visible).toContain(draft.conclusion);
+    const prompt = flash.requests[0]!.messages.map((message) => message.content).join('\n');
+    expect(prompt).toContain('an empty mapping will fail the generation gate');
+    expect(prompt).toContain('Do not copy competitor promotions');
+    expect(prompt).not.toContain('evidence_claims is optional');
+  });
+
+  it('repairs a brand-banned advice word in its field before downstream quality rewriting', async () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const owner = '广州志远搬家服务有限公司';
+    const valid = customerPerspectiveDirectDraft(owner);
+    const draft = { ...valid, schedule: valid.schedule + '等待费最好也写清楚。' };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(draft) },
+        {
+          text: JSON.stringify({
+            replacements: [{ target_id: 'schedule', replacement_text: valid.schedule }],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    const base = customerPerspectiveWriterInput(fixture.input as JsonObject, owner);
+    const strategy = base['strategy'] as JsonObject;
+    const result = await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'customer-banned-advice-local-repair',
+      writerInput: {
+        ...base,
+        strategy: {
+          ...strategy,
+          profile: { ...(strategy['profile'] as JsonObject), banned: ['最好'] },
+        },
+      },
+    });
+    expect(flash.requests).toHaveLength(2);
+    const repair = flash.requests[1]!.messages.map((message) => message.content).join('\n');
+    expect(repair).toContain('企业禁用表述“最好”');
+    expect(repair).toContain('"target_id":"schedule"');
+    expect(repair).not.toContain('"target_id":"opening_topic"');
+    const visible = result.blocks.map((block) => block.text).join('\n');
+    expect(visible).not.toContain('最好');
+    expect(visible).toContain(valid.opening_topic);
+    expect(visible).toContain(valid.solution_paragraphs[0]);
+    expect(visible).toContain(valid.conclusion);
+  });
+
   it('repairs a copied customer opening and removes trailing punctuation before assembly', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const ownerCompanyName = '广州志远搬家服务有限公司';
