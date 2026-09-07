@@ -255,6 +255,39 @@ describe('image adapter', () => {
     });
   });
 
+  it.each(['jpeg', 'png', 'webp'] as const)(
+    'fully decodes valid %s source images',
+    async (format) => {
+      const body = await sharp({
+        create: { background: '#ffffff', channels: 3, height: 512, width: 768 },
+      })
+        .toFormat(format)
+        .toBuffer();
+      expect(await sourceImageMetadata(body)).toMatchObject({ format, height: 512, width: 768 });
+    },
+  );
+
+  it('accepts JPEG trailers but rejects truncated pixel data with an appended end marker', async () => {
+    const jpeg = Buffer.from(
+      await renderTemplateImage({
+        accent: 'blue',
+        label: '测试图片',
+        title: '图片完整解码测试',
+      }),
+    );
+    const withTrailer = Buffer.concat([jpeg, Buffer.alloc(24, 0x7a)]);
+    expect(await sourceImageMetadata(withTrailer)).toMatchObject({
+      format: 'jpeg',
+      sizeBytes: withTrailer.length,
+    });
+    const truncated = Buffer.concat([
+      jpeg.subarray(0, Math.floor(jpeg.length / 2)),
+      Buffer.from([0xff, 0xd9]),
+    ]);
+    expect((await sharp(truncated).metadata()).width).toBe(1_200);
+    await expect(sourceImageMetadata(truncated)).rejects.toThrow('media gate');
+  });
+
   it('rejects certificate scans beyond the high-resolution safety gate', async () => {
     const oversizedEdge = await sharp({
       create: { background: '#ffffff', channels: 3, height: 512, width: 8_193 },

@@ -186,61 +186,67 @@ describe('source upload', () => {
     expect(source[0]?.uri).toBe(`s3://geo-source-integration/${objectKey}`);
   });
 
-  it('stores certificate images privately with explicit verifiable fields and publication consent', async () => {
-    const database = requireClient(client);
-    const tokens = await createSession(database, MANAGER_ID);
-    const body = Buffer.from(
-      await renderTemplateImage({
-        accent: 'blue',
-        label: '道路运输经营许可证',
-        title: '企业证照测试原图',
-      }),
-    );
-    const response = await sendCertificateUpload(
-      application,
-      tokens,
-      'source-certificate-001',
-      body,
-    );
-    expect(response.status, JSON.stringify(response.body)).toBe(201);
-    const sourceId = String(response.body.data.source.id);
-    expect(response.body.data.source).toMatchObject({
-      id: sourceId,
-      mime_type: 'image/jpeg',
-      source_type: 'image',
-      trust_level: 'verified',
-    });
-    const rows = await database<{ metadata: Record<string, unknown>; uri: string }[]>`
+  it.each([0, 24])(
+    'stores certificate images with %i trailing bytes privately with verifiable fields and consent',
+    async (trailingBytes) => {
+      const database = requireClient(client);
+      const tokens = await createSession(database, MANAGER_ID);
+      const body = Buffer.concat([
+        Buffer.from(
+          await renderTemplateImage({
+            accent: 'blue',
+            label: '道路运输经营许可证',
+            title: '企业证照测试原图',
+          }),
+        ),
+        Buffer.alloc(trailingBytes, 0x7a),
+      ]);
+      const response = await sendCertificateUpload(
+        application,
+        tokens,
+        'source-certificate-001',
+        body,
+      );
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+      const sourceId = String(response.body.data.source.id);
+      expect(response.body.data.source).toMatchObject({
+        id: sourceId,
+        mime_type: 'image/jpeg',
+        source_type: 'image',
+        trust_level: 'verified',
+      });
+      const rows = await database<{ metadata: Record<string, unknown>; uri: string }[]>`
       SELECT metadata_json AS metadata,uri
       FROM source_documents
       WHERE id=${sourceId}::uuid AND tenant_id=${TENANT_ID}::uuid
     `;
-    expect(rows).toEqual([
-      {
-        metadata: {
-          article_use_allowed: true,
-          certificate_name: '道路运输经营许可证',
-          certificate_number: '粤交运管许可字 2026-001',
-          holder_name: '广州示例搬家服务有限公司',
-          issuing_authority: '广州市交通运输局',
-          public_display_confirmed: true,
-          schema_version: 'source-certificate@1',
-          verification_url: 'https://example.gov.cn/verify/2026-001',
+      expect(rows).toEqual([
+        {
+          metadata: {
+            article_use_allowed: true,
+            certificate_name: '道路运输经营许可证',
+            certificate_number: '粤交运管许可字 2026-001',
+            holder_name: '广州示例搬家服务有限公司',
+            issuing_authority: '广州市交通运输局',
+            public_display_confirmed: true,
+            schema_version: 'source-certificate@1',
+            verification_url: 'https://example.gov.cn/verify/2026-001',
+          },
+          uri: `s3://geo-source-integration/tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sha256(body)}.jpg`,
         },
-        uri: `s3://geo-source-integration/tenants/${TENANT_ID}/workspaces/${WORKSPACE_ID}/sources/${sha256(body)}.jpg`,
-      },
-    ]);
-    const detail = await authenticatedRequest(application, tokens).get(
-      `${API_PATH}/${sourceId}?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_A}`,
-    );
-    expect(detail.status, JSON.stringify(detail.body)).toBe(200);
-    expect(detail.body.data.certificate).toMatchObject({
-      article_use_allowed: true,
-      certificate_name: '道路运输经营许可证',
-      certificate_number: '粤交运管许可字 2026-001',
-      public_display_confirmed: true,
-    });
-  });
+      ]);
+      const detail = await authenticatedRequest(application, tokens).get(
+        `${API_PATH}/${sourceId}?workspace_id=${WORKSPACE_ID}&project_id=${PROJECT_A}`,
+      );
+      expect(detail.status, JSON.stringify(detail.body)).toBe(200);
+      expect(detail.body.data.certificate).toMatchObject({
+        article_use_allowed: true,
+        certificate_name: '道路运输经营许可证',
+        certificate_number: '粤交运管许可字 2026-001',
+        public_display_confirmed: true,
+      });
+    },
+  );
 
   it('stores a private insurance PDF while exposing only its confirmed summary profile', async () => {
     const database = requireClient(client);

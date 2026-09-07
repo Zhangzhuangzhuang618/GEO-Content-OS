@@ -106,11 +106,19 @@ export async function imageMetadata(body: Uint8Array): Promise<ImageMetadata> {
 }
 
 export async function sourceImageMetadata(body: Uint8Array): Promise<ImageMetadata> {
-  return validatedImageMetadata(body, {
+  const metadata = await validatedImageMetadata(body, {
     maxBytes: MAX_SOURCE_IMAGE_BYTES,
     maxEdge: MAX_SOURCE_IMAGE_EDGE,
     maxPixels: MAX_SOURCE_IMAGE_PIXELS,
   });
+  try {
+    // Header metadata alone can accept truncated scans with an appended end marker.
+    // Decode all pixels without retaining a full raw output buffer or changing the original.
+    await sharp(body, { failOn: 'warning', limitInputPixels: MAX_SOURCE_IMAGE_PIXELS }).stats();
+  } catch {
+    throw new Error(MEDIA_GATE_ERROR);
+  }
+  return metadata;
 }
 
 export function inspectionPassed(result: ImageInspectionResult): boolean {

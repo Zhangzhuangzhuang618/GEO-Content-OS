@@ -464,8 +464,8 @@ function detectFile(
     /\.jpe?g$/u.test(lowerFilename) &&
     body[0] === 0xff &&
     body[1] === 0xd8 &&
-    body.at(-2) === 0xff &&
-    body.at(-1) === 0xd9
+    // JPEG trailers are allowed; sourceImageMetadata validates the decoded pixel stream.
+    body.includes(Buffer.from([0xff, 0xd9]), 2)
   ) {
     return { extension: 'jpg', mimeType: 'image/jpeg', sourceType: 'image' };
   }
