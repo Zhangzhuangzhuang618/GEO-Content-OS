@@ -80,7 +80,7 @@ describe('Douyin local browser simulator', () => {
     await rm(profileRoot, { force: true, recursive: true });
   });
 
-  it.each(['normal', 'duplicate', 'missing'])(
+  it.each(['normal', 'plain', 'duplicate', 'missing'])(
     'reads only the current account header nickname (%s)',
     async (mode) => {
       const driver = new PlaywrightDouyinPageDriver({
@@ -92,7 +92,7 @@ describe('Douyin local browser simulator', () => {
         expect(await driver.waitForAuthentication(ACCOUNT_ID, login.expiresAt)).toBe(true);
         const before = editorNavigationCount;
         expect(await driver.readAccountNickname(ACCOUNT_ID)).toBe(
-          mode === 'normal' ? '真实抖音昵称甲' : null,
+          mode === 'normal' || mode === 'plain' ? '真实抖音昵称甲' : null,
         );
         expect(editorNavigationCount).toBe(before);
         expect(
@@ -812,7 +812,11 @@ async function route(
     if (!authenticated(request)) return redirect(response, '/login');
     const mode = url.searchParams.get('mode');
     const header =
-      '<button class="account-trigger-aErEPn"><span class="name-_lSSDc">真实抖音昵称甲</span></button>';
+      '<div class="header-_F2uzl"><div class="left-zEzdJX">' +
+      (mode === 'plain'
+        ? '<div class="name-_lSSDc">真实抖音昵称甲</div>'
+        : '<button class="account-trigger-aErEPn"><span class="name-_lSSDc">真实抖音昵称甲</span></button>') +
+      '</div></div>';
     return html(
       response,
       '<div class="user-info">发布作品 作品管理</div><span class="name-other">作品中的名称</span>' +

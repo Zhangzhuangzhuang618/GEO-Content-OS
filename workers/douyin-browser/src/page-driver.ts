@@ -206,7 +206,10 @@ export class PlaywrightDouyinPageDriver implements DouyinPageDriver {
     const page = await context.newPage();
     try {
       await page.goto(this.config.loginUrl, { waitUntil: 'domcontentloaded' });
-      const nickname = page.locator('button[class^="account-trigger-"] span[class^="name-"]');
+      const nickname = page.locator(
+        'div[class^="header-"] > div[class^="left-"] > div[class^="name-"], ' +
+          'div[class^="header-"] > div[class^="left-"] > button[class^="account-trigger-"] > span[class^="name-"]',
+      );
       await nickname.first().waitFor({ state: 'visible', timeout: 8_000 });
       if ((await nickname.count()) !== 1) return null;
       if ((await this.authenticationState(page)) !== 'authenticated') return null;
