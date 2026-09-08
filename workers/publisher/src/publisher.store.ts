@@ -13,6 +13,7 @@ import { randomUUID } from 'node:crypto';
 import type postgres from 'postgres';
 
 import { PublisherError } from './publisher.errors.js';
+import { resolvePublishServicePhone } from './publish-service-phone.js';
 import type {
   BaijiahaoReconcileClaim,
   BaijiahaoRemoteStatus,
@@ -120,6 +121,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
   public constructor(
     private readonly client: postgres.Sql,
     private readonly staleAfterMs = 120_000,
+    private readonly compatibleServicePhones: Readonly<Record<string, readonly string[]>> = {},
   ) {
     if (!Number.isSafeInteger(staleAfterMs) || staleAfterMs < 1_000 || staleAfterMs > 900_000) {
       throw new TypeError('Publisher stale lease duration is invalid');
@@ -275,6 +277,27 @@ export class PostgresPublisherStore implements PublisherStorePort {
           COALESCE(chunk.metadata_json->>'url', source.uri)
       `;
       const ownerCompanyNames = findPublishedOwnerCompanyNames(row.brandProfile);
+      const internalCitations =
+        row.platformCode === 'douyin'
+          ? await transaction<{ citationId: string }[]>`
+            SELECT DISTINCT citation.chunk_id::text AS "citationId"
+            FROM ai_citations AS citation
+            JOIN source_chunks AS chunk
+              ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
+            JOIN source_documents AS source
+              ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
+            WHERE citation.tenant_id=${row.tenantId}::uuid
+              AND citation.content_version_id=${row.contentVersionId}::uuid
+              AND source.workspace_id=${row.workspaceId}::uuid
+              AND (source.project_id IS NULL OR source.project_id=${row.projectId}::uuid)
+              AND chunk.status='active' AND source.status='active' AND source.deleted_at IS NULL
+              AND (source.effective_from IS NULL OR source.effective_from<=now())
+              AND (source.effective_to IS NULL OR source.effective_to>=now())
+              AND source.source_type IN ('pdf','docx','txt','image')
+              AND source.uri LIKE 's3://%'
+              AND COALESCE(chunk.metadata_json->>'url', source.uri) !~* '^https?://'
+          `
+          : [];
       const enterpriseEvidenceGate =
         row.platformCode === 'official_site' || row.platformCode === 'lieju'
           ? await loadEnterpriseEvidencePublishGate(transaction, row, ownerCompanyNames)
@@ -287,6 +310,9 @@ export class PostgresPublisherStore implements PublisherStorePort {
           accountTokenExpiresAt: row.accountTokenExpiresAt,
           attempt,
           citations: Object.freeze(citations.map((citation) => Object.freeze(citation))),
+          internalCitationIds: Object.freeze(
+            internalCitations.map((citation) => citation.citationId),
+          ),
           content: Object.freeze(row.content),
           contentVersionId: row.contentVersionId,
           credentialCiphertext: row.credentialCiphertext,
@@ -302,7 +328,12 @@ export class PostgresPublisherStore implements PublisherStorePort {
               Object.freeze({ ...asset, sizeBytes: Number(asset.sizeBytes) }),
             ),
           ),
-          officialSiteServicePhone: readOfficialSiteServicePhone(row.workspaceSettings),
+          officialSiteServicePhone: resolvePublishServicePhone(
+            row.content,
+            readOfficialSiteServicePhone(row.workspaceSettings),
+            row.accountId,
+            row.platformCode === 'official_site' ? this.compatibleServicePhones : {},
+          ),
           ownerCompanyNames,
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,

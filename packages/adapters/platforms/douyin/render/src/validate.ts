@@ -46,10 +46,19 @@ export function validateDouyinContent(input: unknown): DouyinValidationResult {
     );
   }
   const referenced = new Set(value.content.citation_map.flatMap((claim) => claim.citation_ids));
-  const available = new Set(value.citations.map((citation) => citation.citation_id));
+  // Internal IDs are supplied by the publisher after tenant/source validation, not by the model.
+  // They remain audit evidence and are never converted to public links.
+  const available = new Set([
+    ...value.citations.map((citation) => citation.citation_id),
+    ...(value.internal_citation_ids ?? []),
+  ]);
   if ([...referenced].some((citationId) => !available.has(citationId))) {
     issues.push(
-      blocker('CITATION_LINK_MISSING', '引用 ID 必须映射到可输出的 HTTP(S) 链接。', 'citations'),
+      blocker(
+        'CITATION_LINK_MISSING',
+        '引用 ID 必须映射到公开链接或经服务端核验的有效内部资料。',
+        'citations',
+      ),
     );
   }
   return issues.length === 0

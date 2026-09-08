@@ -3,11 +3,16 @@ import {
   LocalCredentialKms,
 } from '@geo-content-os/security/credentials';
 import { z } from 'zod';
+import { OfficialSiteServicePhoneSchema } from '@geo-content-os/contracts';
 
 const PublisherWorkerConfigSchema = z
   .object({
     databaseUrl: z.string().trim().min(1),
     healthPort: z.number().int().min(1).max(65_535),
+    compatibleServicePhones: z.record(
+      z.uuid(),
+      z.array(OfficialSiteServicePhoneSchema).min(1).max(2),
+    ),
     lockDurationMs: z.number().int().min(60_000).max(900_000),
     queueConcurrency: z.number().int().min(1).max(100),
     redisUrl: z.url(),
@@ -23,6 +28,9 @@ export function readPublisherWorkerConfig(
   return PublisherWorkerConfigSchema.parse({
     databaseUrl: environment['DATABASE_URL'],
     healthPort: integer(environment['HEALTH_PORT'], 9090),
+    compatibleServicePhones: JSON.parse(
+      environment['OFFICIAL_SITE_COMPATIBLE_SERVICE_PHONES_JSON'] || '{}',
+    ) as unknown,
     lockDurationMs: integer(environment['PUBLISHER_QUEUE_LOCK_DURATION_MS'], 600_000),
     queueConcurrency: integer(environment['PUBLISHER_WORKER_CONCURRENCY'], 1),
     redisUrl: environment['REDIS_URL'],

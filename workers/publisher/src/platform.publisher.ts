@@ -284,6 +284,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           signal,
           renderDouyin({
             citations: claim.citations,
+            internal_citation_ids: claim.internalCitationIds ?? [],
             content: douyinImageNoteContentWithMedia(content, claim.mediaAssets ?? []),
             rule_version: DOUYIN_RENDER_RULE_VERSION,
           }),

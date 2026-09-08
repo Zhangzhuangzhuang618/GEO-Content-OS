@@ -215,6 +215,30 @@ describe('PlatformPublisher', () => {
     );
   });
 
+  it('passes verified private evidence to Douyin render without exporting internal IDs', async () => {
+    const fixture = (await readJson(douyinFixtureUrl)) as {
+      content: Readonly<Record<string, unknown>> & { citation_map: { citation_ids: string[] }[] };
+    };
+    const ids = [...new Set(fixture.content.citation_map.flatMap((claim) => claim.citation_ids))];
+    const claim = createClaim(
+      { ...fixture.content, schema_version: 'content-writer-data@1' },
+      [],
+      [],
+      { platformCode: 'douyin' },
+    );
+    await expect(new PlatformPublisher().deliver(claim, null)).rejects.toThrow(
+      'CITATION_LINK_MISSING',
+    );
+    const result = await new PlatformPublisher().deliver(
+      { ...claim, internalCitationIds: ids },
+      null,
+    );
+    expect(result.mode).toBe('export');
+    if (result.mode !== 'export') return;
+    for (const id of ids) expect(JSON.stringify(result.bundle)).not.toContain(id);
+    expect(JSON.stringify(result.bundle)).not.toContain('internal_citation_ids');
+  });
+
   it('uses the current tenant owner name for official-site render validation', async () => {
     const fixture = (await readJson(fixtureUrl)) as {
       readonly citations: PublishClaim['citations'];

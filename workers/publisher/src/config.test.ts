@@ -3,6 +3,32 @@ import { describe, expect, it } from 'vitest';
 import { createPublisherCredentialService, readPublisherWorkerConfig } from './config.js';
 
 describe('publisher runtime config', () => {
+  it('validates account-scoped compatible service phones and defaults to none', () => {
+    const environment = {
+      DATABASE_URL: 'postgresql://localhost/test',
+      REDIS_URL: 'redis://localhost:6379',
+    };
+    const policy = { 'e4ff285d-7df4-4fec-883c-322a1648006a': ['02085627757', '4008372383'] };
+    expect(readPublisherWorkerConfig(environment).compatibleServicePhones).toEqual({});
+    expect(
+      readPublisherWorkerConfig({
+        ...environment,
+        OFFICIAL_SITE_COMPATIBLE_SERVICE_PHONES_JSON: JSON.stringify(policy),
+      }).compatibleServicePhones,
+    ).toEqual(policy);
+    for (const invalid of [
+      'broken-json',
+      '{"not-an-account":["02085627757"]}',
+      '{"e4ff285d-7df4-4fec-883c-322a1648006a":["invalid"]}',
+    ]) {
+      expect(() =>
+        readPublisherWorkerConfig({
+          ...environment,
+          OFFICIAL_SITE_COMPATIBLE_SERVICE_PHONES_JSON: invalid,
+        }),
+      ).toThrow();
+    }
+  });
   it('reads the required runtime configuration', () => {
     expect(
       readPublisherWorkerConfig({

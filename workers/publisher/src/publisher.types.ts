@@ -51,6 +51,7 @@ export interface PublishClaim {
   readonly credentialCiphertext: string | null;
   readonly credentialKeyVersion: string | null;
   readonly citations: readonly PublishCitationLink[];
+  readonly internalCitationIds?: readonly string[];
   readonly enterpriseEvidenceGate?: {
     readonly companyName: string | null;
     readonly evidenceNames: readonly string[];

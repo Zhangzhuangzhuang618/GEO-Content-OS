@@ -59,6 +59,7 @@ export interface DouyinContent extends Omit<
 }
 
 export interface DouyinRenderInput {
+  readonly internal_citation_ids?: readonly string[];
   readonly citations: readonly DouyinCitationLink[];
   readonly content: DouyinContent;
   readonly rule_version: typeof DOUYIN_RENDER_RULE_VERSION;

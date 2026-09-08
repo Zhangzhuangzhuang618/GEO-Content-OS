@@ -173,6 +173,54 @@ describe('douyin render contract', () => {
     expect(codes(validateDouyinContent(input))).toContain('CITATION_LINK_MISSING');
   });
 
+  it.each(['script', 'image-note'])(
+    'accepts verified private citations without exposing IDs or storage links (%s)',
+    async (kind) => {
+      const input = (
+        kind === 'script' ? await readJson('douyin.valid.input.json') : await imageNoteInput()
+      ) as {
+        citations: unknown[];
+        content: { citation_map: { citation_ids: string[] }[] };
+        internal_citation_ids?: string[];
+      };
+      input.internal_citation_ids = [
+        ...new Set(input.content.citation_map.flatMap((claim) => claim.citation_ids)),
+      ];
+      input.citations = [];
+      expect(validator(DOUYIN_RENDER_INPUT_JSON_SCHEMA)(input)).toBe(true);
+      const result = renderDouyin(input);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.payload.citation_links).toEqual([]);
+      expect(JSON.stringify(result.payload)).not.toContain('internal_citation_ids');
+      for (const id of input.internal_citation_ids)
+        expect(JSON.stringify(result.payload)).not.toContain(id);
+    },
+  );
+
+  it('keeps public links while requiring every remaining reference to be verified', async () => {
+    const input = (await imageNoteInput()) as {
+      citations: { citation_id: string }[];
+      content: {
+        citation_map: { claim_key: string; claim_text: string; citation_ids: string[] }[];
+      };
+      internal_citation_ids?: string[];
+    };
+    const privateId = '22000000-0000-4000-8000-000000000999';
+    input.content.citation_map.push({
+      claim_key: 'private-evidence',
+      claim_text: '已核验服务说明',
+      citation_ids: [privateId],
+    });
+    expect(codes(validateDouyinContent(input))).toContain('CITATION_LINK_MISSING');
+    input.internal_citation_ids = [privateId];
+    const result = renderDouyin(input);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.payload.citation_links).toEqual(input.citations);
+    input.internal_citation_ids = ['22000000-0000-4000-8000-000000000998'];
+    expect(codes(validateDouyinContent(input))).toContain('CITATION_LINK_MISSING');
+  });
+
   it('renders a script package without claiming a produced video', async () => {
     const result = renderDouyin(await readJson('douyin.valid.input.json'));
     expect(result.ok).toBe(true);

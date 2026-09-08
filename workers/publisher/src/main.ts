@@ -17,7 +17,11 @@ async function main(): Promise<void> {
     {
       platform: new PlatformPublisher(storage),
       storage,
-      store: new PostgresPublisherStore(database, config.staleAfterMs),
+      store: new PostgresPublisherStore(
+        database,
+        config.staleAfterMs,
+        config.compatibleServicePhones,
+      ),
     },
     createPublisherCredentialService(),
   );

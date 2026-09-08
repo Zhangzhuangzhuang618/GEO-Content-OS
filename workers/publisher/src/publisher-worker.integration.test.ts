@@ -194,6 +194,63 @@ describe('publisher worker', () => {
     ]);
   });
 
+  it.each([
+    'valid',
+    'expired',
+    'not-yet-valid',
+    'deleted',
+    'unlinked',
+    'other-project',
+    'other-workspace',
+    'public',
+  ])('only authorizes current scoped private citation IDs (%s)', async (scenario) => {
+    const database = requireClient(client);
+    await seedCitation(database, scenario !== 'unlinked');
+    await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+    await database`UPDATE briefs SET platform_codes=ARRAY['official_site','douyin']::varchar[] WHERE id=${BRIEF_ID}::uuid`;
+    await database`UPDATE content_variants SET platform_code='douyin' WHERE id=${VARIANT_ID}::uuid`;
+    await database`UPDATE platform_accounts SET platform_code='douyin' WHERE id=${ACCOUNT_ID}::uuid`;
+    await database`INSERT INTO publish_jobs(id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,idempotency_key,payload_hash,status,created_by) VALUES(${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${VERSION_ID}::uuid,${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00Z','publish-job-125-stable',${CONTENT_HASH},'scheduled',${USER_ID}::uuid)`;
+    if (scenario !== 'public') {
+      await database`UPDATE source_documents SET source_type='txt',mime_type='text/plain',uri='s3://private/service.txt' WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+      await database`UPDATE source_chunks SET metadata_json=metadata_json-'url' WHERE id=${SOURCE_CHUNK_ID}::uuid`;
+    }
+    if (scenario === 'expired')
+      await database`UPDATE source_documents SET effective_to=now()-interval '1 day' WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+    if (scenario === 'not-yet-valid')
+      await database`UPDATE source_documents SET effective_from=now()+interval '1 day' WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+    if (scenario === 'deleted')
+      await database`UPDATE source_documents SET status='expired',deleted_at=now() WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+    if (scenario === 'other-project' || scenario === 'other-workspace') {
+      const anotherWorkspace = randomUUID();
+      const anotherProject = randomUUID();
+      await database`INSERT INTO workspaces(id,tenant_id,name,slug,timezone,status) VALUES(${anotherWorkspace}::uuid,${TENANT_ID}::uuid,'Other','other-scope','Asia/Shanghai','active')`;
+      await database`INSERT INTO projects(id,tenant_id,workspace_id,name,owner_id,status) VALUES(${anotherProject}::uuid,${TENANT_ID}::uuid,${scenario === 'other-project' ? WORKSPACE_ID : anotherWorkspace}::uuid,'Other',${USER_ID}::uuid,'active')`;
+      await database`UPDATE source_documents SET workspace_id=${scenario === 'other-project' ? WORKSPACE_ID : anotherWorkspace}::uuid,project_id=${anotherProject}::uuid WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+    }
+    const claim = await new PostgresPublisherStore(database).claim(validatePublishEvent(event()));
+    expect(claim.kind).toBe('claimed');
+    if (claim.kind !== 'claimed') return;
+    expect(claim.value.internalCitationIds).toEqual(scenario === 'valid' ? [SOURCE_CHUNK_ID] : []);
+    expect(claim.value.citations).toHaveLength(scenario === 'public' ? 1 : 0);
+  });
+
+  it('selects an approved account phone for the immutable publish snapshot only', async () => {
+    const database = requireClient(client);
+    await database`UPDATE workspaces SET settings_json=jsonb_set(settings_json,'{official_site_service_phone}','"4008372383"') WHERE id=${WORKSPACE_ID}::uuid`;
+    const stored =
+      await database`SELECT content_json FROM content_versions WHERE id=${VERSION_ID}::uuid`;
+    // Only the render-time phone changes; the immutable content version retains its old CTA.
+    const claim = await new PostgresPublisherStore(database, 120_000, {
+      [ACCOUNT_ID]: ['02085627757', '4008372383'],
+    }).claim(validatePublishEvent(event()));
+    expect(claim.kind).toBe('claimed');
+    if (claim.kind === 'claimed') expect(claim.value.officialSiteServicePhone).toBe('02085627757');
+    expect(
+      await database`SELECT content_json FROM content_versions WHERE id=${VERSION_ID}::uuid`,
+    ).toEqual(stored);
+  });
+
   it('keeps a Douyin image-note job scheduled until every card image is ready', async () => {
     const database = requireClient(client);
     const douyinVersionId = '81000000-0000-4000-8000-000000000126';
@@ -1697,6 +1754,7 @@ async function seed(database: Sql, credentials: CredentialEnvelopeService): Prom
       ${VERSION_ID}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,
       1,'content-writer@1',${database.json({
         body: 'Approved publication body',
+        cta: '请致电 02085627757。',
         schema_version: 'content-writer@1',
       })},${CONTENT_HASH},${USER_ID}::uuid
     )
@@ -1728,7 +1786,7 @@ async function seed(database: Sql, credentials: CredentialEnvelopeService): Prom
   `;
 }
 
-async function seedCitation(database: Sql): Promise<void> {
+async function seedCitation(database: Sql, linked = true): Promise<void> {
   const quote = '公开资料直接支持这项事实。';
   await database`
     INSERT INTO source_documents(
@@ -1755,6 +1813,7 @@ async function seedCitation(database: Sql): Promise<void> {
       })},12,'active'
     )
   `;
+  if (!linked) return;
   await database`
     INSERT INTO ai_citations(
       id,tenant_id,content_version_id,claim_key,claim_text,

@@ -109,6 +109,7 @@ export const DouyinRenderInputSchema = z
       .max(200)
       .refine((items) => unique(items.map((item) => item.citation_id))),
     content: DouyinContentSchema,
+    internal_citation_ids: z.array(UuidSchema).max(200).refine(unique).optional(),
     rule_version: z.literal(DOUYIN_RENDER_RULE_VERSION),
   })
   .strict();
@@ -393,6 +394,12 @@ export const DOUYIN_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
   $defs: { ...definitions, content: contentDefinition },
   additionalProperties: false,
   properties: {
+    internal_citation_ids: {
+      items: { format: 'uuid', type: 'string' },
+      maxItems: 200,
+      uniqueItems: true,
+      type: 'array',
+    },
     citations: { items: { $ref: '#/$defs/citation' }, maxItems: 200, type: 'array' },
     content: { $ref: '#/$defs/content' },
     rule_version: { const: DOUYIN_RENDER_RULE_VERSION },
