@@ -107,10 +107,14 @@ export class CloudflareWorkersAiImageAdapter implements ImageProvider {
         method: 'POST',
         signal: controller.signal,
       });
-      if (!response.ok) throw providerFailure(`request failed with status ${response.status}`);
+      if (!response.ok) {
+        await this.logResponseFailure(response, modelId, requestId, body);
+        throw providerFailure(`request failed with status ${response.status}`);
+      }
       const parsed = (await response.json()) as unknown;
       const envelope = object(parsed);
       if (envelope['success'] !== true || !isObject(envelope['result'])) {
+        await this.logResponseFailure(response, modelId, requestId, body, envelope);
         throw providerFailure('response envelope is invalid');
       }
       return envelope;
@@ -126,6 +130,106 @@ export class CloudflareWorkersAiImageAdapter implements ImageProvider {
 
   private url(modelId: string): string {
     return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(this.configuration.accountId)}/ai/run/${modelId}`;
+  }
+
+  private async logResponseFailure(
+    response: Response,
+    modelId: string,
+    requestId: string,
+    body: Readonly<Record<string, unknown>>,
+    envelope?: Readonly<Record<string, unknown>>,
+  ): Promise<void> {
+    // Diagnostics must not replace the existing error or escape into customer-facing messages.
+    try {
+      const details = envelope ?? (await readErrorEnvelope(response));
+      const secrets = [this.configuration.apiToken, this.configuration.accountId];
+      const redact = (value: unknown): string | null => {
+        if (typeof value !== 'string') return null;
+        let text = value;
+        for (const secret of secrets) {
+          if (secret) text = text.replaceAll(secret, '[REDACTED]');
+        }
+        // Provider errors can echo input; remove known request strings before truncating.
+        for (const input of [
+          body['prompt'],
+          body['image'],
+          ...(Array.isArray(body['messages'])
+            ? body['messages'].filter(isObject).map((message) => message['content'])
+            : []),
+        ]) {
+          if (typeof input === 'string' && input) text = text.replaceAll(input, '[REDACTED_INPUT]');
+        }
+        return text
+          .replace(/Bearer\s+[^\s"']+/giu, 'Bearer [REDACTED]')
+          .replace(
+            /((?:api[_-]?key|token|authorization|password|secret)["']?\s*[:=]\s*["']?)[^\s,"'}]+/giu,
+            '$1[REDACTED]',
+          )
+          .replace(/data:image\/[^\s"']+/giu, '[REDACTED_IMAGE]')
+          .replace(/https?:\/\/[^\s"']+/giu, '[REDACTED_URL]')
+          .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/gu, '[REDACTED_EMAIL]')
+          .replace(/\b1[3-9]\d{9}\b/gu, '[REDACTED_PHONE]')
+          .replace(/[\r\n\t]/gu, ' ')
+          .slice(0, 512);
+      };
+      const errors = Array.isArray(details?.['errors']) ? details['errors'] : [];
+      console.warn(
+        JSON.stringify({
+          event: 'cloudflare_image_provider_failure',
+          provider: 'cloudflare',
+          operation: typeof body['prompt'] === 'string' ? 'generate' : 'inspect',
+          model_id: modelId,
+          request_id: requestId,
+          http_status: response.status,
+          cf_ray: redact(response.headers.get('cf-ray')),
+          provider_request_id: redact(
+            details?.['request_id'] ?? response.headers.get('x-request-id'),
+          ),
+          retry_after: redact(response.headers.get('retry-after')),
+          error_body_available: details !== null,
+          errors: errors
+            .slice(0, 5)
+            .filter(isObject)
+            .map((error) => ({
+              code:
+                typeof error['code'] === 'number' && Number.isFinite(error['code'])
+                  ? error['code']
+                  : redact(error['code']),
+              message: redact(error['message']),
+            })),
+        }),
+      );
+    } catch {
+      // Logging is best-effort; generation and fallback behavior stay unchanged.
+    }
+  }
+}
+
+async function readErrorEnvelope(
+  response: Response,
+): Promise<Readonly<Record<string, unknown>> | null> {
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const timer = setTimeout(() => {
+    void reader.cancel().catch(() => undefined);
+  }, 1_000);
+  try {
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > 16_384) return null;
+      chunks.push(value);
+    }
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    return isObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+    void reader.cancel().catch(() => undefined);
   }
 }
 
