@@ -55,6 +55,20 @@ export const QUALITY_CHECKER_INPUT_SCHEMA: JsonSchema = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   additionalProperties: false,
   properties: {
+    editorial_context: { type: ['object', 'null'] },
+    recommendation_evidence: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          citation_id: UUID_SCHEMA,
+          claim_key: { type: 'string', minLength: 1 },
+          quote_text: { type: 'string', minLength: 1 },
+        },
+        required: ['citation_id', 'claim_key', 'quote_text'],
+      },
+    },
     brand_policy: {
       additionalProperties: false,
       properties: {

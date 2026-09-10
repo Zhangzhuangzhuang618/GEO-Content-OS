@@ -14,7 +14,12 @@ describe('generated content version persistence', () => {
       queries.push(query);
       if (query.includes('SELECT COALESCE(max(version_no)')) return [{ versionNo: 2 }];
       if (query.includes('INSERT INTO content_versions')) return [];
-      if (query.includes('SELECT id FROM content_versions')) return [{ id: EXISTING_VERSION_ID }];
+      if (
+        query.includes(
+          'SELECT id,editorial_context_json AS "editorialContext" FROM content_versions',
+        )
+      )
+        return [{ id: EXISTING_VERSION_ID, editorialContext: null }];
       throw new Error(`Unexpected SQL after version reuse: ${query}`);
     }) as unknown as postgres.TransactionSql;
 

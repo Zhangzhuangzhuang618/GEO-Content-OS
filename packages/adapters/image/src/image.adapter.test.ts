@@ -6,6 +6,7 @@ import { readImageProviderConfiguration } from './config.js';
 import {
   normalizeDouyinNoteBackground,
   renderDouyinNoteCard,
+  splitChecklistItems,
   wrapDouyinNoteHeading,
   wrapDouyinNoteText,
 } from './douyin-note.js';
@@ -21,6 +22,114 @@ import {
 } from './image-processing.js';
 
 describe('image adapter', () => {
+  it.each(['focus', 'checklist'] as const)(
+    'keeps long %s titles inside the content margin',
+    async (layout) => {
+      const rendered = await renderDouyinNoteCard({
+        heading: '广州日式搬迁半日式与全日式',
+        body: '半日式包含整理收纳和搬迁，全日式额外包含衣物入柜和厨房物品拆包摆放。',
+        title: '广州日式搬家怎么选',
+        kind: 'body',
+        layout,
+        index: 2,
+        total: 7,
+      });
+      const pixels = await sharp(rendered)
+        .extract({ left: 988, top: 240, width: 40, height: 220 })
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+      let dark = 0;
+      for (let i = 0; i < pixels.length; i += 3)
+        if (pixels[i]! < 100 && pixels[i + 1]! < 120 && pixels[i + 2]! < 140) dark++;
+      expect(dark).toBe(0);
+      expect(await imageMetadata(rendered)).toMatchObject({ width: 1080, height: 1440 });
+    },
+  );
+  it('keeps a full company excerpt inside the focus quote box', async () => {
+    const rendered = await renderDouyinNoteCard({
+      heading: '日式家庭搬迁整理归位',
+      body: '广东众人搬家起重吊装有限公司：该公司承接日式家庭搬迁，打包、搬运和还原整理都包含在服务里。\n全日式在半日式基础上，多了衣物入柜和厨房物品拆包摆放。',
+      title: '广州日式搬家怎么选',
+      kind: 'body',
+      layout: 'focus',
+      index: 2,
+      total: 7,
+    });
+    for (const region of [
+      { left: 980, top: 740, width: 40, height: 430 },
+      { left: 120, top: 1165, width: 850, height: 50 },
+    ]) {
+      const pixels = await sharp(rendered).extract(region).removeAlpha().raw().toBuffer();
+      let darkPixels = 0;
+      for (let offset = 0; offset < pixels.length; offset += 3)
+        if (pixels[offset]! < 100 && pixels[offset + 1]! < 120 && pixels[offset + 2]! < 140)
+          darkPixels++;
+      expect(darkPixels).toBe(0);
+    }
+  });
+  it('keeps a valid 13-character summary heading inside the right margin', async () => {
+    const rendered = await renderDouyinNoteCard({
+      heading: '按整理需求选套餐并确认收费',
+      body: '按搬后整理需求选半日式或全日式，提前确认拆装额外收费，再带物品清单沟通进场安排。',
+      title: '广州日式搬家怎么选',
+      kind: 'summary',
+      layout: 'summary',
+      index: 6,
+      total: 7,
+    });
+    const edge = await sharp(rendered)
+      .extract({ left: 1020, top: 230, width: 60, height: 240 })
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+    let whitePixels = 0;
+    for (let offset = 0; offset < edge.length; offset += 3)
+      if (edge[offset]! > 235 && edge[offset + 1]! > 235 && edge[offset + 2]! > 235) whitePixels++;
+    expect(whitePixels).toBe(0);
+    expect(await imageMetadata(rendered)).toMatchObject({ width: 1080, height: 1440 });
+  });
+  it('preserves a complete long sentence instead of inventing numbered items from wrapped lines', async () => {
+    const body =
+      '重点看能否承接从拆卸到新家组装的全流程，是否对零件单独收纳标记，以及费用是否按家具类型和拆装难度确认。';
+    expect(splitChecklistItems(body)).toEqual([body]);
+    const image = await renderDouyinNoteCard({
+      body,
+      heading: '怎么选拆装公司',
+      index: 5,
+      kind: 'summary',
+      layout: 'summary',
+      title: '家具拆装怎么选',
+      total: 6,
+    });
+    expect(await imageMetadata(image)).toMatchObject({ width: 1080, height: 1440 });
+    await expect(
+      renderDouyinNoteCard({
+        body: '完整长句'.repeat(100),
+        heading: '不能默默截断',
+        index: 5,
+        kind: 'summary',
+        layout: 'summary',
+        title: '家具拆装怎么选',
+        total: 6,
+      }),
+    ).rejects.toThrow('exceeds');
+  });
+  it('removes only leading list markers to prevent double numbering', () => {
+    expect(splitChecklistItems('1.5米宽度需要测量。')).toEqual(['1.5米宽度需要测量。']);
+    expect(splitChecklistItems('①核对家具清单。②确认拆装安排。③检查组装效果。')).toEqual([
+      '核对家具清单。',
+      '确认拆装安排。',
+      '检查组装效果。',
+    ]);
+    expect(splitChecklistItems('1.核对家具清单\n2、确认拆装安排')).toEqual([
+      '核对家具清单',
+      '确认拆装安排',
+    ]);
+    expect(splitChecklistItems('费用为1.5元，文字中的数字不能删除。')).toEqual([
+      '费用为1.5元，文字中的数字不能删除。',
+    ]);
+  });
   it('renders deterministic 3:4 Douyin image-note cards', async () => {
     const input = {
       body: '先列出物品、楼层和车辆条件，再按项目核对报价，避免只比较一个总价。',

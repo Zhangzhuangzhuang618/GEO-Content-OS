@@ -20,6 +20,7 @@ import type {
   PlatformAccount,
 } from './platform-account.schema';
 import { automaticDailyScheduleTimes } from './automatic-daily-schedule';
+import { ContentStyleSelect, type ContentStyle } from './account-content-policy';
 
 export function BrowserPlatformAutomationPanel({ account }: { readonly account: PlatformAccount }) {
   const defaultTarget = account.platform_code === 'lieju' ? 1 : 3;
@@ -37,6 +38,8 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
   const [serviceScopes, setServiceScopes] = useState('');
   const [targetRegions, setTargetRegions] = useState('');
   const [topicPool, setTopicPool] = useState('');
+  const [contentStyle, setContentStyle] = useState<ContentStyle | ''>('');
+  const [restartStyle, setRestartStyle] = useState<ContentStyle | ''>('');
   const selected = useMemo(
     () => policies.find((policy) => policy.project_id === projectId),
     [policies, projectId],
@@ -51,6 +54,10 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       : account.platform_code === 'douyin'
         ? '抖音'
         : '搜狐号';
+  useEffect(() => {
+    setContentStyle(selected?.content_style_override ?? '');
+    setRestartStyle('');
+  }, [selected?.id, selected?.content_style_override]);
 
   useEffect(() => {
     setDailyTargetCount(selected?.daily_target_count ?? defaultTarget);
@@ -134,6 +141,9 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       const saved = await saveBrowserPlatformAutomationPolicy(
         account.id,
         {
+          ...(account.platform_code === 'sohu'
+            ? {}
+            : { contentStyleOverride: contentStyle || null }),
           ...(account.platform_code === 'douyin' && douyinStrategy.accountPositioning
             ? douyinStrategy
             : {}),
@@ -236,7 +246,13 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
     try {
       const restarted = await restartBrowserPlatformDailyBatch(
         account.id,
-        { expectedBatchVersion: batch.version, projectId: selected.project_id },
+        {
+          expectedBatchVersion: batch.version,
+          projectId: selected.project_id,
+          ...(account.platform_code !== 'sohu' && restartStyle
+            ? { contentStyle: restartStyle }
+            : {}),
+        },
         csrf,
       );
       setPolicies((current) => [
@@ -300,6 +316,13 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
         </p>
       ) : null}
       <form className="mt-4 grid gap-3 md:grid-cols-2" onSubmit={save}>
+        {account.platform_code !== 'sohu' ? (
+          <ContentStyleSelect
+            value={contentStyle}
+            onChange={setContentStyle}
+            label="日批生文风格"
+          />
+        ) : null}
         <label className="text-sm text-ink-700">
           项目
           <select
@@ -466,6 +489,18 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
           ) : null}
         </div>
       </form>
+      {selected?.today_batch && account.platform_code !== 'sohu' ? (
+        <p className="mt-3 text-sm">
+          当前批次风格：
+          {selected.today_batch.content_style === 'company_recommendation'
+            ? '硬广·多公司推荐'
+            : '现有常规风格'}
+          （已冻结）
+          {selected.today_batch.recommended_company_names?.length
+            ? ` · 推荐顺序：${selected.today_batch.recommended_company_names.join(' → ')}`
+            : ''}
+        </p>
+      ) : null}
       {selected?.today_batch?.retry_allowed ? (
         <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <p className="font-semibold text-amber-950">今日批次因前置资料缺失而停止</p>
@@ -485,6 +520,14 @@ export function BrowserPlatformAutomationPanel({ account }: { readonly account: 
       ) : null}
       {selected?.today_batch?.restart_allowed ? (
         <section className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+          {account.platform_code !== 'sohu' ? (
+            <ContentStyleSelect
+              value={restartStyle}
+              onChange={setRestartStyle}
+              inheritLabel="跟随已保存的日批/账号设置"
+              label="重新发起本次的生文风格"
+            />
+          ) : null}
           <p className="font-semibold text-amber-950">本次候选已耗尽，今日目标尚未补足</p>
           <p className="mt-1 text-sm leading-6 text-amber-900">
             可保留前 {selected.today_batch.attempt_no}{' '}

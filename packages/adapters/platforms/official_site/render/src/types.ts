@@ -1,4 +1,5 @@
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
+import type { EditorialContext } from '@geo-content-os/contracts';
 
 export const OFFICIAL_SITE_PLATFORM_CODE = 'official_site' as const;
 export const OFFICIAL_SITE_RENDER_RULE_VERSION = 'official-site-render-rules@1.3.0' as const;
@@ -39,6 +40,7 @@ export interface OfficialSiteContent extends Omit<
 }
 
 export interface OfficialSiteRenderInput {
+  readonly editorial_context?: EditorialContext;
   readonly citations: readonly OfficialSiteCitationLink[];
   readonly content: OfficialSiteContent;
   readonly media_assets?: readonly OfficialSiteMediaAsset[];

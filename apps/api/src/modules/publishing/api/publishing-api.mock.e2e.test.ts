@@ -27,6 +27,7 @@ import {
   SohuBrowserSessionService,
 } from '../accounts/index.js';
 import { PublishJobService } from '../jobs/index.js';
+import { AccountContentPolicyService } from '../accounts/account-content-policy.service.js';
 import { PlatformAccountController, PublishJobController } from './publishing-api.controller.js';
 import { PublishingApiService } from './publishing-api.service.js';
 
@@ -305,6 +306,7 @@ describe('publishing API mock E2E', () => {
         { provide: BaijiahaoAutomationPolicyService, useValue: baijiahaoAutomation },
         { provide: BrowserPlatformAutomationPolicyService, useValue: browserPlatformAutomation },
         { provide: OfficialSiteAutomationPolicyService, useValue: automation },
+        { provide: AccountContentPolicyService, useValue: {} },
         { provide: PlatformAccountService, useValue: {} },
         { provide: PublishJobService, useValue: jobs },
         { provide: PublishingApiService, useValue: api },

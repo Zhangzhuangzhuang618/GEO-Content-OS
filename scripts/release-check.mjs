@@ -8,12 +8,12 @@ import { fileURLToPath } from 'node:url';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const staticOnly = process.argv.includes('--static-only');
 const executableBaseline = Object.freeze({
-  currentTableCount: 93,
+  currentTableCount: 94,
   frozenPageCount: 32,
   frozenTableCount: 57,
-  latestMigration: '0059_douyin_account_nickname',
-  previousMigration: '0058_douyin_image_note_title_limit',
-  publicEndpointCount: 170,
+  latestMigration: '0060_account_editorial_policy',
+  previousMigration: '0059_douyin_account_nickname',
+  publicEndpointCount: 172,
   skills: Object.freeze([
     'material-parser',
     'content-writer',
@@ -41,7 +41,7 @@ const commands = [
 
 assertStaticFreeze(manifest, commands);
 if (staticOnly) {
-  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T164.\n');
+  process.stdout.write('[RELEASE_CHECK_PASSED] Static release gate passed for v2.1/T165.\n');
 } else {
   for (const [id, arguments_] of commands) runGate(id, arguments_);
   process.stdout.write(

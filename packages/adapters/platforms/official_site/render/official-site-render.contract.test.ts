@@ -16,6 +16,35 @@ import { validateOfficialSiteContent } from './src/validate.js';
 const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.url);
 
 describe('official_site render contract', () => {
+  it('allows only frozen recommended names and never renders editorial metadata', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as {
+      content: { blocks: { text: string }[] };
+    };
+    const names = ['广东众人搬家起重吊装有限公司', '广州志远搬家服务有限公司'];
+    input.content.blocks[1]!.text += ` ${names[0]}与${names[1]}提供企业服务介绍。`;
+    expect(validateOfficialSiteContent(input).ok).toBe(false);
+    const contextual = {
+      ...input,
+      editorial_context: {
+        account_id: '11111111-1111-4111-8111-111111111111',
+        platform_code: 'official_site',
+        policy_version: 1,
+        schema_version: 'editorial-context@1',
+        style: 'company_recommendation',
+        template_version: 'company-recommendation@1',
+        companies: names.map((legal_name, index) => ({
+          id: `21111111-1111-4111-8111-11111111111${index}`,
+          legal_name,
+          source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+        })),
+      },
+    };
+    expect(validateOfficialSiteContent(contextual)).toMatchObject({ ok: true });
+    const rendered = renderOfficialSite(contextual);
+    expect(JSON.stringify(rendered)).not.toContain('editorial-context@1');
+    input.content.blocks[1]!.text += '广州未绑定测试有限公司。';
+    expect(validateOfficialSiteContent(contextual).ok).toBe(false);
+  });
   it('publishes immutable versioned rules and Draft 2020-12 payload schemas', async () => {
     expect(OFFICIAL_SITE_RENDER_RULES_V1.version).toBe('official-site-render-rules@1.3.0');
     expect(Object.isFrozen(OFFICIAL_SITE_RENDER_RULES_V1)).toBe(true);

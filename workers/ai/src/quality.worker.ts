@@ -1,5 +1,6 @@
 import type { ModelUsage } from '@geo-content-os/adapter-model';
 import type { PlatformCode } from '@geo-content-os/contracts';
+import { storedEditorialContext } from '@geo-content-os/contracts';
 import type { QualityCheckerData, QualityGeoScores } from '@geo-content-os/contracts/skills';
 import type postgres from 'postgres';
 
@@ -18,6 +19,7 @@ import type { RuntimeQualityChecker } from './runtime-quality-checker.js';
 import type { UsageContext } from './usage-recorder.js';
 
 interface QualityContext extends UsageContext {
+  readonly editorialContext: unknown;
   readonly actorUserId: string;
   readonly brandProfileId: string;
   readonly brandProfile: Readonly<Record<string, unknown>>;
@@ -92,6 +94,19 @@ export class QualityCheckWorker {
       const assessment = await this.checker.evaluate({
         context,
         qualityInput: {
+          editorial_context: context.editorialContext ?? null,
+          ...(storedEditorialContext(context.editorialContext, context.platformCode)?.style ===
+          'company_recommendation'
+            ? {
+                recommendation_evidence: citations
+                  .filter((citation) => citation.quoteText.trim())
+                  .map((citation) => ({
+                    citation_id: citation.id,
+                    claim_key: citation.claimKey,
+                    quote_text: citation.quoteText,
+                  })),
+              }
+            : {}),
           brand_policy: {
             brand_profile_id: context.brandProfileId,
             policy: context.brandProfile,
@@ -122,6 +137,7 @@ export class QualityCheckWorker {
       const result = mergeDeterministicRiskIssues(
         assessment,
         scanDeterministicRisks({
+          editorialContext: context.editorialContext,
           brandProfile: context.brandProfile,
           citations: citations.map((citation) => ({
             claimText: citation.claimText,
@@ -175,6 +191,7 @@ export class QualityCheckWorker {
           ELSE brand.profile_json END AS "brandProfile",
           brand.version AS "brandVersion",
           version.content_json AS content,
+          version.editorial_context_json AS "editorialContext",
           version.content_hash AS "contentHash",
           version.id AS "contentVersionId",
           run.id AS "runId",
@@ -553,7 +570,30 @@ export function calculateGeoScores(
     )
     .join('\n')}`;
   const characterCount = [...text].length;
-  const question = /[？?]|如何|怎么|为什么|哪些|是否|指南|方法/u.test(title) ? 90 : 72;
+  // This is a question-signal heuristic, not a title-format requirement. Questions
+  // in the delivered body/FAQ/cards count too; semantic adequacy remains the
+  // quality checker's responsibility. Do not score source evidence or the brief.
+  const meta = content['platform_meta'];
+  const readsBodyQuestions = ['official_site', 'lieju', 'douyin'].includes(platformCode);
+  const questionParts = [readsBodyQuestions ? text : title];
+  if (readsBodyQuestions && meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    const fields = meta as Record<string, unknown>;
+    for (const entry of Array.isArray(fields['faq']) ? fields['faq'] : []) {
+      if (entry && typeof entry === 'object' && typeof entry.question === 'string')
+        questionParts.push(entry.question);
+    }
+    if (platformCode === 'douyin') {
+      for (const card of Array.isArray(fields['cards']) ? fields['cards'] : []) {
+        if (card && typeof card === 'object') {
+          if (typeof card.heading === 'string') questionParts.push(card.heading);
+          if (typeof card.body === 'string') questionParts.push(card.body);
+        }
+      }
+    }
+  }
+  const question = /[？?]|如何|怎么|为什么|哪些|是否|指南|方法/u.test(questionParts.join('\n'))
+    ? 90
+    : 72;
   const answerability = Math.min(95, 55 + blocks.length * 5 + (summary.length >= 30 ? 10 : 0));
   const entity = /公司|品牌|服务|产品|机构/u.test(text) ? 88 : 72;
   const acceptsFirstPartyFacts =

@@ -9,6 +9,13 @@ const CLOSING_PUNCTUATION = /^[，。！？；：、）》】」』〕,.!?;:)]+$
 const OPENING_PUNCTUATION_AT_END = /[（《【「『〔(]+$/u;
 const WORD_SEGMENTER = new Intl.Segmenter('zh-CN', { granularity: 'word' });
 
+// Use the exact renderer geometry when choosing a template; character counts
+// alone cannot predict list-item wrapping. This never truncates customer copy.
+export function validateDouyinNoteCardLayout(input: DouyinNoteCardInput): void {
+  validateInput(input);
+  cardSvg(input, false);
+}
+
 export async function renderDouyinNoteCard(input: DouyinNoteCardInput): Promise<Uint8Array> {
   validateInput(input);
   const background = input.background ? await backgroundForRendering(input.background) : null;
@@ -169,7 +176,8 @@ function photoSvg(input: DouyinNoteCardInput): string {
 
 function editorialSvg(input: DouyinNoteCardInput): string {
   const palette = palettes(input.kind, input.index);
-  const headingLines = wrapDouyinNoteHeading(input.heading, 'body');
+  // 72px glyphs must fit between the 92px margins (896px), not 13 glyphs.
+  const headingLines = wrapDouyinNoteText(input.heading, 12);
   if (headingLines.length > 2) {
     throw new Error('Douyin note card heading exceeds the deterministic layout');
   }
@@ -200,7 +208,8 @@ function editorialSvg(input: DouyinNoteCardInput): string {
 }
 
 function summarySvg(input: DouyinNoteCardInput): string {
-  const headingLines = wrapDouyinNoteHeading(input.heading, 'summary');
+  // 78px glyphs have 936px of horizontal space. Preserve legacy wrapping.
+  const headingLines = wrapDouyinNoteText(input.heading, 12);
   if (headingLines.length > 2) {
     throw new Error('Douyin note card heading exceeds the deterministic layout');
   }
@@ -224,15 +233,22 @@ function summarySvg(input: DouyinNoteCardInput): string {
 }
 
 function focusBody(value: string, accent: string): string {
-  const lines = wrapDouyinNoteText(value, 19);
+  // 896px box minus 54px padding on each side: 788 / 45 < 17.6 glyphs.
+  const lines = wrapDouyinNoteText(value, 17.5);
   if (lines.length > 6) throw new Error('Douyin note card body exceeds the deterministic layout');
-  return `<rect x="92" y="610" width="896" height="490" rx="36" fill="${accent}" fill-opacity="0.08"/>
+  return `<rect x="92" y="610" width="896" height="550" rx="36" fill="${accent}" fill-opacity="0.08"/>
     <text x="126" y="708" fill="${accent}" font-size="84" font-weight="800" font-family="${FONT_FAMILY}">“</text>
     ${textLines(lines, 146, 790, 45, 70, '500', '#334155')}`;
 }
 
 function checklistBody(value: string, accent: string, top = 600, textColor = '#334155'): string {
   const items = splitChecklistItems(value);
+  if (items.length === 1) {
+    const lines = wrapDouyinNoteText(items[0]!, 20);
+    if (lines.length > 7 || top + (lines.length - 1) * 62 > 1_226)
+      throw new Error('Douyin note card body exceeds the deterministic layout');
+    return textLines(lines, 92, top, 42, 62, '500', textColor);
+  }
   const rendered: string[] = [];
   let y = top;
   let totalLines = 0;
@@ -252,15 +268,13 @@ function checklistBody(value: string, accent: string, top = 600, textColor = '#3
   return rendered.join('');
 }
 
-function splitChecklistItems(value: string): readonly string[] {
+export function splitChecklistItems(value: string): readonly string[] {
   const items = value
     .trim()
     .split(/(?:\r?\n)+|(?<=[。！？；])/u)
-    .map((item) => item.trim())
+    .map((item) => item.trim().replace(/^(?:[①②③④⑤⑥⑦⑧⑨⑩]|\d{1,2}[.、)）](?!\d))\s*/u, ''))
     .filter(Boolean);
-  if (items.length >= 2) return Object.freeze(items);
-  const lines = wrapDouyinNoteText(value, 22);
-  return Object.freeze(lines.length > 1 ? lines : [value.trim()]);
+  return Object.freeze(items);
 }
 
 function validateInput(input: DouyinNoteCardInput): void {

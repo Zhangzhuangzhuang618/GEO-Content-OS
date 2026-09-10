@@ -39,6 +39,81 @@ afterEach(async () => {
 });
 
 describe('QualityCheckerSkill', () => {
+  it('corrects a revise decision containing BLOCK without deleting any findings or calling the model again', async () => {
+    const finding = {
+      category: 'fact',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文新增了资料未支持的服务保证。',
+      rule_id: 'fact.recommendation.claim_overreach',
+      severity: 'BLOCK',
+      suggestion: '删除无依据保证。',
+    };
+    const data = { ...fixture.output.data, decision: 'revise', issues: [finding] };
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ text: JSON.stringify(data) }],
+    });
+    const result = await skill(adapter).run({
+      context,
+      input: fixture.input,
+      recordUsage: () => undefined,
+    });
+    expect(result.output.data).toEqual({ ...data, decision: 'block' });
+    expect(result.usages).toHaveLength(1);
+    expect(result.schemaRepairAttempts).toBe(0);
+  });
+
+  it.each(['remove', 'downgrade'] as const)(
+    'fails closed if JSON repair attempts to %s an existing finding',
+    async (change) => {
+      const finding = {
+        category: 'readability',
+        citation_ids: [],
+        location: 'blocks[0].text',
+        message: '第二家公司重复全文套餐说明。',
+        rule_id: 'readability.duplicate_service_list',
+        severity: 'WARN',
+        suggestion: '保留承接身份，展开不同细节。',
+      };
+      const first = { ...fixture.output.data, score: 'invalid', issues: [finding] };
+      const repaired = {
+        ...fixture.output.data,
+        issues: change === 'remove' ? [] : [{ ...finding, severity: 'INFO' }],
+      };
+      const adapter = new MockModelAdapter({
+        modelKey: 'flash',
+        responses: [first, repaired].map((x) => ({ text: JSON.stringify(x) })),
+      });
+      await expect(
+        skill(adapter).run({ context, input: fixture.input, recordUsage: () => undefined }),
+      ).rejects.toThrow('QUALITY_REPAIR_FINDINGS_LOST');
+    },
+  );
+
+  it('allows JSON field repair when every original finding is preserved', async () => {
+    const finding = {
+      category: 'fact',
+      citation_ids: [],
+      location: 'blocks[0].text',
+      message: '正文新增无依据的保证。',
+      rule_id: 'fact.recommendation.claim_overreach',
+      severity: 'BLOCK',
+      suggestion: '删除保证。',
+    };
+    const data = { ...fixture.output.data, decision: 'block', issues: [finding] };
+    const adapter = new MockModelAdapter({
+      modelKey: 'flash',
+      responses: [{ ...data, score: 'invalid' }, data].map((x) => ({ text: JSON.stringify(x) })),
+    });
+    const result = await skill(adapter).run({
+      context,
+      input: fixture.input,
+      recordUsage: () => undefined,
+    });
+    expect(result.output.data).toEqual(data);
+    expect(result.schemaRepairAttempts).toBe(1);
+  });
   it('uses the frozen tool whitelist with the Mock Adapter', async () => {
     const adapter = new MockModelAdapter({
       modelKey: 'flash',

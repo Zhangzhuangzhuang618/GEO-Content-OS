@@ -1,5 +1,6 @@
 import {
   assertContentVariantTransition,
+  supportsEditorialStyle,
   type ContentPackageStatus,
   type ContentVariantStatus,
   type DomainEventEnvelope,
@@ -75,9 +76,12 @@ export class GenerationRequestService {
         throw generationStateInvalid(`Variant ${variant.id} cannot enter generation`);
       }
     }
-    const accountTargetsRequired = requiresPlatformAccounts();
+    const writerBrief = input.writerInput['brief'] as JsonObject | undefined;
+    const writerConstraints = writerBrief?.['constraints'] as JsonObject | undefined;
+    const accountTargetsRequired =
+      requiresPlatformAccounts() || Boolean(writerConstraints?.['target_accounts_by_code']);
     const targetAccounts = accountTargetsRequired
-      ? await lockTargetAccounts(transaction, context, required)
+      ? await lockTargetAccounts(transaction, context, required, input.writerInput)
       : new Map<PlatformCode, string>();
 
     const inputHash = sha256(
@@ -187,6 +191,7 @@ async function lockTargetAccounts(
   transaction: TransactionSql,
   context: GenerationRequestContext,
   variants: readonly VariantRow[],
+  writerInput: JsonObject,
 ): Promise<ReadonlyMap<PlatformCode, string>> {
   const platforms = variants.map((variant) => variant.platformCode);
   const rows = await transaction<TargetAccountRow[]>`
@@ -210,12 +215,21 @@ async function lockTargetAccounts(
   const targets = new Map<PlatformCode, string>();
   for (const platform of platforms) {
     const ids = grouped.get(platform) ?? [];
-    if (ids.length !== 1) {
+    const brief = writerInput['brief'] as JsonObject | undefined;
+    const constraints = brief?.['constraints'] as JsonObject | undefined;
+    const configured = constraints?.['target_accounts_by_code'] as JsonObject | undefined;
+    const target = configured?.[platform] as JsonObject | undefined;
+    const selected = supportsEditorialStyle(platform) ? target?.['account_id'] : undefined;
+    if (
+      selected !== undefined
+        ? typeof selected !== 'string' || !ids.includes(selected)
+        : ids.length !== 1
+    ) {
       throw generationStateInvalid(
         `Platform ${platform} requires exactly one active account before generation`,
       );
     }
-    targets.set(platform, ids[0]!);
+    targets.set(platform, typeof selected === 'string' ? selected : ids[0]!);
   }
   return targets;
 }

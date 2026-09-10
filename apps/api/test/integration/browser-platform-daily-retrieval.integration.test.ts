@@ -12,6 +12,7 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
+import { loadRecommendationEvidence } from '@geo-content-os/retrieval';
 
 const USER_ID = '12000000-0000-4000-8000-000000000154';
 const TENANT_ID = '22000000-0000-4000-8000-000000000154';
@@ -57,6 +58,62 @@ describe('browser-platform daily candidate retrieval', () => {
   afterAll(async () => {
     await client?.end();
     await container?.stop();
+  });
+
+  it('loads only explicitly bound current sources and rejects expired or inaccessible recommendation evidence', async () => {
+    const database = requireClient(client);
+    const companies = [
+      { id: SOURCE_ID, legal_name: '广州测试搬家有限公司', source_document_ids: [SOURCE_ID] },
+    ];
+    const scope = {
+      tenantId: TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+    };
+    const rows = await database.begin((transaction) =>
+      loadRecommendationEvidence(transaction, scope, companies),
+    );
+    expect(rows.map((row) => row.sourceId)).toEqual([SOURCE_ID]);
+    await expect(
+      database.begin((transaction) =>
+        loadRecommendationEvidence(transaction, { ...scope, projectId: BRAND_ID }, companies),
+      ),
+    ).rejects.toThrow('资料不可用');
+    await database`UPDATE source_documents SET effective_to=CURRENT_DATE-1 WHERE id=${SOURCE_ID}::uuid`;
+    await expect(
+      database.begin((transaction) => loadRecommendationEvidence(transaction, scope, companies)),
+    ).rejects.toThrow('广州测试搬家有限公司');
+  });
+
+  it('requires certificate holder, authorization, active chunks and current validity for recommendations', async () => {
+    const database = requireClient(client);
+    const scope = {
+      tenantId: TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+    };
+    const companies = [
+      {
+        id: SOURCE_ID,
+        legal_name: '广州示例搬家有限公司',
+        source_document_ids: [CERTIFICATE_SOURCE_ID],
+      },
+    ];
+    const load = () =>
+      database.begin((transaction) => loadRecommendationEvidence(transaction, scope, companies));
+    expect((await load()).map((row) => row.sourceId)).toEqual([CERTIFICATE_SOURCE_ID]);
+    companies[0]!.legal_name = '另一家公司';
+    await expect(load()).rejects.toThrow('持证主体');
+    companies[0]!.legal_name = '广州示例搬家有限公司';
+    await database`UPDATE source_documents SET metadata_json=jsonb_set(metadata_json,'{article_use_allowed}','false') WHERE id=${CERTIFICATE_SOURCE_ID}::uuid`;
+    await expect(load()).rejects.toThrow('资料不可用');
+    await database`UPDATE source_documents SET metadata_json=jsonb_set(metadata_json,'{article_use_allowed}','true'),effective_to=CURRENT_DATE-1 WHERE id=${CERTIFICATE_SOURCE_ID}::uuid`;
+    await expect(load()).rejects.toThrow('资料不可用');
+    await database`UPDATE source_documents SET effective_to=NULL WHERE id=${CERTIFICATE_SOURCE_ID}::uuid`;
+    await database`UPDATE source_chunks SET status='inactive' WHERE id=${CERTIFICATE_CHUNK_ID}::uuid`;
+    await expect(load()).rejects.toThrow('资料不可用');
   });
 
   it('retrieves and freezes evidence independently for Sohu and Lieju candidates', async () => {

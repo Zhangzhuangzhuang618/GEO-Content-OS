@@ -1,6 +1,9 @@
 import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   assessDouyinOwnerPromotion,
+  readWriterEditorialContext,
+  editorialAllowedCompanyNames,
+  assessCompanyRecommendation,
   buildEnterpriseAssuranceText,
   companyNamePolicyInstruction,
   findDisallowedCompanyNames,
@@ -52,6 +55,49 @@ import { createHash } from 'node:crypto';
 import type postgres from 'postgres';
 
 import { contentHash } from './generation.content.js';
+import {
+  recommendationCertificates,
+  recommendationCertificateIssues,
+  RECOMMENDATION_CERTIFICATE_INSTRUCTION,
+} from './recommendation-certificates.js';
+import {
+  RECOMMENDATION_EVIDENCE_PLAN_INSTRUCTION,
+  recommendationEvidencePlanSchema,
+  recommendationPlanOverlapIssues,
+  selectRecommendationEvidence,
+  type RecommendationEvidencePlan,
+} from './recommendation-evidence-plan.js';
+import {
+  recommendationCardInstruction,
+  recommendationInstruction,
+  recommendationCardOptions,
+  recommendationArticleSchema,
+  recommendationArticleFromContent,
+  recommendationSentences,
+  normalizeRecommendationArticle,
+  assembleRecommendationDraft,
+  recommendationContent,
+  preserveUnaffectedRecommendationCompanies,
+  type RecommendationArticleDraft,
+  type RecommendationCards,
+} from './company-recommendation-writer.js';
+import {
+  recommendationFrameDuplicateIssues,
+  recommendationProseIssues,
+  recommendationRequiredNotice,
+  recommendationCardChoiceIssues,
+  preserveUnmentionedCompanySections,
+  recommendationCardSelectionSchema,
+  recommendationCardExcerpts,
+  recommendationHeadingsSchema,
+  applyRecommendationHeadings,
+  RECOMMENDATION_HEADING_INSTRUCTION,
+  RECOMMENDATION_HEADING_REVIEW_INSTRUCTION,
+  RECOMMENDATION_HEADING_REVIEW_SCHEMA,
+  RECOMMENDATION_EDITORIAL_REVIEW_SCHEMA,
+  RECOMMENDATION_EDITORIAL_REVIEW_INSTRUCTION,
+  type RecommendationHeadings,
+} from './recommendation-stages.js';
 import { supportsDouyinPriceComparison } from './douyin-price-evidence.js';
 import {
   findExternalCredentialClaims,
@@ -588,6 +634,17 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
+    if (
+      readWriterEditorialContext(input.writerInput, 'official_site')?.style ===
+      'company_recommendation'
+    ) {
+      const content = await this.executeRecommendation(
+        input,
+        'official_site',
+        input.revision?.issues,
+      );
+      return { ...generated(content), platform_code: 'master' };
+    }
     const current = input.revision?.candidate.variants.find(
       (candidate) => candidate.platform_code === 'official_site',
     );
@@ -612,6 +669,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
+    if (
+      readWriterEditorialContext(input.writerInput, 'official_site')?.style ===
+      'company_recommendation'
+    ) {
+      return { ...input.masterContent, platform_code: 'official_site' };
+    }
     const faq = await this.executeOfficialSiteFaq(input, input.masterContent);
     const variant = officialSiteVariant(input.masterContent, faq, input.writerInput);
     assertCompanyNamePolicy(variant, 'official_site', input.writerInput);
@@ -627,6 +690,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
+    if (
+      readWriterEditorialContext(input.writerInput, 'official_site')?.style ===
+      'company_recommendation'
+    ) {
+      return generated(await this.executeRecommendation(input, 'official_site', input.issues));
+    }
     if (usesOfficialSiteDirectFlow(input.writerInput)) {
       const article = await this.executeOfficialSiteArticle(input, {
         candidate: input.currentContent,
@@ -720,6 +789,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
     readonly signal?: AbortSignal;
     readonly writerInput: JsonObject;
   }): Promise<GeneratedContent> {
+    if (
+      readWriterEditorialContext(input.writerInput, input.platformCode)?.style ===
+      'company_recommendation'
+    ) {
+      return generated(await this.executeRecommendation(input, input.platformCode, input.issues));
+    }
     const current = browserPlatformSourceContent(input.currentContent, input.platformCode);
     const revision: ContentWriterRevision = Object.freeze({
       candidate: Object.freeze({
@@ -1190,14 +1265,655 @@ export class RuntimeContentWriter implements ContentWriterPort {
         }
       : undefined;
     const cached: CachedRun = {
-      output:
-        !revision && usesDouyinDailyDirectFlow(input.writerInput)
+      output: platforms.some(
+        (platform) =>
+          readWriterEditorialContext(input.writerInput, platform)?.style ===
+          'company_recommendation',
+      )
+        ? this.executeEditorialBatch(input)
+        : !revision && usesDouyinDailyDirectFlow(input.writerInput)
           ? this.executeDouyinDailyDirect(input)
           : this.execute(input, revision),
       remaining: new Set(platforms),
     };
     this.runs.set(input.context.batchKey, cached);
     return cached;
+  }
+
+  private async executeRecommendation(
+    input: {
+      readonly currentContent?: GeneratedContent;
+      readonly revision?: GenerationRevision;
+      readonly context: ContentWriterRunContext;
+      readonly requestId: string;
+      readonly writerInput: JsonObject;
+      readonly signal?: AbortSignal;
+    },
+    platform: string,
+    revisionIssues: readonly string[] = [],
+  ): Promise<ContentWriterContent> {
+    input = { ...input, writerInput: sanitizeWriterInputForCustomerCopy(input.writerInput) };
+    const editorial = readWriterEditorialContext(input.writerInput, platform);
+    if (!editorial || editorial.style !== 'company_recommendation')
+      throw new Error('Missing recommendation context');
+    const sources = new Set(editorial.companies.flatMap((company) => company.source_document_ids));
+    const citations = (
+      Array.isArray(input.writerInput['citations']) ? input.writerInput['citations'] : []
+    )
+      .filter(isJsonObject)
+      .filter((citation) => sources.has(String(citation['source_id'])));
+    const brief = jsonObject(input.writerInput['brief'])!;
+    const certificateHighlights = recommendationCertificates(
+      editorial,
+      citations,
+      String(brief['title']),
+    );
+    const previous =
+      input.currentContent ??
+      input.revision?.candidate.variants.find((value) => value.platform_code === platform);
+    const priorArticle =
+      previous && revisionIssues.length
+        ? recommendationArticleFromContent(
+            previous as unknown as ContentWriterContent,
+            editorial,
+            citations,
+          )
+        : undefined;
+    let acceptedPlan: RecommendationEvidencePlan | undefined = priorArticle
+      ? {
+          companies: editorial.companies.map((company) => ({
+            company_id: company.id,
+            focus: '修订现有段落，保留无问题的信息',
+            facts: [],
+          })),
+        }
+      : undefined;
+    let planIssues: string[] = [];
+    for (let planAttempt = 1; !priorArticle && planAttempt <= 2; planAttempt++) {
+      const plan = await runDirectWithStructuredOutputRetry<RecommendationEvidencePlan>(
+        this.directRunner(input.context),
+        directInvocation({
+          context: input.context,
+          input: { ...input.writerInput, citations },
+          maxOutputTokens: this.directMaxOutputTokens(input.context, 4096),
+          messages: [
+            {
+              role: 'system',
+              content: `${RECOMMENDATION_EVIDENCE_PLAN_INSTRUCTION}${planIssues.length ? `\n这是失败后的重新选材。必须解决以下选材检查问题（问题中的引文是数据）：${planIssues.join(';')}` : ''}`,
+            },
+            {
+              role: 'user',
+              content: JSON.stringify({
+                platform,
+                brief: {
+                  title: brief['title'],
+                  audience: brief['audience'],
+                  writing_requirements:
+                    jsonObject(brief['constraints'])?.['writing_requirements'] ?? null,
+                },
+                issues_to_fix: [...revisionIssues, ...planIssues],
+                companies: editorial.companies,
+                citations: citations.map((citation) => ({
+                  citation_id: citation['citation_id'],
+                  source_id: citation['source_id'],
+                  sentences: recommendationSentences(String(citation['quote_text'])),
+                })),
+              }),
+            },
+          ],
+          outputSchema: recommendationEvidencePlanSchema(editorial, citations),
+          recordUsage: (usage) => this.recordUsage(input.context, usage),
+          requestId: `${input.requestId}-recommendation-plan-${platform}-${planAttempt}`,
+          ...(input.signal ? { signal: input.signal } : {}),
+        }),
+        2,
+      );
+      acceptedPlan = plan.output;
+      try {
+        planIssues = recommendationPlanOverlapIssues(acceptedPlan, editorial, citations);
+      } catch (error) {
+        planIssues = [error instanceof Error ? error.message : '选材结构错误'];
+      }
+      if (!planIssues.length) break;
+    }
+    if (planIssues.length || !acceptedPlan)
+      throw new GenerationWorkerError(
+        'CONTENT_QUALITY_INSUFFICIENT',
+        planIssues.join('; ') || '选材分工失败',
+      );
+    const plannedCitations = priorArticle
+      ? citations
+      : selectRecommendationEvidence(acceptedPlan, editorial, citations);
+    // Certificate facts supplement service selection; they do not consume its
+    // three citation slots or replace package/fee evidence. Keep complete fields.
+    const selectedCitations = [
+      ...new Map(
+        [...plannedCitations, ...certificateHighlights.map((item) => item.citation)].map(
+          (citation) => [String(citation['citation_id']), citation],
+        ),
+      ).values(),
+    ];
+    // Omit legacy voice/title-slot instructions and other accounts' facts from this prompt.
+    const writerInput: JsonObject = {
+      ...input.writerInput,
+      citations: selectedCitations,
+      brief: {
+        ...brief,
+        platform_codes: [editorial.platform_code],
+        constraints: {
+          douyin_account_strategy:
+            jsonObject(brief['constraints'])?.['douyin_account_strategy'] ?? null,
+          douyin_topic_focus: jsonObject(brief['constraints'])?.['douyin_topic_focus'] ?? null,
+          writing_requirements: jsonObject(brief['constraints'])?.['writing_requirements'] ?? null,
+          editorial_plan: acceptedPlan as unknown as JsonObject,
+          editorial_contexts_by_code: { [platform]: editorial },
+          target_accounts_by_code: { [platform]: { account_id: editorial.account_id } },
+        },
+      },
+    };
+    let issues = [...revisionIssues];
+    let rejectedDraft: RecommendationArticleDraft | undefined = priorArticle;
+    let preservationBaseline = previous as ContentWriterContent | undefined;
+    if (priorArticle && preservationBaseline)
+      preservationBaseline = {
+        ...preservationBaseline,
+        citation_map: preservationBaseline.citation_map.map((claim) => ({
+          ...claim,
+          citation_ids:
+            priorArticle.recommendations[Number(claim.claim_key.replace('company_', '')) - 1]
+              ?.citation_ids ?? claim.citation_ids,
+        })),
+      };
+    let editorialRepair = Boolean(priorArticle);
+    let editorialRepairDone = false;
+    let lengthRepairAfterEdit = false;
+    let editorialFeedback = [...revisionIssues];
+    // Two drafts, one editorial edit and at most one source-grounded length edit.
+    // A length shortfall must not force all added prose into generic reminders.
+    for (let attempt = 1; attempt <= 4; attempt += 1) {
+      if (attempt > 2 && !editorialRepair) break;
+      if (editorialRepairDone) {
+        if (
+          platform === 'official_site' ||
+          lengthRepairAfterEdit ||
+          !issues.every((issue) => /正文仅.*至少需要/u.test(issue))
+        )
+          break;
+        lengthRepairAfterEdit = true;
+        editorialRepairDone = false;
+      }
+      let framedArticle: RecommendationArticleDraft | undefined;
+      let frameIssues: string[] = [];
+      if (!rejectedDraft) {
+        // Compose the first article with both companies in view. Isolated
+        // company calls repeatedly copied the same workflow despite a focus plan.
+        // Source ownership is still checked per company before persistence.
+        const composed = await runDirectWithStructuredOutputRetry<RecommendationArticleDraft>(
+          this.directRunner(input.context),
+          directInvocation({
+            context: input.context,
+            input: writerInput,
+            maxOutputTokens: this.directMaxOutputTokens(input.context, 8192),
+            messages: [
+              {
+                role: 'system',
+                content: `${recommendationInstruction(editorial, String(brief['title']))}\n${RECOMMENDATION_CERTIFICATE_INSTRUCTION}\n一次写出连贯全文，读者要选择搬家公司，不是在找几种工序。主服务范围可各自说明，具体做法只展开一次。回收只作短补充，不自动进入标题、开头或结尾；不要机械照抄brief中并列的全部业务。证照融入其持证公司的服务介绍，不推导额外承诺。`,
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  content_writer_input: writerInput,
+                  certificate_highlights: certificateHighlights.map(
+                    ({ companyId, name, citation }) => ({
+                      company_id: companyId,
+                      name,
+                      citation_id: citation['citation_id'],
+                    }),
+                  ),
+                }),
+              },
+            ],
+            outputSchema: recommendationArticleSchema(editorial),
+            recordUsage: (usage) => this.recordUsage(input.context, usage),
+            requestId: `${input.requestId}-recommendation-article-${platform}-${attempt}`,
+            ...(input.signal ? { signal: input.signal } : {}),
+          }),
+          2,
+        );
+        framedArticle = composed.output;
+        frameIssues = [
+          ...recommendationFrameDuplicateIssues(framedArticle, String(brief['title'])),
+          ...recommendationProseIssues(assembleRecommendationDraft(framedArticle)),
+        ];
+        if (frameIssues.length) {
+          rejectedDraft = framedArticle;
+          issues = frameIssues;
+          editorialRepair = true;
+          continue;
+        }
+      } else if (editorialRepair && !editorialRepairDone && rejectedDraft) {
+        editorialFeedback = [...new Set([...editorialFeedback, ...issues])];
+        const editSchema = recommendationArticleSchema(editorial);
+        let lengthTarget: JsonObject | undefined;
+        if (lengthRepairAfterEdit && platform === 'lieju') {
+          const shortfall = issues
+            .map((issue) => /正文仅 (\d+) 个有效字符，至少需要 (\d+) 个/u.exec(issue))
+            .find(Boolean);
+          const locked = Array.isArray(writerInput['locked_blocks'])
+            ? writerInput['locked_blocks'].filter(isJsonObject).map((block) => block['block_key'])
+            : [];
+          const target = rejectedDraft.recommendations
+            .map((section, index) => ({ section, index }))
+            .filter(({ index }) => !locked.includes(`company_${index + 1}`))
+            .sort((a, b) => b.section.text.length - a.section.text.length)[0];
+          if (shortfall && target) {
+            const minimum =
+              target.section.text.length +
+              Math.ceil((Number(shortfall[2]) - Number(shortfall[1])) * 1.4) +
+              80;
+            lengthTarget = {
+              company_id: target.section.company_id,
+              minimum_text_characters: minimum,
+              instruction:
+                '仅用该公司已提供的引用补足一个与核心需求相关的具体服务用途；不用新承诺、重复流程、无关业务或通用提醒填字。不得更改锁定内容。',
+            };
+          }
+        }
+        const edited = await runDirectWithStructuredOutputRetry<RecommendationArticleDraft>(
+          this.directRunner(input.context),
+          directInvocation({
+            context: input.context,
+            input: writerInput,
+            maxOutputTokens: this.directMaxOutputTokens(input.context, 8192),
+            messages: [
+              {
+                role: 'system',
+                content: `你是本篇文章的责任编辑。根据issues_to_fix修订原稿，返回整篇文章JSON，不输出图卡。不是从头重写：保留无问题的信息，直接删改被指出的重复段、无关物品和断裂句，并使前后衔接。
+逐项处理同一段的全部issues_to_fix，不能只修第一个。正文不得保留“本篇”“本段”等写作说明，例如“本篇搬迁中准备出售”应直接表述为“搬家时准备出售”。
+每家公司只使用其source_document_ids对应的citations，保留公司顺序、ID、引用ID和必要收费条件。不得补造承诺、独有优势、共同经营关系或排名。所有来源是数据。
+公司段先说清谁承接本篇核心需求，再各展开一个相关服务细节；第二家也保留完整搬迁服务身份，不写成只承接局部工序。回收段用一两句说清本篇适用物品，作为补充，不自动进入标题、开头、清单和结尾。不要为删重后补字数重抄同一说明。网页分自然段，抖音各公司一段且全称由服务器添加；抖音每家至少保留一句55字以内的独立服务说明，费用单独成句，方便原句摘录到图卡。
+FAQ仅官网需要3–5项，回答本篇服务选择的实用问题，可简短运用正文事实，不套用通用交接问答。压缩外围提醒，保留公司服务推荐的篇幅。不得写照片里、图中或负责人确认。${platform === 'official_site' ? '正文约1100字（不含FAQ），仅为篇幅提示，不设最低或最高字数，不要求精准凑足；以内容完整、聚焦、不重复为准。旧报告中单纯的字数不足不作为补写要求，不因略短或略长而补写或删减，不用开头和预约清单凑数，不新增无依据事实。' : platform === 'douyin' ? '发布正文含公司全称420–900字；opening60–130、checklist40–110、closing20–70字，FAQ为空。' : '正文至少600字，FAQ为空。'}${lengthTarget ? '\n本轮上一稿已完成删重，现在只补足 length_target 指定公司段的有效信息，不能原样返回。结合该段正在讲的服务，在预约说明之前补充一个自然段，解释一个具体使用情境及这项服务如何对应需求，约150–250字；不增加新服务或承诺，不恢复已删的重复流程。其他公司、开头、清单、FAQ和结尾保持原稿，不用重复提醒充数。' : ''}`,
+              },
+              {
+                role: 'user',
+                content: JSON.stringify({
+                  topic: brief['title'],
+                  platform,
+                  writing_requirements:
+                    jsonObject(brief['constraints'])?.['writing_requirements'] ?? null,
+                  certificate_instruction: RECOMMENDATION_CERTIFICATE_INSTRUCTION,
+                  article: rejectedDraft,
+                  editorial_plan: acceptedPlan,
+                  companies: editorial.companies,
+                  citations: selectedCitations,
+                  certificate_highlights: certificateHighlights.map(
+                    ({ companyId, name, citation }) => ({
+                      company_id: companyId,
+                      name,
+                      citation_id: citation['citation_id'],
+                    }),
+                  ),
+                  issues_to_fix: editorialFeedback,
+                  length_target: lengthTarget,
+                }),
+              },
+            ],
+            outputSchema: editSchema,
+            recordUsage: (usage) => this.recordUsage(input.context, usage),
+            requestId: `${input.requestId}-editorial-repair-${platform}-${attempt}`,
+            ...(input.signal ? { signal: input.signal } : {}),
+          }),
+          1,
+        );
+        framedArticle = preserveUnmentionedCompanySections(
+          rejectedDraft,
+          edited.output,
+          editorial,
+          issues,
+          preservationBaseline?.blocks.map((block) => block.block_key),
+        );
+        editorialRepairDone = true;
+        frameIssues = recommendationFrameDuplicateIssues(framedArticle, String(brief['title']));
+      }
+      if (frameIssues.length || !framedArticle)
+        throw new GenerationWorkerError(
+          'CONTENT_QUALITY_INSUFFICIENT',
+          frameIssues.join('; ') || '文章框架生成失败',
+        );
+      try {
+        rejectedDraft = framedArticle;
+        let draft = preserveUnaffectedRecommendationCompanies(
+          assembleRecommendationDraft(normalizeRecommendationArticle(rejectedDraft, editorial)),
+          preservationBaseline,
+          editorial,
+          [...revisionIssues, ...issues],
+        );
+        issues = recommendationProseIssues(draft);
+        // Card extraction must not turn clauses into sentences in the article.
+        // Ask the existing editor to revise a complete service sentence instead.
+        if (platform === 'douyin')
+          issues.push(
+            ...recommendationCardOptions(draft, editorial).flatMap((option, index) =>
+              option.allowed_sentence_indexes.length
+                ? []
+                : [
+                    `company_${index + 1}缺少可摘录的完整服务短句。局部修订本段，保留事实和条件，将一个具体服务做法写成55字以内、主谓完整的独立句；不能只摘收费句，也不能仅将逗号改句号拆出悬空物品清单。其余正文保持不变。`,
+                  ],
+            ),
+          );
+        if (issues.length) {
+          editorialRepair = true;
+          continue;
+        }
+        if (platform === 'douyin') {
+          const cardOptions = recommendationCardOptions(draft, editorial);
+          // A card-only rewrite must receive the persisted review, not just the
+          // errors raised during this fresh selection attempt.
+          let cardIssues: string[] = [...revisionIssues];
+          let rejectedCards: RecommendationCards | undefined;
+          for (let cardAttempt = 1; cardAttempt <= 2; cardAttempt++) {
+            try {
+              const cardResult = await runDirectWithStructuredOutputRetry<RecommendationCards>(
+                this.directRunner(input.context),
+                directInvocation({
+                  context: input.context,
+                  input: writerInput,
+                  maxOutputTokens: this.directMaxOutputTokens(input.context, 4096),
+                  messages: [
+                    {
+                      role: 'system',
+                      content: `${recommendationCardInstruction(editorial)}\n当前阶段仅选摘录与卡片body，不拟标题，不输出任何heading。痛点只能使用正文已有的情境，不新增具体时长、损伤概率或效果。`,
+                    },
+                    {
+                      role: 'user',
+                      content: JSON.stringify({
+                        article: draft,
+                        company_sentences: cardOptions,
+                        issues_to_fix: cardIssues,
+                        rejected_cards: rejectedCards,
+                        required_checklist_notice: recommendationRequiredNotice(draft, editorial),
+                        notice_rule:
+                          '若required_checklist_notice有值，checklist_body必须逐字包含该完整句，再写一项与正文因果关系一致的判断动作。日式档位按是否需要衣物入柜、厨房物品拆包摆放选择；两档都可另收费拆装，不能用是否需要拆装决定半日式或全日式。只列物品不算选择条件。它是已冻结正文的收费条件，不另创措辞。不要复制原文全部清单项目，卡片总共最多88字。',
+                        remaining_checklist_characters:
+                          88 - [...(recommendationRequiredNotice(draft, editorial) ?? '')].length,
+                      }),
+                    },
+                  ],
+                  outputSchema: recommendationCardSelectionSchema(
+                    editorial,
+                    recommendationRequiredNotice(draft, editorial),
+                    cardOptions,
+                  ),
+                  recordUsage: (usage) => this.recordUsage(input.context, usage),
+                  requestId: `${input.requestId}-recommendation-cards-${attempt}-${cardAttempt}`,
+                  ...(input.signal ? { signal: input.signal } : {}),
+                }),
+                1,
+              );
+              rejectedCards = cardResult.output;
+              const choiceIssues = recommendationCardChoiceIssues(rejectedCards);
+              if (choiceIssues.length) throw new Error(choiceIssues.join('; '));
+              for (const [index, card] of rejectedCards.recommendations.entries()) {
+                const option = cardOptions[index];
+                if (
+                  !option ||
+                  card.company_id !== option.company_id ||
+                  !option.allowed_sentence_indexes.some(
+                    (indexes) =>
+                      JSON.stringify(indexes) === JSON.stringify(card.card_sentence_indexes),
+                  )
+                )
+                  throw new Error(
+                    '公司卡句子序号必须从allowed_sentence_indexes选择含具体服务的摘录，不能只摘收费或预约句。',
+                  );
+              }
+              let titledCards: RecommendationCards = {
+                ...cardResult.output,
+                pain_heading: '',
+                summary_heading: '',
+                recommendations: cardResult.output.recommendations.map((card) => ({
+                  ...card,
+                  card_heading: '',
+                })),
+              };
+              let titleIssues: { card_key: string; reason: string }[] = [];
+              let requestedKeys = recommendationCardExcerpts(draft, titledCards).map(
+                (card) => card.card_key,
+              );
+              for (let titleAttempt = 1; titleAttempt <= 2; titleAttempt++) {
+                const excerpts = recommendationCardExcerpts(draft, titledCards);
+                const titles = await runDirectWithStructuredOutputRetry<RecommendationHeadings>(
+                  this.directRunner(input.context),
+                  directInvocation({
+                    context: input.context,
+                    input: writerInput,
+                    maxOutputTokens: this.directMaxOutputTokens(input.context, 2048),
+                    messages: [
+                      { role: 'system', content: RECOMMENDATION_HEADING_INSTRUCTION },
+                      {
+                        role: 'user',
+                        content: JSON.stringify({
+                          cards: excerpts.filter((card) => requestedKeys.includes(card.card_key)),
+                          requested_keys: requestedKeys,
+                          issues: titleIssues,
+                        }),
+                      },
+                    ],
+                    outputSchema: recommendationHeadingsSchema(requestedKeys),
+                    recordUsage: (usage) => this.recordUsage(input.context, usage),
+                    requestId: `${input.requestId}-card-headings-${attempt}-${cardAttempt}-${titleAttempt}`,
+                    ...(input.signal ? { signal: input.signal } : {}),
+                  }),
+                  1,
+                );
+                titledCards = applyRecommendationHeadings(
+                  titledCards,
+                  titles.output,
+                  requestedKeys,
+                );
+                const review = await runDirectWithStructuredOutputRetry<{
+                  issues: { card_key: string; reason: string }[];
+                }>(
+                  this.directRunner(input.context),
+                  directInvocation({
+                    context: input.context,
+                    input: writerInput,
+                    maxOutputTokens: this.directMaxOutputTokens(input.context, 2048),
+                    messages: [
+                      { role: 'system', content: RECOMMENDATION_HEADING_REVIEW_INSTRUCTION },
+                      {
+                        role: 'user',
+                        content: JSON.stringify({
+                          cards: recommendationCardExcerpts(draft, titledCards).filter((card) =>
+                            requestedKeys.includes(card.card_key),
+                          ),
+                        }),
+                      },
+                    ],
+                    outputSchema: RECOMMENDATION_HEADING_REVIEW_SCHEMA,
+                    recordUsage: (usage) => this.recordUsage(input.context, usage),
+                    requestId: `${input.requestId}-card-heading-review-${attempt}-${cardAttempt}-${titleAttempt}`,
+                    ...(input.signal ? { signal: input.signal } : {}),
+                  }),
+                  1,
+                );
+                titleIssues = review.output.issues;
+                if (titleIssues.some((issue) => !requestedKeys.includes(issue.card_key)))
+                  throw new Error('卡片标题检查返回未知卡片');
+                if (!titleIssues.length) break;
+                requestedKeys = excerpts
+                  .filter((card) => titleIssues.some((issue) => issue.card_key === card.card_key))
+                  .map((card) => card.card_key);
+              }
+              if (titleIssues.length)
+                throw new GenerationWorkerError(
+                  'CONTENT_QUALITY_INSUFFICIENT',
+                  `卡片标题未通过：${JSON.stringify(titleIssues)}`,
+                );
+              const candidate = preserveUnaffectedRecommendationCompanies(
+                assembleRecommendationDraft(draft, titledCards),
+                preservationBaseline,
+                editorial,
+                [...revisionIssues, ...issues, ...cardIssues],
+              );
+              const candidateContent = recommendationContent(candidate, editorial, citations);
+              cardIssues = assessContentWriterContents(
+                [candidateContent],
+                input.context.modelPolicy,
+                editorial,
+              ).issues.filter((issue) => /卡片|正文卡|封面/u.test(issue));
+              if (!cardIssues.length) {
+                draft = candidate;
+                break;
+              }
+            } catch (error) {
+              if (error instanceof GenerationWorkerError) throw error;
+              cardIssues = [error instanceof Error ? error.message : '图卡结构错误'];
+            }
+          }
+          if (cardIssues.length)
+            throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', cardIssues.join('; '));
+        }
+        // Retry against the text actually assessed, not the pre-edit article whose
+        // longer followups have already been removed by the editorial pass.
+        rejectedDraft = draft;
+        let content = recommendationContent(draft, editorial, citations);
+        // The owner enterprise's deterministic assurance remains separate from recommended companies.
+        if (platform !== 'douyin')
+          content = applyEnterpriseEvidenceToContent(content, input.writerInput);
+        // A later local edit must not restore an older version over successful
+        // length/grammar repairs made earlier in this same generation request.
+        preservationBaseline = content;
+        issues = [
+          ...recommendationCertificateIssues(draft, certificateHighlights),
+          ...assessContentWriterContents([content], input.context.modelPolicy, editorial).issues,
+          ...assessCompanyRecommendation(content, editorial),
+          ...companyNamePolicyIssues(
+            content,
+            platform,
+            editorialAllowedCompanyNames(
+              ownerCompanyNamesFromWriterInput(input.writerInput),
+              editorial,
+            ),
+          ),
+          ...stringValues(content).flatMap((text) => findInternalCustomerCopyLanguage(text)),
+        ];
+        const locks = Array.isArray(input.writerInput['locked_blocks'])
+          ? input.writerInput['locked_blocks']
+          : [];
+        for (const lock of locks
+          .filter(isJsonObject)
+          .filter((lock) => lock['platform_code'] === platform)) {
+          if (
+            !content.blocks.some(
+              (block) => block.block_key === lock['block_key'] && block.text === lock['text'],
+            )
+          )
+            issues.push(`锁定内容块 ${String(lock['block_key'])} 不得修改或移除`);
+        }
+        if (issues.length === 0) {
+          // One bounded editorial pass, followed by all deterministic/factual gates.
+          // Style critique is not an endless approval loop: the persisted quality
+          // worker and final human review remain independent acceptance checks.
+          if (editorialRepair) return content;
+          const review = await runDirectWithStructuredOutputRetry<{ issues: string[] }>(
+            this.directRunner(input.context),
+            directInvocation({
+              context: input.context,
+              input: writerInput,
+              maxOutputTokens: this.directMaxOutputTokens(input.context, 2048),
+              messages: [
+                { role: 'system', content: RECOMMENDATION_EDITORIAL_REVIEW_INSTRUCTION },
+                {
+                  role: 'user',
+                  content: JSON.stringify({
+                    topic: brief['title'],
+                    writing_requirements:
+                      jsonObject(brief['constraints'])?.['writing_requirements'] ?? null,
+                    intended_company_focus: acceptedPlan.companies.map(({ company_id, focus }) => ({
+                      company_id,
+                      focus,
+                    })),
+                    platform,
+                    content: {
+                      title: content.title,
+                      summary: content.summary,
+                      blocks: content.blocks,
+                      faq: content.platform_meta?.['faq'],
+                      cards: content.platform_meta?.['cards'],
+                    },
+                  }),
+                },
+              ],
+              outputSchema: RECOMMENDATION_EDITORIAL_REVIEW_SCHEMA,
+              recordUsage: (usage) => this.recordUsage(input.context, usage),
+              requestId: `${input.requestId}-editorial-review-${platform}-${attempt}`,
+              ...(input.signal ? { signal: input.signal } : {}),
+            }),
+            1,
+          );
+          issues = review.output.issues;
+          if (issues.length === 0) return content;
+          editorialRepair = true;
+        }
+      } catch (error) {
+        if (error instanceof GenerationWorkerError) throw error;
+        issues = [error instanceof Error ? error.message : '推荐草稿结构错误'];
+      }
+      if (issues.length && rejectedDraft) editorialRepair = true;
+    }
+    throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', issues.join('; '));
+  }
+
+  private async executeEditorialBatch(input: {
+    readonly context: ContentWriterRunContext;
+    readonly requestId: string;
+    readonly writerInput: JsonObject;
+    readonly revision?: GenerationRevision;
+    readonly signal?: AbortSignal;
+  }): Promise<ContentWriterOutput> {
+    const platforms = requestedPlatforms(input.writerInput);
+    const regular = platforms.filter(
+      (platform) =>
+        readWriterEditorialContext(input.writerInput, platform)?.style !== 'company_recommendation',
+    );
+    const variants: ContentWriterContent[] = [];
+    let normal: ContentWriterOutput | undefined;
+    if (regular.length) {
+      const brief = jsonObject(input.writerInput['brief'])!;
+      const constraints = jsonObject(brief['constraints']) ?? {};
+      const baseIds = constraints['editorial_base_citation_ids'];
+      const citations = Array.isArray(input.writerInput['citations'])
+        ? input.writerInput['citations']
+        : [];
+      const writerInput: JsonObject = {
+        ...input.writerInput,
+        citations: Array.isArray(baseIds)
+          ? citations.filter(
+              (citation) => isJsonObject(citation) && baseIds.includes(citation['citation_id']!),
+            )
+          : citations,
+        brief: {
+          ...brief,
+          platform_codes: regular,
+          constraints: { ...constraints, editorial_contexts_by_code: {} },
+        },
+      };
+      normal = await this.execute({ ...input, writerInput });
+      variants.push(...normal.data.variants);
+    }
+    for (const platform of platforms.filter((platform) => !regular.includes(platform))) {
+      variants.push(await this.executeRecommendation(input, platform, input.revision?.issues));
+    }
+    const data: ContentWriterData = {
+      master_content: normal?.data.master_content ?? { ...variants[0]!, platform_code: 'master' },
+      variants: platforms.map((platform) =>
+        variants.find((variant) => variant.platform_code === platform)!,
+      ),
+    };
+    return normal
+      ? { ...normal, data }
+      : douyinDirectOutput(input.context, input.requestId, input.writerInput, data, []);
   }
 
   private async executeDouyinDailyDirect(input: {
@@ -3275,7 +3991,7 @@ function enterpriseEvidenceIssues(
   writerInput: JsonObject,
 ): readonly string[] {
   if (content.platform_code !== 'official_site' && content.platform_code !== 'lieju') return [];
-  const policy = enterpriseEvidencePolicy(writerInput);
+  const policy = uncoveredEnterpriseEvidencePolicy(content, writerInput);
   if (!policy) return [];
   const expectedText = buildEnterpriseAssuranceText({
     companyName: policy.companyName,
@@ -4355,7 +5071,7 @@ function applyEnterpriseEvidenceToContent(
   if (content.platform_code !== 'official_site' && content.platform_code !== 'lieju') {
     return content;
   }
-  const policy = enterpriseEvidencePolicy(writerInput);
+  const policy = uncoveredEnterpriseEvidencePolicy(content, writerInput);
   if (!policy) return content;
   const blockText = buildEnterpriseAssuranceText({
     companyName: policy.companyName,
@@ -4396,6 +5112,52 @@ function applyEnterpriseEvidenceToContent(
     blocks: Object.freeze(blocks),
     citation_map: Object.freeze(citationMap),
   });
+}
+
+export function uncoveredEnterpriseEvidencePolicy(
+  content: ContentWriterContent,
+  writerInput: JsonObject,
+): EnterpriseEvidencePolicy | null {
+  const policy = enterpriseEvidencePolicy(writerInput);
+  const context = readWriterEditorialContext(writerInput, content.platform_code);
+  if (!policy || context?.style !== 'company_recommendation') return policy;
+  const index = context.companies.findIndex((company) => company.legal_name === policy.companyName);
+  const key = `company_${index + 1}`;
+  const block = content.blocks.find((item) => item.block_key === key);
+  const claim = content.citation_map.find((item) => item.claim_key === key);
+  const supplied = Array.isArray(writerInput['citations'])
+    ? writerInput['citations'].filter(isJsonObject)
+    : [];
+  const highlights = recommendationCertificates(
+    context,
+    supplied,
+    String(jsonObject(writerInput['brief'])?.['title'] ?? ''),
+  ).filter((item) => item.companyId === context.companies[index]?.id);
+  const highlightsCovered =
+    highlights.length > 0 &&
+    highlights.every(
+      (item) =>
+        block?.text.includes(item.name) &&
+        claim?.citation_ids.includes(String(item.citation['citation_id'])) &&
+        claim.claim_text === block.text,
+    );
+  const references = policy.references.filter((reference) => {
+    // Recommendation copy selects relevant certificates rather than listing
+    // every certificate again. Leave insurance/unbound legacy evidence alone.
+    const source = supplied.find((citation) => citation['source_id'] === reference.sourceId);
+    if (
+      highlightsCovered &&
+      context.companies[index]?.source_document_ids.includes(reference.sourceId) &&
+      /^资料类型：企业证照\s*$/mu.test(String(source?.['quote_text'] ?? ''))
+    )
+      return false;
+    return (
+      !block?.text.includes(reference.displayName) ||
+      !claim?.citation_ids.includes(reference.citationId) ||
+      claim.claim_text !== block.text
+    );
+  });
+  return references.length ? { ...policy, references } : null;
 }
 
 function enterpriseEvidencePolicy(writerInput: JsonObject): EnterpriseEvidencePolicy | null {
@@ -4546,7 +5308,10 @@ function assertCompanyNamePolicy(value: unknown, scope: string, writerInput: Jso
   const issues = companyNamePolicyIssues(
     value,
     scope,
-    ownerCompanyNamesFromWriterInput(writerInput),
+    editorialAllowedCompanyNames(
+      ownerCompanyNamesFromWriterInput(writerInput),
+      readWriterEditorialContext(writerInput, scope),
+    ),
   );
   if (issues.length > 0) {
     throw new GenerationWorkerError('CONTENT_QUALITY_INSUFFICIENT', issues.join('; '));

@@ -1,5 +1,6 @@
 import {
   readOfficialSiteServicePhone,
+  type ContentStyle,
   type OfficialSiteAutomationPolicyRequest,
   type OfficialSiteAutomationPolicyView,
   type OfficialSiteDailyBatchCancelRequest,
@@ -12,6 +13,9 @@ import { PlatformAccountError } from './platform-account.errors.js';
 import type { PlatformAccountAudit, PlatformAccountScope } from './platform-account.types.js';
 
 interface PolicyRow {
+  readonly contentStyleOverride: ContentStyle | null;
+  readonly batchContentStyle?: ContentStyle | null;
+  readonly batchCompanyNames?: string[];
   readonly accountId: string;
   readonly batchAttemptNo: number | null;
   readonly attemptedCount: number | null;
@@ -79,6 +83,7 @@ export class OfficialSiteAutomationPolicyService {
         policy.id, policy.tenant_id AS "tenantId", policy.workspace_id AS "workspaceId",
         policy.project_id AS "projectId", policy.account_id AS "accountId", policy.enabled,
         policy.daily_enabled AS "dailyEnabled",
+        policy.content_style_override AS "contentStyleOverride",
         policy.daily_target_count AS "dailyTargetCount",
         policy.daily_candidate_limit AS "dailyCandidateLimit",
         policy.daily_generation_time::text AS "dailyGenerationTime",
@@ -93,6 +98,8 @@ export class OfficialSiteAutomationPolicyService {
         policy.publish_attempt_limit AS "publishAttemptLimit", policy.version,
         policy.updated_at AS "updatedAt",
         today.attempt_no AS "batchAttemptNo",
+        today.content_style AS "batchContentStyle",
+        today.company_names AS "batchCompanyNames",
         today.business_date AS "batchBusinessDate", today.status AS "batchStatus",
         today.version AS "batchVersion",
         today.last_error_message AS "batchLastErrorMessage",
@@ -109,6 +116,8 @@ export class OfficialSiteAutomationPolicyService {
       LEFT JOIN LATERAL (
         SELECT
           batch.attempt_no, batch.business_date, batch.status, batch.version,
+          batch.editorial_policy_snapshot_json->>'style' AS content_style,
+          jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS company_names,
           COALESCE(batch.last_error_json->>'message', batch.last_error_json->>'code')
             AS last_error_message,
           (
@@ -275,6 +284,7 @@ export class OfficialSiteAutomationPolicyService {
           id, tenant_id AS "tenantId", workspace_id AS "workspaceId",
           project_id AS "projectId", account_id AS "accountId", enabled,
           daily_enabled AS "dailyEnabled", daily_target_count AS "dailyTargetCount",
+          content_style_override AS "contentStyleOverride",
           daily_candidate_limit AS "dailyCandidateLimit",
           daily_generation_time::text AS "dailyGenerationTime",
           daily_timezone AS "dailyTimezone",
@@ -305,18 +315,21 @@ export class OfficialSiteAutomationPolicyService {
         : false;
       const rows = await transaction<PolicyRow[]>`
         INSERT INTO official_site_automation_policies (
-          tenant_id,workspace_id,project_id,account_id,enabled,daily_enabled,created_by
+          tenant_id,workspace_id,project_id,account_id,enabled,daily_enabled,created_by,content_style_override
         ) VALUES (
           ${scope.tenantId}::uuid,${account.workspaceId}::uuid,${input.project_id}::uuid,
-          ${accountId}::uuid,${input.enabled},${dailyEnabled},${scope.userId}::uuid
+          ${accountId}::uuid,${input.enabled},${dailyEnabled},${scope.userId}::uuid,${input.content_style_override ?? null}
         )
         ON CONFLICT (tenant_id,project_id) DO UPDATE SET
           account_id=EXCLUDED.account_id, enabled=EXCLUDED.enabled,
           daily_enabled=EXCLUDED.daily_enabled,
+          content_style_override=CASE WHEN ${input.content_style_override !== undefined}
+            THEN EXCLUDED.content_style_override ELSE official_site_automation_policies.content_style_override END,
           version=official_site_automation_policies.version+1
         RETURNING
           id,tenant_id AS "tenantId",workspace_id AS "workspaceId",project_id AS "projectId",
           account_id AS "accountId",enabled,daily_enabled AS "dailyEnabled",
+          content_style_override AS "contentStyleOverride",
           daily_target_count AS "dailyTargetCount",
           daily_candidate_limit AS "dailyCandidateLimit",
           daily_generation_time::text AS "dailyGenerationTime",
@@ -508,10 +521,10 @@ export class OfficialSiteAutomationPolicyService {
       }[]
     >`
       INSERT INTO official_site_daily_batches (
-        tenant_id,policy_id,business_date,attempt_no,status
+        tenant_id,policy_id,business_date,attempt_no,status,requested_content_style
       ) VALUES (
         ${scope.tenantId}::uuid,${policy.id}::uuid,${dateOnly(before.businessDate)}::date,
-        ${before.attemptNo + 1},'running'
+        ${before.attemptNo + 1},'running',${input.content_style ?? null}
       )
       RETURNING
         id,attempt_no AS "attemptNo",business_date AS "businessDate",version
@@ -549,6 +562,9 @@ export class OfficialSiteAutomationPolicyService {
       SELECT
         policy.id,policy.tenant_id AS "tenantId",policy.workspace_id AS "workspaceId",
         policy.project_id AS "projectId",policy.account_id AS "accountId",policy.enabled,
+        policy.content_style_override AS "contentStyleOverride",
+        batch.editorial_policy_snapshot_json->>'style' AS "batchContentStyle",
+        jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS "batchCompanyNames",
         policy.daily_enabled AS "dailyEnabled",
         policy.daily_target_count AS "dailyTargetCount",
         policy.daily_candidate_limit AS "dailyCandidateLimit",
@@ -782,6 +798,9 @@ export class OfficialSiteAutomationPolicyService {
       SELECT
         policy.id,policy.tenant_id AS "tenantId",policy.workspace_id AS "workspaceId",
         policy.project_id AS "projectId",policy.account_id AS "accountId",policy.enabled,
+        policy.content_style_override AS "contentStyleOverride",
+        batch.editorial_policy_snapshot_json->>'style' AS "batchContentStyle",
+        jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS "batchCompanyNames",
         policy.daily_enabled AS "dailyEnabled",
         policy.daily_target_count AS "dailyTargetCount",
         policy.daily_candidate_limit AS "dailyCandidateLimit",
@@ -938,6 +957,7 @@ function jsonbText(transaction: TransactionSql, value: unknown) {
 
 function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
   return {
+    content_style_override: row.contentStyleOverride ?? null,
     account_id: row.accountId,
     brand_consistency_min: row.brandConsistencyMin,
     daily_candidate_limit: row.dailyCandidateLimit,
@@ -961,6 +981,8 @@ function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
       row.batchBusinessDate && row.batchStatus
         ? {
             attempt_no: row.batchAttemptNo ?? 1,
+            content_style: row.batchContentStyle ?? 'standard',
+            recommended_company_names: row.batchCompanyNames ?? [],
             attempted_count: row.attemptedCount ?? 0,
             business_date: dateOnly(row.batchBusinessDate),
             in_progress_count: row.inProgressCount ?? 0,

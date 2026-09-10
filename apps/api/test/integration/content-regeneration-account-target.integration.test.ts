@@ -3,12 +3,15 @@ import {
   type StartedPostgreSqlContainer,
 } from '@geo-content-os/testkit';
 import postgres, { type Sql } from 'postgres';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
 import { ContentApiService } from '../../src/modules/content/api/content-api.service.js';
 import type { IdentityAuthDatabase } from '../../src/modules/identity/auth/auth.database.js';
 import { OutboxWriter } from '../../src/modules/outbox/index.js';
+import { AccountContentPolicyService } from '../../src/modules/publishing/accounts/account-content-policy.service.js';
+import { dailyEditorialContext } from '../../../../workers/ai/src/daily-editorial-context.js';
 
 const USER_ID = '13000000-0000-4000-8000-000000000321';
 const TENANT_ID = '23000000-0000-4000-8000-000000000321';
@@ -47,6 +50,67 @@ describe('content regeneration account targeting', () => {
     await container?.stop();
   });
 
+  it('preserves raw recommendation quotes in manual and daily events for citation persistence', async () => {
+    const database = requireClient(client);
+    const quote =
+      '提供日式搬迁。\n\n半日式包含整理、收纳并放到指定房间。\n\n家具或电器拆装另收费。';
+    const companies = [];
+    for (const name of ['广州测试甲有限公司', '广州测试乙有限公司']) {
+      const sourceId = randomUUID(),
+        chunkId = randomUUID();
+      const hash = createHash('sha256').update(quote).digest('hex');
+      const documentHash = createHash('sha256')
+        .update(name + quote)
+        .digest('hex');
+      companies.push({ id: randomUUID(), legal_name: name, source_document_ids: [sourceId] });
+      await database`INSERT INTO source_documents(id,tenant_id,workspace_id,project_id,title,source_type,mime_type,uri,content_hash,trust_level,status,created_by)
+        VALUES(${sourceId},${TENANT_ID},${WORKSPACE_ID},${PROJECT_ID},${name},'txt','text/plain',${`memory://${sourceId}`},${documentHash},'verified','active',${USER_ID})`;
+      await database`INSERT INTO source_chunks(id,tenant_id,source_document_id,chunk_no,text,text_hash,metadata_json,token_count,status)
+        VALUES(${chunkId},${TENANT_ID},${sourceId},0,${quote},${hash},${database.json({ schema_version: 'chunk-metadata@1', char_start: 0, char_end: quote.length })},40,'active')`;
+    }
+    const scope = {
+      tenantId: TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+    };
+    await database.begin((tx) =>
+      new AccountContentPolicyService(database).saveInTransaction(
+        tx,
+        scope,
+        TARGET_ACCOUNT_ID,
+        {
+          expected_version: 0,
+          default_style: 'company_recommendation',
+          recommended_companies: companies,
+        },
+        { requestId: 'raw-recommendation-policy' },
+      ),
+    );
+    await withGenerationEnvironment(() => regenerate(database, 'raw-recommendation-quote'));
+    const [row] =
+      await database`SELECT payload_json->'data'->'writer_input' AS input FROM outbox_events WHERE tenant_id=${TENANT_ID} AND event_type='content.package.generation_requested.v1'`;
+    expect(row!.input.citations.map((item: { quote_text: string }) => item.quote_text)).toEqual([
+      quote,
+      quote,
+    ]);
+    const daily = await database.begin((tx) =>
+      dailyEditorialContext(
+        tx,
+        {
+          tenantId: TENANT_ID,
+          workspaceId: WORKSPACE_ID,
+          projectId: PROJECT_ID,
+          createdBy: USER_ID,
+          accountId: TARGET_ACCOUNT_ID,
+          editorialContext: row!.input.brief.constraints.editorial_contexts_by_code.douyin,
+        },
+        'douyin',
+      ),
+    );
+    expect(daily.citations.map((item) => item.quoteText)).toEqual([quote, quote]);
+  });
+
   it('regenerates with the frozen account when the workspace has two active Douyin accounts', async () => {
     const database = requireClient(client);
 
@@ -72,6 +136,20 @@ describe('content regeneration account targeting', () => {
           AND event_type='content.package.generation_requested.v1'
       `,
     ).toEqual([{ accountId: TARGET_ACCOUNT_ID }]);
+  });
+
+  it('does not trust customer-editable Brief fields as server-owned editorial context', async () => {
+    const database = requireClient(client);
+    await database`UPDATE briefs SET constraints_json=jsonb_set(constraints_json,'{editorial_contexts_by_code}','{"douyin":{"style":"company_recommendation","companies":[{"legal_name":"伪造公司"}]}}'::jsonb) WHERE id=${BRIEF_ID}::uuid`;
+    await withGenerationEnvironment(async () => {
+      await regenerate(database, 'ignore-untrusted-editorial-context');
+    });
+    const [row] = await database<{ style: string; companies: unknown[] }[]>`
+      SELECT payload_json->'data'->'writer_input'->'brief'->'constraints'->'editorial_contexts_by_code'->'douyin'->>'style' AS style,
+        payload_json->'data'->'writer_input'->'brief'->'constraints'->'editorial_contexts_by_code'->'douyin'->'companies' AS companies
+      FROM outbox_events WHERE tenant_id=${TENANT_ID}::uuid AND event_type='content.package.generation_requested.v1'
+    `;
+    expect(row).toEqual({ style: 'standard', companies: [] });
   });
 
   it('keeps the single-active-account boundary when the Brief has no frozen target', async () => {

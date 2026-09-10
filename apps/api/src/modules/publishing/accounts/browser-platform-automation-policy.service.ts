@@ -4,6 +4,7 @@ import type {
   BrowserPlatformDailyBatchRestartRequest,
   BrowserPlatformDailyBatchRetryRequest,
   DouyinContentVoice,
+  ContentStyle,
 } from '@geo-content-os/contracts';
 import type { TransactionSql } from 'postgres';
 
@@ -14,6 +15,9 @@ import type { PlatformAccountAudit, PlatformAccountScope } from './platform-acco
 type Platform = 'douyin' | 'lieju' | 'sohu';
 
 interface PolicyRow {
+  readonly contentStyleOverride: ContentStyle | null;
+  readonly batchContentStyle: ContentStyle | null;
+  readonly batchCompanyNames: string[] | null;
   readonly accountId: string;
   readonly accountPositioning: string;
   readonly attemptedCount: number | null;
@@ -90,6 +94,9 @@ export class BrowserPlatformAutomationPolicyService {
   ): Promise<BrowserPlatformAutomationPolicyView> {
     return this.database.begin(async (transaction) => {
       const account = await this.requireAccount(scope, accountId, transaction);
+      if (account.platformCode === 'sohu' && input.content_style_override !== undefined) {
+        throw stateInvalid('搜狐号不支持本版内容风格配置。');
+      }
       const projects = await transaction<{ id: string }[]>`
         SELECT id FROM projects
         WHERE id=${input.project_id}::uuid AND tenant_id=${scope.tenantId}::uuid
@@ -126,7 +133,7 @@ export class BrowserPlatformAutomationPolicyService {
         INSERT INTO browser_platform_automation_policies (
           tenant_id,workspace_id,project_id,account_id,platform_code,enabled,daily_enabled,
           daily_target_count,daily_candidate_limit,daily_generation_time,daily_schedule_times,
-          account_positioning,content_voice,service_scopes,target_regions,topic_pool,created_by
+          account_positioning,content_voice,service_scopes,target_regions,topic_pool,created_by,content_style_override
         ) VALUES (
           ${scope.tenantId}::uuid,${account.workspaceId}::uuid,${input.project_id}::uuid,
           ${accountId}::uuid,${account.platformCode},${input.enabled},${input.daily_enabled},
@@ -135,7 +142,7 @@ export class BrowserPlatformAutomationPolicyService {
           ${strategy.accountPositioning},${contentVoice ?? ''},
           ${transaction.array([...strategy.serviceScopes])}::text[],
           ${transaction.array([...strategy.targetRegions])}::text[],
-          ${transaction.array([...strategy.topicPool])}::text[],${scope.userId}::uuid
+          ${transaction.array([...strategy.topicPool])}::text[],${scope.userId}::uuid,${input.content_style_override ?? null}
         )
         ON CONFLICT (tenant_id,account_id,project_id) DO UPDATE SET
           enabled=EXCLUDED.enabled,daily_enabled=EXCLUDED.daily_enabled,
@@ -146,7 +153,10 @@ export class BrowserPlatformAutomationPolicyService {
           account_positioning=EXCLUDED.account_positioning,
           content_voice=EXCLUDED.content_voice,
           service_scopes=EXCLUDED.service_scopes,target_regions=EXCLUDED.target_regions,
-          topic_pool=EXCLUDED.topic_pool,version=browser_platform_automation_policies.version+1
+          topic_pool=EXCLUDED.topic_pool,
+          content_style_override=CASE WHEN ${input.content_style_override !== undefined}
+            THEN EXCLUDED.content_style_override ELSE browser_platform_automation_policies.content_style_override END,
+          version=browser_platform_automation_policies.version+1
         RETURNING id
       `;
       const policyId = rows[0]?.id;
@@ -284,6 +294,9 @@ export class BrowserPlatformAutomationPolicyService {
     audit: PlatformAccountAudit,
   ): Promise<BrowserPlatformAutomationPolicyView> {
     const account = await this.requireAccount(scope, accountId, transaction);
+    if (account.platformCode === 'sohu' && input.content_style !== undefined) {
+      throw stateInvalid('搜狐号不支持内容风格切换。');
+    }
     if (account.status !== 'active' || account.publishMode !== 'api') {
       throw stateInvalid('只有正常状态的自动发布账号可以重新发起今日批次。');
     }
@@ -355,10 +368,10 @@ export class BrowserPlatformAutomationPolicyService {
     if (!cancelled[0]) throw versionConflict();
     const created = await transaction<{ id: string; attemptNo: number }[]>`
       INSERT INTO browser_platform_daily_batches (
-        tenant_id,policy_id,business_date,attempt_no,status
+        tenant_id,policy_id,business_date,attempt_no,status,requested_content_style
       ) VALUES (
         ${scope.tenantId}::uuid,${before.policyId}::uuid,
-        ${dateOnly(before.businessDate)}::date,${before.attemptNo + 1},'running'
+        ${dateOnly(before.businessDate)}::date,${before.attemptNo + 1},'running',${input.content_style ?? null}
       ) RETURNING id,attempt_no AS "attemptNo"
     `;
     const next = created[0];
@@ -412,6 +425,9 @@ export class BrowserPlatformAutomationPolicyService {
         policy.daily_target_count AS "dailyTargetCount",
         policy.daily_candidate_limit AS "dailyCandidateLimit",
         policy.daily_generation_time::text AS "dailyGenerationTime",
+        policy.content_style_override AS "contentStyleOverride",
+        batch.editorial_policy_snapshot_json->>'style' AS "batchContentStyle",
+        jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS "batchCompanyNames",
         policy.daily_schedule_times::text[] AS "dailyScheduleTimes",
         policy.version,policy.updated_at AS "updatedAt",
         batch.attempt_no AS "batchAttemptNo",
@@ -536,6 +552,9 @@ export class BrowserPlatformAutomationPolicyService {
 
 function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
   return {
+    ...(row.platformCode === 'sohu'
+      ? {}
+      : { content_style_override: row.contentStyleOverride ?? null }),
     account_id: row.accountId,
     account_positioning: row.accountPositioning,
     brand_consistency_min: 90,
@@ -563,6 +582,12 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
     today_batch:
       row.batchBusinessDate && row.batchStatus && row.batchVersion
         ? {
+            ...(row.platformCode === 'sohu'
+              ? {}
+              : {
+                  content_style: row.batchContentStyle ?? 'standard',
+                  recommended_company_names: row.batchCompanyNames ?? [],
+                }),
             attempt_no: row.batchAttemptNo ?? 1,
             attempted_count: row.attemptedCount ?? 0,
             business_date: new Date(row.batchBusinessDate).toISOString().slice(0, 10),

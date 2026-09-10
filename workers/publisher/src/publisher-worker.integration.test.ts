@@ -22,6 +22,7 @@ import type {
   PublisherPlatformPort,
 } from './publisher.types.js';
 import { PublisherWorker } from './publisher.worker.js';
+import { assertEnterpriseEvidencePublishGate } from './platform.publisher.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000125';
 const TENANT_ID = '21000000-0000-4000-8000-000000000125';
@@ -169,6 +170,114 @@ describe('publisher worker', () => {
         requestId: `queue-recovery:${failedEvent.event_id}`,
       },
     ]);
+  });
+
+  it.each([
+    'valid',
+    'expired',
+    'wrong-source',
+    'changed-claim',
+    'wrong-account',
+    'certificate-valid',
+    'certificate-wrong-holder',
+    'certificate-revoked',
+  ])('rechecks frozen recommendation evidence before publishing: %s', async (scenario) => {
+    const database = requireClient(client);
+    await seedCitation(database, false);
+    const versionId = randomUUID();
+    const names = [OWNER_COMPANY_NAME, '广州志远搬家服务有限公司'];
+    const claim = '公开资料直接支持这项事实。';
+    const context = {
+      schema_version: 'editorial-context@1',
+      template_version: 'company-recommendation@1',
+      platform_code: 'official_site',
+      account_id: scenario === 'wrong-account' ? randomUUID() : ACCOUNT_ID,
+      policy_version: 1,
+      style: 'company_recommendation',
+      companies: names.map((legal_name, index) => ({
+        id: randomUUID(),
+        legal_name,
+        source_document_ids: [
+          scenario === 'wrong-source' && index === 1 ? randomUUID() : SOURCE_DOCUMENT_ID,
+        ],
+      })),
+    };
+    const content = {
+      schema_version: 'content-writer@1',
+      platform_code: 'official_site',
+      title: '企业搬迁服务介绍',
+      summary: '预约前核对实际搬迁条件。',
+      cta: '请致电 02085627757。',
+      hashtags: [],
+      platform_meta: {},
+      blocks: names.flatMap((name, index) => [
+        { block_key: `company_${index + 1}_heading`, block_type: 'heading', text: name },
+        { block_key: `company_${index + 1}`, block_type: 'paragraph', text: claim },
+      ]),
+      citation_map: names.map((_, index) => ({
+        claim_key: `company_${index + 1}`,
+        claim_text: claim,
+        citation_ids: [SOURCE_CHUNK_ID],
+      })),
+    };
+    const certificates: { chunkId: string; text: string }[] = [];
+    if (scenario.startsWith('certificate-')) {
+      // The second bound certificate is intentionally not used in this article.
+      for (const [i, name] of ['质量管理体系认证证书', '环境管理体系认证证书'].entries()) {
+        const sourceId = randomUUID(),
+          chunkId = randomUUID();
+        const holder =
+          scenario === 'certificate-wrong-holder' && i === 0 ? names[1]! : OWNER_COMPANY_NAME;
+        const text = `资料类型：企业证照\n证照名称：${name}\n持证主体：${holder}\n证照编号：测试${i}`;
+        const metadata = {
+          schema_version: 'source-certificate@1',
+          certificate_name: name,
+          certificate_number: `测试${i}`,
+          holder_name: holder,
+          issuing_authority: '测试发证机构',
+          verification_url: null,
+          article_use_allowed: scenario !== 'certificate-revoked',
+          public_display_confirmed: true,
+        };
+        await database`INSERT INTO source_documents(id,tenant_id,workspace_id,project_id,title,source_type,mime_type,uri,content_hash,trust_level,status,metadata_json,created_by)
+            SELECT ${sourceId}::uuid,tenant_id,workspace_id,project_id,${name},'image','image/jpeg',${`s3://test/${sourceId}.jpg`},${createHash('sha256').update(text).digest('hex')},'verified','active',${database.json(metadata)},created_by FROM source_documents WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+        await database`INSERT INTO source_chunks(id,tenant_id,source_document_id,chunk_no,text,text_hash,metadata_json,token_count,status)
+            VALUES(${chunkId}::uuid,${TENANT_ID}::uuid,${sourceId}::uuid,0,${text},${createHash('sha256').update(text).digest('hex')},${database.json({ schema_version: 'chunk-metadata@1', char_start: 0, char_end: text.length })},${text.length},'active')`;
+        context.companies[0]!.source_document_ids.push(sourceId);
+        if (i === 0) certificates.push({ chunkId, text });
+      }
+      content.blocks[1]!.text = `${OWNER_COMPANY_NAME}承接搬迁，持有质量管理体系认证证书。`;
+      content.citation_map[0]!.claim_text = content.blocks[1]!.text;
+      content.citation_map[0]!.citation_ids.push(certificates[0]!.chunkId);
+    }
+    await database`INSERT INTO content_versions(id,tenant_id,package_id,variant_id,version_no,schema_version,content_json,content_hash,created_by,editorial_context_json)
+        VALUES(${versionId}::uuid,${TENANT_ID}::uuid,${PACKAGE_ID}::uuid,${VARIANT_ID}::uuid,2,'content-writer@1',${database.json(content)},${'c'.repeat(64)},${USER_ID}::uuid,${database.json(context)})`;
+    await database`UPDATE content_variants SET current_content_version_id=${versionId}::uuid WHERE id=${VARIANT_ID}::uuid`;
+    await database`DELETE FROM publish_jobs WHERE id=${JOB_ID}::uuid`;
+    await database`INSERT INTO publish_jobs(id,tenant_id,variant_id,content_version_id,account_id,scheduled_at,idempotency_key,payload_hash,status,created_by)
+        VALUES(${JOB_ID}::uuid,${TENANT_ID}::uuid,${VARIANT_ID}::uuid,${versionId}::uuid,${ACCOUNT_ID}::uuid,'2026-01-01T00:00:00Z','recommendation-test',${'c'.repeat(64)},'scheduled',${USER_ID}::uuid)`;
+    for (let index = 0; index < 2; index += 1) {
+      await database`INSERT INTO ai_citations(id,tenant_id,content_version_id,claim_key,claim_text,chunk_id,quote_text,quote_hash)
+          VALUES(${randomUUID()}::uuid,${TENANT_ID}::uuid,${versionId}::uuid,${`company_${index + 1}`},${scenario === 'changed-claim' ? '其他事实' : content.citation_map[index]!.claim_text},${SOURCE_CHUNK_ID}::uuid,${claim},${createHash('sha256').update(claim).digest('hex')})`;
+    }
+    for (const certificate of certificates)
+      await database`INSERT INTO ai_citations(id,tenant_id,content_version_id,claim_key,claim_text,chunk_id,quote_text,quote_hash)
+          VALUES(${randomUUID()}::uuid,${TENANT_ID}::uuid,${versionId}::uuid,'company_1',${content.blocks[1]!.text},${certificate.chunkId}::uuid,${certificate.text},${createHash('sha256').update(certificate.text).digest('hex')})`;
+    if (scenario === 'expired')
+      await database`UPDATE source_documents SET effective_to=now()-interval '1 day' WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+    const result = new PostgresPublisherStore(database).claim(validatePublishEvent(event()));
+    if (scenario === 'certificate-valid') {
+      const resolved = await result;
+      if (resolved.kind !== 'claimed') throw new Error('Expected a publish claim');
+      expect(resolved.value.enterpriseEvidenceGate?.evidenceNames).toEqual([
+        '质量管理体系认证证书',
+      ]);
+      expect(() => assertEnterpriseEvidencePublishGate(resolved.value)).not.toThrow();
+    } else if (scenario === 'valid')
+      await expect(result).resolves.toMatchObject({
+        value: { editorialContext: context, ownerCompanyNames: [OWNER_COMPANY_NAME] },
+      });
+    else await expect(result).rejects.toMatchObject({ code: 'PUBLISHER_RENDER_BLOCKED' });
   });
 
   it('maps content chunk citation ids to their public links', async () => {

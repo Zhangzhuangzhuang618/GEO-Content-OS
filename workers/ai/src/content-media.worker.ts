@@ -7,6 +7,7 @@ import {
   normalizeGeneratedImage,
   normalizePublishedSourceImage,
   renderDouyinNoteCard,
+  validateDouyinNoteCardLayout,
   renderTemplateImage,
   type ImageInspectionResult,
   type ImageProvider,
@@ -1177,16 +1178,36 @@ function douyinNoteMediaPlan(
   });
 }
 
-function fallbackDouyinLayout(
+export function fallbackDouyinLayout(
   card: DouyinImageNotePlanningCard,
   position: number,
 ): DouyinNotePlanCard['layout'] {
-  if (!supportsDouyinEditorialLayout(card)) return 'legacy';
-  if (card.kind === 'cover') return 'cover';
-  if (card.kind === 'summary') return 'summary';
-  return /(?:\r?\n)|[；：]|(?:^|\D)[1-5一二三四五][.、）)]/u.test(card.body) || position % 2 === 0
-    ? 'checklist'
-    : 'focus';
+  const preferred = !supportsDouyinEditorialLayout(card)
+    ? 'legacy'
+    : card.kind === 'cover'
+      ? 'cover'
+      : card.kind === 'summary'
+        ? 'summary'
+        : /(?:\r?\n)|[；：]|(?:^|\D)[1-5一二三四五][.、）)]/u.test(card.body) || position % 2 === 0
+          ? 'checklist'
+          : 'focus';
+  const alternative = card.kind === 'body' ? 'focus' : card.kind;
+  for (const layout of new Set<DouyinNotePlanCard['layout']>([preferred, alternative, 'legacy'])) {
+    try {
+      validateDouyinNoteCardLayout({
+        ...card,
+        layout,
+        index: position,
+        total: Math.max(5, position + 1),
+        title: card.heading,
+      });
+      return layout;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('exceeds the deterministic layout'))
+        throw error;
+    }
+  }
+  throw new Error('Douyin note card cannot fit any available template without truncation');
 }
 
 function supportsDouyinEditorialLayout(card: DouyinImageNotePlanningCard): boolean {

@@ -11,8 +11,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { readAiWorkerConfig } from './config.js';
 import type { ContentWriterRunContext, GeneratedContent, JsonObject } from './generation.types.js';
-import { RuntimeContentWriter } from './runtime-content-writer.js';
+import {
+  RuntimeContentWriter,
+  uncoveredEnterpriseEvidencePolicy,
+} from './runtime-content-writer.js';
 import { createRuntimeModels } from './runtime-model.js';
+import {
+  recommendationContent,
+  assembleRecommendationDraft,
+} from './company-recommendation-writer.js';
+import type { EditorialContext } from '@geo-content-os/contracts';
 
 const MASTER_RUN = '70000000-0000-4000-8000-000000000061';
 const VARIANT_RUN = '71000000-0000-4000-8000-000000000061';
@@ -28,6 +36,653 @@ const GENERIC_PLATFORM_CASES = [
 ] as const;
 
 describe('AI Worker runtime wiring', () => {
+  it('does not repeat an owner certificate already cited in its recommendation paragraph', () => {
+    const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+    const name = '广东众人搬家起重吊装有限公司';
+    let input = officialSiteEnterpriseEvidenceWriterInput(fixture.input as JsonObject, name, '83');
+    const brief = input['brief'] as JsonObject;
+    const constraints = brief['constraints'] as JsonObject;
+    const citations = input['citations'] as JsonObject[];
+    const editorial: EditorialContext = {
+      account_id: MASTER_RUN,
+      platform_code: 'official_site',
+      policy_version: 1,
+      schema_version: 'editorial-context@1',
+      template_version: 'company-recommendation@1',
+      style: 'company_recommendation',
+      companies: [
+        {
+          id: MASTER_RUN,
+          legal_name: name,
+          source_document_ids: citations.map((item) => String(item['source_id'])),
+        },
+        {
+          id: VARIANT_RUN,
+          legal_name: '广州另一搬家有限公司',
+          source_document_ids: ['31111111-1111-4111-8111-111111111111'],
+        },
+      ],
+    };
+    input = {
+      ...input,
+      brief: {
+        ...brief,
+        constraints: {
+          ...constraints,
+          editorial_contexts_by_code: { official_site: editorial },
+          target_accounts_by_code: { official_site: { account_id: MASTER_RUN } },
+        },
+      },
+    };
+    const text = `${name}持有营业执照和道路运输证。`;
+    let content = {
+      platform_code: 'official_site',
+      blocks: [{ block_key: 'company_1', block_type: 'paragraph', text }],
+      citation_map: [
+        {
+          claim_key: 'company_1',
+          claim_text: text,
+          citation_ids: citations.map((item) => String(item['citation_id'])),
+        },
+      ],
+    } as unknown as Parameters<typeof uncoveredEnterpriseEvidencePolicy>[0];
+    expect(uncoveredEnterpriseEvidencePolicy(content, input)).toBeNull();
+    content = {
+      ...content,
+      citation_map: [
+        { ...content.citation_map[0]!, citation_ids: [String(citations[0]!['citation_id'])] },
+      ],
+    };
+    expect(
+      uncoveredEnterpriseEvidencePolicy(content, input)?.references.map((ref) => ref.displayName),
+    ).toEqual(['道路运输证']);
+    content = { ...content, blocks: [{ ...content.blocks[0]!, block_key: 'company_2' }] };
+    expect(uncoveredEnterpriseEvidencePolicy(content, input)?.references).toHaveLength(2);
+    input = { ...input, brief: { ...brief, constraints } };
+    expect(uncoveredEnterpriseEvidencePolicy(content, input)?.references).toHaveLength(2);
+  });
+  it.each([false, true] as const)(
+    'does not pad official recommendations after editing and still rejects cross-company citations (%s)',
+    async (editorialFailure) => {
+      const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+      const companies = ['甲搬家有限公司', '乙搬家有限公司'].map((legal_name, index) => ({
+        id: `21111111-1111-4111-8111-11111111111${index}`,
+        legal_name,
+        source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+      }));
+      const editorial: EditorialContext = {
+        account_id: MASTER_RUN,
+        companies,
+        platform_code: 'official_site',
+        policy_version: 1,
+        schema_version: 'editorial-context@1',
+        style: 'company_recommendation',
+        template_version: 'company-recommendation@1',
+      };
+      const sentences = [
+        '企业搬迁按部门标记物品并安排新址摆放，预约时可提供物品清单与工位安排。',
+        '仓库搬迁按库存清单核对数量，分批安排需要结合现场搬运通道和可用时间。',
+      ];
+      const citations = companies.map((company, index) => ({
+        citation_id: `41111111-1111-4111-8111-11111111111${index}`,
+        chunk_id: `41111111-1111-4111-8111-11111111111${index}`,
+        source_id: company.source_document_ids[0]!,
+        quote_text: sentences[index]!.repeat(25),
+      }));
+      const article = {
+        title: '广州企业办公室搬迁如何安排部门物品和新址工位',
+        summary: '企业搬迁服务与新址工位安排。',
+        opening_heading: '企业搬迁前如何整理信息',
+        recommendation_heading: '企业搬迁服务介绍',
+        opening:
+          '企业搬迁时两端的通道条件需要提前梳理，新旧场地的装卸区域是否合用会影响安排。'.repeat(9),
+        checklist_heading: '预约需要准备什么',
+        checklist:
+          '预约前整理可用进场时间和两端地址，说明各楼层电梯情况，再按现场清单沟通搬运。'.repeat(7),
+        closing: '预约时说明两端地址和现场条件，按需要的服务沟通具体安排。',
+        topics: ['企业搬迁', '仓库搬迁', '办公室搬迁'],
+        faq: [
+          { question: '如何询价？', answer: '提供物品清单。' },
+          { question: '如何安排摆放？', answer: '提供新址工位安排。' },
+          { question: '仓库如何清点？', answer: '按库存清单核对数量。' },
+        ],
+        recommendations: companies.map((company, index) => ({
+          company_id: company.id,
+          text: sentences[index]!.repeat(index ? 2 : 5),
+          citation_ids: [citations[index]!.citation_id],
+        })),
+      };
+      const previous = {
+        ...recommendationContent(assembleRecommendationDraft(article), editorial, citations),
+        schema_version: 'content-writer-data@1' as const,
+      };
+      const adapter = new LooseMockAdapter(
+        [
+          {
+            ...article,
+            recommendations: article.recommendations.map((item, index) => ({
+              ...item,
+              text: index ? sentences[1]! : item.text,
+              citation_ids: editorialFailure ? [citations[0]!.citation_id] : item.citation_ids,
+            })),
+          },
+        ].map((value) => ({ text: JSON.stringify(value) })),
+        'deepseek-v4-flash',
+      );
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-flash', adapter]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+      );
+      const base = fixture.input as JsonObject;
+      const pending = writer.rewriteOfficialSiteVariant({
+        context: { ...context(VARIANT_RUN, null), modelPolicy: 'balanced' },
+        requestId: 'recommendation-global-repair',
+        currentContent: previous as unknown as GeneratedContent,
+        masterContent: previous as unknown as GeneratedContent,
+        issues: ['company_2 重复服务清单'],
+        writerInput: {
+          ...base,
+          citations,
+          brief: {
+            ...(base['brief'] as JsonObject),
+            platform_codes: ['official_site'],
+            constraints: {
+              writing_requirements: '围绕企业换址，不补家庭家具目录，回收只作补充。',
+              editorial_contexts_by_code: { official_site: editorial },
+              target_accounts_by_code: { official_site: { account_id: MASTER_RUN } },
+            },
+          },
+        },
+      });
+      if (editorialFailure === true) {
+        await expect(pending).rejects.toThrow('未绑定到该公司资料');
+        expect(adapter.requests).toHaveLength(1);
+        return;
+      }
+      const result = await pending;
+      expect(adapter.requests).toHaveLength(1);
+      expect(JSON.stringify(adapter.requests[0]!.messages)).toContain('责任编辑');
+      expect(JSON.stringify(adapter.requests[0]!.messages)).toContain('正文约1100字');
+      expect(JSON.stringify(adapter.requests[0]!.messages)).toContain('仅为篇幅提示');
+      const retry = JSON.parse(
+        adapter.requests[0]!.messages.find((message) => message.role === 'user')!.content!,
+      );
+      expect(retry.writing_requirements).toBe('围绕企业换址，不补家庭家具目录，回收只作补充。');
+      expect(retry.issues_to_fix).toContain('company_2 重复服务清单');
+      expect(retry.length_target).toBeUndefined();
+      expect(result.blocks.find((block) => block.block_key === 'opening')?.text).toBe(
+        article.opening,
+      );
+      expect(result.blocks.find((block) => block.block_key === 'checklist')?.text).toBe(
+        article.checklist,
+      );
+      expect(result.blocks.find((block) => block.block_key === 'company_1')?.text).toBe(
+        article.recommendations[0]!.text,
+      );
+      expect(result.blocks.find((block) => block.block_key === 'company_2')?.text).toBe(
+        sentences[1],
+      );
+    },
+  );
+  it.each([
+    false,
+    true,
+    'schema',
+    'heading',
+    'frame',
+    'heading_fail',
+    'sentences',
+    'certificate',
+    'plan',
+  ] as const)(
+    'generates a multi-company Douyin note without saved customer voice (repair=%s)',
+    async (repair) => {
+      const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
+      const companies = ['广东众人搬家起重吊装有限公司', '广州志远搬家服务有限公司'].map(
+        (legal_name, index) => ({
+          id: `21111111-1111-4111-8111-11111111111${index}`,
+          legal_name,
+          source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+        }),
+      );
+      const paragraphs = [
+        '提供居民搬家和家具搬运服务，预约时可沟通物品数量、楼层与车辆停靠位置。需要搬运实木柜或大件家电的家庭，可以带着家具尺寸和楼道照片咨询，确认人员、车辆和防护安排后再敲定进场时间。楼梯宽度和转角位置要提前量好，现场能否拆装以及是否需要接驳运输，也应逐项核对，避免到场后才发现原方案无法执行。',
+        '提供家庭搬迁和办公搬运服务，可根据搬迁地址和物品清单沟通具体需求。办公室可以先把设备、文件柜和零散物品分类列出，说明原址及新址电梯的使用条件，再询问人员进场与装卸安排。涉及物业放行的项目，应提前核对可用时间和通道位置；对重要物品单独记录现状，并在交接时逐件确认，减少清点遗漏。',
+      ];
+      const citations = companies.map((company, index) => ({
+        citation_id: `41111111-1111-4111-8111-11111111111${index}`,
+        chunk_id: `41111111-1111-4111-8111-11111111111${index}`,
+        source_id: company.source_document_ids[0]!,
+        quote_text: paragraphs[index]!,
+      }));
+      if (repair === 'certificate') {
+        companies[0]!.source_document_ids.push('31111111-1111-4111-8111-111111111119');
+        citations.push({
+          citation_id: '41111111-1111-4111-8111-111111111119',
+          chunk_id: '41111111-1111-4111-8111-111111111119',
+          source_id: '31111111-1111-4111-8111-111111111119',
+          quote_text:
+            '资料类型：企业证照\n证照名称：道路运输经营许可证\n持证主体：广东众人搬家起重吊装有限公司\n证照编号：测试编号',
+        });
+        paragraphs[0] += '该公司持有道路运输经营许可证。';
+      }
+      const draft = {
+        title: '广州搬家如何核对服务',
+        opening_heading: '楼道与停车如何影响搬家',
+        recommendation_heading: '两家搬迁服务如何选择',
+        summary: '按具体搬迁条件了解企业服务和预约事项。',
+        opening:
+          '广州搬家如何核对服务，先看楼层与车辆停靠条件。老小区转角狭窄，办公楼又有进场时段，容易出现家具难通过或车辆久等的问题，咨询时把这些情况一并说清。',
+        recommendations: companies.map((company, index) => ({
+          company_id: company.id,
+          text: paragraphs[index],
+          citation_ids: [
+            citations[index]!.citation_id,
+            ...(repair === 'certificate' && index === 0
+              ? ['41111111-1111-4111-8111-111111111119']
+              : []),
+          ],
+          card_heading: index === 0 ? '家庭物品先清点' : '办公设备先分类',
+          card_sentence_indexes: [0],
+        })),
+        checklist:
+          '①核对报价单是否逐项列明楼层、拆装与超距搬运费用。②确认包装、防护材料和交接验收方式。③对照物业可用时间预约车辆，临时变化也要书面确认。',
+        closing:
+          '可以把同一份物品清单和地址信息交给企业询价，再逐项比较方案。不要只比较总价，具体服务范围、追加费用条件以及现场联系人都应在预约前核对清楚。',
+        topics: ['广州搬家', '搬家报价', '搬家服务'],
+        cover_body: '楼道和停车条件不同，如何核对搬迁方案？',
+        pain_heading: '楼道转角先测量',
+        pain_body:
+          '搬家前测量柜体与楼道转角，核对车辆停靠距离，避免现场刮花，再判断是否需要拆装或接驳。',
+        checklist_heading: '费用项目写清楚',
+        checklist_body: '检查报价中的楼层、拆装和超距项目，确认防护方式与现场验收步骤再预约进场。',
+        summary_heading: '带清单沟通方案',
+        summary_body:
+          '结合物品清单、楼层和物业进场时段沟通，选择具体安排清楚的方案，现场变化也应逐项确认。',
+        faq: [
+          { question: '如何询价？', answer: '提供物品清单。' },
+          { question: '如何预约？', answer: '确认进场时间。' },
+          { question: '如何核对？', answer: '查看书面报价。' },
+        ],
+      };
+      const base = douyinDirectWriterInput(fixture.input as JsonObject);
+      const brief = base['brief'] as JsonObject;
+      const editorial = {
+        account_id: MASTER_RUN,
+        companies,
+        platform_code: 'douyin',
+        policy_version: 1,
+        schema_version: 'editorial-context@1',
+        style: 'company_recommendation',
+        template_version: 'company-recommendation@1',
+      };
+      const writerInput: JsonObject = {
+        ...base,
+        citations: [
+          ...citations,
+          {
+            citation_id: '51111111-1111-4111-8111-111111111111',
+            source_id: '61111111-1111-4111-8111-111111111111',
+            quote_text: '广州盛源机电制冷工程有限公司主营家电回收。此企业未配置到本次账号名单。',
+          },
+        ],
+        brief: {
+          ...brief,
+          constraints: {
+            ...(brief['constraints'] as JsonObject),
+            douyin_content_voice: 'customer_perspective',
+            editorial_contexts_by_code: { douyin: editorial },
+            target_accounts_by_code: { douyin: { account_id: MASTER_RUN } },
+          },
+        },
+      };
+      const {
+        cover_body,
+        pain_heading,
+        pain_body,
+        checklist_body,
+        summary_heading,
+        summary_body,
+        ...articleFields
+      } = draft;
+      const article = {
+        ...articleFields,
+        faq: [],
+        recommendations: draft.recommendations.map(({ company_id, text, citation_ids }) => ({
+          company_id,
+          text,
+          citation_ids,
+        })),
+      };
+      const cards = {
+        cover_body,
+        pain_heading,
+        pain_body,
+        checklist_body,
+        summary_heading,
+        summary_body,
+        recommendations: draft.recommendations.map(
+          ({ company_id, card_heading, card_sentence_indexes }) => ({
+            company_id,
+            card_heading,
+            card_sentence_indexes,
+          }),
+        ),
+      };
+      if (repair === 'sentences')
+        article.recommendations[0]!.text = paragraphs[0]!.replaceAll('。', '，');
+      const rejected = {
+        ...cards,
+        recommendations: cards.recommendations.map((item) => ({
+          ...item,
+          card_sentence_indexes: [99],
+        })),
+      };
+      const adapter = new LooseMockAdapter(
+        [
+          ...(repair === 'plan'
+            ? [
+                {
+                  section_plan: {
+                    opening: '现场难点',
+                    checklist: '预约动作',
+                    closing: '收束',
+                    faq: '不生成',
+                  },
+                  companies: companies.map((company, index) => ({
+                    company_id: company.id,
+                    focus: '承接本篇搬迁，展开同样的服务流程',
+                    facts: [{ citation_id: citations[index]!.citation_id, sentence_indexes: [0] }],
+                  })),
+                },
+              ]
+            : []),
+          {
+            section_plan: {
+              opening: '现场难点',
+              checklist: '预约动作',
+              closing: '收束',
+              faq: '不生成',
+            },
+            companies: companies.map((company, index) => ({
+              company_id: company.id,
+              focus: '本篇搬迁服务',
+              facts: [
+                {
+                  citation_id: citations[index]!.citation_id,
+                  sentence_indexes: [0],
+                },
+              ],
+            })),
+          },
+          ...(repair === 'frame'
+            ? [
+                {
+                  ...article,
+                  opening: `${paragraphs[0]!.split('。')[0]}。搬迁前结合地址和现场条件逐项沟通，理清两端进场安排及车辆停靠位置。`,
+                },
+              ]
+            : []),
+          article,
+          ...(repair === 'sentences'
+            ? [
+                {
+                  ...article,
+                  recommendations: article.recommendations.map((item, index) => ({
+                    ...item,
+                    text: paragraphs[index],
+                  })),
+                },
+              ]
+            : []),
+          ...(repair === 'schema'
+            ? [
+                { ...cards, checklist_body: '过长清单'.repeat(50) },
+                { ...cards, checklist_body: '过长清单'.repeat(50) },
+                cards,
+              ]
+            : repair === true
+              ? [rejected, cards]
+              : [cards]
+          ).map((value) => ({
+            cover_body: value.cover_body,
+            pain_body: value.pain_body,
+            checklist_body: value.checklist_body,
+            summary_body: value.summary_body,
+            recommendations: value.recommendations.map(({ company_id, card_sentence_indexes }) => ({
+              company_id,
+              card_sentence_indexes,
+            })),
+          })),
+          {
+            headings: [
+              { card_key: 'pain', heading: cards.pain_heading },
+              ...cards.recommendations.map((item, i) => ({
+                card_key: `company_${i + 1}`,
+                heading: item.card_heading,
+              })),
+              { card_key: 'checklist', heading: draft.checklist_heading },
+              { card_key: 'summary', heading: cards.summary_heading },
+            ],
+          },
+          ...(repair === 'heading' || repair === 'heading_fail'
+            ? [
+                { issues: [{ card_key: 'company_1', reason: '标题与摘录不对应' }] },
+                { headings: [{ card_key: 'company_1', heading: '居民家具搬运' }] },
+              ]
+            : []),
+          {
+            issues:
+              repair === 'heading_fail' ? [{ card_key: 'company_1', reason: '标题仍不对应' }] : [],
+          },
+          { issues: [] },
+        ].map((item) => ({
+          text: JSON.stringify(item),
+        })),
+        'deepseek-v4-flash',
+      );
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-flash', adapter]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+      );
+      if (repair === 'heading_fail') {
+        await expect(
+          writer.generateMaster({
+            context: context(MASTER_RUN, null),
+            requestId: 'multi-company-failed-title',
+            writerInput,
+          }),
+        ).rejects.toThrow('卡片标题未通过');
+        expect(adapter.requests).toHaveLength(7);
+        // Exhausted title repair must not rewrite the frozen article or reselect accepted excerpts.
+        expect(
+          adapter.requests.filter((request) =>
+            request.requestId.includes('-recommendation-article-'),
+          ),
+        ).toHaveLength(1);
+        expect(
+          adapter.requests.filter((request) =>
+            request.requestId.includes('-recommendation-cards-'),
+          ),
+        ).toHaveLength(1);
+        return;
+      }
+      const master = await writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: 'multi-company-master-165',
+        writerInput,
+      });
+      const variant = await writer.generateVariant({
+        context: context(VARIANT_RUN, null),
+        requestId: 'multi-company-variant-165',
+        writerInput,
+        masterContent: master,
+        platformCode: 'douyin',
+      });
+      expect(adapter.requests).toHaveLength(
+        repair === 'heading' || repair === 'schema'
+          ? 8
+          : repair && repair !== 'certificate' && repair !== 'frame' && repair !== 'sentences'
+            ? 7
+            : 6,
+      );
+      if (repair === 'frame') {
+        const fixedFrame = JSON.parse(
+          adapter.requests[2]!.messages.find((message) => message.role === 'user')!.content!,
+        );
+        expect(fixedFrame.article.recommendations).toEqual(article.recommendations);
+        expect(
+          fixedFrame.editorial_plan.companies.map((item: { focus: string }) => item.focus),
+        ).toEqual(companies.map(() => '本篇搬迁服务'));
+        expect(fixedFrame.issues_to_fix.join()).toContain('完整复述');
+      }
+      const leadInput = JSON.parse(
+        adapter.requests
+          .find((request) => request.requestId.includes('-recommendation-article-'))!
+          .messages.find((message) => message.role === 'user')!.content!,
+      );
+      if (repair === 'plan') {
+        const request = adapter.requests[1]!;
+        const retry = JSON.parse(request.messages.find((m) => m.role === 'user')!.content!);
+        expect(retry.platform).toBe('douyin');
+        expect(retry).not.toHaveProperty('rejected_plan');
+        expect(request.messages[0]!.content).toContain('focus完全相同');
+      }
+      expect(
+        leadInput.content_writer_input.citations
+          .map((citation: { source_id: string }) => citation.source_id)
+          .sort(),
+      ).toEqual(companies.flatMap((company) => company.source_document_ids).sort());
+      expect(JSON.stringify(leadInput)).not.toContain('61111111-1111-4111-8111-111111111111');
+      if (repair === 'sentences') {
+        expect(
+          adapter.requests.filter((request) => request.requestId.includes('-card-sentence-break-')),
+        ).toHaveLength(0);
+        const editor = adapter.requests.find((request) =>
+          request.requestId.includes('-editorial-repair-'),
+        )!;
+        const payload = JSON.parse(
+          editor.messages.find((message) => message.role === 'user')!.content!,
+        );
+        expect(payload.issues_to_fix.join()).toContain('company_1缺少可摘录的完整服务短句');
+        expect(payload.article.recommendations[0].text).toBe(article.recommendations[0]!.text);
+        expect(
+          adapter.requests.filter((request) =>
+            request.requestId.includes('-recommendation-article-'),
+          ),
+        ).toHaveLength(1);
+      }
+      if (repair === 'certificate') {
+        expect(leadInput.certificate_highlights).toEqual([
+          {
+            company_id: companies[0]!.id,
+            name: '道路运输经营许可证',
+            citation_id: '41111111-1111-4111-8111-111111111119',
+          },
+        ]);
+        expect(variant.blocks.find((block) => block.block_key === 'company_1')?.text).toContain(
+          '道路运输经营许可证',
+        );
+        expect(variant.blocks.find((block) => block.block_key === 'company_2')?.text).not.toContain(
+          '道路运输经营许可证',
+        );
+      }
+      if (repair === true) {
+        const repairInput = JSON.parse(adapter.requests[3]!.messages.at(-1)!.content!);
+        expect(repairInput.failure_kind).toBe('schema');
+        expect(repairInput.invalid_paths.join()).toContain('card_sentence_indexes');
+        expect(
+          adapter.requests[3]!.messages.find((message) => message.role === 'assistant')!.content,
+        ).toContain('[99]');
+      }
+      if (repair === 'heading') {
+        const titleRepair = JSON.parse(
+          adapter.requests[5]!.messages.find((message) => message.role === 'user')!.content!,
+        );
+        expect(titleRepair.requested_keys).toEqual(['company_1']);
+        expect(titleRepair.cards).toHaveLength(1);
+        expect(titleRepair.cards[0].body).not.toContain('实木柜');
+        const rendered = (variant.platform_meta as JsonObject)['cards'] as JsonObject[];
+        expect(rendered.find((card) => card['card_key'] === 'company_1')?.['heading']).toBe(
+          '居民家具搬运',
+        );
+        expect(rendered.find((card) => card['card_key'] === 'company_2')?.['heading']).toBe(
+          cards.recommendations[1]!.card_heading,
+        );
+      }
+      expect(JSON.stringify(adapter.requests[0]!.messages)).not.toContain('customer_perspective');
+      expect(JSON.stringify(adapter.requests[0]!.messages)).not.toContain(
+        '广州盛源机电制冷工程有限公司',
+      );
+      expect(JSON.stringify(adapter.requests[0]!.messages)).not.toContain(
+        '61111111-1111-4111-8111-111111111111',
+      );
+      expect(variant.citation_map).toHaveLength(2);
+      expect(variant.blocks.find((block) => block.block_key === 'company_1')?.text).toBe(
+        paragraphs[0],
+      );
+      expect((variant.platform_meta as JsonObject)['cards']).toHaveLength(6);
+      expect((brief['constraints'] as JsonObject)['douyin_content_voice']).not.toBe(
+        'company_recommendation',
+      );
+      if (repair === false) {
+        const observation = 'platform_meta.cards.company_2 改选已存在的服务原句，标题与摘句一致。';
+        const revisionAdapter = new LooseMockAdapter(
+          [
+            article,
+            {
+              cover_body,
+              pain_body,
+              checklist_body,
+              summary_body,
+              recommendations: cards.recommendations.map(
+                ({ company_id, card_sentence_indexes }) => ({ company_id, card_sentence_indexes }),
+              ),
+            },
+            {
+              headings: [
+                { card_key: 'pain', heading: pain_heading },
+                { card_key: 'company_1', heading: cards.recommendations[0]!.card_heading },
+                { card_key: 'company_2', heading: '家庭办公搬迁服务' },
+                { card_key: 'checklist', heading: draft.checklist_heading },
+                { card_key: 'summary', heading: summary_heading },
+              ],
+            },
+            { issues: [] },
+          ].map((item) => ({ text: JSON.stringify(item) })),
+          'deepseek-v4-flash',
+        );
+        const revisionWriter = new RuntimeContentWriter(
+          {} as postgres.Sql,
+          new Map([['deepseek-v4-flash', revisionAdapter]]),
+          vi.fn(),
+          async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+        );
+        await revisionWriter.rewriteBrowserPlatformVariant({
+          context: context(VARIANT_RUN, null),
+          currentContent: {
+            ...variant,
+            schema_version: 'content-writer-data@1',
+          } as unknown as GeneratedContent,
+          issues: [observation],
+          platformCode: 'douyin',
+          requestId: 'recommendation-card-review-forwarding',
+          writerInput,
+        });
+        const selection = revisionAdapter.requests.find((request) =>
+          request.requestId?.includes('recommendation-cards'),
+        )!;
+        const payload = JSON.parse(
+          selection.messages.find((message) => message.role === 'user')!.content!,
+        );
+        expect(payload.issues_to_fix).toContain(observation);
+      }
+    },
+  );
   it('runs Content Writer once and reuses its platform variants', async () => {
     const recordUsage = vi.fn();
     const writer = new RuntimeContentWriter(

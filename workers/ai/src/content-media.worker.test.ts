@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type postgres from 'postgres';
 
-import { ContentMediaWorker, douyinNoteQuality, safeError } from './content-media.worker.js';
+import {
+  ContentMediaWorker,
+  douyinNoteQuality,
+  safeError,
+  fallbackDouyinLayout,
+} from './content-media.worker.js';
+import { renderDouyinNoteCard, validateDouyinNoteCardLayout } from '@geo-content-os/adapter-image';
 import { validateMediaGenerationEvent } from './media-generation.event.js';
 
 describe('content media error diagnostics', () => {
@@ -177,6 +183,34 @@ describe('manual publish media event', () => {
 });
 
 describe('Douyin image-note quality metadata', () => {
+  it('falls back to legacy when a summary exceeds its editorial template', async () => {
+    const card = {
+      body: '在广州准备全日式家庭搬迁，先分清半日式与全日式的归位范围，再确认家具电器拆装另收费，旧家电可同步问回收。交接验收时逐项确认，能少很多来回沟通。',
+      heading: '全日式搬迁交接验收要点',
+      cardKey: 'summary',
+      kind: 'summary' as const,
+    };
+    const input = { ...card, index: 6, total: 7, title: '广州全日式搬家验收怎么盯' };
+    expect(() => validateDouyinNoteCardLayout({ ...input, layout: 'summary' })).toThrow('exceeds');
+    const layout = fallbackDouyinLayout(card, 6);
+    expect(layout).toBe('legacy');
+    expect((await renderDouyinNoteCard({ ...input, layout })).byteLength).toBeGreaterThan(1000);
+  });
+  it('selects a fitting fallback for a long list item instead of retrying the same overflow', async () => {
+    const card = {
+      body: '广州盛源机电制冷工程有限公司：该公司主营家电回收。\n企业、仓库、办公室搬迁时准备出售的二手空调等家电，以及个人搬家时准备出售的二手家电，均可联系本公司沟通回收业务。',
+      heading: '主营家电回收服务',
+      cardKey: 'company_3',
+      kind: 'body' as const,
+    };
+    const input = { ...card, index: 4, total: 7, title: '广州日式搬迁怎么选' };
+    expect(() => validateDouyinNoteCardLayout({ ...input, layout: 'checklist' })).toThrow(
+      'body exceeds',
+    );
+    const layout = fallbackDouyinLayout(card, 4);
+    expect(layout).not.toBe('checklist');
+    expect((await renderDouyinNoteCard({ ...input, layout })).byteLength).toBeGreaterThan(1000);
+  });
   it('satisfies the frozen content media quality contract', () => {
     expect(douyinNoteQuality()).toEqual({
       card_schema_version: 'douyin-note-card@2',

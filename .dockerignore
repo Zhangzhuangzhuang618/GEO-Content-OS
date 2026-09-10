@@ -9,5 +9,14 @@
 docs
 work
 outputs
+artifacts
+deliverables
+backup
+build_keywords.mjs
+scripts/collect-baijiahao-company-phone.mjs
+apps/api/scripts
+workers/ai/scripts
 .env
+**/.env
+**/.env.local
 .DS_Store

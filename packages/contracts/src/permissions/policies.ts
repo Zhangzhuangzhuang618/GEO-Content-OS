@@ -10,6 +10,7 @@ export const POLICY_CODES = Object.freeze([
   'content_editor_or_admin',
   'reviewer_or_admin',
   'publisher_or_admin',
+  'content_editor_or_publisher_or_admin',
   'analyst_or_admin',
   'owner_or_analyst_or_admin',
   'tenant_owner',
@@ -27,6 +28,10 @@ export const POLICY_PERMISSIONS = Object.freeze({
   content_editor_or_admin: Object.freeze(['content.production.manage']),
   reviewer_or_admin: Object.freeze(['review.decide']),
   publisher_or_admin: Object.freeze(['publishing.manage']),
+  content_editor_or_publisher_or_admin: Object.freeze([
+    'content.production.manage',
+    'publishing.manage',
+  ]),
   analyst_or_admin: Object.freeze(['analytics.read']),
   owner_or_analyst_or_admin: Object.freeze(['cost.read']),
   tenant_owner: Object.freeze(['audit.export']),

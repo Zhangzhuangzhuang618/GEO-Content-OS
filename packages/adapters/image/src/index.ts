@@ -1,5 +1,9 @@
 export { CloudflareWorkersAiImageAdapter, ImageProviderError } from './cloudflare.adapter.js';
-export { normalizeDouyinNoteBackground, renderDouyinNoteCard } from './douyin-note.js';
+export {
+  normalizeDouyinNoteBackground,
+  renderDouyinNoteCard,
+  validateDouyinNoteCardLayout,
+} from './douyin-note.js';
 export {
   readImageProviderConfiguration,
   type ImageProviderDriver,

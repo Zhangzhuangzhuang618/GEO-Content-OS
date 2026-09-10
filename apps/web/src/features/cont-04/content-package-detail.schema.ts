@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EditorialContextViewSchema } from './editorial-context.schema';
 
 import {
   ContentPackageSchema,
@@ -35,6 +36,7 @@ export const GenerationRunSchema = z
 
 export const ContentVersionSchema = z
   .object({
+    editorial_context: EditorialContextViewSchema.nullable().optional(),
     blocks: z.array(z.unknown()),
     content_hash: HashSchema,
     content_json: z

@@ -1,5 +1,6 @@
 import {
   assessDouyinImageNoteEditorial,
+  type EditorialContext,
   findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
 } from '@geo-content-os/contracts';
@@ -69,14 +70,16 @@ export function assessContentWriterData(
 export function assessContentWriterContents(
   contents: readonly ContentWriterContent[],
   policy: ContentGenerationPolicy,
+  editorialContext?: EditorialContext | null,
 ): ContentQualityAssessment {
-  const issues = contents.flatMap((content) => assessContent(content, policy));
+  const issues = contents.flatMap((content) => assessContent(content, policy, editorialContext));
   return Object.freeze({ issues: Object.freeze(issues), passed: issues.length === 0 });
 }
 
 function assessContent(
   content: ContentWriterContent,
   policy: ContentGenerationPolicy,
+  editorialContext?: EditorialContext | null,
 ): readonly string[] {
   const target = TARGETS[content.platform_code];
   const factor = POLICY_FACTOR[policy];
@@ -98,10 +101,20 @@ function assessContent(
   }
 
   if (content.platform_code === 'douyin') {
-    issues.push(...douyinImageNoteIssues(content));
+    issues.push(
+      ...assessDouyinImageNoteEditorial(
+        content,
+        editorialContext?.platform_code === 'douyin' ? editorialContext : null,
+      ).map((finding) => finding.message),
+    );
   }
 
-  if (characters < required(target.characters)) {
+  // Official-site recommendations use a length hint, not a padding requirement.
+  const usesLengthHint =
+    content.platform_code === 'official_site' &&
+    editorialContext?.platform_code === 'official_site' &&
+    editorialContext.style === 'company_recommendation';
+  if (!usesLengthHint && characters < required(target.characters)) {
     issues.push(
       `${content.platform_code}:正文仅 ${characters} 个有效字符，至少需要 ${required(target.characters)} 个`,
     );
@@ -171,10 +184,6 @@ function assessContent(
     issues.push(`${content.platform_code}:摘要与正文首段完全重复`);
   }
   return issues;
-}
-
-function douyinImageNoteIssues(content: ContentWriterContent): readonly string[] {
-  return assessDouyinImageNoteEditorial(content).map((finding) => finding.message);
 }
 
 function countReadableCharacters(value: string): number {

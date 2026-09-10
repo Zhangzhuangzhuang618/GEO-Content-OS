@@ -1,4 +1,5 @@
 import {
+  AccountContentPolicyRequestSchema,
   BaijiahaoAutomationPolicyRequestSchema,
   BaijiahaoDailyBatchRestartRequestSchema,
   BrowserPlatformAutomationPolicyRequestSchema,
@@ -54,7 +55,12 @@ import {
   parseIdempotencyKey,
   type JsonValue,
 } from '../../../common/idempotency/index.js';
-import { getPolicyContext, PolicyGuard, RequirePermissions } from '../../identity/rbac/index.js';
+import {
+  getPolicyContext,
+  PolicyGuard,
+  RequirePermissions,
+  RequireAnyPolicy,
+} from '../../identity/rbac/index.js';
 import {
   BaijiahaoAutomationPolicyService,
   BrowserPlatformAutomationPolicyService,
@@ -68,6 +74,7 @@ import {
 import { PublishJobError, PublishJobService } from '../jobs/index.js';
 import { PublishingApiError } from './publishing-api.errors.js';
 import { PublishingApiService, type PublishingApiScope } from './publishing-api.service.js';
+import { AccountContentPolicyService } from '../accounts/account-content-policy.service.js';
 
 type PublishingErrorCode =
   | 'ADAPTER_AUTH_EXPIRED'
@@ -83,6 +90,8 @@ type PublishingErrorCode =
 @UseGuards(PolicyGuard)
 export class PlatformAccountController {
   public constructor(
+    @Inject(AccountContentPolicyService)
+    private readonly contentPolicy: AccountContentPolicyService,
     @Inject(PlatformAccountService) private readonly accounts: PlatformAccountService,
     @Inject(OfficialSiteAutomationPolicyService)
     private readonly automation: OfficialSiteAutomationPolicyService,
@@ -98,6 +107,59 @@ export class PlatformAccountController {
     private readonly liejuBrowser: LiejuBrowserSessionService,
     @Inject(IdempotencyService) private readonly idempotency: IdempotencyService,
   ) {}
+
+  @Get(':id/content-policy')
+  @RequirePermissions('publishing.manage')
+  public async getContentPolicy(
+    @Param() params: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsed = PlatformAccountParamsSchema.safeParse(params);
+    if (!parsed.success) return sendSchemaError(reply, request.id, parsed.error.issues);
+    try {
+      const data = await this.contentPolicy.get(requireScope(request), parsed.data.id);
+      await reply.status(HttpStatus.OK).send({ data, meta: { request_id: request.id } });
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
+
+  @Put(':id/content-policy')
+  @RequirePermissions('publishing.manage')
+  public async putContentPolicy(
+    @Param() params: unknown,
+    @Body() raw: unknown,
+    @Req() request: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    const parsedParams = PlatformAccountParamsSchema.safeParse(params);
+    const parsedBody = AccountContentPolicyRequestSchema.safeParse(raw);
+    if (!parsedParams.success || !parsedBody.success)
+      return sendSchemaError(reply, request.id, issues(parsedParams, parsedBody));
+    const scope = requireScope(request);
+    try {
+      const result = await idempotent(
+        this.idempotency,
+        request,
+        scope,
+        `/platform-accounts/${parsedParams.data.id}/content-policy`,
+        parsedBody.data as JsonValue,
+        (transaction) =>
+          this.contentPolicy.saveInTransaction(
+            transaction,
+            scope,
+            parsedParams.data.id,
+            parsedBody.data,
+            audit(request),
+          ),
+        HttpStatus.OK,
+      );
+      await reply.status(result.response.statusCode).send(result.response.body);
+    } catch (error) {
+      await sendPublishingError(reply, request.id, error);
+    }
+  }
 
   @Post()
   @RequirePermissions('publishing.manage')
@@ -127,7 +189,7 @@ export class PlatformAccountController {
   }
 
   @Get()
-  @RequirePermissions('publishing.manage')
+  @RequireAnyPolicy('content_editor_or_publisher_or_admin')
   public async list(
     @Query() raw: unknown,
     @Req() request: FastifyRequest,

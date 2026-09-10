@@ -428,6 +428,33 @@ describe('deterministic pre-publish risk scanner', () => {
     ).not.toContain('deterministic.fact.external_credential_requires_evidence');
   });
 
+  it.each(['该公司', '广州志远搬家服务有限公司'])(
+    'recognizes mapped multi-certificate claims with subject %s',
+    (subject) => {
+      const names = ['质量管理体系认证证书', '环境管理体系认证证书', '道路运输经营许可证'];
+      const text = `${subject}持有${names.join('、')}。`;
+      const input = {
+        brandProfile: brand(),
+        platformCode: 'lieju' as const,
+        content: content({ blocks: [block('credential', text)] }),
+      };
+      const citations = names.map((name, i) => ({
+        id: `cert-${i}`,
+        credentialAuthorized: true,
+        claimText: text,
+        quoteText: `资料类型：企业证照\n证照名称：${name}\n持证主体：广州志远搬家服务有限公司`,
+      }));
+      expect(
+        scanDeterministicRisks({ ...input, citations }).map((issue) => issue.rule_id),
+      ).not.toContain('deterministic.fact.external_credential_requires_evidence');
+      expect(
+        scanDeterministicRisks({ ...input, citations: citations.slice(1) }).map(
+          (issue) => issue.rule_id,
+        ),
+      ).toContain('deterministic.fact.external_credential_requires_evidence');
+    },
+  );
+
   it('requires every listed credential and the exact current holder', () => {
     const input = {
       brandProfile: brand(),

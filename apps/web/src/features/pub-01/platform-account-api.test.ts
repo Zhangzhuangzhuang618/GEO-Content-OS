@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   saveBrowserPlatformAutomationPolicy,
+  restartBrowserPlatformDailyBatch,
+  restartOfficialSiteDailyBatch,
   startBaijiahaoBrowserLogin,
   startDouyinBrowserLogin,
   updatePlatformAccount,
@@ -35,6 +37,32 @@ const LIEJU_ACCOUNT = {
 
 describe('Douyin automation policy API', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each([restartBrowserPlatformDailyBatch, restartOfficialSiteDailyBatch])(
+    'sends a single-attempt style without mutating the saved policy',
+    async (restart) => {
+      const fetch = vi.fn(async () => new Response(null, { status: 500 }));
+      vi.stubGlobal('fetch', fetch);
+      await expect(
+        restart(
+          ACCOUNT.id,
+          {
+            expectedBatchVersion: 4,
+            projectId: LIEJU_ACCOUNT.workspace_id,
+            contentStyle: 'company_recommendation',
+          },
+          'csrf-token',
+        ),
+      ).rejects.toMatchObject({ status: 500 });
+      expect(
+        JSON.parse(String((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body)),
+      ).toEqual({
+        expected_batch_version: 4,
+        project_id: LIEJU_ACCOUNT.workspace_id,
+        content_style: 'company_recommendation',
+      });
+    },
+  );
 
   it('sends the complete account strategy to the browser-platform policy endpoint', async () => {
     let requestBody: Record<string, unknown> | undefined;

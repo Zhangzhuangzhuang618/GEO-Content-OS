@@ -1,5 +1,9 @@
 import type { ObjectStorageAdapter } from '@geo-content-os/adapter-storage';
-import type { EnterpriseEvidenceKind, PlatformCode } from '@geo-content-os/contracts';
+import type {
+  EditorialContext,
+  EnterpriseEvidenceKind,
+  PlatformCode,
+} from '@geo-content-os/contracts';
 
 export interface ValidatedPublishEvent {
   readonly eventId: string;
@@ -65,6 +69,7 @@ export interface PublishClaim {
   readonly mediaAssets?: readonly PublishMediaAsset[];
   readonly officialSiteServicePhone: string | null;
   readonly ownerCompanyNames: readonly string[];
+  readonly editorialContext?: EditorialContext | null;
   readonly payloadHash: string;
   readonly platformCode: PlatformCode;
   readonly publishMode: 'api' | 'export' | 'manual';

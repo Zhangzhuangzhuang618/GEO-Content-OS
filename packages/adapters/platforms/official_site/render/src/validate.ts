@@ -1,5 +1,7 @@
 import {
   findDisallowedCompanyNames,
+  editorialAllowedCompanyNames,
+  storedEditorialContext,
   hasExactOfficialSiteServicePhone,
 } from '@geo-content-os/contracts';
 
@@ -104,8 +106,11 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
   }
 
   const disallowedCompanyNames = findDisallowedCompanyNames(
-    JSON.stringify(value),
-    value.owner_company_names,
+    JSON.stringify({ ...value, editorial_context: undefined }),
+    editorialAllowedCompanyNames(
+      value.owner_company_names,
+      storedEditorialContext(value.editorial_context, 'official_site'),
+    ),
   );
   if (disallowedCompanyNames.length > 0) {
     const ownerBoundary =

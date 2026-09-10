@@ -50,6 +50,57 @@ describe('PlatformPublisher', () => {
       },
     );
     expect(() => assertEnterpriseEvidencePublishGate(valid)).not.toThrow();
+    const recommendation = {
+      ...valid,
+      editorialContext: {
+        account_id: valid.accountId,
+        platform_code: 'official_site' as const,
+        policy_version: 1,
+        schema_version: 'editorial-context@1' as const,
+        template_version: 'company-recommendation@1' as const,
+        style: 'company_recommendation' as const,
+        companies: [
+          { id: randomUUID(), legal_name: companyName, source_document_ids: sourceIds },
+          {
+            id: randomUUID(),
+            legal_name: '广州另一搬家有限公司',
+            source_document_ids: [randomUUID()],
+          },
+        ],
+      },
+      content: {
+        ...valid.content,
+        blocks: [
+          {
+            block_key: 'company_1',
+            block_type: 'paragraph',
+            text: `${companyName}承接搬家，持有营业执照和道路运输证。`,
+          },
+        ],
+      },
+    };
+    expect(() => assertEnterpriseEvidencePublishGate(recommendation)).not.toThrow();
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...recommendation,
+        content: {
+          ...recommendation.content,
+          blocks: [
+            {
+              block_key: 'company_2',
+              block_type: 'paragraph',
+              text: `${companyName}持有营业执照和道路运输证。`,
+            },
+          ],
+        },
+      }),
+    ).toThrow('ENTERPRISE_EVIDENCE_COPY_INVALID');
+    expect(() =>
+      assertEnterpriseEvidencePublishGate({
+        ...recommendation,
+        enterpriseEvidenceGate: { ...valid.enterpriseEvidenceGate!, mappedSourceIds: [] },
+      }),
+    ).toThrow('ENTERPRISE_EVIDENCE_MAPPING_INCOMPLETE');
     expect(() =>
       assertEnterpriseEvidencePublishGate({ ...valid, platformCode: 'lieju' }),
     ).not.toThrow();

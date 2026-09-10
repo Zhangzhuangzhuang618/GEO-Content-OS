@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { listAvailableTenants } from '../auth-02/tenant-api';
 import type { TenantRole } from '../auth-02/tenant.schema';
+import { GenerationTargetSettings, type GenerationTargets } from './generation-target-settings';
 import { skillLabel } from '../human-readable';
 import {
   ContentPackageDetailRequestError,
@@ -38,6 +39,7 @@ export function ContentPackageDetail() {
   const [busy, setBusy] = useState<PackageAction | null>(null);
   const [busyVariantId, setBusyVariantId] = useState<string | null>(null);
   const [modelPolicy, setModelPolicy] = useState<ModelPolicy>('balanced');
+  const [generationTargets, setGenerationTargets] = useState<GenerationTargets>({});
   const [reason, setReason] = useState('');
   const [message, setMessage] = useState<string | null>(null);
 
@@ -101,7 +103,8 @@ export function ContentPackageDetail() {
     setBusy(action);
     setMessage(null);
     try {
-      if (action === 'generate') await generatePackage(detail, modelPolicy, csrf);
+      if (action === 'generate')
+        await generatePackage(detail, modelPolicy, csrf, generationTargets);
       else if (action === 'quality-check')
         await requestPackageQualityChecks(qualityCheckVariantIds(detail), csrf);
       else if (action === 'submit-review')
@@ -118,7 +121,7 @@ export function ContentPackageDetail() {
     }
   }
 
-  async function runVariantRegeneration(item: VariantDetail) {
+  async function runVariantRegeneration(item: VariantDetail, targets?: GenerationTargets) {
     if (!detail || !role) return;
     const csrf = readCookie('geo_csrf');
     if (!csrf) {
@@ -128,7 +131,7 @@ export function ContentPackageDetail() {
     setBusyVariantId(item.variant.id);
     setMessage(null);
     try {
-      await regenerateVariant(item.variant.id, item.variant.version, modelPolicy, csrf);
+      await regenerateVariant(item.variant.id, item.variant.version, modelPolicy, csrf, targets);
       const refreshed = await getContentPackageDetail(detail.package.id);
       applyDetail(refreshed, setDetail, setSelectedReviewIds);
       setMessage(`${platformLabel(item.variant.platform_code)}内容已开始重新生成。`);
@@ -205,6 +208,16 @@ export function ContentPackageDetail() {
               )}
             </p>
           </div>
+          {producer && !hasExistingContent && !hasActiveRun ? (
+            <GenerationTargetSettings
+              workspaceId={detail.package.workspace_id}
+              platforms={detail.variants
+                .filter((item) => item.variant.is_required)
+                .map((item) => item.variant.platform_code)}
+              value={generationTargets}
+              onChange={setGenerationTargets}
+            />
+          ) : null}
           <div className="mt-5 flex flex-wrap gap-3">
             {producer && !hasExistingContent ? (
               <ActionButton
@@ -258,7 +271,8 @@ export function ContentPackageDetail() {
               item={item}
               key={item.variant.id}
               failedRunId={failedGenerationRunId(detail, item.variant.id)}
-              onRegenerate={() => runVariantRegeneration(item)}
+              onRegenerate={(targets) => runVariantRegeneration(item, targets)}
+              workspaceId={detail.package.workspace_id}
               onSelectedChange={(checked) =>
                 setSelectedReviewIds((current) =>
                   checked
@@ -448,6 +462,7 @@ function recommendedActionDescription(
 }
 
 function PlatformContentCard({
+  workspaceId,
   failedRunId,
   item,
   onRegenerate,
@@ -457,15 +472,17 @@ function PlatformContentCard({
   regenerationDisabled,
   selected,
 }: {
+  readonly workspaceId: string;
   readonly failedRunId: string | null;
   readonly item: VariantDetail;
-  readonly onRegenerate: () => Promise<void>;
+  readonly onRegenerate: (targets?: GenerationTargets) => Promise<void>;
   readonly onSelectedChange: (checked: boolean) => void;
   readonly producer: boolean;
   readonly regenerationBusy: boolean;
   readonly regenerationDisabled: boolean;
   readonly selected: boolean;
 }) {
+  const [regenerationTargets, setRegenerationTargets] = useState<GenerationTargets>({});
   const platform = platformLabel(item.variant.platform_code);
   const eligible = canSubmitVariant(item);
   const automationLabel = item.automationRun
@@ -490,6 +507,17 @@ function PlatformContentCard({
           {item.currentContent ? (
             <div className="mt-4 rounded-xl border border-line bg-white p-4">
               <p className="font-medium text-ink-950">{item.currentContent.content_json.title}</p>
+              {['official_site', 'lieju', 'douyin'].includes(item.variant.platform_code) ? (
+                <p className="mt-2 text-xs text-ink-600">
+                  本版本风格：
+                  {item.currentContent.editorial_context?.style === 'company_recommendation'
+                    ? '硬广·多公司推荐'
+                    : '现有常规风格'}
+                  {item.currentContent.editorial_context?.companies.length
+                    ? ` · 推荐顺序：${item.currentContent.editorial_context.companies.map((company) => company.legal_name).join(' → ')}`
+                    : ''}
+                </p>
+              ) : null}
               <p className="mt-2 line-clamp-2 text-sm leading-6 text-ink-600">
                 {item.currentContent.content_json.summary}
               </p>
@@ -521,6 +549,22 @@ function PlatformContentCard({
         </dl>
       </div>
 
+      {producer &&
+      item.variant.status === 'generation_failed' &&
+      ['official_site', 'lieju', 'douyin'].includes(item.variant.platform_code) ? (
+        <details className="mt-4">
+          <summary className="text-sm cursor-pointer">重新生成配置（可选）</summary>
+          <p className="mt-2 text-xs text-ink-600">
+            不选择时沿用已冻结配置；日批任务如需改风格，请在日批设置中重新开始批次。已绑定的发布账号不能更换。
+          </p>
+          <GenerationTargetSettings
+            workspaceId={workspaceId}
+            platforms={[item.variant.platform_code]}
+            value={regenerationTargets}
+            onChange={setRegenerationTargets}
+          />
+        </details>
+      ) : null}
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
         {item.variant.status === 'generation_failed' ? (
           <Link
@@ -534,7 +578,7 @@ function PlatformContentCard({
           <button
             className={primaryButton}
             disabled={regenerationDisabled}
-            onClick={() => void onRegenerate()}
+            onClick={() => void onRegenerate(regenerationTargets)}
             type="button"
           >
             {regenerationBusy ? '重新生成中' : `重新生成${platform}内容`}

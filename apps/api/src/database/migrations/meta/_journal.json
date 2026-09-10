@@ -421,6 +421,13 @@
       "when": 1788758400000,
       "tag": "0059_douyin_account_nickname",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1788931200000,
+      "tag": "0060_account_editorial_policy",
+      "breakpoints": true
     }
   ]
 }

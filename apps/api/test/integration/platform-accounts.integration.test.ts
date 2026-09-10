@@ -22,6 +22,7 @@ import {
   type PlatformAccountScope,
 } from '../../src/modules/publishing/accounts/index.js';
 import { PlatformDeliveryAccountConnector } from '../../src/modules/publishing/accounts/platform-account.connector.js';
+import { AccountContentPolicyService } from '../../src/modules/publishing/accounts/account-content-policy.service.js';
 import { WorkspaceService } from '../../src/modules/workspace/workspaces/index.js';
 
 const USER_ID = '11000000-0000-4000-8000-000000000123';
@@ -75,6 +76,113 @@ describe('platform accounts', () => {
     vi.unstubAllGlobals();
   });
 
+  it('saves account content policies with versions, audit and workspace isolation', async () => {
+    const database = requireClient(client);
+    const [account] = await database<
+      { id: string }[]
+    >`INSERT INTO platform_accounts(tenant_id,workspace_id,platform_code,display_name,publish_mode,status,timezone)
+      VALUES (${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'official_site','Editorial account','export','active','Asia/Shanghai') RETURNING id`;
+    if (!account) throw new Error('Missing test account');
+    const policies = new AccountContentPolicyService(database);
+    expect(await policies.get(SCOPE, account.id)).toMatchObject({
+      version: 0,
+      default_style: 'standard',
+      recommended_companies: [],
+    });
+    const input = {
+      default_style: 'company_recommendation' as const,
+      expected_version: 0,
+      recommended_companies: [],
+    };
+    const after = await database.begin((transaction) =>
+      policies.saveInTransaction(transaction, SCOPE, account.id, input, {
+        requestId: 'editorial-save',
+      }),
+    );
+    expect(after).toMatchObject({ version: 1, default_style: 'company_recommendation' });
+    await expect(
+      database.begin((transaction) =>
+        policies.saveInTransaction(transaction, SCOPE, account.id, input, {
+          requestId: 'editorial-stale',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_VERSION_CONFLICT' });
+    await expect(policies.get(OTHER_SCOPE, account.id)).rejects.toMatchObject({
+      code: 'PLATFORM_ACCOUNT_NOT_FOUND',
+    });
+    const audit = await database<
+      { count: number }[]
+    >`SELECT count(*)::int FROM audit_events WHERE request_id='editorial-save' AND action='account.content_policy.updated'`;
+    expect(audit[0]?.count).toBe(1);
+    await expect(
+      database.begin((transaction) =>
+        policies.saveInTransaction(
+          transaction,
+          SCOPE,
+          account.id,
+          {
+            ...input,
+            expected_version: 1,
+            recommended_companies: [
+              {
+                id: account.id,
+                legal_name: '广州志远搬家服务有限公司',
+                source_document_ids: [OTHER_WORKSPACE_ID],
+              },
+            ],
+          },
+          { requestId: 'editorial-bad-source' },
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_NOT_FOUND' });
+    expect((await policies.get(SCOPE, account.id)).version).toBe(1);
+  });
+
+  it('rejects account content policy on excluded platforms', async () => {
+    const database = requireClient(client);
+    const [account] = await database<
+      { id: string }[]
+    >`INSERT INTO platform_accounts(tenant_id,workspace_id,platform_code,display_name,publish_mode,status,timezone)
+      VALUES (${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'xiaohongshu','Excluded','export','active','Asia/Shanghai') RETURNING id`;
+    if (!account) throw new Error('Missing test account');
+    await expect(
+      new AccountContentPolicyService(database).get(SCOPE, account.id),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_STATE_INVALID' });
+    await expect(database`INSERT INTO platform_account_content_policies (account_id,tenant_id,workspace_id,platform_code,created_by,updated_by)
+      VALUES (${account.id}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'xiaohongshu',${USER_ID}::uuid,${USER_ID}::uuid)`).rejects.toThrow();
+  });
+
+  it('freezes account content policy when the daily batch is inserted and preserves it on updates', async () => {
+    const database = requireClient(client);
+    const accountId = 'a1000000-0000-4000-8000-000000000165';
+    await database`INSERT INTO platform_accounts(id,tenant_id,workspace_id,platform_code,display_name,publish_mode,status,timezone)
+      VALUES (${accountId}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'lieju','Editorial batch','api','active','Asia/Shanghai')`;
+    const [policy] = await database<
+      { id: string }[]
+    >`INSERT INTO browser_platform_automation_policies
+      (tenant_id,workspace_id,project_id,account_id,platform_code,enabled,daily_enabled,created_by)
+      VALUES (${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,${PROJECT_ID}::uuid,${accountId}::uuid,'lieju',false,false,${USER_ID}::uuid) RETURNING id`;
+    const [batch] = await database<
+      { id: string; editorial_policy_snapshot_json: { style: string } }[]
+    >`INSERT INTO browser_platform_daily_batches
+      (tenant_id,policy_id,business_date) VALUES (${TENANT_ID}::uuid,${policy!.id}::uuid,CURRENT_DATE) RETURNING id,editorial_policy_snapshot_json`;
+    expect(batch?.editorial_policy_snapshot_json.style).toBe('standard');
+    await database`UPDATE browser_platform_automation_policies SET content_style_override='company_recommendation' WHERE id=${policy!.id}::uuid`;
+    await database`UPDATE browser_platform_daily_batches SET version=version+1 WHERE id=${batch!.id}::uuid`;
+    const [unchanged] = await database<
+      { editorial_policy_snapshot_json: { style: string } }[]
+    >`SELECT editorial_policy_snapshot_json FROM browser_platform_daily_batches WHERE id=${batch!.id}::uuid`;
+    expect(unchanged?.editorial_policy_snapshot_json.style).toBe('standard');
+    await expect(
+      database`UPDATE browser_platform_daily_batches SET editorial_policy_snapshot_json='{}'::jsonb WHERE id=${batch!.id}::uuid`,
+    ).rejects.toThrow('immutable');
+    const [tomorrow] = await database<
+      { editorial_policy_snapshot_json: { style: string } }[]
+    >`INSERT INTO browser_platform_daily_batches
+      (tenant_id,policy_id,business_date,requested_content_style) VALUES (${TENANT_ID}::uuid,${policy!.id}::uuid,CURRENT_DATE+1,'standard') RETURNING editorial_policy_snapshot_json`;
+    expect(tomorrow?.editorial_policy_snapshot_json.style).toBe('standard');
+  });
+
   it('supports the complete account lifecycle without exposing credentials', async () => {
     const database = requireClient(client);
     const service = createService(database, requireKms(kms));
@@ -111,7 +219,7 @@ describe('platform accounts', () => {
     expect(stored[0]?.credential_ciphertext).not.toContain(SECRET);
 
     const listed = await service.list(SCOPE, { workspaceId: WORKSPACE_ID });
-    expect(listed).toEqual([connected]);
+    expect(listed).toEqual([{ ...connected, account_nickname: null }]);
     expect(JSON.stringify(listed)).not.toContain(SECRET);
 
     const refreshed = await service.refresh(SCOPE, connected.id, {}, 1, {

@@ -12,6 +12,7 @@ import {
   PublishJobController,
 } from './api/publishing-api.controller.js';
 import { PublishingApiService } from './api/publishing-api.service.js';
+import { AccountContentPolicyService } from './accounts/account-content-policy.service.js';
 import {
   BaijiahaoAutomationPolicyService,
   BrowserPlatformAutomationPolicyService,
@@ -40,6 +41,11 @@ import {
   exports: [PublishingApiService],
   imports: [AuthModule, IdempotencyModule, OutboxModule, RbacModule],
   providers: [
+    {
+      inject: [IdentityAuthDatabase],
+      provide: AccountContentPolicyService,
+      useFactory: (database: IdentityAuthDatabase) => new AccountContentPolicyService(database),
+    },
     { provide: PUBLISHING_ACCOUNT_CONNECTOR, useClass: PlatformDeliveryAccountConnector },
     { provide: PUBLISHING_CREDENTIALS, useFactory: createPublishingCredentialService },
     {

@@ -79,6 +79,7 @@ export const CapabilityResponseSchema = z
 
 export const OfficialSiteAutomationPolicySchema = z
   .object({
+    content_style_override: z.enum(['standard', 'company_recommendation']).nullable().optional(),
     account_id: z.string().uuid(),
     brand_consistency_min: z.literal(90),
     daily_candidate_limit: z.literal(30),
@@ -111,6 +112,8 @@ export const OfficialSiteAutomationPolicySchema = z
     tenant_id: z.string().uuid(),
     today_batch: z
       .object({
+        content_style: z.enum(['standard', 'company_recommendation']).optional(),
+        recommended_company_names: z.array(z.string()).max(6).optional(),
         attempt_no: z.number().int().positive(),
         attempted_count: z.number().int().min(0).max(30),
         business_date: z.iso.date(),
@@ -315,6 +318,7 @@ export const BaijiahaoAutomationPolicySchema = z
   .strict();
 export const BrowserPlatformAutomationPolicySchema = z
   .object({
+    content_style_override: z.enum(['standard', 'company_recommendation']).nullable().optional(),
     account_id: z.string().uuid(),
     account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),
@@ -343,6 +347,8 @@ export const BrowserPlatformAutomationPolicySchema = z
     target_regions: z.array(z.string().trim().min(1).max(240)).max(12),
     today_batch: z
       .object({
+        content_style: z.enum(['standard', 'company_recommendation']).optional(),
+        recommended_company_names: z.array(z.string()).max(6).optional(),
         attempt_no: z.number().int().positive(),
         attempted_count: z.number().int().min(0).max(30),
         business_date: z.iso.date(),

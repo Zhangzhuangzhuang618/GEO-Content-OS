@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { PLATFORM_CODES } from '../../platforms.js';
+import { AccountContentPolicyViewSchema, ContentStyleSchema } from '../../editorial-policy.js';
 import {
   IsoDateTimeSchema,
   UuidSchema,
@@ -10,6 +11,9 @@ import {
 const CredentialSchema = z
   .record(z.string(), z.unknown())
   .refine((value) => Object.keys(value).length > 0, 'credential must not be empty');
+export const AccountContentPolicyResponseSchema = createDataResponseSchema(
+  AccountContentPolicyViewSchema,
+);
 const PublishingUrlSchema = z
   .url()
   .max(2048)
@@ -97,6 +101,7 @@ export const PlatformAccountResponseSchema = createDataResponseSchema(PlatformAc
 export const CapabilityResponseSchema = createDataResponseSchema(CapabilityViewSchema);
 export const OfficialSiteAutomationPolicyRequestSchema = z
   .object({
+    content_style_override: ContentStyleSchema.nullable().optional(),
     daily_enabled: z.boolean().optional(),
     enabled: z.boolean(),
     expected_version: VersionSchema.optional(),
@@ -109,9 +114,13 @@ export const DailyBatchRestartRequestSchema = z
     project_id: UuidSchema,
   })
   .strict();
-export const OfficialSiteDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema;
+export const OfficialSiteDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema.extend({
+  content_style: ContentStyleSchema.optional(),
+});
 export const BaijiahaoDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema;
-export const BrowserPlatformDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema;
+export const BrowserPlatformDailyBatchRestartRequestSchema = DailyBatchRestartRequestSchema.extend({
+  content_style: ContentStyleSchema.optional(),
+});
 export const OfficialSiteDailyBatchCancelRequestSchema = z
   .object({
     expected_batch_version: VersionSchema,
@@ -120,6 +129,8 @@ export const OfficialSiteDailyBatchCancelRequestSchema = z
   .strict();
 export const OfficialSiteDailyBatchSummarySchema = z
   .object({
+    recommended_company_names: z.array(z.string()).max(6).optional(),
+    content_style: ContentStyleSchema.optional(),
     attempt_no: z.number().int().positive(),
     attempted_count: z.number().int().min(0).max(30),
     business_date: z.iso.date(),
@@ -139,6 +150,7 @@ export const OfficialSiteDailyBatchSummarySchema = z
   .strict();
 export const OfficialSiteAutomationPolicyViewSchema = z
   .object({
+    content_style_override: ContentStyleSchema.nullable().optional(),
     account_id: UuidSchema,
     brand_consistency_min: z.literal(90),
     daily_candidate_limit: z.literal(30),
@@ -247,6 +259,7 @@ export const DouyinContentVoiceSchema = z.enum([
 
 export const BrowserPlatformAutomationPolicyRequestSchema = z
   .object({
+    content_style_override: ContentStyleSchema.nullable().optional(),
     account_positioning: z.string().trim().min(1).max(240).optional(),
     content_voice: DouyinContentVoiceSchema.optional(),
     daily_candidate_limit: z.number().int().min(1).max(30),
@@ -549,6 +562,8 @@ export const BaijiahaoAutomationPolicyViewSchema = z
   });
 export const BrowserPlatformDailyBatchSummarySchema = z
   .object({
+    recommended_company_names: z.array(z.string()).max(6).optional(),
+    content_style: ContentStyleSchema.optional(),
     attempt_no: z.number().int().positive(),
     attempted_count: z.number().int().min(0).max(30),
     business_date: z.iso.date(),
@@ -587,6 +602,7 @@ export const BrowserPlatformDailyBatchSummarySchema = z
   .strict();
 export const BrowserPlatformAutomationPolicyViewSchema = z
   .object({
+    content_style_override: ContentStyleSchema.nullable().optional(),
     account_id: UuidSchema,
     account_positioning: z.string().max(240),
     brand_consistency_min: z.literal(90),

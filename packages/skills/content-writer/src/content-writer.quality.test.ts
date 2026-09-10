@@ -1,3 +1,4 @@
+import type { EditorialContext } from '@geo-content-os/contracts';
 import type { ContentWriterContent, ContentWriterData } from '@geo-content-os/contracts/skills';
 import { describe, expect, it } from 'vitest';
 
@@ -5,6 +6,68 @@ import { CONTENT_WRITER_CONTRACT_V1 } from '../contracts/v1.0.0/index.js';
 import { assessContentWriterContents, assessContentWriterData } from './content-writer.quality.js';
 
 describe('Content Writer semantic quality gate', () => {
+  const recommendationContext: EditorialContext = {
+    account_id: '11111111-1111-4111-8111-111111111111',
+    companies: [],
+    platform_code: 'official_site',
+    policy_version: 1,
+    schema_version: 'editorial-context@1',
+    style: 'company_recommendation',
+    template_version: 'company-recommendation@1',
+  };
+
+  it.each(['fast', 'balanced', 'quality'] as const)(
+    'uses only a length hint for trusted official recommendations under %s policy',
+    (policy) => {
+      const short = {
+        ...complete('official_site', 0),
+        title: '广州企业办公室搬迁如何安排部门物品和新址工位',
+      };
+      expect(assessContentWriterContents([short], policy, recommendationContext).issues).toEqual(
+        [],
+      );
+      for (const context of [
+        undefined,
+        { ...recommendationContext, style: 'standard' as const },
+        { ...recommendationContext, platform_code: 'lieju' as const },
+      ]) {
+        expect(assessContentWriterContents([short], policy, context).issues).toEqual(
+          expect.arrayContaining([expect.stringContaining('official_site:正文仅')]),
+        );
+      }
+      const lieju = complete('lieju', 0);
+      expect(
+        assessContentWriterContents([lieju], policy, {
+          ...recommendationContext,
+          platform_code: 'lieju',
+        }).issues,
+      ).toEqual(expect.arrayContaining([expect.stringContaining('lieju:正文仅')]));
+      const long = { ...complete('official_site', 190), title: short.title };
+      expect(assessContentWriterContents([long], policy, recommendationContext).issues).toEqual([]);
+    },
+  );
+
+  it('retains structure, title, placeholder and unsupported-promise checks with the length hint', () => {
+    const incomplete = {
+      ...complete('official_site', 0),
+      blocks: [
+        { block_key: 'answer', block_type: 'paragraph' as const, text: '待补充，保证不会损坏。' },
+      ],
+    };
+    expect(
+      assessContentWriterContents([incomplete], 'quality', recommendationContext).issues,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('标题为'),
+        expect.stringContaining('仅 1 个内容块'),
+        expect.stringContaining('缺少清晰的分节标题'),
+        expect.stringContaining('缺少可执行清单'),
+        expect.stringContaining('正文仍包含占位式表达'),
+        expect.stringContaining('高风险权威或绝对化表述'),
+      ]),
+    );
+  });
+
   it('rejects schema-valid but materially thin content', () => {
     const data = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.output.data;
     const result = assessContentWriterData(data, 'quality');

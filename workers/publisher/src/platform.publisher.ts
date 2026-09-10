@@ -165,6 +165,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           content,
           media_assets: prepared.assets,
           owner_company_names: claim.ownerCompanyNames,
+          ...(claim.editorialContext ? { editorial_context: claim.editorialContext } : {}),
           rule_version: OFFICIAL_SITE_RENDER_RULE_VERSION,
           service_phone: claim.officialSiteServicePhone,
         });
@@ -336,13 +337,26 @@ export function assertEnterpriseEvidencePublishGate(claim: PublishClaim): void {
     );
   }
   const blocks = Array.isArray(claim.content['blocks']) ? claim.content['blocks'] : [];
+  const ownerIndex =
+    claim.editorialContext?.style === 'company_recommendation'
+      ? claim.editorialContext.companies.findIndex(
+          (company) => company.legal_name === gate.companyName,
+        )
+      : -1;
   const enterpriseBlocks = blocks.filter(
-    (block) => record(block) && block['block_key'] === 'enterprise-credentials',
+    (block) =>
+      record(block) &&
+      (block['block_key'] === 'enterprise-credentials' ||
+        (ownerIndex >= 0 && block['block_key'] === `company_${ownerIndex + 1}`)),
   );
   const text =
-    enterpriseBlocks.length === 1 && typeof enterpriseBlocks[0]?.['text'] === 'string'
-      ? enterpriseBlocks[0]['text']
-      : '';
+    ownerIndex >= 0
+      ? enterpriseBlocks
+          .map((block) => (typeof block['text'] === 'string' ? block['text'] : ''))
+          .join('\n')
+      : enterpriseBlocks.length === 1 && typeof enterpriseBlocks[0]?.['text'] === 'string'
+        ? enterpriseBlocks[0]['text']
+        : '';
   if (
     !text ||
     !text.includes(gate.companyName) ||

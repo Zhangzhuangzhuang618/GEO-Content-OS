@@ -1,6 +1,8 @@
 import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   findLiejuForbiddenContactDetails,
+  storedEditorialContext,
+  editorialAllowedCompanyNames,
   findPublishedOwnerCompanyNames,
   isAllowedCompanyReference,
   isDisallowedCompanyReferenceAtLocation,
@@ -19,6 +21,7 @@ import {
   type SkillRunner,
 } from '@geo-content-os/skills/runtime';
 import { isDeepStrictEqual } from 'node:util';
+import { qualityOutputGuard } from './quality-output-guard.js';
 
 import {
   QUALITY_CHECKER_FEW_SHOTS_V1,
@@ -43,6 +46,7 @@ export interface QualityCheckerPublishedPrompt {
 }
 
 interface CheckerInput {
+  readonly editorial_context?: unknown;
   readonly brand_policy: { readonly policy: Readonly<Record<string, unknown>> };
   readonly content_version: { readonly content: Readonly<Record<string, unknown>> };
   readonly fact_results: readonly {
@@ -77,6 +81,9 @@ export class QualityCheckerSkill {
       maxOutputTokens: 8_192,
       messages: messages(invocation.input, invocation.prompt),
       outputSchema: QUALITY_CHECKER_DATA_SCHEMA,
+      prepareOutput: qualityOutputGuard(
+        (invocation.input as unknown as CheckerInput).safety_policy.max_warnings_for_pass,
+      ),
       recordUsage: invocation.recordUsage,
       ...(invocation.signal ? { signal: invocation.signal } : {}),
       temperature: 0,
@@ -97,24 +104,37 @@ function messages(
   prompt?: QualityCheckerPublishedPrompt,
 ): readonly ModelMessage[] {
   const allowHighRiskExample = hasEligibleHighRiskFact(input);
-  const examples = QUALITY_CHECKER_FEW_SHOTS_V1.flatMap<ModelMessage>((example) => {
-    const data = allowHighRiskExample
-      ? example.output.data
-      : {
-          ...example.output.data,
-          issues: example.output.data.issues.filter((issue) => !isHighRiskFactRule(issue.rule_id)),
-        };
-    const exampleInput = allowHighRiskExample
-      ? example.input
-      : withoutEligibleHighRiskFacts(example.input);
-    return [
-      {
-        content: JSON.stringify({ example_input: exampleInput, purpose: example.purpose }),
-        role: 'user',
-      },
-      { content: JSON.stringify(data), role: 'assistant' },
-    ];
-  });
+  const checkerInput = input as unknown as CheckerInput;
+  const recommendation =
+    storedEditorialContext(
+      checkerInput.editorial_context,
+      String(checkerInput.platform_rules.platform_code ?? ''),
+    )?.style === 'company_recommendation';
+  // The legacy WeChat examples teach splitting paragraphs and manufacture
+  // three paragraph.length findings. They are not this style's editorial rubric.
+  // Keep the input, output and server-side semantic gates unchanged.
+  const examples = (recommendation ? [] : QUALITY_CHECKER_FEW_SHOTS_V1).flatMap<ModelMessage>(
+    (example) => {
+      const data = allowHighRiskExample
+        ? example.output.data
+        : {
+            ...example.output.data,
+            issues: example.output.data.issues.filter(
+              (issue) => !isHighRiskFactRule(issue.rule_id),
+            ),
+          };
+      const exampleInput = allowHighRiskExample
+        ? example.input
+        : withoutEligibleHighRiskFacts(example.input);
+      return [
+        {
+          content: JSON.stringify({ example_input: exampleInput, purpose: example.purpose }),
+          role: 'user',
+        },
+        { content: JSON.stringify(data), role: 'assistant' },
+      ];
+    },
+  );
   return Object.freeze([
     {
       content: prompt
@@ -272,7 +292,10 @@ function isTitleMaxRule(ruleId: string): boolean {
 
 function assertVerifiableIssues(input: CheckerInput, issues: QualityCheckerData['issues']): void {
   const rejections: SemanticIssueRejection[] = [];
-  const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brand_policy.policy);
+  const allowedCompanyNames = editorialAllowedCompanyNames(
+    findPublishedOwnerCompanyNames(input.brand_policy.policy),
+    storedEditorialContext(input.editorial_context, input.platform_rules.platform_code ?? ''),
+  );
   for (const issue of issues) {
     if (issue.rule_id === 'brand.other_company_name') {
       const reason = invalidBrandIssueReason(input, issue, allowedCompanyNames);
@@ -307,7 +330,10 @@ function withoutDeterministicFalsePositiveIssues(
   input: CheckerInput,
   data: QualityCheckerData,
 ): QualityCheckerData {
-  const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brand_policy.policy);
+  const allowedCompanyNames = editorialAllowedCompanyNames(
+    findPublishedOwnerCompanyNames(input.brand_policy.policy),
+    storedEditorialContext(input.editorial_context, input.platform_rules.platform_code ?? ''),
+  );
   const issues = data.issues.filter((issue) => {
     if (issue.rule_id === 'brand.other_company_name') {
       const reason = invalidBrandIssueReason(input, issue, allowedCompanyNames);

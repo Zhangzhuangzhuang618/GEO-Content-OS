@@ -118,6 +118,62 @@ test('shows the failed platform reason and retries only that platform', async ({
   expect(request?.headers['idempotency-key']).toMatch(/^content-variant-regenerate-/u);
 });
 
+test('passes a one-time account and style override when explicitly regenerating a failed variant', async ({
+  page,
+}) => {
+  await page.unroute(`**/api/v1/content-packages/${PACKAGE_ID}`);
+  await mockDetail(page, baseDetail('all_failed', ['generation_failed', 'generation_failed']));
+  const accountId = '12000000-0000-4000-8000-000000000085';
+  await page.route('**/api/v1/platform-accounts?**', async (route) =>
+    json(route, [
+      {
+        id: accountId,
+        tenant_id: TENANT_ID,
+        workspace_id: WORKSPACE_ID,
+        platform_code: 'official_site',
+        display_name: '官网账号',
+        provider_account_id: null,
+        publishing_url: null,
+        publish_mode: 'api',
+        scopes: [],
+        status: 'active',
+        capabilities: {},
+        timezone: 'Asia/Shanghai',
+        token_expires_at: null,
+        created_at: '2026-09-09T00:00:00Z',
+        updated_at: '2026-09-09T00:00:00Z',
+        version: 1,
+      },
+    ]),
+  );
+  let body: unknown;
+  await page.route(`**/api/v1/content-variants/${SITE_ID}/regenerate`, async (route) => {
+    body = route.request().postDataJSON();
+    await json(route, { ...generationRun('queued'), variant_id: SITE_ID }, 202);
+  });
+  await page.goto(`/cont-04?id=${PACKAGE_ID}`);
+  await page.getByText('重新生成配置（可选）').click();
+  await page
+    .locator('details')
+    .filter({ hasText: '重新生成配置（可选）' })
+    .getByLabel('官网目标账号')
+    .selectOption(accountId);
+  await page
+    .locator('details')
+    .filter({ hasText: '重新生成配置（可选）' })
+    .getByLabel('官网本次生文风格')
+    .selectOption('company_recommendation');
+  await page.getByRole('button', { name: '重新生成官网内容' }).click();
+  await expect(page.getByText('官网内容已开始重新生成。')).toBeVisible();
+  expect(body).toEqual({
+    locked_block_keys: [],
+    model_policy: 'balanced',
+    generation_targets: {
+      official_site: { account_id: accountId, content_style: 'company_recommendation' },
+    },
+  });
+});
+
 test('starts quality checks for generated platforms and explains the next step', async ({
   page,
 }) => {

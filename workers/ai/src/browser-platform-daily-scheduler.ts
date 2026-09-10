@@ -15,6 +15,7 @@ import type { DailyCitation, DailyCitationPort } from './daily-citation-retrieve
 import { supportsDouyinPriceComparison } from './douyin-price-evidence.js';
 import { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 import type { JsonObject } from './generation.types.js';
+import { dailyEditorialContext } from './daily-editorial-context.js';
 
 type Platform = 'douyin' | 'lieju' | 'sohu';
 
@@ -40,6 +41,7 @@ interface DailyKeyword {
 }
 
 interface BatchRow {
+  readonly editorialContext: unknown;
   readonly accountPositioning: string;
   readonly accountId: string;
   readonly businessDate: string;
@@ -188,7 +190,7 @@ export class BrowserPlatformDailyScheduler {
     return this.client.begin(async (transaction) => {
       const rows = await transaction<BatchRow[]>`
         SELECT batch.id,batch.tenant_id AS "tenantId",batch.business_date::text AS "businessDate",
-          batch.version,policy.id AS "policyId",policy.workspace_id AS "workspaceId",
+          batch.version,batch.editorial_policy_snapshot_json AS "editorialContext",policy.id AS "policyId",policy.workspace_id AS "workspaceId",
           policy.project_id AS "projectId",policy.account_id AS "accountId",
           policy.platform_code AS "platformCode",policy.created_by AS "createdBy",
           policy.account_positioning AS "accountPositioning",
@@ -474,6 +476,14 @@ async function createCandidate(
   config: OfficialSiteAutomationConfig,
   dailyCitations: DailyCitationPort,
 ) {
+  let editorial;
+  try {
+    editorial = await dailyEditorialContext(transaction, batch, batch.platformCode);
+  } catch (error) {
+    throw new DailyEvidenceMissingError(
+      error instanceof Error ? error.message : '推荐企业资料不可用',
+    );
+  }
   const selection = await selectDailyCandidate(
     transaction,
     batch,
@@ -500,7 +510,7 @@ async function createCandidate(
     ? `正在搜索“${keyword.term}”、位于${selection.strategy.selectedRegion}并需要${selection.strategy.selectedServiceScope}决策信息的用户`
     : `正在搜索“${keyword.term}”并需要服务决策信息的用户`;
   let topicFocus = douyinStrategyFocus(angle.focus, selection.strategy);
-  const evidence = await dailyCitations.retrieve({
+  let evidence = await dailyCitations.retrieve({
     angle: topicFocus,
     authoritySourceIds: seed.authoritySourceIds,
     audience,
@@ -518,6 +528,17 @@ async function createCandidate(
     userId: batch.createdBy,
     workspaceId: batch.workspaceId,
   });
+  evidence = {
+    ...evidence,
+    citations: [
+      ...new Map(
+        [...evidence.citations, ...editorial.citations].map((citation) => [
+          citation.chunkId,
+          citation,
+        ]),
+      ).values(),
+    ],
+  };
   if (evidence.citations.length === 0) {
     await releaseTopicReservation(transaction, batch.tenantId, selection.reservationId);
     throw new DailyEvidenceMissingError(
@@ -542,6 +563,9 @@ async function createCandidate(
         ? '输出抖音图文笔记：标题先回答本候选指定的搜索决策意图，不得退回泛化的流程或准备知识题；服务器会绑定由项目关键词事实得到的“地域＋具体场景”标题主体，标题必须逐字保留该主体并接续决策问题。platform_meta.content_kind 必须是 image_note；生成6-9张图文卡片，顺序为封面、正文、总结。现场、报价、防护、工期和清单是安全技术槽位，必须全部围绕本篇唯一主意图提供不同的判断或动作，不能写成每篇相同的七段模板；正文每页控制在24-88字，禁止长段拆页、模板标题和同义重复。同时提供420-900字、5-8个长短有变化的自然段，连同换行和全部#topics不得超过1000字：首段两句完成点题和痛点，正文讲清方案、费用边界、防护风险和工期安排，并给出至少3条编号避坑点，客户口吻可用①②③；不得复制摘要、正文块或卡片，不得使用“核心是”“本质上”“真正重要的是”“总的来说”“选择依据是”“进一步沟通”等论文式或助手式套话，不得连续用“建议、应当、需要”发号施令。多写现场会增加的钱、沙发过不了转角、车几点到、报价单写没写清等具体问题，少堆“风险、边界、责任”等抽象词。文章用于推广当前企业；客户口吻以三个锚点保持身份：首句由潜在客户进入选择过程，中段至少出现一次明确取舍，结尾根据已发布品牌资料或输入引用支持的本企业能力，用第一人称把本企业放进备选、比较或咨询名单，并说明下一步将拿真实地址、物品清单和书面报价继续核对后再决定；中间各段不必机械重复“我会”“我最关心”。资质等需外部证明的事实仍必须映射引用，不得写成企业自荐或虚假用后评价。“真实场景、真实案例、收费对比、资质核验、合同条款解读、口碑参考”等证据承诺，只有在对应资料直接支持且正文通过 citation_map 映射时才能写进标题；服务器绑定证据承诺时，标题必须逐字保留该承诺并在正文提供直接支持它的可见事实与 citation_map。输入引用如直接记录第三方消费者经历，可以匿名概括为“某先生”“某女士”或“某位消费者”，用于说明对应风险和注意事项，但该事实必须进入 citation_map；没有直接证据时不得生成案例。topics 使用3-8个紧贴地域、场景和服务对象的话题。不得声明原创、不得伪造热点、排行、已完成的第一人称消费亲历、用户评价或无证据资质；发布器会如实勾选 AI 创作标识。'
         : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
   const constraints = {
+    ...(editorial.context
+      ? { editorial_contexts_by_code: { [batch.platformCode]: editorial.context } }
+      : {}),
     additional_instructions: [
       `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${editorialSequenceNo} 个当日编辑候选。`,
       `围绕“${keyword.term}”的“${angle.label}”展开。`,

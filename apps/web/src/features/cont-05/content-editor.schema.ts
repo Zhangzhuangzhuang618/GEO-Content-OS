@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EditorialContextViewSchema } from '../cont-04/editorial-context.schema';
 
 import { CitationSchema, QualityReportSchema } from '../cont-04/content-package-detail.schema';
 import { ContentVariantSchema } from '../cont-03/content-package-list.schema';
@@ -68,6 +69,7 @@ export const ContentDocumentSchema = z
 
 export const ContentVersionSchema = z
   .object({
+    editorial_context: EditorialContextViewSchema.nullable().optional(),
     blocks: z.array(ContentBlockSchema),
     content_hash: HashSchema,
     content_json: ContentDocumentSchema,

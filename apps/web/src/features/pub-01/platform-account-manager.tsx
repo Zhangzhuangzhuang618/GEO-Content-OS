@@ -31,6 +31,7 @@ import { BaijiahaoAutomationPanel } from './baijiahao-automation-panel';
 import { SohuBrowserPanel } from './sohu-browser-panel';
 import { LiejuBrowserPanel } from './lieju-browser-panel';
 import { DouyinBrowserPanel } from './douyin-browser-panel';
+import { AccountContentPolicyPanel } from './account-content-policy';
 
 const PUBLISH_ROLES = new Set<TenantRole>(['tenant_owner', 'tenant_admin', 'publisher']);
 
@@ -42,6 +43,7 @@ export function PlatformAccountManager() {
   const [showConnect, setShowConnect] = useState(false);
   const [editingAccount, setEditingAccount] = useState<PlatformAccount | null>(null);
   const [automationAccount, setAutomationAccount] = useState<PlatformAccount | null>(null);
+  const [contentAccount, setContentAccount] = useState<PlatformAccount | null>(null);
   const [platformCode, setPlatformCode] =
     useState<PlatformAccount['platform_code']>('official_site');
   const [publishMode, setPublishMode] = useState<'api' | 'export' | 'manual'>('api');
@@ -356,6 +358,13 @@ export function PlatformAccountManager() {
         />
       ) : null}
 
+      {contentAccount ? (
+        <AccountContentPolicyPanel
+          key={contentAccount.id}
+          account={contentAccount}
+          onClose={() => setContentAccount(null)}
+        />
+      ) : null}
       {automationAccount ? (
         automationAccount.platform_code === 'baijiahao' ? (
           <BaijiahaoAutomationPanel
@@ -409,6 +418,7 @@ export function PlatformAccountManager() {
               busy={busyId === account.id}
               key={account.id}
               onAction={runLifecycleAction}
+              onContent={setContentAccount}
               onEdit={(selected) => {
                 setAutomationAccount(null);
                 setShowConnect(false);
@@ -1070,6 +1080,7 @@ function AccountCard({
   busy,
   onAction,
   onAutomation,
+  onContent,
   onEdit,
 }: {
   readonly account: PlatformAccount;
@@ -1079,6 +1090,7 @@ function AccountCard({
     action: 'refresh' | 'test' | 'disable' | 'restore' | 'remove',
   ) => Promise<void>;
   readonly onAutomation: (account: PlatformAccount) => void;
+  readonly onContent: (account: PlatformAccount) => void;
   readonly onEdit: (account: PlatformAccount) => void;
 }) {
   const disabled = account.status === 'disabled';
@@ -1118,6 +1130,16 @@ function AccountCard({
         ) : null}
       </div>
       <div className="mt-5 flex flex-wrap gap-2 border-t border-line pt-4">
+        {['official_site', 'lieju', 'douyin'].includes(account.platform_code) ? (
+          <button
+            className={smallButton}
+            type="button"
+            disabled={busy}
+            onClick={() => onContent(account)}
+          >
+            内容设置
+          </button>
+        ) : null}
         <button
           className={smallButton}
           disabled={busy}

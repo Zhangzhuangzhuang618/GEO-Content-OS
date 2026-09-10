@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  EditorialGenerationTargetsSchema,
+  EditorialContextSchema,
+} from '../../editorial-policy.js';
 
 import { CONTENT_PACKAGE_STATUSES, CONTENT_VARIANT_STATUSES } from '../../statuses.js';
 import { PLATFORM_CODES } from '../../platforms.js';
@@ -97,6 +101,7 @@ export const ContentPackageQuerySchema = z
 
 export const GenerateContentRequestSchema = z
   .object({
+    generation_targets: EditorialGenerationTargetsSchema.optional(),
     locked_block_keys: UniqueBlockKeyListSchema.default([]),
     model_policy: z.enum(['fast', 'balanced', 'quality']).default('balanced'),
     platform_codes: z
@@ -137,6 +142,7 @@ export const QualityCheckRequestSchema = z.union([
 
 export const RegenerateVariantRequestSchema = z
   .object({
+    generation_targets: EditorialGenerationTargetsSchema.optional(),
     locked_block_keys: UniqueBlockKeyListSchema.default([]),
     model_policy: z.enum(['fast', 'balanced', 'quality']).default('balanced'),
     quality_report_id: UuidSchema.optional(),
@@ -199,6 +205,7 @@ export const ContentBlockViewSchema = z
 
 export const ContentVersionViewSchema = z
   .object({
+    editorial_context: EditorialContextSchema.nullable().optional(),
     blocks: z.array(ContentBlockViewSchema),
     content_hash: HashSchema,
     content_json: ContentDocumentSchema,

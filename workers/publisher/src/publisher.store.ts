@@ -1,5 +1,7 @@
 import {
   classifyEnterpriseEvidence,
+  storedEditorialContext,
+  assessCompanyRecommendation,
   enterpriseEvidenceRequiredKinds,
   findPublishedOwnerCompanyNames,
   missingEnterpriseEvidenceKinds,
@@ -26,6 +28,7 @@ import type {
 } from './publisher.types.js';
 
 interface JobRow {
+  readonly editorialContext: unknown;
   readonly accountId: string;
   readonly accountDeletedAt: Date | null;
   readonly accountStatus: 'active' | 'disabled' | 'reauth';
@@ -150,7 +153,8 @@ export class PostgresPublisherStore implements PublisherStorePort {
           account.capabilities_json->>'delivery_method' AS "liejuDeliveryMethod",
           account.token_expires_at AS "accountTokenExpiresAt",
           account.deleted_at AS "accountDeletedAt",
-          brand.profile_json AS "brandProfile", workspace.settings_json AS "workspaceSettings"
+          brand.profile_json AS "brandProfile", workspace.settings_json AS "workspaceSettings",
+          content_version.editorial_context_json AS "editorialContext"
         FROM publish_jobs AS job
         JOIN content_variants AS variant
           ON variant.id=job.variant_id AND variant.tenant_id=job.tenant_id
@@ -277,6 +281,51 @@ export class PostgresPublisherStore implements PublisherStorePort {
           COALESCE(chunk.metadata_json->>'url', source.uri)
       `;
       const ownerCompanyNames = findPublishedOwnerCompanyNames(row.brandProfile);
+      const editorialContext = storedEditorialContext(row.editorialContext, row.platformCode);
+      if (editorialContext) {
+        if (editorialContext.account_id !== row.accountId)
+          throw new PublisherError('PUBLISHER_RENDER_BLOCKED', '内容风格快照与发布账号不一致');
+        const issues = assessCompanyRecommendation(row.content, editorialContext);
+        if (issues.length) throw new PublisherError('PUBLISHER_RENDER_BLOCKED', issues.join('；'));
+        if (editorialContext.style === 'company_recommendation') {
+          for (const [index, company] of editorialContext.companies.entries()) {
+            const companyBlock = Array.isArray(row.content['blocks'])
+              ? row.content['blocks']
+                  .filter(isRecord)
+                  .find((block) => block['block_key'] === `company_${index + 1}`)
+              : undefined;
+            const claimText =
+              typeof companyBlock?.['text'] === 'string' ? companyBlock['text'] : '';
+            const [evidence] = await transaction<{ total: number; valid: number }[]>`
+              SELECT count(*)::int AS total,count(*) FILTER (WHERE
+                source.id=ANY(${company.source_document_ids}::uuid[])
+                AND source.workspace_id=${row.workspaceId}::uuid
+                AND (source.project_id IS NULL OR source.project_id=${row.projectId}::uuid)
+                AND has_project_scope_access(source.tenant_id,source.workspace_id,source.project_id,${row.createdBy}::uuid)
+                AND source.status='active' AND source.deleted_at IS NULL AND chunk.status='active'
+                AND source.trust_level IN ('normal','verified') AND citation.claim_text=${claimText}
+                AND (source.effective_from IS NULL OR source.effective_from<=(now() AT TIME ZONE 'Asia/Shanghai')::date)
+                AND (source.effective_to IS NULL OR source.effective_to>=(now() AT TIME ZONE 'Asia/Shanghai')::date)
+                AND CASE source.metadata_json->>'schema_version'
+                  WHEN 'source-certificate@1' THEN source.metadata_json @> '{"article_use_allowed":true,"public_display_confirmed":true}'::jsonb
+                    AND source.metadata_json->>'holder_name'=${company.legal_name}
+                  WHEN 'source-insurance-proof@1' THEN source.metadata_json->'summary_use_confirmed'='true'::jsonb
+                  ELSE true END
+              )::int AS valid
+              FROM ai_citations AS citation
+              JOIN source_chunks AS chunk ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
+              JOIN source_documents AS source ON source.id=chunk.source_document_id AND source.tenant_id=chunk.tenant_id
+              WHERE citation.tenant_id=${row.tenantId}::uuid AND citation.content_version_id=${row.contentVersionId}::uuid
+                AND citation.claim_key=${`company_${index + 1}`}
+            `;
+            if (!evidence?.total || evidence.valid !== evidence.total)
+              throw new PublisherError(
+                'PUBLISHER_RENDER_BLOCKED',
+                `${company.legal_name} 的推荐资料已失效、越界或缺失，请重新核对后生成。`,
+              );
+          }
+        }
+      }
       const internalCitations =
         row.platformCode === 'douyin'
           ? await transaction<{ citationId: string }[]>`
@@ -300,7 +349,12 @@ export class PostgresPublisherStore implements PublisherStorePort {
           : [];
       const enterpriseEvidenceGate =
         row.platformCode === 'official_site' || row.platformCode === 'lieju'
-          ? await loadEnterpriseEvidencePublishGate(transaction, row, ownerCompanyNames)
+          ? await loadEnterpriseEvidencePublishGate(
+              transaction,
+              row,
+              ownerCompanyNames,
+              editorialContext,
+            )
           : undefined;
       return {
         kind: 'claimed',
@@ -335,6 +389,7 @@ export class PostgresPublisherStore implements PublisherStorePort {
             row.platformCode === 'official_site' ? this.compatibleServicePhones : {},
           ),
           ownerCompanyNames,
+          editorialContext,
           payloadHash: row.payloadHash,
           platformCode: row.platformCode,
           publishMode: row.publishMode,
@@ -1241,6 +1296,7 @@ async function loadEnterpriseEvidencePublishGate(
     'contentVersionId' | 'projectId' | 'tenantId' | 'workspaceId' | 'workspaceSettings'
   >,
   ownerCompanyNames: readonly string[],
+  editorialContext?: PublishClaim['editorialContext'],
 ): Promise<NonNullable<PublishClaim['enterpriseEvidenceGate']>> {
   const companyName = ownerCompanyNames.length === 1 ? ownerCompanyNames[0]! : null;
   const requiredRows = companyName
@@ -1268,13 +1324,20 @@ async function loadEnterpriseEvidencePublishGate(
         ORDER BY source.id
       `
     : [];
-  const required = requiredRows.flatMap((source) => {
+  const allRequired = requiredRows.flatMap((source) => {
     const evidence = classifyEnterpriseEvidence(source.metadata);
     return evidence ? [{ ...evidence, sourceId: source.sourceId }] : [];
   });
   const missingRequiredKinds = missingEnterpriseEvidenceKinds(
     enterpriseEvidenceRequiredKinds(row.workspaceSettings),
-    required,
+    allRequired,
+  );
+  const ownerIndex =
+    editorialContext?.style === 'company_recommendation'
+      ? editorialContext.companies.findIndex((company) => company.legal_name === companyName)
+      : -1;
+  const ownerSources = new Set(
+    ownerIndex >= 0 ? editorialContext!.companies[ownerIndex]!.source_document_ids : [],
   );
   const mappedRows = await transaction<{ sourceId: string }[]>`
     SELECT DISTINCT chunk.source_document_id AS "sourceId"
@@ -1283,11 +1346,24 @@ async function loadEnterpriseEvidencePublishGate(
       ON chunk.id=citation.chunk_id AND chunk.tenant_id=citation.tenant_id
     WHERE citation.tenant_id=${row.tenantId}::uuid
       AND citation.content_version_id=${row.contentVersionId}::uuid
-      AND citation.claim_key='enterprise-credentials'
+      AND (citation.claim_key='enterprise-credentials' OR (${ownerIndex >= 0} AND citation.claim_key=${`company_${ownerIndex + 1}`}))
     ORDER BY chunk.source_document_id
   `;
+  const rawMapped = new Set(mappedRows.map((source) => source.sourceId));
+  // Bound certificates are selected for this article, not an obligation to
+  // reproduce every certificate in the workspace. Completeness above still
+  // validates all configured required kinds; insurance/legacy sources retain
+  // their existing all-document mapping rule.
+  const required = allRequired.filter(
+    (source) =>
+      !ownerSources.has(source.sourceId) ||
+      source.kind === 'insurance_or_damage_protection' ||
+      rawMapped.has(source.sourceId),
+  );
   const requiredSourceIds = required.map((source) => source.sourceId);
-  const mappedSourceIds = mappedRows.map((source) => source.sourceId);
+  const mappedSourceIds = mappedRows
+    .map((source) => source.sourceId)
+    .filter((id) => ownerIndex < 0 || allRequired.some((source) => source.sourceId === id));
   const mapped = new Set(mappedSourceIds);
   console.warn('Enterprise evidence publication validation completed', {
     evidence_count: requiredSourceIds.length,

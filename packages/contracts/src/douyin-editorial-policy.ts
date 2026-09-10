@@ -61,8 +61,10 @@ const TITLE_EVIDENCE_PROMISES = Object.freeze([
 
 export function assessDouyinImageNoteEditorial(
   content: unknown,
+  editorialContext?: EditorialContext | null,
 ): readonly DouyinEditorialFinding[] {
   const findings: DouyinEditorialFinding[] = [];
+  const recommendation = storedEditorialContext(editorialContext, 'douyin');
   const value = record(content);
   const title = stringValue(value?.['title']);
   const titleLength = [...title.trim()].length;
@@ -119,7 +121,19 @@ export function assessDouyinImageNoteEditorial(
       ),
     );
   } else {
-    findings.push(...narrativeDescriptionFindings(value, meta ?? Object.freeze({}), description));
+    if (recommendation?.style === 'company_recommendation') {
+      findings.push(
+        ...assessCompanyRecommendation(content, recommendation).map((message) =>
+          finding(
+            'company_recommendation',
+            'platform_meta.description',
+            message,
+            '按冻结名单和绑定资料修正企业介绍。',
+          ),
+        ),
+      );
+    } else
+      findings.push(...narrativeDescriptionFindings(value, meta ?? Object.freeze({}), description));
   }
 
   const topics = meta?.['topics'];
@@ -250,7 +264,11 @@ export function assessDouyinImageNoteEditorial(
   }
   const cover = record(cards[0])!;
   const coverText = `${String(cover['heading'])}${String(cover['body'])}`;
-  if (!/[？?]|怎么|如何|先看|关键|避坑|清单|步骤|判断|别急/u.test(coverText)) {
+  if (
+    !/[？?]|怎么|如何|是否|能否|哪些|包不包|含不含|要不要|先(?:看|核验|核对|弄清|分清|确认)|重点看|关键|避坑|清单|步骤|判断|别急/u.test(
+      coverText,
+    )
+  ) {
     findings.push(
       finding(
         'cover_hook',
@@ -267,7 +285,11 @@ export function assessDouyinImageNoteEditorial(
       return `${String(cardValue['heading'])}\n${String(cardValue['body'])}`;
     })
     .join('\n');
-  if (!/判断|标准|条件|取决|核对|选择|是否|先看/u.test(bodyText)) {
+  if (
+    !/判断|标准|条件|取决|核对|选择|是否|先看|选[^。！？\n]{1,24}(?:还是|或)|(?:按|根据|依据)[^。！？\n]{1,24}需求选|(?:分清|区分|对比)[^。！？\n]{1,24}(?:和|与|、)[^。！？\n]{1,24}/u.test(
+      bodyText,
+    )
+  ) {
     findings.push(
       finding(
         'card_selection',
@@ -289,6 +311,9 @@ export function assessDouyinImageNoteEditorial(
   }
   if (
     !/风险|避免|不要|不适合|注意|否则|边界|不能|可能|警惕|损坏|磕碰|刮花|加价|超支|延误|纠纷/u.test(
+      bodyText,
+    ) &&
+    !/(?:拆装|打包|搬运|吊装)[^。！？\n]{0,12}(?:(?:额外|另行|单独)收费|另收费|(?:费用)?另计)/u.test(
       bodyText,
     )
   ) {
@@ -351,7 +376,10 @@ function titleEvidencePromiseFindings(
 export function assessDouyinOwnerPromotion(
   content: unknown,
   ownerCompanyNames: readonly string[],
+  editorialContext?: EditorialContext | null,
 ): readonly DouyinEditorialFinding[] {
+  if (storedEditorialContext(editorialContext, 'douyin')?.style === 'company_recommendation')
+    return [];
   const owners = [...new Set(ownerCompanyNames.map((name) => name.trim()).filter(Boolean))];
   if (owners.length === 0) return Object.freeze([]);
   const value = record(content);
@@ -645,3 +673,8 @@ function record(value: unknown): Readonly<Record<string, unknown>> | null {
     ? (value as Readonly<Record<string, unknown>>)
     : null;
 }
+import {
+  assessCompanyRecommendation,
+  storedEditorialContext,
+  type EditorialContext,
+} from './editorial-policy.js';

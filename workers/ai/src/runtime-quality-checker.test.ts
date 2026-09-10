@@ -10,6 +10,229 @@ import { describe, expect, it, vi } from 'vitest';
 import { RuntimeQualityChecker } from './runtime-quality-checker.js';
 
 describe('RuntimeQualityChecker', () => {
+  it.each([false, true])(
+    'runs a separate recommendation reader review and preserves the first report (finding=%s)',
+    async (hasFinding) => {
+      const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+      const prior = {
+        category: 'readability',
+        citation_ids: [],
+        location: 'blocks[0].text',
+        message: '可继续保留的说明。',
+        rule_id: 'readability.note',
+        severity: 'INFO',
+        suggestion: '保持。',
+      };
+      const adapter = new QualityMockAdapter([
+        JSON.stringify({ ...clean.output.data, decision: 'pass', issues: [prior] }),
+        JSON.stringify({
+          issues: hasFinding
+            ? [
+                {
+                  location: 'blocks[0].text',
+                  quote: '服务方案和费用需要确认。',
+                  reason: '第二家公司只有预约提醒，没有实质服务细节。',
+                  comparison: null,
+                  suggestion: 'company_2保留承接身份并展开自己的服务细节。',
+                },
+              ]
+            : [],
+        }),
+      ]);
+      const usage = vi.fn();
+      const checker = new RuntimeQualityChecker(
+        {} as postgres.Sql,
+        new Map([[adapter.modelKey, adapter]]),
+        usage,
+        async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+      );
+      const result = await checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000081',
+          projectId: '20000000-0000-4000-8000-000000000081',
+          promptVersionId: '70000000-0000-4000-8000-000000000069',
+          requestId: 'recommendation-reader-review',
+          runId: '60000000-0000-4000-8000-000000000069',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000069',
+          variantId: '20000000-0000-4000-8000-000000000069',
+          workspaceId: '30000000-0000-4000-8000-000000000081',
+        },
+        qualityInput: {
+          ...clean.input,
+          recommendation_evidence: [
+            {
+              citation_id: '41111111-1111-4111-8111-111111111111',
+              claim_key: 'company_1',
+              quote_text: 'SOURCE_ONLY_SENTINEL',
+            },
+          ],
+          content_version: {
+            ...(clean.input['content_version'] as Record<string, unknown>),
+            content: {
+              title: '广州搬迁怎么选公司',
+              blocks: [{ block_key: 'company_2', text: '服务方案和费用需要确认。' }],
+              platform_code: 'official_site',
+            },
+          },
+          platform_rules: {
+            ...(clean.input['platform_rules'] as Record<string, unknown>),
+            platform_code: 'official_site',
+          },
+          editorial_context: {
+            schema_version: 'editorial-context@1',
+            template_version: 'company-recommendation@1',
+            account_id: '11111111-1111-4111-8111-111111111111',
+            policy_version: 1,
+            style: 'company_recommendation',
+            platform_code: 'official_site',
+            companies: ['甲测试有限公司', '乙测试有限公司'].map((legal_name, index) => ({
+              id: `21111111-1111-4111-8111-11111111111${index}`,
+              legal_name,
+              source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+            })),
+          },
+        },
+      });
+      expect(result.decision).toBe(hasFinding ? 'revise' : 'pass');
+      expect(result.issues[0]).toEqual(prior);
+      expect(result.issues).toHaveLength(hasFinding ? 2 : 1);
+      expect(result.geo_scores).toEqual(clean.output.data.geo_scores);
+      expect(adapter.requests).toHaveLength(2);
+      expect(usage).toHaveBeenCalledTimes(2);
+      expect(adapter.requests[1]?.messages.map((m) => m.content).join()).not.toContain(
+        'geo_result',
+      );
+      expect(adapter.requests[1]?.messages.map((m) => m.content).join()).not.toContain(
+        'SOURCE_ONLY_SENTINEL',
+      );
+    },
+  );
+  it.each(['official_site', 'lieju', 'douyin'] as const)(
+    'sends %s recommendation evidence and keeps a source-based overreach blocker',
+    async (platform) => {
+      const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+      const evidence = [
+        {
+          citation_id: '41111111-1111-4111-8111-111111111111',
+          claim_key: 'company_1',
+          quote_text:
+            '半日式包含整理、收纳、搬迁、放到指定房间。全日式额外包含衣物入柜和厨房拆包摆放。家具、电器拆装另收费。',
+        },
+      ];
+      const blocked = {
+        ...clean.output.data,
+        decision: 'block',
+        score: 40,
+        issues: [
+          {
+            category: 'fact',
+            citation_ids: [],
+            location: 'blocks[0].text',
+            message: '“全日式包括免费家具拆装”与该企业资料“家具、电器拆装另收费”矛盾。',
+            rule_id: 'fact.recommendation.claim_overreach',
+            severity: 'BLOCK',
+            suggestion: '明确拆装额外收费。',
+          },
+        ],
+      };
+      const adapter = new QualityMockAdapter([JSON.stringify(blocked)]);
+      const checker = new RuntimeQualityChecker(
+        {} as postgres.Sql,
+        new Map([[adapter.modelKey, adapter]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+      );
+      const result = await checker.evaluate({
+        context: {
+          inputHash: 'd'.repeat(64),
+          modelKey: adapter.modelKey,
+          packageId: '10000000-0000-4000-8000-000000000081',
+          projectId: '20000000-0000-4000-8000-000000000081',
+          promptVersionId: '70000000-0000-4000-8000-000000000069',
+          requestId: 'recommendation-source-check',
+          runId: '60000000-0000-4000-8000-000000000069',
+          skillName: 'quality-checker',
+          skillVersion: '1.0.0',
+          tenantId: '90000000-0000-4000-8000-000000000069',
+          variantId: '20000000-0000-4000-8000-000000000069',
+          workspaceId: '30000000-0000-4000-8000-000000000081',
+        },
+        qualityInput: {
+          ...clean.input,
+          content_version: {
+            ...(clean.input['content_version'] as Record<string, unknown>),
+            content: {
+              ...((clean.input['content_version'] as Record<string, unknown>)['content'] as Record<
+                string,
+                unknown
+              >),
+              platform_meta: {
+                cards: [
+                  {
+                    card_key: 'company_1',
+                    heading: '半日式整理收纳',
+                    body: '半日式包含整理、收纳、搬迁、放到指定房间。',
+                  },
+                ],
+              },
+            },
+          },
+          recommendation_evidence: evidence,
+          platform_rules: {
+            ...(clean.input['platform_rules'] as Record<string, unknown>),
+            platform_code: platform,
+          },
+          editorial_context: {
+            schema_version: 'editorial-context@1',
+            template_version: 'company-recommendation@1',
+            account_id: '11111111-1111-4111-8111-111111111111',
+            policy_version: 1,
+            style: 'company_recommendation',
+            platform_code: platform,
+            companies: ['甲测试有限公司', '乙测试有限公司'].map((legal_name, index) => ({
+              id: `21111111-1111-4111-8111-11111111111${index}`,
+              legal_name,
+              source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+            })),
+          },
+        },
+      });
+      expect(result).toEqual(blocked);
+      const messages = adapter.requests[0]!.messages.map((message) => message.content).join('\n');
+      expect(messages).toContain(evidence[0]!.quote_text);
+      if (platform === 'official_site') {
+        expect(messages).toContain('正文约1100字');
+        expect(messages).toContain('不以凑字数为修改理由');
+      } else {
+        expect(messages).not.toContain('正文约1100字');
+        expect(messages).toContain(
+          'All existing body-length constraints for this platform still apply.',
+        );
+      }
+      expect(messages).toContain('a supported verdict alone is NOT proof');
+      expect(messages).toContain('fact.recommendation.claim_overreach');
+      expect(messages).toContain('详细流程的重复必须引用两处原文');
+      expect(messages).toContain('不能为避重把第二家完整搬迁服务缩成单一拆装工种');
+      expect(messages).toContain('负责人明确确认并作为绑定资料提供的服务事实可以直接采用');
+      expect(messages).toContain('卡片“拆装另收费”配正文的额外收费说明是标题匹配');
+      expect(messages).toContain('不能拿第一家绑定资料中的内容当成第一家已写出的正文');
+      expect(messages).toContain('必须检查实际换行');
+      expect(messages).toContain('以下是实际同卡标题与正文配对');
+      expect(messages).toContain('半日式整理收纳');
+      expect(messages).toContain('不能要求标题概括未摘入此卡的公司全文');
+      expect(messages).toContain('禁止把这些展示面之间的相同内容判为文章重复');
+      expect(messages).toContain('官网渲染器会把platform_meta.faq直接渲染');
+      expect(messages).toContain('不等于声称该企业只做这一部分');
+      expect(messages).toContain('不能用另一家搬迁公司的家具电器拆装资料支持');
+      expect(
+        adapter.requests[0]!.messages.some((message) => message.content?.includes('example_input')),
+      ).toBe(false);
+    },
+  );
   it('retries a schema-valid result that omitted mandatory high-risk blockers', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const highRisk = QUALITY_CHECKER_CONTRACT_V1.fewShots[1]!;

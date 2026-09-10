@@ -1,5 +1,6 @@
 import {
   applyOfficialSiteServicePhone,
+  readWriterEditorialContext,
   readOfficialSiteServicePhone,
   type ContentVariantStatus,
   type PlatformCode,
@@ -8,6 +9,7 @@ import type postgres from 'postgres';
 
 import {
   contentBlocks,
+  canonicalJson,
   contentHash,
   textHash,
   validateGeneratedContent,
@@ -651,6 +653,9 @@ export async function insertGeneratedVersion(
   sourceRunId: string,
   content: GeneratedContent,
 ): Promise<string> {
+  const editorialContext = variantId
+    ? readWriterEditorialContext(event.data.writerInput, content.platform_code)
+    : null;
   const generatedContentHash = contentHash(content);
   const versions = await transaction<{ versionNo: number }[]>`
     SELECT COALESCE(max(version_no), 0)::integer + 1 AS "versionNo"
@@ -672,6 +677,7 @@ export async function insertGeneratedVersion(
       content_json,
       content_hash,
       source_run_id,
+      editorial_context_json,
       created_by
     ) VALUES (
       ${event.tenantId}::uuid,
@@ -682,6 +688,7 @@ export async function insertGeneratedVersion(
       ${JSON.stringify(content)}::text::jsonb,
       ${generatedContentHash},
       ${sourceRunId}::uuid,
+      ${editorialContext ? JSON.stringify(editorialContext) : null}::text::jsonb,
       ${event.data.actorUserId}::uuid
     )
     ON CONFLICT DO NOTHING
@@ -689,8 +696,8 @@ export async function insertGeneratedVersion(
   `;
   const row = inserted[0];
   if (!row) {
-    const existing = await transaction<{ id: string }[]>`
-      SELECT id FROM content_versions
+    const existing = await transaction<{ id: string; editorialContext: unknown }[]>`
+      SELECT id,editorial_context_json AS "editorialContext" FROM content_versions
       WHERE tenant_id = ${event.tenantId}::uuid
         AND package_id = ${event.data.packageId}::uuid
         AND variant_id IS NOT DISTINCT FROM ${variantId}::uuid
@@ -699,6 +706,12 @@ export async function insertGeneratedVersion(
     `;
     const existingId = existing[0]?.id;
     if (!existingId) throw new Error('Content version insert conflicted without matching content');
+    if (canonicalJson(existing[0]?.editorialContext ?? null) !== canonicalJson(editorialContext)) {
+      throw new GenerationWorkerError(
+        'GENERATED_CONTENT_INVALID',
+        '相同正文已存在于不同内容风格上下文中，请生成有实质变化的内容',
+      );
+    }
     return existingId;
   }
   for (const [position, block] of contentBlocks(content).entries()) {

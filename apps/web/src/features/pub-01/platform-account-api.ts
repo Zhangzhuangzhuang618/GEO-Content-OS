@@ -240,6 +240,7 @@ export async function listOfficialSiteAutomationPolicies(
 export async function saveOfficialSiteAutomationPolicy(
   accountId: string,
   input: {
+    readonly contentStyleOverride?: 'standard' | 'company_recommendation' | null;
     readonly dailyEnabled: boolean;
     readonly enabled: boolean;
     readonly expectedVersion?: number;
@@ -251,6 +252,7 @@ export async function saveOfficialSiteAutomationPolicy(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/official-site-automation`,
     {
       body: JSON.stringify({
+        content_style_override: input.contentStyleOverride,
         daily_enabled: input.dailyEnabled,
         enabled: input.enabled,
         ...(input.expectedVersion === undefined ? {} : { expected_version: input.expectedVersion }),
@@ -270,6 +272,7 @@ export async function saveOfficialSiteAutomationPolicy(
 export async function restartOfficialSiteDailyBatch(
   accountId: string,
   input: {
+    readonly contentStyle?: 'standard' | 'company_recommendation';
     readonly expectedBatchVersion: number;
     readonly projectId: string;
   },
@@ -279,6 +282,7 @@ export async function restartOfficialSiteDailyBatch(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/official-site-automation/daily-batch/restart`,
     {
       body: JSON.stringify({
+        content_style: input.contentStyle,
         expected_batch_version: input.expectedBatchVersion,
         project_id: input.projectId,
       }),
@@ -350,6 +354,7 @@ export async function listBrowserPlatformAutomationPolicies(
 export async function saveBrowserPlatformAutomationPolicy(
   accountId: string,
   input: {
+    readonly contentStyleOverride?: 'standard' | 'company_recommendation' | null;
     readonly accountPositioning?: string;
     readonly contentVoice?: 'enterprise_official' | 'frontline_mover' | 'customer_perspective';
     readonly dailyCandidateLimit: number;
@@ -370,6 +375,7 @@ export async function saveBrowserPlatformAutomationPolicy(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation`,
     {
       body: JSON.stringify({
+        content_style_override: input.contentStyleOverride,
         ...(input.accountPositioning === undefined
           ? {}
           : { account_positioning: input.accountPositioning }),
@@ -426,6 +432,7 @@ export async function retryBrowserPlatformDailyBatch(
 export async function restartBrowserPlatformDailyBatch(
   accountId: string,
   input: {
+    readonly contentStyle?: 'standard' | 'company_recommendation';
     readonly expectedBatchVersion: number;
     readonly projectId: string;
   },
@@ -435,6 +442,7 @@ export async function restartBrowserPlatformDailyBatch(
     `${API_ORIGIN}/api/v1/platform-accounts/${accountId}/content-automation/daily-batch/restart`,
     {
       body: JSON.stringify({
+        content_style: input.contentStyle,
         expected_batch_version: input.expectedBatchVersion,
         project_id: input.projectId,
       }),

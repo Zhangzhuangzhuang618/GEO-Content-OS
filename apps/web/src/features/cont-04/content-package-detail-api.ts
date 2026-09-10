@@ -1,4 +1,5 @@
 import { createRequestUuid } from '@/lib/request-uuid';
+import type { GenerationTargets } from './generation-target-settings';
 
 import { ContentPackageResponseSchema } from '../cont-03/content-package-list.schema';
 import {
@@ -47,9 +48,13 @@ export async function generatePackage(
   detail: PackageDetail,
   modelPolicy: ModelPolicy,
   csrf: string,
+  generationTargets?: GenerationTargets,
 ) {
   const response = await write(`/api/v1/content-packages/${detail.package.id}/generate`, csrf, {
     body: {
+      ...(generationTargets && Object.keys(generationTargets).length
+        ? { generation_targets: generationTargets }
+        : {}),
       locked_block_keys: [],
       model_policy: modelPolicy,
       platform_codes: detail.variants
@@ -113,11 +118,15 @@ export async function regenerateVariant(
   version: number,
   modelPolicy: ModelPolicy,
   csrf: string,
+  generationTargets?: GenerationTargets,
 ) {
   const response = await write(`/api/v1/content-variants/${variantId}/regenerate`, csrf, {
     body: {
       locked_block_keys: [],
       model_policy: modelPolicy,
+      ...(generationTargets && Object.keys(generationTargets).length
+        ? { generation_targets: generationTargets }
+        : {}),
     },
     operation: 'content-variant-regenerate',
     version,

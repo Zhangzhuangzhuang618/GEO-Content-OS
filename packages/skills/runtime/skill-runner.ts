@@ -21,6 +21,8 @@ export interface SkillRunInput<TInput> {
   readonly maxOutputTokens: number;
   readonly messages: readonly ModelMessage[];
   readonly outputSchema: JsonObject;
+  /** Skill-owned normalization/repair guard, applied before schema validation. */
+  readonly prepareOutput?: (value: unknown) => unknown;
   readonly recordUsage: (usage: ModelUsage) => Promise<void> | void;
   readonly signal?: AbortSignal;
   readonly temperature?: number;
@@ -160,7 +162,12 @@ export class SkillRunner {
     toolCallCount: number,
     toolResults: readonly SkillToolResult[],
   ): Promise<SkillRunResult<TOutput>> {
-    const firstCheck = parseAndCheck<TOutput>(this.schemas, input.outputSchema, first);
+    const firstCheck = parseAndCheck<TOutput>(
+      this.schemas,
+      input.outputSchema,
+      first,
+      input.prepareOutput,
+    );
     if (firstCheck.valid) return result(firstCheck.value, usages, 0, toolCallCount, toolResults);
 
     const repairMessages: ModelMessage[] = [
@@ -187,7 +194,12 @@ export class SkillRunner {
         firstCheck.paths,
       );
     }
-    const repairedCheck = parseAndCheck<TOutput>(this.schemas, input.outputSchema, repaired);
+    const repairedCheck = parseAndCheck<TOutput>(
+      this.schemas,
+      input.outputSchema,
+      repaired,
+      input.prepareOutput,
+    );
     if (!repairedCheck.valid) {
       throw new SkillRuntimeError(
         'SKILL_OUTPUT_INVALID',
@@ -211,6 +223,7 @@ function parseAndCheck<T>(
   schemas: SchemaGuard,
   schema: JsonObject,
   result: ModelResult,
+  prepareOutput?: (value: unknown) => unknown,
 ): Parsed<T> {
   const content = result.message.content;
   if (!content) return { kind: 'empty', paths: Object.freeze(['$']), valid: false };
@@ -218,7 +231,7 @@ function parseAndCheck<T>(
   if (!candidate.valid) {
     return { kind: 'invalid_json', paths: Object.freeze(['$']), valid: false };
   }
-  const parsed = candidate.value;
+  const parsed = prepareOutput ? prepareOutput(candidate.value) : candidate.value;
   const check = schemas.check<T>(schema, parsed);
   return check.valid
     ? { valid: true, value: check.value as T }

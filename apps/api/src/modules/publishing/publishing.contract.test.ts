@@ -19,6 +19,16 @@ interface Binding {
 }
 
 const bindings: readonly Binding[] = [
+  bind(
+    'account.content-policy.get',
+    PlatformAccountController,
+    PlatformAccountController.prototype.getContentPolicy,
+  ),
+  bind(
+    'account.content-policy.put',
+    PlatformAccountController,
+    PlatformAccountController.prototype.putContentPolicy,
+  ),
   bind('account.create', PlatformAccountController, PlatformAccountController.prototype.create),
   bind('account.list', PlatformAccountController, PlatformAccountController.prototype.list),
   bind('account.update', PlatformAccountController, PlatformAccountController.prototype.update),
@@ -170,7 +180,10 @@ describe('publishing controller contract bindings', () => {
 
     expect(RequestMethod[methodCode]).toBe(contract.method);
     expect(readRoute(binding.controller, binding.handler)).toBe(contract.path);
-    expect(requirement).toEqual({ mode: 'all', permissions: [contract.permission] });
+    expect(requirement).toEqual({
+      mode: contract.key === 'account.list' ? 'any' : 'all',
+      permissions: contract.permission.split('|'),
+    });
   });
 });
 

@@ -1,5 +1,6 @@
 import type {
   BriefConstraints,
+  EditorialContext,
   ContentPackageStatus,
   ContentVariantStatus,
   PlatformCode,
@@ -70,6 +71,7 @@ export interface ContentVariantView {
 }
 
 export interface ContentVersionView {
+  readonly editorialContext?: EditorialContext | null;
   readonly contentHash: string;
   readonly contentJson: ContentDocument;
   readonly createdAt: Date;
@@ -306,6 +308,7 @@ export class ContentRepository {
         version.content_json AS "contentJson",
         version.content_hash AS "contentHash",
         version.source_run_id AS "sourceRunId",
+        version.editorial_context_json AS "editorialContext",
         version.created_by AS "createdBy",
         version.created_at AS "createdAt"
       FROM content_versions AS version
@@ -338,6 +341,7 @@ export class ContentRepository {
         version.content_json AS "contentJson",
         version.content_hash AS "contentHash",
         version.source_run_id AS "sourceRunId",
+        version.editorial_context_json AS "editorialContext",
         version.created_by AS "createdBy",
         version.created_at AS "createdAt"
       FROM content_versions AS version

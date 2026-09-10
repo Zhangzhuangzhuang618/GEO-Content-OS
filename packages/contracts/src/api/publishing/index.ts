@@ -1,5 +1,6 @@
 import type { PermissionCode, PolicyCode } from '../../permissions/index.js';
 import type { z } from 'zod';
+import { AccountContentPolicyRequestSchema } from '../../editorial-policy.js';
 
 import { buildPublishingOpenApiDocument } from './openapi.js';
 import {
@@ -18,6 +19,7 @@ import {
   SignedDownloadResponseSchema,
 } from './job-schemas.js';
 import {
+  AccountContentPolicyResponseSchema,
   BaijiahaoAutomationPolicyPageSchema,
   BaijiahaoAutomationPolicyRequestSchema,
   BaijiahaoAutomationPolicyResponseSchema,
@@ -62,8 +64,12 @@ export interface PublishingApiContract {
   readonly method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
   readonly paramsSchema: z.ZodType | null;
   readonly path: string;
-  readonly permission: Extract<PermissionCode, 'publishing.manage'>;
-  readonly policy: Extract<PolicyCode, 'publisher_or_admin'>;
+  readonly permission:
+    Extract<PermissionCode, 'publishing.manage'> | 'content.production.manage|publishing.manage';
+  readonly policy: Extract<
+    PolicyCode,
+    'publisher_or_admin' | 'content_editor_or_publisher_or_admin'
+  >;
   readonly querySchema: z.ZodType | null;
   readonly requestName: string;
   readonly responseName: string;
@@ -72,6 +78,30 @@ export interface PublishingApiContract {
 }
 
 const contracts = [
+  contract(
+    'account.content-policy.get',
+    'GET',
+    '/platform-accounts/{id}/content-policy',
+    '-',
+    null,
+    null,
+    PlatformAccountParamsSchema,
+    'PlatformAccountParams',
+    'AccountContentPolicy',
+    AccountContentPolicyResponseSchema,
+  ),
+  contract(
+    'account.content-policy.put',
+    'PUT',
+    '/platform-accounts/{id}/content-policy',
+    'key+body_hash',
+    AccountContentPolicyRequestSchema,
+    null,
+    PlatformAccountParamsSchema,
+    'AccountContentPolicyRequest',
+    'AccountContentPolicy',
+    AccountContentPolicyResponseSchema,
+  ),
   contract(
     'account.create',
     'POST',
@@ -601,8 +631,9 @@ function contract(
     method,
     paramsSchema,
     path,
-    permission: 'publishing.manage',
-    policy: 'publisher_or_admin',
+    permission:
+      key === 'account.list' ? 'content.production.manage|publishing.manage' : 'publishing.manage',
+    policy: key === 'account.list' ? 'content_editor_or_publisher_or_admin' : 'publisher_or_admin',
     querySchema,
     requestName,
     responseName,

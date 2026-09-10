@@ -1,4 +1,4 @@
-import type { PlatformCode } from '@geo-content-os/contracts';
+import type { PlatformCode, EditorialContext } from '@geo-content-os/contracts';
 import {
   ContentGenerationWorker,
   type ContentWriterPort,
@@ -17,7 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
 import { GenerationRequestService } from '../../src/modules/ai/orchestrator/index.js';
-import type { ContentScope } from '../../src/modules/content/index.js';
+import { ContentVersionRepository, type ContentScope } from '../../src/modules/content/index.js';
 import { OutboxWriter } from '../../src/modules/outbox/index.js';
 
 const USER_ID = '1a000000-0000-4000-8000-000000000053';
@@ -123,6 +123,56 @@ describe('Master and multi-platform generation orchestration', () => {
     const calls = writer.calls;
     await expect(worker.run(request.event)).resolves.toMatchObject({ disposition: 'completed' });
     expect(writer.calls).toBe(calls);
+  });
+
+  it('persists trusted editorial context outside customer copy and preserves it through edits and rollback', async () => {
+    const database = requireClient(client);
+    await seedPlatformAccounts(database);
+    const context: EditorialContext = {
+      schema_version: 'editorial-context@1',
+      template_version: 'company-recommendation@1',
+      platform_code: 'official_site',
+      account_id: ACCOUNT_IDS[0]!,
+      policy_version: 2,
+      style: 'standard',
+      companies: [],
+    };
+    const request = await schedule(database, 'editorial-version', context);
+    const worker = new ContentGenerationWorker(
+      new PostgresGenerationStore(database),
+      new FakeWriter(),
+      3,
+    );
+    await expect(worker.run(request.event)).resolves.toMatchObject({ failed: 0, succeeded: 7 });
+    const repository = new ContentVersionRepository(database);
+    const [before] = await database<
+      { id: string; version: number }[]
+    >`SELECT current_content_version_id AS id, version FROM content_variants WHERE id=${VARIANT_IDS[0]!}::uuid`;
+    const first = await repository.find(SCOPE, before!.id);
+    expect(first?.editorialContext).toEqual(context);
+    expect(first?.contentJson).not.toHaveProperty('editorial_context');
+    const edited = await database.begin((transaction) =>
+      repository.create(
+        transaction,
+        SCOPE,
+        {
+          contentJson: document('official_site', 'Manually revised official content'),
+          expectedVersion: before!.version,
+          packageId: PACKAGE_ID,
+          schemaVersion: SCHEMA_VERSION,
+          variantId: VARIANT_IDS[0]!,
+        },
+        { requestId: 'editorial-edit' },
+      ),
+    );
+    expect(edited.editorialContext).toEqual(context);
+    const rolledBack = await database.begin((transaction) =>
+      repository.rollback(transaction, SCOPE, before!.id, before!.version + 1, {
+        requestId: 'editorial-rollback',
+      }),
+    );
+    expect(rolledBack.editorialContext).toEqual(context);
+    expect(rolledBack.id).toBe(before!.id);
   });
 
   it('binds every generated variant to its single active platform account', async () => {
@@ -363,7 +413,7 @@ class FakeWriter implements ContentWriterPort {
   }
 }
 
-async function schedule(database: Sql, requestId: string) {
+async function schedule(database: Sql, requestId: string, editorialContext?: EditorialContext) {
   const service = new GenerationRequestService(new OutboxWriter(database));
   return database.begin((transaction) =>
     service.request(
@@ -377,7 +427,22 @@ async function schedule(database: Sql, requestId: string) {
         promptVersionId: PROMPT_VERSION_ID,
         skillVersion: '1.0.0',
         writerInput: {
-          brief: { id: BRIEF_ID },
+          brief: {
+            id: BRIEF_ID,
+            ...(editorialContext
+              ? {
+                  constraints: {
+                    target_accounts_by_code: Object.fromEntries(
+                      PLATFORMS.map((platform, index) => [
+                        platform,
+                        { account_id: ACCOUNT_IDS[index]! },
+                      ]),
+                    ),
+                    editorial_contexts_by_code: { official_site: editorialContext },
+                  },
+                }
+              : {}),
+          },
           generation_mode: 'draft',
           locked_blocks: [],
         },

@@ -104,6 +104,7 @@ export class ContentVersionRepository {
         version.content_json AS "contentJson",
         version.content_hash AS "contentHash",
         version.source_run_id AS "sourceRunId",
+        version.editorial_context_json AS "editorialContext",
         version.created_by AS "createdBy",
         version.created_at AS "createdAt"
       FROM content_versions AS version
@@ -143,6 +144,7 @@ export class ContentVersionRepository {
         version.content_json AS "contentJson",
         version.content_hash AS "contentHash",
         version.source_run_id AS "sourceRunId",
+        version.editorial_context_json AS "editorialContext",
         version.created_by AS "createdBy",
         version.created_at AS "createdAt"
       FROM content_versions AS version
@@ -223,6 +225,7 @@ export class ContentVersionRepository {
         content_json,
         content_hash,
         source_run_id,
+        editorial_context_json,
         created_by
       ) VALUES (
         ${scope.tenantId}::uuid,
@@ -233,6 +236,7 @@ export class ContentVersionRepository {
         ${JSON.stringify(input.contentJson)}::text::jsonb,
         ${contentHash},
         ${input.sourceRunId ?? null}::uuid,
+        (SELECT editorial_context_json FROM content_versions WHERE tenant_id=${scope.tenantId}::uuid AND id=${object.currentContentVersionId}::uuid),
         ${scope.userId}::uuid
       )
       RETURNING
@@ -245,6 +249,7 @@ export class ContentVersionRepository {
         content_json AS "contentJson",
         content_hash AS "contentHash",
         source_run_id AS "sourceRunId",
+        editorial_context_json AS "editorialContext",
         created_by AS "createdBy",
         created_at AS "createdAt"
     `;
@@ -517,6 +522,7 @@ async function findVersionForUpdate(
       version.content_json AS "contentJson",
       version.content_hash AS "contentHash",
       version.source_run_id AS "sourceRunId",
+      version.editorial_context_json AS "editorialContext",
       version.created_by AS "createdBy",
       version.created_at AS "createdAt"
     FROM content_versions AS version

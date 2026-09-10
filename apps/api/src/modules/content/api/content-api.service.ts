@@ -1,5 +1,10 @@
 import {
   applyOfficialSiteServicePhone,
+  freezeEditorialContext,
+  supportsEditorialStyle,
+  EditorialContextSchema,
+  type EditorialGenerationTargets,
+  type EditorialContext,
   classifyEnterpriseEvidence,
   ContentDocumentSchema,
   enterpriseEvidenceCustomerRequestSupported,
@@ -28,6 +33,9 @@ import {
 } from '@geo-content-os/adapter-embedding';
 import { createRerankAdapter, readRerankConfiguration } from '@geo-content-os/adapter-rerank';
 import { createHash } from 'node:crypto';
+import { ZodError } from 'zod';
+import { loadRecommendationEvidence, RecommendationEvidenceError } from '@geo-content-os/retrieval';
+import { AccountContentPolicyService } from '../../publishing/accounts/account-content-policy.service.js';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransactionSql } from 'postgres';
 
@@ -303,6 +311,7 @@ export class ContentApiService {
       packageId,
       input.locked_block_keys,
       input.platform_codes,
+      input.generation_targets,
     );
     const result = await this.generation.request(
       transaction,
@@ -317,6 +326,17 @@ export class ContentApiService {
         writerInput,
       },
     );
+    const targets = jsonRecord(jsonRecord(writerInput['brief'])?.['constraints'])?.[
+      'target_accounts_by_code'
+    ];
+    if (targets) {
+      await transaction`
+        UPDATE briefs AS brief SET constraints_json=jsonb_set(brief.constraints_json,'{target_accounts_by_code}',${JSON.stringify(targets)}::text::jsonb),version=brief.version+1
+        FROM content_packages AS package
+        WHERE package.id=${packageId}::uuid AND package.tenant_id=${tenantId}::uuid
+          AND brief.id=package.brief_id AND brief.tenant_id=package.tenant_id
+      `;
+    }
     await insertAudit(
       transaction,
       tenantId,
@@ -954,6 +974,7 @@ export class ContentApiService {
       variant.packageId,
       input.locked_block_keys,
       [variant.platformCode],
+      input.generation_targets,
     );
     const revision = input.quality_report_id
       ? await loadQualityRewriteSource(
@@ -1274,11 +1295,12 @@ async function assertRequestedPlatforms(
 }
 
 async function buildWriterInput(
-  client: SqlClient,
+  client: TransactionSql,
   scope: ContentScope,
   packageId: string,
   lockedBlockKeys: readonly string[],
   platformCodes: readonly PlatformCode[],
+  generationTargets?: EditorialGenerationTargets,
 ): Promise<Record<string, JsonValue>> {
   const briefRows = await client<
     {
@@ -1364,10 +1386,103 @@ async function buildWriterInput(
     enterpriseEvidence?.citations ?? [],
   );
   const rules = readPlatformRules(platformCodes);
+  if (
+    Object.keys(generationTargets ?? {}).some(
+      (platform) => !platformCodes.includes(platform as PlatformCode),
+    )
+  ) {
+    throw contentValidationInvalid('生成配置包含本次未选择的平台');
+  }
   const targetAccounts =
-    process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] === 'true'
-      ? await loadGenerationTargetAccounts(client, scope, platformCodes, brief.constraints)
+    process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] === 'true' ||
+    Object.keys(generationTargets ?? {}).length > 0
+      ? await loadGenerationTargetAccounts(client, scope, platformCodes, {
+          ...brief.constraints,
+          ...(generationTargets
+            ? {
+                target_accounts_by_code: {
+                  ...jsonRecord(brief.constraints['target_accounts_by_code']),
+                  ...Object.fromEntries(
+                    Object.entries(generationTargets)
+                      .filter((entry) => entry[1])
+                      .map(([key, value]) => [key, { account_id: value!.account_id }]),
+                  ),
+                },
+              }
+            : {}),
+        })
       : {};
+  const contexts: Record<string, JsonValue> = {};
+  const batchContexts = await client<{ editorialContext: unknown }[]>`
+    SELECT batch.editorial_policy_snapshot_json AS "editorialContext" FROM official_site_daily_batch_items AS item
+    JOIN official_site_daily_batches AS batch ON batch.id=item.batch_id AND batch.tenant_id=item.tenant_id
+    WHERE item.tenant_id=${scope.tenantId}::uuid AND item.package_id=${packageId}::uuid
+    UNION ALL
+    SELECT batch.editorial_policy_snapshot_json AS "editorialContext" FROM browser_platform_daily_batch_items AS item
+    JOIN browser_platform_daily_batches AS batch ON batch.id=item.batch_id AND batch.tenant_id=item.tenant_id
+    WHERE item.tenant_id=${scope.tenantId}::uuid AND item.package_id=${packageId}::uuid
+  `;
+  const versionContexts = await client<{ platformCode: string; editorialContext: unknown }[]>`
+    SELECT variant.platform_code AS "platformCode",version.editorial_context_json AS "editorialContext"
+    FROM content_variants AS variant JOIN content_versions AS version ON version.id=variant.current_content_version_id AND version.tenant_id=variant.tenant_id
+    WHERE variant.tenant_id=${scope.tenantId}::uuid AND variant.package_id=${packageId}::uuid
+  `;
+  const recommendationCitations: Record<string, JsonValue>[] = [];
+  for (const platform of platformCodes) {
+    if (!supportsEditorialStyle(platform)) continue;
+    const target = jsonRecord(targetAccounts[platform]);
+    if (typeof target?.['account_id'] !== 'string') continue;
+    // A scheduler-created Brief owns its immutable policy; manual requests cannot replace it.
+    // Brief constraints are customer-editable; only batch/version database rows can freeze policy.
+    const frozen = batchContexts
+      .map((row) => row.editorialContext)
+      .find(
+        (value) =>
+          typeof value === 'object' &&
+          value !== null &&
+          (value as { platform_code?: string }).platform_code === platform,
+      );
+    if (frozen && generationTargets?.[platform])
+      throw contentStateInvalid('日批稿件的账号与风格已冻结，请新建批次或手动内容包');
+    const inherited =
+      frozen ??
+      (!generationTargets?.[platform]
+        ? versionContexts.find((row) => row.platformCode === platform)?.editorialContext
+        : null);
+    let context: EditorialContext;
+    try {
+      context = inherited
+        ? EditorialContextSchema.parse(inherited)
+        : freezeEditorialContext(
+            await AccountContentPolicyService.getInTransaction(client, scope, target['account_id']),
+            null,
+            generationTargets?.[platform]?.content_style,
+          );
+    } catch (error) {
+      if (error instanceof ZodError)
+        throw contentValidationInvalid(error.issues.map((issue) => issue.message).join('；'));
+      throw error;
+    }
+    if (context.account_id !== target['account_id'])
+      throw contentStateInvalid('内容风格与目标账号不匹配');
+    contexts[platform] = context;
+    const evidence = await loadRecommendationEvidence(client, scope, context.companies).catch(
+      (error: unknown) => {
+        if (error instanceof RecommendationEvidenceError)
+          throw contentValidationInvalid(error.message);
+        throw error;
+      },
+    );
+    recommendationCitations.push(
+      ...evidence.map((row) => ({
+        chunk_id: row.chunkId,
+        citation_id: row.chunkId,
+        source_id: row.sourceId,
+        // Persist the source substring verbatim; model-only sanitization happens in the writer.
+        quote_text: row.quoteText,
+      })),
+    );
+  }
   const locked = await loadLockedBlocks(client, scope.tenantId, null, lockedBlockKeys, packageId);
   return {
     brief: {
@@ -1375,6 +1490,8 @@ async function buildWriterInput(
       brief_id: brief.briefId,
       constraints: {
         ...brief.constraints,
+        editorial_contexts_by_code: contexts,
+        editorial_base_citation_ids: citations.map((citation) => citation['citation_id']!),
         ...(enterpriseEvidence && companyName && enterpriseEvidence.references.length > 0
           ? {
               authorized_certificate_source_ids: [
@@ -1407,7 +1524,14 @@ async function buildWriterInput(
       platform_codes: platformCodes,
       title: brief.title,
     },
-    citations,
+    citations: [
+      ...new Map(
+        [...citations, ...recommendationCitations].map((citation) => [
+          citation['citation_id'],
+          citation,
+        ]),
+      ).values(),
+    ],
     generation_mode: brief.generationMode,
     locked_blocks: locked,
     platform_rules_by_code: rules,
@@ -1713,10 +1837,10 @@ function generationTargetAccountId(
   writerInput: Readonly<Record<string, JsonValue>>,
   platformCode: PlatformCode,
 ): string | null {
-  if (process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] !== 'true') return null;
   const brief = jsonRecord(writerInput['brief']);
   const constraints = jsonRecord(brief?.['constraints']);
   const targets = jsonRecord(constraints?.['target_accounts_by_code']);
+  if (!targets && process.env['CONTENT_REQUIRE_PLATFORM_ACCOUNTS'] !== 'true') return null;
   const target = jsonRecord(targets?.[platformCode]);
   const accountId = target?.['account_id'];
   if (typeof accountId !== 'string') {

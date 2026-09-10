@@ -11,7 +11,7 @@ import { migrateDatabase, migrationsFolder } from '../../src/database/migrate.js
 import { FREEZE_V21_SEED, seedFreezeV21 } from '../../src/database/seeds/freeze-v21.seed.js';
 import { IDENTITY_SEED } from '../../src/modules/identity/seeds/identity.seed.js';
 
-const FREEZE_TABLE_COUNT = 93;
+const FREEZE_TABLE_COUNT = 94;
 const REQUIRED_HISTORY_TRIGGERS = [
   'ai_citations_append_only_guard',
   'ai_visibility_responses_append_only_guard',
@@ -158,9 +158,10 @@ describe('freeze v2.1 database verification', () => {
     expect(migrationJournal.entries.map(({ tag }) => tag)).toEqual(
       migrationFiles.map((file) => file.replace(/\.sql$/u, '')),
     );
-    expect(migrationJournal.entries.slice(-2).map(({ tag }) => tag)).toEqual([
+    expect(migrationJournal.entries.slice(-3).map(({ tag }) => tag)).toEqual([
       '0058_douyin_image_note_title_limit',
       '0059_douyin_account_nickname',
+      '0060_account_editorial_policy',
     ]);
   });
 

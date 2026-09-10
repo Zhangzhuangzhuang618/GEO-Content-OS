@@ -12,6 +12,7 @@ import {
   saveOfficialSiteAutomationPolicy,
 } from './platform-account-api';
 import type { OfficialSiteAutomationPolicy, PlatformAccount } from './platform-account.schema';
+import { ContentStyleSelect, type ContentStyle } from './account-content-policy';
 
 export function OfficialSiteAutomationPanel({
   account,
@@ -27,6 +28,8 @@ export function OfficialSiteAutomationPanel({
   const [projectId, setProjectId] = useState('');
   const [enabled, setEnabled] = useState(false);
   const [dailyEnabled, setDailyEnabled] = useState(false);
+  const [contentStyle, setContentStyle] = useState<ContentStyle | ''>('');
+  const [restartStyle, setRestartStyle] = useState<ContentStyle | ''>('');
   const [state, setState] = useState<'loading' | 'retrying' | 'ready' | 'saving' | 'error'>(
     'loading',
   );
@@ -39,6 +42,10 @@ export function OfficialSiteAutomationPanel({
     [policies, projectId],
   );
   const servicePhone = workspace?.settings.official_site_service_phone ?? null;
+  useEffect(() => {
+    setContentStyle(selected?.content_style_override ?? '');
+    setRestartStyle('');
+  }, [selected?.id, selected?.content_style_override]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -122,6 +129,7 @@ export function OfficialSiteAutomationPanel({
         account.id,
         {
           dailyEnabled,
+          contentStyleOverride: contentStyle || null,
           enabled,
           ...(selected ? { expectedVersion: selected.version } : {}),
           projectId,
@@ -171,6 +179,7 @@ export function OfficialSiteAutomationPanel({
       const restarted = await restartOfficialSiteDailyBatch(
         account.id,
         {
+          ...(restartStyle ? { contentStyle: restartStyle } : {}),
           expectedBatchVersion: batch.version,
           projectId: selected.project_id,
         },
@@ -354,6 +363,31 @@ export function OfficialSiteAutomationPanel({
               </span>
             </span>
           </label>
+          <ContentStyleSelect
+            value={contentStyle}
+            onChange={setContentStyle}
+            label="日批生文风格"
+          />
+          {selected?.today_batch ? (
+            <p className="text-sm">
+              当前批次风格：
+              {selected.today_batch.content_style === 'company_recommendation'
+                ? '硬广·多公司推荐'
+                : '现有常规风格'}
+              （已冻结）
+              {selected.today_batch.recommended_company_names?.length
+                ? ` · 推荐顺序：${selected.today_batch.recommended_company_names.join(' → ')}`
+                : ''}
+            </p>
+          ) : null}
+          {selected?.today_batch?.restart_allowed ? (
+            <ContentStyleSelect
+              value={restartStyle}
+              onChange={setRestartStyle}
+              inheritLabel="跟随已保存的日批/账号设置"
+              label="重新发起本次的生文风格"
+            />
+          ) : null}
           {selected?.today_batch ? (
             <TodayBatchStatus
               cancelling={cancelling}

@@ -76,6 +76,7 @@ export const OfficialSiteMediaAssetSchema = z
 
 export const OfficialSiteRenderInputSchema = z
   .object({
+    editorial_context: EditorialContextSchema.optional(),
     citations: z
       .array(OfficialSiteCitationLinkSchema)
       .max(200)
@@ -121,6 +122,7 @@ export const OFFICIAL_SITE_RENDER_INPUT_JSON_SCHEMA = Object.freeze({
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   additionalProperties: false,
   properties: {
+    editorial_context: { type: 'object' },
     citations: {
       items: { $ref: '#/$defs/citation' },
       maxItems: 200,
@@ -311,3 +313,4 @@ function unicodeText(minimum: number, maximum: number) {
     return length >= minimum && length <= maximum;
   }, `Text must contain ${minimum}-${maximum} Unicode characters`);
 }
+import { EditorialContextSchema } from '@geo-content-os/contracts';

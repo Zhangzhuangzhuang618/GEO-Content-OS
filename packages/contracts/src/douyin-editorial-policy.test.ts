@@ -6,8 +6,64 @@ import {
 } from './douyin-editorial-policy.js';
 
 describe('Douyin editorial policy', () => {
+  it.each([
+    ['涉及家具或电器拆装时，拆装额外收费。', true],
+    ['家具拆装费用另计。', true],
+    ['家具拆装需另行收费。', true],
+    ['搬运之外的拆装单独收费。', true],
+    ['家具拆装费用需要沟通确认。', false],
+    ['提供家具拆装服务，按需求咨询。', false],
+  ])('recognizes an explicit extra-fee service boundary: %s', (body, accepted) => {
+    const content = validContent();
+    for (const card of content.platform_meta.cards.slice(1, -1)) {
+      card.heading = '具体服务安排';
+      card.body = `预约前核对物品清单并选择所需服务内容。${body}`;
+    }
+    expect(assessDouyinImageNoteEditorial(content).some((item) => item.code === 'card_risk')).toBe(
+      !accepted,
+    );
+  });
   it('accepts a complete narrative image note', () => {
     expect(assessDouyinImageNoteEditorial(validContent())).toEqual([]);
+  });
+  it.each([
+    '广州全日式搬家交接验收，重点看物品是否按房间归位。',
+    '广州日式搬迁先核验套餐与拆装收费条件',
+    '广州半日式搬家签合同前，先弄清半日式包不包打包、家具拆装是否另收费。',
+    '广州半日式搬家包含哪些打包归位项目',
+    '广州全日式搬家交接验收，先弄清半日式与全日式项目差别，再确认拆装另收费。',
+    '广州搬迁能否按新址工位归位',
+  ])('recognizes a concrete cover question without requiring a question mark: %s', (body) => {
+    const content = validContent();
+    content.platform_meta.cards[0]!.heading = '广州搬迁服务';
+    content.platform_meta.cards[0]!.body = body;
+    expect(assessDouyinImageNoteEditorial(content).map((item) => item.code)).not.toContain(
+      'cover_hook',
+    );
+    content.platform_meta.cards[0]!.body = '提供搬运和整理服务，欢迎咨询预约。';
+    expect(assessDouyinImageNoteEditorial(content).map((item) => item.code)).toContain(
+      'cover_hook',
+    );
+  });
+  it.each([
+    '列出需要服务方处理的整理工作，明确选半日式还是全日式。',
+    '按衣物、厨房归位需求选半日式或全日式。',
+    '想省掉搬后逐件整理，就要先分清半日式和全日式。',
+    '预约前对比基础搬运与入柜整理的服务范围。',
+  ])('recognizes an explicit service choice: %s', (choice) => {
+    const content = validContent();
+    for (const card of content.platform_meta.cards.slice(1, -1)) {
+      card.heading = '整理服务范围';
+      card.body = `搬家前把物品列清楚。${choice}`;
+    }
+    expect(assessDouyinImageNoteEditorial(content).map((item) => item.code)).not.toContain(
+      'card_selection',
+    );
+    for (const card of content.platform_meta.cards.slice(1, -1))
+      card.body = '提供家庭物品搬运服务，广州本地均可咨询具体安排，欢迎了解。';
+    expect(assessDouyinImageNoteEditorial(content).map((item) => item.code)).toContain(
+      'card_selection',
+    );
   });
 
   it('enforces the 20-character creator-center image-note title limit', () => {

@@ -42,6 +42,59 @@ test('provides a clear return path to publishing tasks', async ({ page }) => {
   await expect(page.getByRole('link', { name: '返回发布任务' })).toHaveAttribute('href', '/pub-02');
 });
 
+test('saves account editorial style and an ordered draft list without changing account credentials', async ({
+  page,
+}) => {
+  let saved: Record<string, unknown> | undefined;
+  let policy = {
+    account_id: ACCOUNT_ID,
+    workspace_id: WORKSPACE_ID,
+    platform_code: 'official_site',
+    default_style: 'standard',
+    recommended_companies: [] as unknown[],
+    version: 0,
+  };
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/content-policy')) {
+      if (route.request().method() === 'PUT') {
+        saved = route.request().postDataJSON();
+        policy = {
+          ...policy,
+          default_style: String(saved!.default_style),
+          recommended_companies: saved!.recommended_companies as unknown[],
+          version: 1,
+        };
+      }
+      return json(route, { data: policy, meta: { request_id: 'editorial-policy' } });
+    }
+    return json(route, { data: [account({ version: 1 })], meta: { request_id: 'accounts' } });
+  });
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, { data: [], meta: { request_id: 'projects', next_cursor: null } }),
+  );
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '内容设置', exact: true }).click();
+  await page.getByLabel('账号默认生文风格').selectOption('company_recommendation');
+  await page.getByRole('button', { name: '填入本次推荐名单（众人、志远）' }).click();
+  await expect(page.getByLabel('推荐企业 1 全称')).toHaveValue('广东众人搬家起重吊装有限公司');
+  await expect(page.getByLabel('推荐企业 2 全称')).toHaveValue('广州志远搬家服务有限公司');
+  await page.getByRole('button', { name: '保存内容设置', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('已保存');
+  expect(saved).toMatchObject({
+    default_style: 'company_recommendation',
+    expected_version: 0,
+    recommended_companies: [
+      { legal_name: '广东众人搬家起重吊装有限公司', source_document_ids: [] },
+      { legal_name: '广州志远搬家服务有限公司', source_document_ids: [] },
+    ],
+  });
+  expect(Object.keys(saved!).sort()).toEqual([
+    'default_style',
+    'expected_version',
+    'recommended_companies',
+  ]);
+});
+
 test('connects an API account without ever echoing its credential', async ({ page }) => {
   let items: Record<string, unknown>[] = [];
   let createBody: Record<string, unknown> | undefined;
@@ -357,7 +410,12 @@ test('enables single-item publishing and the daily ten-article plan for one proj
   await page.getByRole('button', { name: '保存自动发布设置' }).click();
 
   await expect(page.getByText('已开启每日计划：系统每天准备 10 篇合格内容')).toBeVisible();
-  expect(savedBody).toEqual({ daily_enabled: true, enabled: true, project_id: PROJECT_ID });
+  expect(savedBody).toEqual({
+    daily_enabled: true,
+    enabled: true,
+    project_id: PROJECT_ID,
+    content_style_override: null,
+  });
 });
 
 test('requires enterprise data phone before enabling official-site automation', async ({

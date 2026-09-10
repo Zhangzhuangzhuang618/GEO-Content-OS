@@ -1,6 +1,9 @@
 import {
   assessDouyinImageNoteEditorial,
   assessDouyinOwnerPromotion,
+  storedEditorialContext,
+  editorialAllowedCompanyNames,
+  assessCompanyRecommendation,
   findDisallowedCompanyNames,
   findInternalCustomerCopyLanguage,
   findLiejuForbiddenContactDetails,
@@ -21,6 +24,7 @@ export interface DeterministicRiskCitation {
 }
 
 export interface DeterministicRiskScanInput {
+  readonly editorialContext?: unknown;
   readonly brandProfile: Readonly<Record<string, unknown>>;
   readonly citations: readonly DeterministicRiskCitation[];
   readonly content: Readonly<Record<string, unknown>>;
@@ -139,7 +143,22 @@ const RISK_RULES: readonly RiskRule[] = Object.freeze([
 
 export function scanDeterministicRisks(input: DeterministicRiskScanInput): readonly QualityIssue[] {
   const issues: QualityIssue[] = [];
-  const allowedCompanyNames = findPublishedOwnerCompanyNames(input.brandProfile);
+  const editorial = storedEditorialContext(input.editorialContext, input.platformCode);
+  const allowedCompanyNames = editorialAllowedCompanyNames(
+    findPublishedOwnerCompanyNames(input.brandProfile),
+    editorial,
+  );
+  for (const message of assessCompanyRecommendation(input.content, editorial)) {
+    issues.push(
+      issue(
+        'deterministic.company_recommendation',
+        'brand',
+        'blocks',
+        message,
+        '按冻结名单和对应企业资料修正正文。',
+      ),
+    );
+  }
   const brandEvidence = flattenStrings(input.brandProfile).join('\n');
   const citationEvidence = input.citations.map((item) => item.quoteText).join('\n');
 
@@ -211,8 +230,15 @@ function addDouyinEditorialIssues(
     return;
   }
   const findings = [
-    ...assessDouyinImageNoteEditorial(input.content),
-    ...assessDouyinOwnerPromotion(input.content, allowedCompanyNames),
+    ...assessDouyinImageNoteEditorial(
+      input.content,
+      storedEditorialContext(input.editorialContext, input.platformCode),
+    ),
+    ...assessDouyinOwnerPromotion(
+      input.content,
+      allowedCompanyNames,
+      storedEditorialContext(input.editorialContext, input.platformCode),
+    ),
   ];
   for (const finding of findings) {
     issues.push(
@@ -283,7 +309,11 @@ export function hasExternalCredentialEvidence(
 function normalizeCredentialName(value: string): string {
   return value
     .replace(
-      /^(?:(?:本公司|公司|企业|本企业|同时|以及|已经|已有|现有|已|并且|并|且|和|与|及|有|获得|持有|拥有|通过|取得|获评|荣获|具备|国家级|省级|市级))+/u,
+      /^[\p{Script=Han}A-Za-z0-9（）()·]+(?:有限公司|有限责任公司|股份公司)(?:已)?(?:持有|拥有|取得|获得|通过)/u,
+      '',
+    )
+    .replace(
+      /^(?:(?:该公司|该企业|本公司|公司|企业|本企业|同时|以及|已经|已有|现有|已|并且|并|且|和|与|及|有|获得|持有|拥有|通过|取得|获评|荣获|具备|国家级|省级|市级))+/u,
       '',
     )
     .trim();
@@ -300,7 +330,7 @@ function credentialKey(value: string): string {
   if (normalized.includes('道路运输经营许可证') || normalized.includes('道路运输经营许可')) {
     return '道路运输经营许可';
   }
-  if (normalized === '道路运输证') return '道路运输证';
+  if (normalized === '道路运输证' || normalized === '中华人民共和国道路运输证') return '道路运输证';
   if (normalized.includes('aaa') && normalized.includes('信用')) return 'aaa信用';
   return normalized;
 }

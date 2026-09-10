@@ -25,6 +25,44 @@ const CONTENT = Object.freeze({
 });
 
 describe('official-site fact support scoring', () => {
+  it('scores questions present in delivered copy, not only interrogative titles', () => {
+    const plain = { title: '广州搬迁服务介绍', summary: '服务介绍', blocks: [] };
+    expect(calculateGeoScores(plain, [], 'douyin', {}, {}).question).toBe(72);
+    for (const content of [
+      {
+        ...plain,
+        blocks: [{ block_type: 'paragraph', text: '家具拆装是否另收费？预约时单独确认。' }],
+      },
+      {
+        ...plain,
+        platform_meta: { faq: [{ question: '哪些项目另收费？', answer: '家具拆装另收费。' }] },
+      },
+      {
+        ...plain,
+        platform_meta: { cards: [{ heading: '收费核对', body: '确认家具拆装是否另收费。' }] },
+      },
+    ])
+      expect(calculateGeoScores(content, [], 'douyin', {}, {}).question).toBe(90);
+    expect(
+      calculateGeoScores(
+        { ...plain, blocks: [{ text: '家具拆装是否另收费？' }] },
+        [],
+        'baijiahao',
+        {},
+        {},
+      ).question,
+    ).toBe(72);
+    // Unpublished input and generic promotional copy must not earn the signal.
+    expect(
+      calculateGeoScores(
+        { ...plain, brief: { title: '如何搬迁？' }, citations: [{ quote_text: '是否另收费？' }] },
+        [],
+        'douyin',
+        {},
+        {},
+      ).question,
+    ).toBe(72);
+  });
   it('lets one directly supporting citation reach the evidence threshold', () => {
     const facts = groupCitations([
       citation(

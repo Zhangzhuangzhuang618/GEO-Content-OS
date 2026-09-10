@@ -51,6 +51,7 @@ const RECOVERABLE_PREREQUISITE_CODES = Object.freeze([
 ] as const);
 
 interface BatchRow {
+  readonly editorialContext: unknown;
   readonly accountId: string;
   readonly businessDate: string;
   readonly candidateLimit: 30;
@@ -342,7 +343,7 @@ async function lockBatch(
     SELECT
       batch.id, batch.tenant_id AS "tenantId", batch.policy_id AS "policyId",
       batch.attempt_no AS "attemptNo", batch.business_date::text AS "businessDate",
-      batch.status, batch.version,
+      batch.status, batch.version,batch.editorial_policy_snapshot_json AS "editorialContext",
       policy.workspace_id AS "workspaceId", policy.project_id AS "projectId",
       policy.account_id AS "accountId", policy.created_by AS "createdBy",
       policy.daily_target_count AS "targetCount",
@@ -660,10 +661,19 @@ async function createCandidate(
   dailyCitations: DailyCitationPort,
 ): Promise<void> {
   const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
+  let editorial;
+  try {
+    editorial = await dailyEditorialContext(transaction, batch, 'official_site');
+  } catch (error) {
+    throw prerequisite(
+      'PARSED_KNOWLEDGE_REQUIRED',
+      error instanceof Error ? error.message : '推荐企业资料不可用',
+    );
+  }
   const title = normalizeOfficialSiteDailyTitle(angle.title(keyword.term));
   const objective = objectiveFor(candidateNo);
   const audience = `正在搜索“${keyword.term}”相关信息并准备做出决策的目标用户`;
-  const evidence = await dailyCitations.retrieve({
+  let evidence = await dailyCitations.retrieve({
     angle: angle.label,
     authoritySourceIds: seed.authoritySourceIds,
     audience,
@@ -679,6 +689,17 @@ async function createCandidate(
     userId: batch.createdBy,
     workspaceId: batch.workspaceId,
   });
+  evidence = {
+    ...evidence,
+    citations: [
+      ...new Map(
+        [...evidence.citations, ...editorial.citations].map((citation) => [
+          citation.chunkId,
+          citation,
+        ]),
+      ).values(),
+    ],
+  };
   if (evidence.citations.length === 0) {
     throw prerequisite(
       'PARSED_KNOWLEDGE_REQUIRED',
@@ -686,6 +707,9 @@ async function createCandidate(
     );
   }
   const constraints = {
+    ...(editorial.context
+      ? { editorial_contexts_by_code: { official_site: editorial.context } }
+      : {}),
     additional_instructions: [
       `这是 ${batch.businessDate} 官网每日内容批次的第 ${candidateNo} 个候选。`,
       `本篇必须围绕“${keyword.term}”的“${angle.label}”展开，与同日其他文章保持不同角度。`,
@@ -1196,3 +1220,4 @@ class DailyBatchPrerequisiteError extends Error {
     this.name = 'DailyBatchPrerequisiteError';
   }
 }
+import { dailyEditorialContext } from './daily-editorial-context.js';
