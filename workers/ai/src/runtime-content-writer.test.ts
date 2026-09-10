@@ -69,7 +69,9 @@ describe('AI Worker runtime wiring', () => {
         ...brief,
         constraints: {
           ...constraints,
-          editorial_contexts_by_code: { official_site: editorial },
+          editorial_contexts_by_code: {
+            official_site: JSON.parse(JSON.stringify(editorial)) as JsonObject,
+          },
           target_accounts_by_code: { official_site: { account_id: MASTER_RUN } },
         },
       },
@@ -119,6 +121,7 @@ describe('AI Worker runtime wiring', () => {
         style: 'company_recommendation',
         template_version: 'company-recommendation@1',
       };
+      editorial.companies[0]!.business_description = 'UNSELECTED-NOTE-不得绕过主题选材';
       const sentences = [
         '企业搬迁按部门标记物品并安排新址摆放，预约时可提供物品清单与工位安排。',
         '仓库搬迁按库存清单核对数量，分批安排需要结合现场搬运通道和可用时间。',
@@ -190,7 +193,9 @@ describe('AI Worker runtime wiring', () => {
             platform_codes: ['official_site'],
             constraints: {
               writing_requirements: '围绕企业换址，不补家庭家具目录，回收只作补充。',
-              editorial_contexts_by_code: { official_site: editorial },
+              editorial_contexts_by_code: {
+                official_site: JSON.parse(JSON.stringify(editorial)) as JsonObject,
+              },
               target_accounts_by_code: { official_site: { account_id: MASTER_RUN } },
             },
           },
@@ -206,6 +211,8 @@ describe('AI Worker runtime wiring', () => {
       expect(JSON.stringify(adapter.requests[0]!.messages)).toContain('责任编辑');
       expect(JSON.stringify(adapter.requests[0]!.messages)).toContain('正文约1100字');
       expect(JSON.stringify(adapter.requests[0]!.messages)).toContain('仅为篇幅提示');
+      expect(JSON.stringify(adapter.requests[0]!.messages)).not.toContain('UNSELECTED-NOTE');
+      expect(editorial.companies[0]!.business_description).toBe('UNSELECTED-NOTE-不得绕过主题选材');
       const retry = JSON.parse(
         adapter.requests[0]!.messages.find((message) => message.role === 'user')!.content!,
       );

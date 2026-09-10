@@ -7,6 +7,8 @@ import { IdentityAuthDatabase } from '../identity/auth/auth.database.js';
 import { AuthModule } from '../identity/auth/auth.module.js';
 import { RbacModule } from '../identity/rbac/rbac.module.js';
 import { OutboxModule, OutboxWriter } from '../outbox/index.js';
+import { SourceModule } from '../knowledge/sources/source.module.js';
+import { SourceService } from '../knowledge/sources/source.service.js';
 import {
   PlatformAccountController,
   PublishJobController,
@@ -39,12 +41,13 @@ import {
 @Module({
   controllers: [PlatformAccountController, PublishJobController],
   exports: [PublishingApiService],
-  imports: [AuthModule, IdempotencyModule, OutboxModule, RbacModule],
+  imports: [AuthModule, IdempotencyModule, OutboxModule, RbacModule, SourceModule],
   providers: [
     {
-      inject: [IdentityAuthDatabase],
+      inject: [IdentityAuthDatabase, SourceService],
       provide: AccountContentPolicyService,
-      useFactory: (database: IdentityAuthDatabase) => new AccountContentPolicyService(database),
+      useFactory: (database: IdentityAuthDatabase, sources: SourceService) =>
+        new AccountContentPolicyService(database, sources),
     },
     { provide: PUBLISHING_ACCOUNT_CONNECTOR, useClass: PlatformDeliveryAccountConnector },
     { provide: PUBLISHING_CREDENTIALS, useFactory: createPublishingCredentialService },

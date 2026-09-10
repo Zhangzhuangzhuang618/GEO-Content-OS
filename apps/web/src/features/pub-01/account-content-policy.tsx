@@ -13,7 +13,14 @@ import type { PlatformAccount } from './platform-account.schema';
 export const ContentStyleSchema = z.enum(['standard', 'company_recommendation']);
 export type ContentStyle = z.infer<typeof ContentStyleSchema>;
 const CompanySchema = z
-  .object({ id: z.uuid(), legal_name: z.string(), source_document_ids: z.array(z.uuid()) })
+  .object({
+    id: z.uuid(),
+    legal_name: z.string(),
+    source_document_ids: z.array(z.uuid()),
+    evidence_mode: z.enum(['documents', 'primary', 'inherit_primary', 'description']).optional(),
+    business_description: z.string().optional(),
+    description_source_id: z.uuid().optional(),
+  })
   .strict();
 const PolicySchema = z
   .object({
@@ -23,6 +30,7 @@ const PolicySchema = z
     default_style: ContentStyleSchema,
     recommended_companies: z.array(CompanySchema),
     version: z.number().int(),
+    primary_company_name: z.string().nullable().optional(),
   })
   .strict();
 type Policy = z.infer<typeof PolicySchema>;
@@ -86,7 +94,22 @@ export function AccountContentPolicyPanel({
     ])
       .then(([next, items]) => {
         if (!controller.signal.aborted) {
-          setPolicy(next);
+          const companies = next.recommended_companies.map((company) =>
+            company.legal_name === next.primary_company_name
+              ? { ...company, evidence_mode: 'primary' as const }
+              : company,
+          );
+          if (
+            next.primary_company_name &&
+            !companies.some((company) => company.legal_name === next.primary_company_name)
+          )
+            companies.unshift({
+              id: createRequestUuid(),
+              legal_name: next.primary_company_name,
+              source_document_ids: [],
+              evidence_mode: 'primary',
+            });
+          setPolicy({ ...next, recommended_companies: companies });
           setProjects(items);
           setProjectId(items[0]?.id ?? '');
         }
@@ -176,7 +199,13 @@ export function AccountContentPolicyPanel({
           },
           body: JSON.stringify({
             default_style: policy.default_style,
-            recommended_companies: policy.recommended_companies,
+            recommended_companies: policy.recommended_companies.map((company) => ({
+              id: company.id,
+              legal_name: company.legal_name,
+              source_document_ids: company.source_document_ids,
+              evidence_mode: company.evidence_mode,
+              business_description: company.business_description,
+            })),
             expected_version: policy.version,
           }),
         },
@@ -189,7 +218,9 @@ export function AccountContentPolicyPanel({
             : (body.error?.message ?? '保存失败，请检查企业全称和资料权限'),
         );
       setPolicy(PolicySchema.parse(body.data));
-      setMessage('已保存。只影响后续新建任务，已创建稿件与批次不变。');
+      setMessage(
+        '已保存。业务说明自动入库，解析完成后可用于生成；只影响后续新建任务，已创建稿件与批次不变。',
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '保存失败');
     } finally {
@@ -208,7 +239,7 @@ export function AccountContentPolicyPanel({
         </button>
       </div>
       <p className="text-sm text-ink-600">
-        硬广按名单顺序介绍企业。每家公司绑定自己的资料；不生成独立排名或虚构用户亲历。抖音启用硬广时采用企业介绍口吻，不修改已保存的常规口吻。
+        主公司自动使用当前企业的有效资料。其他公司可填写业务说明或确认沿用主公司服务，资料绑定为可选；证照不共用。抖音硬广采用企业介绍口吻，切回常规后恢复原客户或师傅口吻。
       </p>
       {policy ? (
         <>
@@ -236,8 +267,8 @@ export function AccountContentPolicyPanel({
             </select>
           </label>
           <p className="text-xs text-ink-600">
-            生成时只能使用任务所在项目或工作区通用资料。需要 2–6
-            家公司，每家至少一份已解析且有效的资料；可先保存未完成的配置。
+            共配置 2–6
+            家公司。业务说明由你确认并自动保存为资料，无需重复上传。可选资料仍限当前工作区、任务项目或工作区通用范围；不会跨企业读取。
           </p>
           {policy.recommended_companies.length === 0 ? (
             <button
@@ -265,22 +296,30 @@ export function AccountContentPolicyPanel({
               <input
                 aria-label={`推荐企业 ${index + 1} 全称`}
                 value={company.legal_name}
+                readOnly={company.evidence_mode === 'primary'}
                 placeholder="完整法定企业名称"
                 onChange={(event) => updateCompany(index, { legal_name: event.target.value })}
                 className="rounded-lg border border-line p-2"
               />
               <div className="flex gap-3 text-sm">
-                <button disabled={index === 0 || busy} onClick={() => move(index, -1)}>
+                <button
+                  disabled={index === 0 || busy || company.evidence_mode === 'primary'}
+                  onClick={() => move(index, -1)}
+                >
                   上移
                 </button>
                 <button
-                  disabled={index === policy.recommended_companies.length - 1 || busy}
+                  disabled={
+                    index === policy.recommended_companies.length - 1 ||
+                    busy ||
+                    company.evidence_mode === 'primary'
+                  }
                   onClick={() => move(index, 1)}
                 >
                   下移
                 </button>
                 <button
-                  disabled={busy}
+                  disabled={busy || company.evidence_mode === 'primary'}
                   onClick={() =>
                     setPolicy({
                       ...policy,
@@ -293,41 +332,87 @@ export function AccountContentPolicyPanel({
                   移除企业
                 </button>
               </div>
-              {sources.map((source) => (
-                <label key={source.id} className="flex gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={company.source_document_ids.includes(source.id)}
+              {company.evidence_mode === 'primary' ? (
+                <p className="text-sm">
+                  主公司：自动使用当前企业有效资料与本公司授权证照，无需逐份勾选。
+                </p>
+              ) : (
+                <label className="grid gap-2 text-sm">
+                  业务信息来源
+                  <select
+                    aria-label={`推荐企业 ${index + 1} 业务信息来源`}
+                    value={company.evidence_mode ?? 'documents'}
                     onChange={(event) =>
                       updateCompany(index, {
-                        source_document_ids: event.target.checked
-                          ? [...company.source_document_ids, source.id]
-                          : company.source_document_ids.filter((id) => id !== source.id),
+                        evidence_mode: event.target.value as
+                          'description' | 'inherit_primary' | 'documents',
                       })
                     }
-                  />
-                  {source.title}
+                    className="rounded-lg border border-line p-2"
+                  >
+                    <option value="description">填写业务说明（无需上传文件）</option>
+                    <option value="inherit_primary">
+                      我确认沿用主公司服务范围和流程（不含证照）
+                    </option>
+                    <option value="documents">使用已绑定资料</option>
+                  </select>
                 </label>
-              ))}
-              {company.source_document_ids
-                .filter((id) => !sources.some((source) => source.id === id))
-                .map((id) => (
-                  <p key={id} className="text-xs">
-                    已绑定资料（不在当前列表）：{id}{' '}
-                    <button
-                      onClick={() =>
+              )}
+              <label className="grid gap-2 text-sm">
+                {company.evidence_mode === 'description' ? '业务说明' : '补充业务说明（可选）'}
+                <textarea
+                  aria-label={`推荐企业 ${index + 1} 业务说明`}
+                  maxLength={4000}
+                  rows={3}
+                  value={company.business_description ?? ''}
+                  onChange={(event) =>
+                    updateCompany(index, { business_description: event.target.value })
+                  }
+                  placeholder="填写实际承接业务、服务做法和收费条件。仅写公司名称不足以生成具体介绍。"
+                  className="rounded-lg border border-line p-2"
+                />
+              </label>
+              {company.description_source_id ? (
+                <p className="text-xs">业务说明已自动保存为资料，生成前会检查解析状态。</p>
+              ) : null}
+              <details>
+                <summary className="cursor-pointer text-sm">补充绑定现有资料（可选）</summary>
+                {sources.map((source) => (
+                  <label key={source.id} className="flex gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={company.source_document_ids.includes(source.id)}
+                      onChange={(event) =>
                         updateCompany(index, {
-                          source_document_ids: company.source_document_ids.filter(
-                            (item) => item !== id,
-                          ),
+                          source_document_ids: event.target.checked
+                            ? [...company.source_document_ids, source.id]
+                            : company.source_document_ids.filter((id) => id !== source.id),
                         })
                       }
-                    >
-                      解除绑定
-                    </button>
-                  </p>
+                    />
+                    {source.title}
+                  </label>
                 ))}
-              <p className="text-xs">已绑定 {company.source_document_ids.length} 份资料</p>
+                {company.source_document_ids
+                  .filter((id) => !sources.some((source) => source.id === id))
+                  .map((id) => (
+                    <p key={id} className="text-xs">
+                      已绑定资料（不在当前列表）：{id}{' '}
+                      <button
+                        onClick={() =>
+                          updateCompany(index, {
+                            source_document_ids: company.source_document_ids.filter(
+                              (item) => item !== id,
+                            ),
+                          })
+                        }
+                      >
+                        解除绑定
+                      </button>
+                    </p>
+                  ))}
+                <p className="text-xs">已绑定 {company.source_document_ids.length} 份资料</p>
+              </details>
             </fieldset>
           ))}
           {cursor ? (
@@ -342,7 +427,12 @@ export function AccountContentPolicyPanel({
                 ...policy,
                 recommended_companies: [
                   ...policy.recommended_companies,
-                  { id: createRequestUuid(), legal_name: '', source_document_ids: [] },
+                  {
+                    id: createRequestUuid(),
+                    legal_name: '',
+                    source_document_ids: [],
+                    evidence_mode: 'description',
+                  },
                 ],
               })
             }

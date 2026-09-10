@@ -24,6 +24,8 @@ import {
 import { PlatformDeliveryAccountConnector } from '../../src/modules/publishing/accounts/platform-account.connector.js';
 import { AccountContentPolicyService } from '../../src/modules/publishing/accounts/account-content-policy.service.js';
 import { WorkspaceService } from '../../src/modules/workspace/workspaces/index.js';
+import { SourceService } from '../../src/modules/knowledge/sources/source.service.js';
+import { InMemoryStorageAdapter } from '@geo-content-os/adapter-storage';
 
 const USER_ID = '11000000-0000-4000-8000-000000000123';
 const OTHER_USER_ID = '12000000-0000-4000-8000-000000000123';
@@ -150,6 +152,84 @@ describe('platform accounts', () => {
     ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_STATE_INVALID' });
     await expect(database`INSERT INTO platform_account_content_policies (account_id,tenant_id,workspace_id,platform_code,created_by,updated_by)
       VALUES (${account.id}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'xiaohongshu',${USER_ID}::uuid,${USER_ID}::uuid)`).rejects.toThrow();
+  });
+
+  it('saves confirmed business notes through storage and ingestion, deduplicates them and preserves old versions', async () => {
+    const database = requireClient(client);
+    const [account] = await database<
+      { id: string }[]
+    >`INSERT INTO platform_accounts(tenant_id,workspace_id,platform_code,display_name,publish_mode,status,timezone) VALUES (${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'official_site','Note account','export','active','Asia/Shanghai') RETURNING id`;
+    const storage = new InMemoryStorageAdapter('recommendation-test');
+    const service = new AccountContentPolicyService(
+      database,
+      new SourceService(new OutboxWriter(database), storage),
+    );
+    const company = {
+      id: WORKSPACE_ID,
+      legal_name: '广州盛源机电制冷工程有限公司',
+      evidence_mode: 'description' as const,
+      source_document_ids: [],
+      business_description: '主营旧空调及二手家电回收，服务企业及家庭。',
+    };
+    const save = (version: number, description = company.business_description) =>
+      database.begin((tx) =>
+        service.saveInTransaction(
+          tx,
+          SCOPE,
+          account!.id,
+          {
+            expected_version: version,
+            default_style: 'company_recommendation',
+            recommended_companies: [{ ...company, business_description: description }],
+          },
+          { requestId: `note-${version}` },
+        ),
+      );
+    await expect(save(0)).rejects.toThrow('资料编辑权限');
+    await database`UPDATE memberships SET role_code='tenant_owner' WHERE tenant_id=${TENANT_ID}::uuid AND user_id=${USER_ID}::uuid`;
+    const first = await save(0);
+    const id = first.recommended_companies[0]!.description_source_id!;
+    expect(id).toBeTruthy();
+    const [source] = await database<
+      { status: string; uri: string; metadata_json: unknown }[]
+    >`SELECT status,uri,metadata_json FROM source_documents WHERE id=${id}::uuid`;
+    expect(source).toMatchObject({ status: 'processing', metadata_json: {} });
+    const [event] = await database<
+      { payload_json: { data: { object_key: string } } }[]
+    >`SELECT payload_json FROM outbox_events WHERE aggregate_id=${id}::uuid AND event_type='knowledge.source.ingest_requested.v1'`;
+    expect(
+      new TextDecoder().decode(await storage.getObject(event!.payload_json.data.object_key)),
+    ).toBe(`${company.legal_name}\n${company.business_description}`);
+    expect((await save(1)).recommended_companies[0]?.description_source_id).toBe(id);
+    expect(
+      await database`SELECT id FROM ingest_jobs WHERE source_document_id=${id}::uuid`,
+    ).toHaveLength(1);
+    const changed = await save(
+      2,
+      `${company.business_description}搬迁时不再使用的家电可以另行咨询回收。`,
+    );
+    expect(changed.recommended_companies[0]?.description_source_id).not.toBe(id);
+    expect(
+      await database`SELECT id FROM source_documents WHERE id=${id}::uuid AND deleted_at IS NULL`,
+    ).toHaveLength(1);
+    expect(
+      await database`SELECT id FROM audit_events WHERE request_id='note-0' AND action='knowledge.source.uploaded'`,
+    ).toHaveLength(1);
+    await expect(
+      database.begin((tx) =>
+        service.saveInTransaction(
+          tx,
+          SCOPE,
+          account!.id,
+          {
+            expected_version: 3,
+            default_style: 'company_recommendation',
+            recommended_companies: [{ ...company, evidence_mode: 'primary' }],
+          },
+          { requestId: 'wrong-primary' },
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'PLATFORM_ACCOUNT_STATE_INVALID' });
   });
 
   it('freezes account content policy when the daily batch is inserted and preserves it on updates', async () => {

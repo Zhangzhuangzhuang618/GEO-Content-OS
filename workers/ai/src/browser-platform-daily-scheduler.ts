@@ -564,7 +564,11 @@ async function createCandidate(
         : '不得声明原创，不得伪造热点、排行、亲历或用户评价；发布器会如实勾选 AI 创作标识。';
   const constraints = {
     ...(editorial.context
-      ? { editorial_contexts_by_code: { [batch.platformCode]: editorial.context } }
+      ? {
+          editorial_contexts_by_code: {
+            [batch.platformCode]: JSON.parse(JSON.stringify(editorial.context)) as JsonObject,
+          },
+        }
       : {}),
     additional_instructions: [
       `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${editorialSequenceNo} 个当日编辑候选。`,

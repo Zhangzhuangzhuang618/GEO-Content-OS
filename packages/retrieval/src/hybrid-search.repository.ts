@@ -55,7 +55,8 @@ export class HybridSearchRepository implements HybridSearchPort {
           AND workspace.deleted_at IS NULL
           AND source.status = 'active'
           AND (
-            cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+            (cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+              AND source.title NOT LIKE '推荐业务说明 · %')
             OR source.id = ANY(${this.client.array([...request.sourceDocumentIds])}::uuid[])
           )
           AND chunk.status = 'active'
@@ -110,7 +111,8 @@ export class HybridSearchRepository implements HybridSearchPort {
           AND workspace.deleted_at IS NULL
           AND source.status = 'active'
           AND (
-            cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+            (cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+              AND source.title NOT LIKE '推荐业务说明 · %')
             OR source.id = ANY(${this.client.array([...request.sourceDocumentIds])}::uuid[])
           )
           AND chunk.status = 'active'
@@ -180,7 +182,8 @@ export class HybridSearchRepository implements HybridSearchPort {
         AND source.deleted_at IS NULL
         AND source.status = 'active'
         AND (
-          cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+          (cardinality(${this.client.array([...request.sourceDocumentIds])}::uuid[]) = 0
+            AND source.title NOT LIKE '推荐业务说明 · %')
           OR source.id = ANY(${this.client.array([...request.sourceDocumentIds])}::uuid[])
         )
         AND chunk.status = 'active'

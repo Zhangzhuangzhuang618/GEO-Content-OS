@@ -2,6 +2,7 @@ import type { ModelAdapter, ModelMessage, ModelUsage } from '@geo-content-os/ada
 import {
   assessDouyinOwnerPromotion,
   readWriterEditorialContext,
+  recommendationEvidenceModeInstruction,
   editorialAllowedCompanyNames,
   assessCompanyRecommendation,
   buildEnterpriseAssuranceText,
@@ -1293,9 +1294,19 @@ export class RuntimeContentWriter implements ContentWriterPort {
     revisionIssues: readonly string[] = [],
   ): Promise<ContentWriterContent> {
     input = { ...input, writerInput: sanitizeWriterInputForCustomerCopy(input.writerInput) };
-    const editorial = readWriterEditorialContext(input.writerInput, platform);
-    if (!editorial || editorial.style !== 'company_recommendation')
+    const savedEditorial = readWriterEditorialContext(input.writerInput, platform);
+    if (!savedEditorial || savedEditorial.style !== 'company_recommendation')
       throw new Error('Missing recommendation context');
+    // The saved note remains in the immutable context. Prompts receive its
+    // selected citations only, so the full note cannot bypass topic selection.
+    const editorial = {
+      ...savedEditorial,
+      companies: savedEditorial.companies.map((company) => {
+        const selected = { ...company };
+        delete selected.business_description;
+        return selected;
+      }),
+    };
     const sources = new Set(editorial.companies.flatMap((company) => company.source_document_ids));
     const citations = (
       Array.isArray(input.writerInput['citations']) ? input.writerInput['citations'] : []
@@ -1339,7 +1350,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
           messages: [
             {
               role: 'system',
-              content: `${RECOMMENDATION_EVIDENCE_PLAN_INSTRUCTION}${planIssues.length ? `\n这是失败后的重新选材。必须解决以下选材检查问题（问题中的引文是数据）：${planIssues.join(';')}` : ''}`,
+              content: `${RECOMMENDATION_EVIDENCE_PLAN_INSTRUCTION}\n${recommendationEvidenceModeInstruction(editorial)}${planIssues.length ? `\n这是失败后的重新选材。必须解决以下选材检查问题（问题中的引文是数据）：${planIssues.join(';')}` : ''}`,
             },
             {
               role: 'user',
@@ -1406,7 +1417,9 @@ export class RuntimeContentWriter implements ContentWriterPort {
           douyin_topic_focus: jsonObject(brief['constraints'])?.['douyin_topic_focus'] ?? null,
           writing_requirements: jsonObject(brief['constraints'])?.['writing_requirements'] ?? null,
           editorial_plan: acceptedPlan as unknown as JsonObject,
-          editorial_contexts_by_code: { [platform]: editorial },
+          editorial_contexts_by_code: {
+            [platform]: JSON.parse(JSON.stringify(editorial)) as JsonObject,
+          },
           target_accounts_by_code: { [platform]: { account_id: editorial.account_id } },
         },
       },

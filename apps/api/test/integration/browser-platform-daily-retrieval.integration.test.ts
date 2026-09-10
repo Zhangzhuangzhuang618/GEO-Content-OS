@@ -12,7 +12,11 @@ import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { migrateDatabase } from '../../src/database/migrate.js';
-import { loadRecommendationEvidence } from '@geo-content-os/retrieval';
+import {
+  loadRecommendationEvidence,
+  resolveRecommendationContext,
+} from '@geo-content-os/retrieval';
+import { EditorialContextSchema } from '@geo-content-os/contracts';
 
 const USER_ID = '12000000-0000-4000-8000-000000000154';
 const TENANT_ID = '22000000-0000-4000-8000-000000000154';
@@ -84,6 +88,71 @@ describe('browser-platform daily candidate retrieval', () => {
     await expect(
       database.begin((transaction) => loadRecommendationEvidence(transaction, scope, companies)),
     ).rejects.toThrow('广州测试搬家有限公司');
+  });
+
+  it('auto-binds primary sources and inherits services without certificates, keeping frozen evidence stable', async () => {
+    const database = requireClient(client);
+    const scope = {
+      tenantId: TENANT_ID,
+      workspaceId: WORKSPACE_ID,
+      projectId: PROJECT_ID,
+      userId: USER_ID,
+    };
+    const context = EditorialContextSchema.parse({
+      account_id: LIEJU_ACCOUNT_ID,
+      platform_code: 'lieju',
+      policy_version: 1,
+      schema_version: 'editorial-context@1',
+      template_version: 'company-recommendation@1',
+      style: 'company_recommendation',
+      companies: [
+        {
+          id: SOURCE_ID,
+          legal_name: '广州示例搬家有限公司',
+          source_document_ids: [],
+          evidence_mode: 'primary',
+        },
+        {
+          id: CERTIFICATE_SOURCE_ID,
+          legal_name: '广州另一搬家有限公司',
+          source_document_ids: [],
+          evidence_mode: 'inherit_primary',
+        },
+      ],
+    });
+    const resolved = await database.begin((tx) => resolveRecommendationContext(tx, scope, context));
+    expect(resolved.companies[0]?.source_document_ids.sort()).toEqual(
+      [SOURCE_ID, CERTIFICATE_SOURCE_ID].sort(),
+    );
+    expect(resolved.companies[1]?.source_document_ids).toEqual([SOURCE_ID]);
+    expect(resolved).toMatchObject({
+      evidence_resolved: true,
+      primary_company_name: '广州示例搬家有限公司',
+    });
+    await expect(
+      database.begin((tx) => loadRecommendationEvidence(tx, scope, resolved.companies)),
+    ).resolves.toHaveLength(2);
+    // Collected search pages are not automatically company-owned business evidence.
+    await database`UPDATE source_documents SET source_type='url',mime_type='text/html',title='外部行业网页资料' WHERE id=${SOURCE_ID}::uuid`;
+    const withoutExternal = await resolveRecommendationContext(database, scope, context);
+    expect(withoutExternal.companies[0]?.source_document_ids).toEqual([CERTIFICATE_SOURCE_ID]);
+    expect(withoutExternal.companies[1]?.source_document_ids).toEqual([]);
+    await database`UPDATE source_documents SET title='广州示例搬家有限公司官网服务说明' WHERE id=${SOURCE_ID}::uuid`;
+    expect(
+      (await resolveRecommendationContext(database, scope, context)).companies[1]
+        ?.source_document_ids,
+    ).toEqual([SOURCE_ID]);
+    await database`UPDATE source_documents SET source_type='txt',mime_type='text/plain',title='企业服务资料' WHERE id=${SOURCE_ID}::uuid`;
+    await database`UPDATE source_documents SET effective_to=CURRENT_DATE-1 WHERE id=${SOURCE_ID}::uuid`;
+    expect(await resolveRecommendationContext(database, scope, resolved)).toEqual(resolved);
+    await expect(
+      database.begin((tx) => loadRecommendationEvidence(tx, scope, resolved.companies)),
+    ).rejects.toThrow('资料不可用');
+    await expect(
+      resolveRecommendationContext(database, { ...scope, workspaceId: BRAND_ID }, context),
+    ).rejects.toThrow('唯一企业身份');
+    context.companies[0]!.legal_name = '广州错误搬家有限公司';
+    await expect(resolveRecommendationContext(database, scope, context)).rejects.toThrow('不一致');
   });
 
   it('requires certificate holder, authorization, active chunks and current validity for recommendations', async () => {

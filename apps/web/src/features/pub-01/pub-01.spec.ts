@@ -95,6 +95,71 @@ test('saves account editorial style and an ordered draft list without changing a
   ]);
 });
 
+test('auto-selects primary identity and saves inherited services and business descriptions without file bindings', async ({
+  page,
+}) => {
+  const owner = '广东众人搬家起重吊装有限公司';
+  let saved: Record<string, unknown> | undefined;
+  const policy = {
+    account_id: ACCOUNT_ID,
+    workspace_id: WORKSPACE_ID,
+    platform_code: 'official_site',
+    default_style: 'standard',
+    recommended_companies: [],
+    version: 0,
+    primary_company_name: owner,
+  };
+  await page.route('**/api/v1/platform-accounts**', async (route) => {
+    if (new URL(route.request().url()).pathname.endsWith('/content-policy')) {
+      if (route.request().method() === 'PUT') {
+        saved = route.request().postDataJSON();
+        return json(route, {
+          data: { ...policy, ...saved, version: 1, expected_version: undefined },
+          meta: { request_id: 'save-description' },
+        });
+      }
+      return json(route, { data: policy, meta: { request_id: 'load-description' } });
+    }
+    return json(route, { data: [account({ version: 1 })], meta: { request_id: 'accounts' } });
+  });
+  await page.route('**/api/v1/projects?*', (route) =>
+    json(route, { data: [], meta: { request_id: 'projects', next_cursor: null } }),
+  );
+  await page.goto('/pub-01');
+  await page.getByRole('button', { name: '内容设置', exact: true }).click();
+  await expect(page.getByLabel('推荐企业 1 全称')).toHaveValue(owner);
+  await expect(page.getByLabel('推荐企业 1 全称')).toHaveAttribute('readonly', '');
+  await page.getByLabel('账号默认生文风格').selectOption('company_recommendation');
+  await page.getByRole('button', { name: '添加推荐企业', exact: true }).click();
+  await page.getByLabel('推荐企业 2 全称').fill('广州志远搬家服务有限公司');
+  await page.getByLabel('推荐企业 2 业务信息来源').selectOption('inherit_primary');
+  await page.getByRole('button', { name: '添加推荐企业', exact: true }).click();
+  await page.getByLabel('推荐企业 3 全称').fill('广州盛源机电制冷工程有限公司');
+  await page
+    .getByLabel('推荐企业 3 业务说明')
+    .fill('主营企业、家庭搬迁时准备出售的旧空调及二手家电回收。');
+  await page.getByRole('button', { name: '保存内容设置', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('已保存');
+  expect(saved).toMatchObject({
+    default_style: 'company_recommendation',
+    recommended_companies: [
+      { legal_name: owner, evidence_mode: 'primary', source_document_ids: [] },
+      {
+        legal_name: '广州志远搬家服务有限公司',
+        evidence_mode: 'inherit_primary',
+        source_document_ids: [],
+      },
+      {
+        legal_name: '广州盛源机电制冷工程有限公司',
+        evidence_mode: 'description',
+        source_document_ids: [],
+        business_description: '主营企业、家庭搬迁时准备出售的旧空调及二手家电回收。',
+      },
+    ],
+  });
+  expect(JSON.stringify(saved)).not.toContain('description_source_id');
+});
+
 test('connects an API account without ever echoing its credential', async ({ page }) => {
   let items: Record<string, unknown>[] = [];
   let createBody: Record<string, unknown> | undefined;

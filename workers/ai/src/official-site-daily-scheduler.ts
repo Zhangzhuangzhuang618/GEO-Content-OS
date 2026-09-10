@@ -708,7 +708,11 @@ async function createCandidate(
   }
   const constraints = {
     ...(editorial.context
-      ? { editorial_contexts_by_code: { official_site: editorial.context } }
+      ? {
+          editorial_contexts_by_code: {
+            official_site: JSON.parse(JSON.stringify(editorial.context)) as JsonObject,
+          },
+        }
       : {}),
     additional_instructions: [
       `这是 ${batch.businessDate} 官网每日内容批次的第 ${candidateNo} 个候选。`,

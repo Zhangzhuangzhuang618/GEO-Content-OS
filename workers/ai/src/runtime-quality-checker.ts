@@ -2,6 +2,7 @@ import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   companyNamePolicyInstruction,
   storedEditorialContext,
+  recommendationEvidenceModeInstruction,
   editorialAllowedCompanyNames,
   findLiejuForbiddenContactDetails,
   findPublishedOwnerCompanyNames,
@@ -204,7 +205,7 @@ ${platform === 'official_site' ? '官网硬广正文约1100字（不含FAQ），
 编辑自审必须从陌生读者角度连续读正文：推荐章节标题应让人知道开始介绍公司；段落先说谁提供什么，再解释用途，不能从问题直接跳到无主语的“可以整体承接”。本次未交付原始资料照片，出现“照片里/图中/实拍可见”等来源依赖必须revise；已确认业务本身可直接使用。回收段需要通过“准备出售、不再搬走的旧家电”接入搬迁需求，不能虚构搬迁与回收同团队、同车或同时间窗口完成。报告应指明具体断裂句和修改方向，不能只说不自然。`
       : '';
   return Object.freeze({
-    systemPrompt: `${prompt.systemPrompt}\n\n${policy}\n${stylePolicy}`,
+    systemPrompt: `${prompt.systemPrompt}\n\n${policy}\n${stylePolicy}\n${editorial ? recommendationEvidenceModeInstruction(editorial) : ''}`,
     taskTemplate: `${prompt.taskTemplate}
 
 For this rule, report every prohibited identifiable name as a brand-category BLOCK issue with rule_id "brand.other_company_name". Generic anonymous or industry phrases such as “某公司”, “搬家公司”, “物流公司”, and “电话公司” are not identifiable company names and are not violations. Every such issue must quote the exact prohibited name in its message and point to the exact title, summary, or blocks[N].text location containing that name. Never emit a generic company-name issue without a verifiable name and location.

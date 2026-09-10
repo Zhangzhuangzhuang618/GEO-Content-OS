@@ -9330,6 +9330,25 @@
                                                   "format": "uuid",
                                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                                 }
+                                              },
+                                              "evidence_mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "documents",
+                                                  "primary",
+                                                  "inherit_primary",
+                                                  "description"
+                                                ]
+                                              },
+                                              "business_description": {
+                                                "type": "string",
+                                                "maxLength": 4000,
+                                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                              },
+                                              "description_source_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
                                             },
                                             "required": ["id", "legal_name", "source_document_ids"],
@@ -9356,7 +9375,9 @@
                                         "template_version": {
                                           "type": "string",
                                           "const": "company-recommendation@1"
-                                        }
+                                        },
+                                        "evidence_resolved": { "type": "boolean" },
+                                        "primary_company_name": { "type": "string" }
                                       },
                                       "required": [
                                         "account_id",
@@ -11027,6 +11048,25 @@
                                                   "format": "uuid",
                                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                                 }
+                                              },
+                                              "evidence_mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "documents",
+                                                  "primary",
+                                                  "inherit_primary",
+                                                  "description"
+                                                ]
+                                              },
+                                              "business_description": {
+                                                "type": "string",
+                                                "maxLength": 4000,
+                                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                              },
+                                              "description_source_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
                                             },
                                             "required": ["id", "legal_name", "source_document_ids"],
@@ -11053,7 +11093,9 @@
                                         "template_version": {
                                           "type": "string",
                                           "const": "company-recommendation@1"
-                                        }
+                                        },
+                                        "evidence_resolved": { "type": "boolean" },
+                                        "primary_company_name": { "type": "string" }
                                       },
                                       "required": [
                                         "account_id",
@@ -12200,6 +12242,25 @@
                                                   "format": "uuid",
                                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                                 }
+                                              },
+                                              "evidence_mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "documents",
+                                                  "primary",
+                                                  "inherit_primary",
+                                                  "description"
+                                                ]
+                                              },
+                                              "business_description": {
+                                                "type": "string",
+                                                "maxLength": 4000,
+                                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                              },
+                                              "description_source_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
                                             },
                                             "required": ["id", "legal_name", "source_document_ids"],
@@ -12226,7 +12287,9 @@
                                         "template_version": {
                                           "type": "string",
                                           "const": "company-recommendation@1"
-                                        }
+                                        },
+                                        "evidence_resolved": { "type": "boolean" },
+                                        "primary_company_name": { "type": "string" }
                                       },
                                       "required": [
                                         "account_id",
@@ -12997,6 +13060,25 @@
                                                 "format": "uuid",
                                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
+                                            },
+                                            "evidence_mode": {
+                                              "type": "string",
+                                              "enum": [
+                                                "documents",
+                                                "primary",
+                                                "inherit_primary",
+                                                "description"
+                                              ]
+                                            },
+                                            "business_description": {
+                                              "type": "string",
+                                              "maxLength": 4000,
+                                              "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                            },
+                                            "description_source_id": {
+                                              "type": "string",
+                                              "format": "uuid",
+                                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                             }
                                           },
                                           "required": ["id", "legal_name", "source_document_ids"],
@@ -13023,7 +13105,9 @@
                                       "template_version": {
                                         "type": "string",
                                         "const": "company-recommendation@1"
-                                      }
+                                      },
+                                      "evidence_resolved": { "type": "boolean" },
+                                      "primary_company_name": { "type": "string" }
                                     },
                                     "required": [
                                       "account_id",
@@ -13623,6 +13707,25 @@
                                                   "format": "uuid",
                                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                                 }
+                                              },
+                                              "evidence_mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "documents",
+                                                  "primary",
+                                                  "inherit_primary",
+                                                  "description"
+                                                ]
+                                              },
+                                              "business_description": {
+                                                "type": "string",
+                                                "maxLength": 4000,
+                                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                              },
+                                              "description_source_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
                                             },
                                             "required": ["id", "legal_name", "source_document_ids"],
@@ -13649,7 +13752,9 @@
                                         "template_version": {
                                           "type": "string",
                                           "const": "company-recommendation@1"
-                                        }
+                                        },
+                                        "evidence_resolved": { "type": "boolean" },
+                                        "primary_company_name": { "type": "string" }
                                       },
                                       "required": [
                                         "account_id",
@@ -14420,6 +14525,25 @@
                                                 "format": "uuid",
                                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
+                                            },
+                                            "evidence_mode": {
+                                              "type": "string",
+                                              "enum": [
+                                                "documents",
+                                                "primary",
+                                                "inherit_primary",
+                                                "description"
+                                              ]
+                                            },
+                                            "business_description": {
+                                              "type": "string",
+                                              "maxLength": 4000,
+                                              "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                            },
+                                            "description_source_id": {
+                                              "type": "string",
+                                              "format": "uuid",
+                                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                             }
                                           },
                                           "required": ["id", "legal_name", "source_document_ids"],
@@ -14446,7 +14570,9 @@
                                       "template_version": {
                                         "type": "string",
                                         "const": "company-recommendation@1"
-                                      }
+                                      },
+                                      "evidence_resolved": { "type": "boolean" },
+                                      "primary_company_name": { "type": "string" }
                                     },
                                     "required": [
                                       "account_id",
@@ -15277,6 +15403,25 @@
                                                   "format": "uuid",
                                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                                 }
+                                              },
+                                              "evidence_mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                  "documents",
+                                                  "primary",
+                                                  "inherit_primary",
+                                                  "description"
+                                                ]
+                                              },
+                                              "business_description": {
+                                                "type": "string",
+                                                "maxLength": 4000,
+                                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                              },
+                                              "description_source_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
                                             },
                                             "required": ["id", "legal_name", "source_document_ids"],
@@ -15303,7 +15448,9 @@
                                         "template_version": {
                                           "type": "string",
                                           "const": "company-recommendation@1"
-                                        }
+                                        },
+                                        "evidence_resolved": { "type": "boolean" },
+                                        "primary_company_name": { "type": "string" }
                                       },
                                       "required": [
                                         "account_id",
@@ -16074,6 +16221,25 @@
                                                 "format": "uuid",
                                                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                               }
+                                            },
+                                            "evidence_mode": {
+                                              "type": "string",
+                                              "enum": [
+                                                "documents",
+                                                "primary",
+                                                "inherit_primary",
+                                                "description"
+                                              ]
+                                            },
+                                            "business_description": {
+                                              "type": "string",
+                                              "maxLength": 4000,
+                                              "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                            },
+                                            "description_source_id": {
+                                              "type": "string",
+                                              "format": "uuid",
+                                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                             }
                                           },
                                           "required": ["id", "legal_name", "source_document_ids"],
@@ -16100,7 +16266,9 @@
                                       "template_version": {
                                         "type": "string",
                                         "const": "company-recommendation@1"
-                                      }
+                                      },
+                                      "evidence_resolved": { "type": "boolean" },
+                                      "primary_company_name": { "type": "string" }
                                     },
                                     "required": [
                                       "account_id",
@@ -17203,6 +17371,25 @@
                                           "format": "uuid",
                                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                         }
+                                      },
+                                      "evidence_mode": {
+                                        "type": "string",
+                                        "enum": [
+                                          "documents",
+                                          "primary",
+                                          "inherit_primary",
+                                          "description"
+                                        ]
+                                      },
+                                      "business_description": {
+                                        "type": "string",
+                                        "maxLength": 4000,
+                                        "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                      },
+                                      "description_source_id": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                       }
                                     },
                                     "required": ["id", "legal_name", "source_document_ids"],
@@ -17229,7 +17416,9 @@
                                 "template_version": {
                                   "type": "string",
                                   "const": "company-recommendation@1"
-                                }
+                                },
+                                "evidence_resolved": { "type": "boolean" },
+                                "primary_company_name": { "type": "string" }
                               },
                               "required": [
                                 "account_id",
@@ -17917,6 +18106,25 @@
                                           "format": "uuid",
                                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                         }
+                                      },
+                                      "evidence_mode": {
+                                        "type": "string",
+                                        "enum": [
+                                          "documents",
+                                          "primary",
+                                          "inherit_primary",
+                                          "description"
+                                        ]
+                                      },
+                                      "business_description": {
+                                        "type": "string",
+                                        "maxLength": 4000,
+                                        "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                                      },
+                                      "description_source_id": {
+                                        "type": "string",
+                                        "format": "uuid",
+                                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                       }
                                     },
                                     "required": ["id", "legal_name", "source_document_ids"],
@@ -17943,7 +18151,9 @@
                                 "template_version": {
                                   "type": "string",
                                   "const": "company-recommendation@1"
-                                }
+                                },
+                                "evidence_resolved": { "type": "boolean" },
+                                "primary_company_name": { "type": "string" }
                               },
                               "required": [
                                 "account_id",
@@ -31975,6 +32185,20 @@
                                   "format": "uuid",
                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                 }
+                              },
+                              "evidence_mode": {
+                                "type": "string",
+                                "enum": ["documents", "primary", "inherit_primary", "description"]
+                              },
+                              "business_description": {
+                                "type": "string",
+                                "maxLength": 4000,
+                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                              },
+                              "description_source_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                               }
                             },
                             "required": ["id", "legal_name", "source_document_ids"],
@@ -31986,6 +32210,9 @@
                           "type": "string",
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "primary_company_name": {
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
                         }
                       },
                       "required": [
@@ -32160,6 +32387,15 @@
                             "format": "uuid",
                             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                           }
+                        },
+                        "evidence_mode": {
+                          "type": "string",
+                          "enum": ["documents", "primary", "inherit_primary", "description"]
+                        },
+                        "business_description": {
+                          "type": "string",
+                          "maxLength": 4000,
+                          "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
                         }
                       },
                       "required": ["id", "legal_name", "source_document_ids"],
@@ -32222,6 +32458,20 @@
                                   "format": "uuid",
                                   "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                                 }
+                              },
+                              "evidence_mode": {
+                                "type": "string",
+                                "enum": ["documents", "primary", "inherit_primary", "description"]
+                              },
+                              "business_description": {
+                                "type": "string",
+                                "maxLength": 4000,
+                                "pattern": "^[^\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f]*$"
+                              },
+                              "description_source_id": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                               }
                             },
                             "required": ["id", "legal_name", "source_document_ids"],
@@ -32233,6 +32483,9 @@
                           "type": "string",
                           "format": "uuid",
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "primary_company_name": {
+                          "anyOf": [{ "type": "string" }, { "type": "null" }]
                         }
                       },
                       "required": [

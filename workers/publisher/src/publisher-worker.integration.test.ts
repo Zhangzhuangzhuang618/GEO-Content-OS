@@ -181,6 +181,8 @@ describe('publisher worker', () => {
     'certificate-valid',
     'certificate-wrong-holder',
     'certificate-revoked',
+    'inherited-services',
+    'description-revoked',
   ])('rechecks frozen recommendation evidence before publishing: %s', async (scenario) => {
     const database = requireClient(client);
     await seedCitation(database, false);
@@ -220,6 +222,12 @@ describe('publisher worker', () => {
         citation_ids: [SOURCE_CHUNK_ID],
       })),
     };
+    if (scenario === 'inherited-services' || scenario === 'description-revoked') {
+      Object.assign(context, { evidence_resolved: true, primary_company_name: OWNER_COMPANY_NAME });
+      Object.assign(context.companies[0]!, { evidence_mode: 'primary' });
+      Object.assign(context.companies[1]!, { evidence_mode: 'inherit_primary' });
+      await database`UPDATE source_documents SET title=${`推荐业务说明 · ${OWNER_COMPANY_NAME}`} WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
+    }
     const certificates: { chunkId: string; text: string }[] = [];
     if (scenario.startsWith('certificate-')) {
       // The second bound certificate is intentionally not used in this article.
@@ -263,6 +271,8 @@ describe('publisher worker', () => {
     for (const certificate of certificates)
       await database`INSERT INTO ai_citations(id,tenant_id,content_version_id,claim_key,claim_text,chunk_id,quote_text,quote_hash)
           VALUES(${randomUUID()}::uuid,${TENANT_ID}::uuid,${versionId}::uuid,'company_1',${content.blocks[1]!.text},${certificate.chunkId}::uuid,${certificate.text},${createHash('sha256').update(certificate.text).digest('hex')})`;
+    if (scenario === 'description-revoked')
+      await database`UPDATE source_documents SET status='expired' WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
     if (scenario === 'expired')
       await database`UPDATE source_documents SET effective_to=now()-interval '1 day' WHERE id=${SOURCE_DOCUMENT_ID}::uuid`;
     const result = new PostgresPublisherStore(database).claim(validatePublishEvent(event()));
@@ -273,7 +283,7 @@ describe('publisher worker', () => {
         '质量管理体系认证证书',
       ]);
       expect(() => assertEnterpriseEvidencePublishGate(resolved.value)).not.toThrow();
-    } else if (scenario === 'valid')
+    } else if (scenario === 'valid' || scenario === 'inherited-services')
       await expect(result).resolves.toMatchObject({
         value: { editorialContext: context, ownerCompanyNames: [OWNER_COMPANY_NAME] },
       });

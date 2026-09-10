@@ -34,7 +34,11 @@ import {
 import { createRerankAdapter, readRerankConfiguration } from '@geo-content-os/adapter-rerank';
 import { createHash } from 'node:crypto';
 import { ZodError } from 'zod';
-import { loadRecommendationEvidence, RecommendationEvidenceError } from '@geo-content-os/retrieval';
+import {
+  loadRecommendationEvidence,
+  resolveRecommendationContext,
+  RecommendationEvidenceError,
+} from '@geo-content-os/retrieval';
 import { AccountContentPolicyService } from '../../publishing/accounts/account-content-policy.service.js';
 import { Inject, Injectable } from '@nestjs/common';
 import type { TransactionSql } from 'postgres';
@@ -1465,7 +1469,12 @@ async function buildWriterInput(
     }
     if (context.account_id !== target['account_id'])
       throw contentStateInvalid('内容风格与目标账号不匹配');
-    contexts[platform] = context;
+    context = await resolveRecommendationContext(client, scope, context).catch((error: unknown) => {
+      if (error instanceof RecommendationEvidenceError)
+        throw contentValidationInvalid(error.message);
+      throw error;
+    });
+    contexts[platform] = JSON.parse(JSON.stringify(context)) as JsonValue;
     const evidence = await loadRecommendationEvidence(client, scope, context.companies).catch(
       (error: unknown) => {
         if (error instanceof RecommendationEvidenceError)

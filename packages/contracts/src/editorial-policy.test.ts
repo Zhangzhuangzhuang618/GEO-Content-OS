@@ -3,6 +3,7 @@ import {
   AccountContentPolicyRequestSchema,
   editorialAllowedCompanyNames,
   freezeEditorialContext,
+  recommendationEvidenceModeInstruction,
   readWriterEditorialContext,
   resolveEditorialStyle,
   supportsEditorialStyle,
@@ -30,6 +31,51 @@ const policy: AccountContentPolicyView = {
 };
 
 describe('account editorial policy', () => {
+  it('allows automatic primary and explicitly inherited service sources without uploading documents', () => {
+    const snapshot = freezeEditorialContext({
+      ...policy,
+      recommended_companies: policy.recommended_companies.map((company, index) => ({
+        ...company,
+        source_document_ids: [],
+        evidence_mode: index === 0 ? 'primary' : 'inherit_primary',
+      })),
+    });
+    expect(snapshot.companies.every((company) => company.source_document_ids.length === 0)).toBe(
+      true,
+    );
+    expect(recommendationEvidenceModeInstruction(snapshot)).toContain('不包含证照');
+    expect(recommendationEvidenceModeInstruction(snapshot)).toContain(
+      policy.recommended_companies[1]!.legal_name,
+    );
+  });
+  it('requires a server-saved description source and does not accept source IDs from policy requests', () => {
+    const company = {
+      ...policy.recommended_companies[1]!,
+      source_document_ids: [],
+      evidence_mode: 'description' as const,
+      business_description: '主要提供旧空调及二手家电回收服务。',
+    };
+    expect(() =>
+      freezeEditorialContext({
+        ...policy,
+        recommended_companies: [policy.recommended_companies[0]!, company],
+      }),
+    ).toThrow();
+    const saved = { ...company, description_source_id: policy.workspace_id };
+    expect(
+      freezeEditorialContext({
+        ...policy,
+        recommended_companies: [policy.recommended_companies[0]!, saved],
+      }).companies[1]?.description_source_id,
+    ).toBe(policy.workspace_id);
+    expect(
+      AccountContentPolicyRequestSchema.safeParse({
+        expected_version: 0,
+        default_style: 'company_recommendation',
+        recommended_companies: [saved],
+      }).success,
+    ).toBe(false);
+  });
   it.each(['official_site', 'lieju', 'douyin'])('supports %s', (platform) => {
     expect(supportsEditorialStyle(platform)).toBe(true);
   });

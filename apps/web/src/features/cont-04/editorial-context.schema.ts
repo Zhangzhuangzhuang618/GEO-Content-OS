@@ -10,9 +10,20 @@ export const EditorialContextViewSchema = z
     companies: z
       .array(
         z
-          .object({ id: z.uuid(), legal_name: z.string(), source_document_ids: z.array(z.uuid()) })
+          .object({
+            id: z.uuid(),
+            legal_name: z.string(),
+            source_document_ids: z.array(z.uuid()),
+            evidence_mode: z
+              .enum(['documents', 'primary', 'inherit_primary', 'description'])
+              .optional(),
+            business_description: z.string().optional(),
+            description_source_id: z.uuid().optional(),
+          })
           .strict(),
       )
       .max(6),
+    evidence_resolved: z.boolean().optional(),
+    primary_company_name: z.string().optional(),
   })
   .strict();

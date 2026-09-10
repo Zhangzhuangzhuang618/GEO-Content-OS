@@ -18,6 +18,7 @@
     "typecheck": "pnpm --filter @geo-content-os/adapter-embedding build && pnpm --filter @geo-content-os/adapter-rerank build && tsc --project tsconfig.json --noEmit --pretty false"
   },
   "dependencies": {
+    "@geo-content-os/contracts": "workspace:*",
     "@geo-content-os/adapter-embedding": "workspace:*",
     "@geo-content-os/adapter-rerank": "workspace:*",
     "postgres": "3.4.9"

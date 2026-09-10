@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { EditorialContext } from '@geo-content-os/contracts';
+import {
+  recommendationEvidenceModeInstruction,
+  type EditorialContext,
+} from '@geo-content-os/contracts';
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
 import type { JsonObject } from './generation.types.js';
 import {
@@ -516,7 +519,7 @@ export function recommendationDraftSchema(context: EditorialContext): JsonObject
 
 export function recommendationInstruction(context: EditorialContext, topic = ''): string {
   const douyin = context.platform_code === 'douyin';
-  return `为真实搬家需求写“硬广·多公司推荐”文章。目标是用具体服务帮助读者选择，不是资料汇编或独立测评。采用直接自然的企业推荐口吻，不虚构客户亲历、师傅任职、集团/旗下关系。
+  return `${recommendationEvidenceModeInstruction(context)}\n为真实搬家需求写“硬广·多公司推荐”文章。目标是用具体服务帮助读者选择，不是资料汇编或独立测评。采用直接自然的企业推荐口吻，不虚构客户亲历、师傅任职、集团/旗下关系。
 正文不写“本篇”“本段”“适用物品”等写作说明；把具体搬迁场景直接写给读者，例如“搬家时准备出售的旧家电，可联系该公司回收”。
 围绕 brief 的一个具体主题写，不扩大成所有搬家业务大全。第一章节分析本篇地域、物品和现场难点；第二章节按名单原顺序推荐 ${context.companies.length} 家企业；最后给出简短实用的预约建议。opening_heading、recommendation_heading、checklist_heading 都写与本篇问题相关的标题，禁用“场景与搬迁条件”“企业服务介绍”等通用模板标题。locked_blocks 中锁定的段落必须逐字保留。
 推荐段是文章重点，按editorial_plan的focus分配信息：每家同类公司都先说清承接本篇核心需求，再各展开一个相关做法及用途。共同主服务可简洁重复，详细流程不重复；不能为了避重把第二家搬家公司写成只做拆装。没有不同细节时保留完整服务身份后短写，不用同义词凑字数。篇幅差异不是企业排名，也不意味着某项服务只有一家能做。不要求每段都按“提供→适合→咨询”模板展开。

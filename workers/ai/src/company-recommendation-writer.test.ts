@@ -654,6 +654,28 @@ describe('multi-company recommendation mapping', () => {
       '每家同类公司都必须选入自己的主服务范围事实',
     );
   });
+
+  it('compares per-company sentence selections instead of merging shared service evidence', () => {
+    const { context, citations } = fixture();
+    const source = citations[0]!;
+    source.quote_text =
+      '承接企业搬迁。搬迁前按部门贴标签，对应办公室工位安排搬入新址后按工位摆放物品。家具拆卸后零件单独标记，部件使用气泡膜包裹进行防护并在新址重新组装。';
+    context.companies[1]!.source_document_ids = [context.companies[0]!.source_document_ids[0]!];
+    const plan = {
+      companies: context.companies.map((company, index) => ({
+        company_id: company.id,
+        focus: index
+          ? '承接企业搬迁；本段展开家具部件防护。'
+          : '承接企业搬迁；本段展开部门标签与新址工位。',
+        facts: [{ citation_id: source.citation_id, sentence_indexes: [0, index + 1] }],
+      })),
+    };
+    expect(recommendationPlanOverlapIssues(plan, context, [source])).toEqual([]);
+    for (const company of plan.companies) company.facts[0]!.sentence_indexes = [0, 1, 2];
+    expect(recommendationPlanOverlapIssues(plan, context, [source]).join()).toContain(
+      '同一组详细说明',
+    );
+  });
   it('keeps website paragraphs flexible and relies on the whole-content length gate', () => {
     const { context } = fixture(3);
     context.platform_code = 'official_site';

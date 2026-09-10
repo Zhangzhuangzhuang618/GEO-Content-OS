@@ -101,6 +101,26 @@ describe('hybrid knowledge search', () => {
     });
   });
 
+  it('uses recommendation business notes only when explicitly selected, not in ordinary search', async () => {
+    const database = requireClient(client);
+    await database`UPDATE source_documents SET title='推荐业务说明 · 广州示例有限公司' WHERE id=${SHARED}::uuid`;
+    const repository = new HybridSearchRepository(database);
+    const options = { effectiveOn: '2026-07-14', modelKey: MODEL_KEY, topK: 10 };
+    expect(
+      (await repository.search(SCOPE, 'enterprise GEO', QUERY_VECTOR, options)).map(
+        (hit) => hit.sourceDocumentId,
+      ),
+    ).not.toContain(SHARED);
+    expect(
+      (
+        await repository.search(SCOPE, 'enterprise GEO', QUERY_VECTOR, {
+          ...options,
+          sourceDocumentIds: [SHARED],
+        })
+      ).map((hit) => hit.sourceDocumentId),
+    ).toEqual([SHARED]);
+  });
+
   it('enforces tenant, project, trust, effective-date, and live-state filters', async () => {
     const repository = new HybridSearchRepository(requireClient(client));
 

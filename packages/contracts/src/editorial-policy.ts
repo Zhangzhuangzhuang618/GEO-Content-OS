@@ -39,6 +39,16 @@ export const RecommendedCompanySchema = z
         '请填写完整法定企业名称',
       ),
     source_document_ids: sourceIds,
+    evidence_mode: z.enum(['documents', 'primary', 'inherit_primary', 'description']).optional(),
+    business_description: z
+      .string()
+      .trim()
+      .max(4000)
+      // Reject non-text control bytes while allowing ordinary line breaks and tabs.
+      // eslint-disable-next-line no-control-regex
+      .regex(/^[^\u0000-\u0008\u000b\u000c\u000e-\u001f]*$/u)
+      .optional(),
+    description_source_id: z.uuid().optional(),
   })
   .strict();
 export const RecommendedCompaniesSchema = z
@@ -51,7 +61,11 @@ export const AccountContentPolicyRequestSchema = z
   .object({
     default_style: ContentStyleSchema,
     expected_version: z.number().int().nonnegative(),
-    recommended_companies: RecommendedCompaniesSchema,
+    recommended_companies: z
+      .array(RecommendedCompanySchema.omit({ description_source_id: true }))
+      .max(6)
+      .refine((items) => unique(items.map((item) => item.id)), '推荐企业条目不能重复')
+      .refine((items) => unique(items.map((item) => item.legal_name)), '推荐企业名称不能重复'),
   })
   .strict();
 export const AccountContentPolicyViewSchema = z
@@ -62,6 +76,7 @@ export const AccountContentPolicyViewSchema = z
     recommended_companies: RecommendedCompaniesSchema,
     version: z.number().int().nonnegative(),
     workspace_id: z.uuid(),
+    primary_company_name: z.string().nullable().optional(),
   })
   .strict();
 
@@ -75,18 +90,25 @@ export const EditorialContextSchema = z
     schema_version: z.literal('editorial-context@1'),
     style: ContentStyleSchema,
     template_version: z.literal('company-recommendation@1'),
+    evidence_resolved: z.boolean().optional(),
+    primary_company_name: z.string().optional(),
   })
   .strict()
   .superRefine((value, context) => {
     if (
       value.style === 'company_recommendation' &&
       (value.companies.length < 2 ||
-        value.companies.some((company) => company.source_document_ids.length === 0))
+        value.companies.some(
+          (company) =>
+            company.source_document_ids.length === 0 &&
+            !company.description_source_id &&
+            !['primary', 'inherit_primary'].includes(company.evidence_mode ?? 'documents'),
+        ))
     ) {
       context.addIssue({
         code: 'custom',
         path: ['companies'],
-        message: '硬广需要 2–6 家企业，每家至少绑定一份资料。',
+        message: '硬广需要 2–6 家企业；其他企业请填写业务说明、沿用主公司服务或绑定资料。',
       });
     }
     if (value.style === 'standard' && value.companies.length !== 0) {
@@ -101,6 +123,14 @@ export type EditorialContext = z.infer<typeof EditorialContextSchema>;
 export type RecommendedCompany = z.infer<typeof RecommendedCompanySchema>;
 export type AccountContentPolicyRequest = z.infer<typeof AccountContentPolicyRequestSchema>;
 export type AccountContentPolicyView = z.infer<typeof AccountContentPolicyViewSchema>;
+
+export function recommendationEvidenceModeInstruction(context: EditorialContext): string {
+  const inherited = context.companies.filter(
+    (company) => company.evidence_mode === 'inherit_primary',
+  );
+  if (!inherited.length) return '';
+  return `管理员已明确确认以下企业沿用主公司的服务范围和流程：${inherited.map((company) => company.legal_name).join('、')}。这些企业绑定的主公司服务引用可支持相同服务和操作流程，不因来源中的主公司名称而拒绝这一已授权服务事实。此授权不包含证照、保险、奖项、成立年限、人员车辆归属、独占案例、具体价格或保障承诺；这些信息仍须该推荐公司自己的资料支持。每家公司仍先说明承接业务，再各展开一个相关细节，不复制整段流程。不在客户正文说明沿用、管理员确认或共同经营关系。`;
+}
 
 /** Select complete sentences in source order; never drop a condition or negation inside one. */
 export function isRecommendationCardExcerpt(body: string, cardBody: string): boolean {
