@@ -128,9 +128,16 @@ export function recommendationArticleFromContent(
     recommendations: context.companies.map((company, index) => ({
       company_id: company.id,
       text: field(`company_${index + 1}`),
-      citation_ids: citations
-        .filter((citation) => company.source_document_ids.includes(String(citation['source_id'])))
-        .map((citation) => String(citation['citation_id'])),
+      citation_ids: (
+        content.citation_map.find((claim) => claim.claim_key === `company_${index + 1}`)
+          ?.citation_ids ?? []
+      ).filter((id) =>
+        citations.some(
+          (citation) =>
+            citation['citation_id'] === id &&
+            company.source_document_ids.includes(String(citation['source_id'])),
+        ),
+      ),
     })),
     faq: Array.isArray(meta['faq']) ? (meta['faq'] as RecommendationArticleDraft['faq']) : [],
     topics: Array.isArray(meta['topics'])

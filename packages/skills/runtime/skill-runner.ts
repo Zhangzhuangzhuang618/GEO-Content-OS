@@ -179,6 +179,9 @@ export class SkillRunner {
           finish_reason: first.finishReason,
           instruction: repairInstruction(firstCheck.kind, first.finishReason),
           invalid_paths: firstCheck.paths,
+          ...(firstCheck.diagnostics?.length
+            ? { constraint_diagnostics: firstCheck.diagnostics }
+            : {}),
           required_root_fields: requiredRootFields(input.outputSchema),
         }),
         role: 'user',
@@ -203,7 +206,7 @@ export class SkillRunner {
     if (!repairedCheck.valid) {
       throw new SkillRuntimeError(
         'SKILL_OUTPUT_INVALID',
-        invalidOutputMessage(repairedCheck, repaired),
+        `${invalidOutputMessage(repairedCheck, repaired)}${repairedCheck.diagnostics?.length ? `; fields: ${repairedCheck.diagnostics.join('; ')}` : ''}`,
         repairedCheck.paths,
       );
     }
@@ -214,6 +217,7 @@ export class SkillRunner {
 type Parsed<T> =
   | {
       readonly kind: 'empty' | 'invalid_json' | 'schema';
+      readonly diagnostics?: readonly string[];
       readonly paths: readonly string[];
       readonly valid: false;
     }
@@ -235,7 +239,7 @@ function parseAndCheck<T>(
   const check = schemas.check<T>(schema, parsed);
   return check.valid
     ? { valid: true, value: check.value as T }
-    : { kind: 'schema', paths: check.paths, valid: false };
+    : { kind: 'schema', paths: check.paths, diagnostics: check.diagnostics ?? [], valid: false };
 }
 
 type ParsedJson = { readonly valid: false } | { readonly valid: true; readonly value: unknown };

@@ -45,6 +45,14 @@ describe('SkillContext', () => {
 });
 
 describe('SchemaGuard', () => {
+  it('reports length and constraint without including source text', () => {
+    const result = new SchemaGuard().check(
+      { type: 'object', properties: { text: { type: 'string', maxLength: 2 } } },
+      { text: '私密文本' },
+    );
+    expect(result.diagnostics).toEqual(['/text maxLength limit=2 actual_length=4']);
+    expect(JSON.stringify(result)).not.toContain('私密文本');
+  });
   it('enforces Draft 2020-12 formats and additionalProperties', () => {
     const schema: JsonObject = {
       additionalProperties: false,

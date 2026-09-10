@@ -13,6 +13,8 @@ describe('Douyin editorial policy', () => {
     ['搬运之外的拆装单独收费。', true],
     ['家具拆装费用需要沟通确认。', false],
     ['提供家具拆装服务，按需求咨询。', false],
+    ['部分家电只提供拆装，不提供专业安装修理。', true],
+    ['部分家电只拆装，不做专业安装修理。', true],
   ])('recognizes an explicit extra-fee service boundary: %s', (body, accepted) => {
     const content = validContent();
     for (const card of content.platform_meta.cards.slice(1, -1)) {
@@ -114,6 +116,8 @@ describe('Douyin editorial policy', () => {
     expect(assessDouyinOwnerPromotion(content, [owner])).toEqual([]);
 
     content.platform_meta.description += `\n\n${owner}提醒核对清单，${owner}可继续说明服务边界。`;
+    expect(assessDouyinOwnerPromotion(content, [owner])).toEqual([]);
+    content.platform_meta.description += `${owner}欢迎继续咨询。`;
     expect(assessDouyinOwnerPromotion(content, [owner]).map((finding) => finding.code)).toEqual([
       'owner_mention_limit',
     ]);

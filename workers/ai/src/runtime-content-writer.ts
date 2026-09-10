@@ -170,7 +170,7 @@ const DOUYIN_FRONTLINE_CUSTOMER_ROLE_LEAK_PATTERNS = Object.freeze([
   /(?:我|我家|我们家).{0,24}(?:放进|列入).{0,12}(?:备选|候选)/u,
 ]);
 const DOUYIN_CUSTOMER_FIRST_PERSON_DECISION_PATTERN =
-  /(?:我|我家|我们家).{0,28}(?:准备|打算|计划|想|要|会|最怕|担心|在意|关心|看重|预算|询问|问清|询价|筛选|挑选|考虑|核对|确认|比较|选择|备选|候选|咨询)/u;
+  /(?:我|我家|我们家).{0,28}(?:准备|打算|计划|想|要|会|最怕|担心|在意|关心|看重|预算|询问|问清|问明白|弄清|询价|筛选|挑选|考虑|核对|确认|比较|选择|备选|候选|咨询)/u;
 const DOUYIN_CUSTOMER_SCREENING_CHOICE_PATTERN =
   /(?:我|我家|我们家).{0,24}(?:不会|不想|不急着|更愿意|更想|宁愿|只会|才会|先|直接).{0,24}(?:定|选|找|下单|接受|考虑|比较|淘汰|问|看|核对)|(?:这种|这样的|只给).{0,24}(?:我|我家|我们家).{0,10}(?:不会|不想|不急着|不接受)|(?:我|我家|我们家).{0,12}(?:不考虑|不接受|拒绝|排除).{0,30}(?:总价|报价|方案|公司|服务商)/u;
 const DOUYIN_CUSTOMER_META_VOICE_PATTERNS = Object.freeze([
@@ -185,14 +185,13 @@ const DOUYIN_PUBLISHED_CASE_PATTERN =
 const DOUYIN_IDENTIFIABLE_THIRD_PARTY_PATTERN =
   /(?:^|[，。！？；：、\s])(?!(?:某先生|某女士))[\p{Script=Han}]{1,3}(?:先生|女士).{0,30}(?:搬家|搬迁|吊装|运输|服务)/u;
 const DOUYIN_CUSTOMER_OWNER_DECISION_PATTERN =
-  /(?:我|我家|我们家).{0,36}(?:会|愿意|可以|打算|准备).{0,24}(?:备选|候选|考虑|比较|咨询)|(?:对我来说|按我的需求).{0,40}(?:值得考虑|可列入|可以了解)/u;
+  /(?:我|我家|我们家).{0,60}(?:列入备选|放进备选|纳入备选|列为候选|考虑|比较|咨询|去问|询问|发给|联系)|(?:我|我家|我们家).{0,36}(?:会|愿意|可以|打算|准备).{0,24}(?:备选|候选)|(?:对我来说|按我的需求).{0,40}(?:值得考虑|可列入|可以了解)/u;
 const DOUYIN_CUSTOMER_NEXT_STEP_PATTERN =
-  /(?:再|接着|下一步|然后).{0,30}(?:询价|咨询|核对|比较|联系|看.{0,8}(?:报价|方案)|发.{0,12}(?:地址|清单))|(?:拿|带|发|提供).{0,24}(?:地址|清单).{0,30}(?:书面方案|书面报价|询价|核对).{0,16}(?:再定|再决定)/u;
+  /(?:再|接着|接下来|下一步|然后).{0,60}(?:询价|咨询|核对|核一遍|比较|联系|看.{0,8}(?:报价|方案)|发.{0,12}(?:地址|清单))|(?:拿|带|发|提供).{0,24}(?:地址|清单).{0,30}(?:方案|报价|询价|核对).{0,16}(?:再定|再决定)|(?:等|待|拿到|收到|核对|问清).{0,24}(?:报价|方案|费用).{0,16}(?:再定|决定|再选|考虑)/u;
 const DOUYIN_CUSTOMER_AI_FLAVOR_PATTERNS = Object.freeze([
   /核心(?:是|在于)/u,
   /本质上|底层逻辑/u,
   /真正(?:重要|关键|决定)/u,
-  /(?:不是|并非).{0,36}(?:而是|而在于)/u,
   /总的来说|综上所述|值得注意的是|下面(?:我们)?(?:来)?(?:看|说|介绍|分析|梳理)/u,
   /选择依据(?:是|包括)|同(?:一)?口径比较才有意义/u,
   /(?:降低|减少).{0,20}(?:风险|纠纷)|进一步(?:沟通|了解)/u,
@@ -2130,7 +2129,7 @@ FAQ仅官网需要3–5项，回答本篇服务选择的实用问题，可简短
         input: input.writerInput,
         maxOutputTokens: this.directMaxOutputTokens(context, 8_192),
         messages: douyinDirectDraftMessages(input.writerInput, prompt, revision),
-        outputSchema: DOUYIN_DIRECT_DRAFT_SCHEMA,
+        outputSchema: douyinRepairableDraftSchema(),
         recordUsage: (usage) => this.recordUsage(input.context, usage),
         requestId: `${input.requestId}-${modelKey === input.context.modelKey ? 'draft' : 'pro'}`,
         ...(input.signal ? { signal: input.signal } : {}),
@@ -2204,7 +2203,7 @@ FAQ仅官网需要3–5项，回答本篇服务选择的实用问题，可简短
       Object.freeze({
         ...result,
         output: new SchemaGuard().assert<DouyinDirectDraft>(
-          DOUYIN_DIRECT_DRAFT_SCHEMA,
+          douyinRepairableDraftSchema(),
           Object.freeze({
             ...draft,
             evidence_claims: Object.freeze([...result.output.evidence_claims]),
@@ -2637,6 +2636,8 @@ Fill the semantic slots exactly:
 - evidence_claims is evidence metadata, not extra prose. When content_writer_input.citations is nonempty, the completed draft must include at least one topic-relevant fact directly supported by a supplied citation in visible prose and map that exact text in evidence_claims. Plan this fact before writing; an empty mapping will fail the generation gate. Every claim_text must appear verbatim in another returned text field and every citation_id must come from content_writer_input.citations. Do not copy competitor promotions, unsupported credentials or unrelated prices just to fill a mapping. If no supplied citation supports a usable fact, do not fabricate one or force a match; the draft cannot pass until suitable evidence is supplied. Use [] for a draft without supplied citations. Never cite a first-party assertion merely to make it appear independent.
 - “真实场景、真实案例、现场实录、收费对比、资质核验、合同条款解读、口碑参考” are evidence promises. Use them in the title only when an evidence_claim directly supports the promised content; otherwise use a neutral verification method, selection standard, or comparison dimension. Never create an unsupported ranking, reputation conclusion, or competitor list.
 
+Keep recommendation subjects consistent: a sentence beginning “谁能……” must not conclude by selecting a fixed company regardless of who meets that condition. For the named owner, explain its supplied service fact and then the buyer's next verification action. Do not infer a negative pricing rule from a positive fact: “费用结合现场条件确认” alone does not support “不按固定套餐/房子大小报价”. Use the supported positive fact.
+
 Return only the shallow JSON object. Do not return master_content, variants, platform_meta, card_key, kind, block_key, block_type, schema_version, envelope fields, Markdown, or commentary.`,
       role: 'user',
     },
@@ -2690,6 +2691,8 @@ ${voiceInstruction}
 
 When a quality issue says the evidence map is empty because no supplied fact is visible, copy one concise complete factual sentence or clause exactly from supplied_citations.quote_text into the target and connect it naturally; do not print the citation ID. When the complete description is below 420 characters, add one concrete 15-30 character detail to the supplied target instead of rewriting or padding every paragraph. When a specific field has a minimum character count, exceed that field minimum by 5-10 Chinese characters while staying within its maximum. When a quality issue identifies internal risk-control, evidence-boundary, evidence-classification, or model-disclaimer wording, remove only that wording and preserve the useful customer-facing meaning in natural Chinese. If opening_pain is a target, keep it at 20-70 characters, name the concrete object and problem or consequence, and naturally include at least one literal cue from 涉及、容易、可能、常见、遇到、损伤、延误、混乱、加价、停工、风险、难点、麻烦、遗漏、不足、卡住.
 
+Each repair_target includes the production minimum_characters and maximum_characters. Count the entire replacement, including company names and punctuation; aim below the maximum rather than exactly at it. For an overlong field, remove secondary explanations instead of merely changing synonyms. Keep the decision subject consistent: if recommending the named owner, say why this owner is in consideration; never join “谁能……我就把{{公司}}列入备选”. A source that says fees depend on site conditions does not prove “不按固定套餐/房屋面积收费”; retain the supported positive statement without inventing its negative opposite.
+
 Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
       role: 'user',
     },
@@ -2700,6 +2703,11 @@ Return only {"replacements":[{"target_id":"...","replacement_text":"..."}]}.`,
         repair_targets: targetIds.map((targetId) => ({
           original_text: values.get(targetId),
           target_id: targetId,
+          maximum_characters: douyinDirectMaximumLength(targetId),
+          minimum_characters:
+            (douyinContentVoice(writerInput) === 'customer_perspective'
+              ? DOUYIN_CUSTOMER_DIRECT_MINIMUM_LENGTHS[targetId]
+              : undefined) ?? DOUYIN_DIRECT_MINIMUM_LENGTHS[targetId],
         })),
         ...(issues.some((issue) => issue.includes('证据映射为空'))
           ? {
@@ -2793,6 +2801,36 @@ function evaluateDouyinDirectDraft(
   });
 }
 
+// Accept bounded overlength prose for editorial repair, never for final delivery.
+function douyinRepairableDraftSchema(): JsonObject {
+  const schema = JSON.parse(JSON.stringify(DOUYIN_DIRECT_DRAFT_SCHEMA)) as JsonObject;
+  for (const target of Object.keys(DOUYIN_DIRECT_MINIMUM_LENGTHS)) {
+    if (target === 'title') continue;
+    let field: unknown = schema;
+    for (const part of target.split('.')) {
+      field = /^\d+$/u.test(part)
+        ? jsonObject(field)?.['items']
+        : jsonObject(jsonObject(field)?.['properties'])?.[part];
+    }
+    if (isJsonObject(field) && typeof field['maxLength'] === 'number')
+      (field as Record<string, unknown>)['maxLength'] = douyinDirectMaximumLength(target)! * 4;
+  }
+  return schema;
+}
+
+function douyinDirectMaximumLength(target: string): number | undefined {
+  let schema: unknown = DOUYIN_DIRECT_DRAFT_SCHEMA;
+  for (const part of target.split('.')) {
+    if (!isJsonObject(schema)) return undefined;
+    schema = /^\d+$/u.test(part) ? schema['items'] : jsonObject(schema['properties'])?.[part];
+  }
+  const maximum = jsonObject(schema)?.['maxLength'];
+  // Editorial prose can vary slightly; platform titles and rendered card limits stay strict.
+  return typeof maximum === 'number'
+    ? maximum + (target !== 'title' && !target.startsWith('cards.') ? 10 : 0)
+    : undefined;
+}
+
 function douyinDirectMinimumLengthIssues(
   draft: DouyinDirectDraft,
   writerInput: JsonObject,
@@ -2805,11 +2843,16 @@ function douyinDirectMinimumLengthIssues(
         ? (DOUYIN_CUSTOMER_DIRECT_MINIMUM_LENGTHS[targetId] ?? minimum)
         : minimum;
       const actual = [...(values.get(targetId) ?? '').trim()].length;
-      return actual < effectiveMinimum
+      const maximum = douyinDirectMaximumLength(targetId);
+      return maximum !== undefined && actual > maximum
         ? [
-            `douyin:字段 ${targetId} 仅 ${actual} 个字符，至少需要 ${effectiveMinimum} 个 [repair_target=${targetId}]`,
+            `douyin:字段 ${targetId} 共 ${actual} 个字符，最多允许 ${maximum} 个；保留事实并精简此字段 [repair_target=${targetId}]`,
           ]
-        : [];
+        : actual < effectiveMinimum
+          ? [
+              `douyin:字段 ${targetId} 仅 ${actual} 个字符，至少需要 ${effectiveMinimum} 个 [repair_target=${targetId}]`,
+            ]
+          : [];
     }),
   );
 }
@@ -3467,7 +3510,7 @@ function applyDouyinDirectReplacements(
     title: replacements.get('title') ?? draft.title,
   });
   return new SchemaGuard().assert<DouyinDirectDraft>(
-    DOUYIN_DIRECT_DRAFT_SCHEMA,
+    douyinRepairableDraftSchema(),
     repaired,
     'SKILL_OUTPUT_INVALID',
     'Douyin targeted replacements violate the bounded draft schema',
@@ -3990,7 +4033,7 @@ function douyinCustomerOwnerRecommendationIssues(
       : [];
   const conclusion = paragraphs.at(-1) ?? '';
   const owner = owners[0]!;
-  return conclusion.includes(owner) &&
+  return paragraphs.some((paragraph) => paragraph.includes(owner)) &&
     DOUYIN_CUSTOMER_OWNER_DECISION_PATTERN.test(conclusion) &&
     DOUYIN_CUSTOMER_NEXT_STEP_PATTERN.test(conclusion)
     ? []

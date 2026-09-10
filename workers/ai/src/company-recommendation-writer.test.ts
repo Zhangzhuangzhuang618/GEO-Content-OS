@@ -133,18 +133,19 @@ describe('multi-company recommendation mapping', () => {
     expect(recommendationWritingExampleForTopic('广州日式家庭搬迁')).toContain('厨房拆包');
     expect(recommendationWritingExampleForTopic('钢琴搬运')).toBe('');
   });
-  it('reconstructs the saved article and remaps fresh citations within each company only', () => {
+  it('preserves saved citations without attaching unused company sources during reconstruction', () => {
     const { context, draft, citations } = fixture();
     const content = recommendationContent(draft, context, citations);
     const snapshot = JSON.stringify(content);
-    const fresh = citations.map((item, i) => ({ ...item, citation_id: `fresh-${i}` }));
+    const fresh = citations;
     const restored = recommendationArticleFromContent(content, context, [
       ...fresh,
+      { ...citations[0]!, citation_id: 'unused-certificate' },
       { citation_id: 'foreign', source_id: 'not-configured', quote_text: '无关资料' },
     ])!;
     expect(restored.recommendations.map((item) => item.citation_ids)).toEqual([
-      ['fresh-0'],
-      ['fresh-1'],
+      [citations[0]!.citation_id],
+      [citations[1]!.citation_id],
     ]);
     expect(restored.recommendations.map((item) => item.text)).toEqual(
       draft.recommendations.map((item) => item.text),

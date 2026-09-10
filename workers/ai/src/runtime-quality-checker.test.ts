@@ -10,6 +10,43 @@ import { describe, expect, it, vi } from 'vitest';
 import { RuntimeQualityChecker } from './runtime-quality-checker.js';
 
 describe('RuntimeQualityChecker', () => {
+  it('includes subject consistency and unsupported negative inference review for Douyin', async () => {
+    const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
+    const adapter = new QualityMockAdapter([JSON.stringify(clean.output.data)]);
+    const checker = new RuntimeQualityChecker(
+      {} as postgres.Sql,
+      new Map([[adapter.modelKey, adapter]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+    );
+    await checker.evaluate({
+      context: {
+        inputHash: 'd'.repeat(64),
+        modelKey: adapter.modelKey,
+        packageId: '10000000-0000-4000-8000-000000000081',
+        variantId: null,
+        skillName: 'quality-checker',
+        projectId: '20000000-0000-4000-8000-000000000081',
+        promptVersionId: '70000000-0000-4000-8000-000000000069',
+        requestId: 'douyin-logic-review',
+        runId: '60000000-0000-4000-8000-000000000069',
+        skillVersion: '1.0.0',
+        tenantId: '90000000-0000-4000-8000-000000000069',
+        workspaceId: '30000000-0000-4000-8000-000000000081',
+      },
+      qualityInput: {
+        ...clean.input,
+        platform_rules: {
+          ...(clean.input['platform_rules'] as Record<string, unknown>),
+          platform_code: 'douyin',
+        },
+      },
+    });
+    const prompt = adapter.requests[0]!.messages.map((m) => m.content).join('\n');
+    expect(prompt).toContain('前后主语不一致');
+    expect(prompt).toContain('不能据此推出');
+  });
+
   it.each([false, true])(
     'runs a separate recommendation reader review and preserves the first report (finding=%s)',
     async (hasFinding) => {

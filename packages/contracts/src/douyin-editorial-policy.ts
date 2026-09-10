@@ -17,7 +17,8 @@ const SOLUTION_PATTERN = /勘测|核对|记录|评估|确认|检查|清点|测�
 const PRICE_BOUNDARY_PATTERN = /报价|费用|计费|收费|服务范围|服务边界|书面约定/u;
 const PROTECTION_PATTERN = /防护|包装|加固|保障|损坏|磕碰|风险|责任|验收/u;
 const SCHEDULE_PATTERN = /预约|响应|排期|工期|停工|调度|时间|进场|出场/u;
-const CONCLUSION_PATTERN = /结合|对照|综合|核对|确认|选择|判断|比较|备选|询价|咨询|降低|避免|减少/u;
+const CONCLUSION_PATTERN =
+  /结合|对照|综合|核对|核一遍|确认|选择|决定|判断|比较|备选|询价|咨询|降低|避免|减少/u;
 const ASSISTANT_FLAVOR_PATTERNS = [
   /^\s*(?:先说结论|直接说结论|这次只看)/u,
   /真正(?:决定|重要|关键)[^。！？!?]{0,60}(?:不是|并非)[^。！？!?]{0,60}(?:而是|是)/u,
@@ -310,7 +311,7 @@ export function assessDouyinImageNoteEditorial(
     );
   }
   if (
-    !/风险|避免|不要|不适合|注意|否则|边界|不能|可能|警惕|损坏|磕碰|刮花|加价|超支|延误|纠纷/u.test(
+    !/风险|避免|不要|不适合|注意|否则|边界|不能|不提供|不做|仅提供|只提供|可能|警惕|损坏|磕碰|刮花|加价|超支|延误|纠纷/u.test(
       bodyText,
     ) &&
     !/(?:拆装|打包|搬运|吊装)[^。！？\n]{0,12}(?:(?:额外|另行|单独)收费|另收费|(?:费用)?另计)/u.test(
@@ -401,13 +402,13 @@ export function assessDouyinOwnerPromotion(
     (total, name) => total + description.split(name).length - 1,
     0,
   );
-  return mentionCount > 2
+  return mentionCount > 3
     ? Object.freeze([
         finding(
           'owner_mention_limit',
           'platform_meta.description',
-          'douyin:发布主文案中的本企业名称最多自然出现 2 次，避免重复推广',
-          '将当前企业名称减少到最多 2 次。',
+          'douyin:发布主文案中的本企业名称最多自然出现 3 次，避免重复推广',
+          '将当前企业名称减少到最多 3 次；优先保留必要的服务说明和结尾。',
         ),
       ])
     : Object.freeze([]);

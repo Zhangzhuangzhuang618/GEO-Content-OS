@@ -80,6 +80,39 @@ describe('PlatformPublisher', () => {
       },
     };
     expect(() => assertEnterpriseEvidencePublishGate(recommendation)).not.toThrow();
+    // Available account sources are not a requirement to print every certificate.
+    for (const platformCode of ['official_site', 'lieju'] as const) {
+      const selected = {
+        ...recommendation,
+        platformCode,
+        enterpriseEvidenceGate: {
+          ...valid.enterpriseEvidenceGate!,
+          requiredSourceIds: [sourceIds[1]!],
+          mappedSourceIds: [sourceIds[1]!],
+          evidenceNames: ['道路运输证'],
+        },
+        content: {
+          ...valid.content,
+          blocks: [
+            {
+              block_key: 'company_1',
+              block_type: 'paragraph',
+              text: `${companyName}持有道路运输证。`,
+            },
+          ],
+        },
+      };
+      expect(() => assertEnterpriseEvidencePublishGate(selected)).not.toThrow();
+      expect(() =>
+        assertEnterpriseEvidencePublishGate({
+          ...selected,
+          enterpriseEvidenceGate: {
+            ...selected.enterpriseEvidenceGate,
+            evidenceNames: ['营业执照'],
+          },
+        }),
+      ).toThrow('ENTERPRISE_EVIDENCE_COPY_INVALID');
+    }
     expect(() =>
       assertEnterpriseEvidencePublishGate({
         ...recommendation,

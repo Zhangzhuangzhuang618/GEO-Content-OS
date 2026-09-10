@@ -1222,6 +1222,31 @@ describe('AI Worker runtime wiring', () => {
     expect(visible).toContain(valid.conclusion);
   });
 
+  it('accepts natural customer decisions without requiring fixed modal or transition words', async () => {
+    const owner = '广州志远搬家服务有限公司';
+    const draft = {
+      ...customerPerspectiveDirectDraft(owner),
+      opening_topic: '搬家前我得问明白报价里包含哪些项目',
+      conclusion: `按这份清单比较，我把${owner}列入备选，等拿到实际报价后再决定，电梯预约、停车距离和拆装费用都得写清楚。`,
+    };
+    const flash = new LooseMockAdapter([{ text: JSON.stringify(draft) }], 'deepseek-v4-flash');
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'natural-customer-decision',
+      writerInput: customerPerspectiveWriterInput(
+        CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.input as JsonObject,
+        owner,
+      ),
+    });
+    expect(flash.requests).toHaveLength(1);
+  });
+
   it('repairs a copied customer opening and removes trailing punctuation before assembly', async () => {
     const fixture = CONTENT_WRITER_CONTRACT_V1.fewShots[0]!;
     const ownerCompanyName = '广州志远搬家服务有限公司';
@@ -1913,6 +1938,203 @@ describe('AI Worker runtime wiring', () => {
     );
     expect(result.title).toBe('广州居民搬家收费怎么核对');
     expect(pro.requests).toHaveLength(0);
+  });
+
+  it.each([
+    '我还没定，接下来会拿同一份需求去问广州志远搬家服务有限公司，核对条件和加价情形，再决定选谁。',
+    '我最担心报价对不上我家的地址、楼层、物品和现场条件。广州志远搬家服务有限公司的费用是结合这些条件确认的，我会把它放进备选名单，先发地址和物品清单问一份写明白的报价，再决定。',
+    '我打算把旧家新家地址、楼层电梯、大件家具和易碎品清单发给志远，让它按现场条件核一遍打包、拆装、归位和费用，拿到报价再决定。',
+  ])(
+    'accepts a natural inquiry conclusion with the owner already identified: %s',
+    async (conclusion) => {
+      const owner = '广州志远搬家服务有限公司';
+      const draft = { ...customerPerspectiveDirectDraft(owner), conclusion };
+      const flash = new LooseMockAdapter([{ text: JSON.stringify(draft) }], 'deepseek-v4-flash');
+      const writer = new RuntimeContentWriter(
+        {} as postgres.Sql,
+        new Map([['deepseek-v4-flash', flash]]),
+        vi.fn(),
+        async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
+      );
+      await writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: 'natural-inquiry-conclusion',
+        writerInput: customerPerspectiveWriterInput(
+          CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.input as JsonObject,
+          owner,
+        ),
+      });
+      expect(flash.requests).toHaveLength(1);
+    },
+  );
+
+  it('repairs overlength narrative locally without rejecting a valid draft structure', async () => {
+    const valid = douyinDirectDraft();
+    const initial = {
+      ...valid,
+      solution_paragraphs: [valid.solution_paragraphs[0], valid.solution_paragraphs[1].repeat(2)],
+    };
+    const flash = new LooseMockAdapter(
+      [
+        { text: JSON.stringify(initial) },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                target_id: 'solution_paragraphs.1',
+                replacement_text: valid.solution_paragraphs[1],
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    await writer.generateMaster({
+      context: { ...context(MASTER_RUN, null), modelPolicy: 'quality' as const },
+      requestId: 'overlength-narrative',
+      writerInput: douyinDirectWriterInput(
+        CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.input as JsonObject,
+      ),
+    });
+    expect(flash.requests).toHaveLength(2);
+    expect(flash.requests[1]!.messages.map((m) => m.content).join('\n')).toContain(
+      '最多允许 105 个',
+    );
+  });
+
+  it('retains repaired fields while another field still needs a second length repair', async () => {
+    const valid = douyinDirectDraft();
+    const long = valid.solution_paragraphs[1].repeat(2);
+    const flash = new LooseMockAdapter(
+      [
+        {
+          text: JSON.stringify({
+            ...valid,
+            solution_paragraphs: [valid.solution_paragraphs[0].repeat(2), long],
+          }),
+        },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                target_id: 'solution_paragraphs.0',
+                replacement_text: valid.solution_paragraphs[0],
+              },
+              { target_id: 'solution_paragraphs.1', replacement_text: long },
+            ],
+          }),
+        },
+        {
+          text: JSON.stringify({
+            replacements: [
+              {
+                target_id: 'solution_paragraphs.1',
+                replacement_text: valid.solution_paragraphs[1],
+              },
+            ],
+          }),
+        },
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    await writer.generateMaster({
+      context: context(MASTER_RUN, null),
+      requestId: 'multi-length',
+      writerInput: douyinDirectWriterInput(
+        CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.input as JsonObject,
+      ),
+    });
+    expect(flash.requests).toHaveLength(3);
+    const request = JSON.parse(flash.requests[2]!.messages.at(-1)!.content!);
+    expect(request.current_bounded_draft.solution_paragraphs[0]).toBe(valid.solution_paragraphs[0]);
+    expect(request.repair_targets).toEqual([
+      expect.objectContaining({ target_id: 'solution_paragraphs.1', maximum_characters: 105 }),
+    ]);
+  });
+
+  it('keeps repaired evidence metadata even while prose still exceeds final length', async () => {
+    const valid = douyinDirectDraft();
+    const long = valid.solution_paragraphs[1].repeat(2);
+    const evidence = [
+      { claim_text: valid.opening_pain, citation_ids: ['73000000-0000-4000-8000-000000000061'] },
+    ];
+    const flash = new LooseMockAdapter(
+      [{ text: JSON.stringify({ evidence_claims: evidence }) }],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+    );
+    const result = await writer['runDouyinDirectEvidenceRepair'](
+      {
+        context: context(MASTER_RUN, null),
+        requestId: 'evidence-with-long-prose',
+        writerInput: douyinDirectWriterInput(
+          CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.input as JsonObject,
+        ),
+      },
+      { systemPrompt: '测试', taskTemplate: '测试' },
+      { ...valid, solution_paragraphs: [valid.solution_paragraphs[0], long] },
+      ['证据映射为空'],
+      1,
+    );
+    expect(result.output.evidence_claims).toEqual(evidence);
+    expect(result.output.solution_paragraphs[1]).toBe(long);
+    expect(flash.requests).toHaveLength(1);
+  });
+
+  it('rejects residual overlength after the bounded repair attempts are exhausted', async () => {
+    const valid = douyinDirectDraft();
+    const long = valid.solution_paragraphs[1].repeat(2);
+    const response = {
+      text: JSON.stringify({
+        replacements: [{ target_id: 'solution_paragraphs.1', replacement_text: long }],
+      }),
+    };
+    const flash = new LooseMockAdapter(
+      [
+        {
+          text: JSON.stringify({
+            ...valid,
+            solution_paragraphs: [valid.solution_paragraphs[0], long],
+          }),
+        },
+        response,
+        response,
+      ],
+      'deepseek-v4-flash',
+    );
+    const writer = new RuntimeContentWriter(
+      {} as postgres.Sql,
+      new Map([['deepseek-v4-flash', flash]]),
+      vi.fn(),
+      async () => ({ systemPrompt: '测试系统提示词', taskTemplate: '测试任务提示词' }),
+    );
+    await expect(
+      writer.generateMaster({
+        context: context(MASTER_RUN, null),
+        requestId: 'unfixed-length',
+        writerInput: douyinDirectWriterInput(
+          CONTENT_WRITER_CONTRACT_V1.fewShots[0]!.input as JsonObject,
+        ),
+      }),
+    ).rejects.toThrow('最多允许 105 个');
+    expect(flash.requests).toHaveLength(3);
   });
 
   it('routes a 21-character Douyin draft title through targeted repair before final validation', async () => {

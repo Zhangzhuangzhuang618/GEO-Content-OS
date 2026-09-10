@@ -5,6 +5,7 @@ import addFormatsImport, { type FormatsPlugin } from 'ajv-formats';
 import { SkillRuntimeError, type SkillRuntimeErrorCode } from './skill-runtime.errors.js';
 
 export interface SchemaCheck<T> {
+  readonly diagnostics?: readonly string[];
   readonly paths: readonly string[];
   readonly valid: boolean;
   readonly value?: T;
@@ -24,7 +25,24 @@ export class SchemaGuard {
     const validator = this.validator(schema);
     if (validator(value))
       return Object.freeze({ paths: Object.freeze([]), valid: true, value: value as T });
-    return Object.freeze({ paths: errorPaths(validator.errors), valid: false });
+    const diagnostics = (validator.errors ?? []).map((error) => {
+      let actual: unknown = value;
+      for (const part of error.instancePath.split('/').slice(1)) {
+        actual =
+          actual !== null && typeof actual === 'object'
+            ? (actual as Record<string, unknown>)[part.replace(/~1/g, '/').replace(/~0/g, '~')]
+            : undefined;
+      }
+      const length = typeof actual === 'string' ? ` actual_length=${[...actual].length}` : '';
+      const limit =
+        typeof error.params['limit'] === 'number' ? ` limit=${error.params['limit']}` : '';
+      return `${error.instancePath || '$'} ${error.keyword}${limit}${length}`;
+    });
+    return Object.freeze({
+      paths: errorPaths(validator.errors),
+      diagnostics: Object.freeze(diagnostics),
+      valid: false,
+    });
   }
 
   public assert<T>(

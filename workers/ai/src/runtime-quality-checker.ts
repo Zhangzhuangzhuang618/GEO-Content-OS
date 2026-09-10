@@ -280,10 +280,14 @@ function inputSemanticPolicy(input: Readonly<Record<string, unknown>>): string {
 - 围绕主题选取服务范围中的一部分，不等于声称该企业只做这一部分。资料支持家庭及企业家电回收时，只介绍本篇家庭回收不是缩窄事实；企业同时提供日式搬迁和家具拆装时，把拆装用于日式搬迁场景不是新增业务。“师傅按方案完成打包”等普通服务执行主体不是新增资质或技术能力。资料说“衣物入柜、厨房拆包摆放”，解释为少做这两项整理是合理用途；但不能扩大成搬完立即入住、无需任何整理、任何订单不停工等保证。
 ${platformRules?.['platform_code'] === 'douyin' ? '- 本篇抖音由图卡和发布说明共同展示：每家公司单段、①②③同一清单段是当前平台结构，不按官网长文的分段偏好要求改为多段。若认为信息过密，必须指出可删除的具体冗余句，不能仅以一段含多个服务项目报告paragraph.length。' : ''}`
       : '';
+  const douyinLogicPolicy =
+    platformRules?.['platform_code'] === 'douyin'
+      ? '\n- 逐句检查推荐主体是否一致。“谁能说明白，我就把某固定公司列入备选”前后主语不一致，须指出原句并要求改写，不能仅因含公司名和下一步动作而判合格。引用还必须支持完整声明：资料只说按现场条件报价，不能据此推出“不按固定套餐/房屋面积收费”；这类否定扩写应删去或改为已支持的正面表述。不要因此要求用户补交无关证明。'
+      : '';
   return `Mandatory server-derived semantics for this exact input:
 - ${highRiskPolicy}
 - ${titlePolicy}
-- Valid immutable content locations are limited to: ${JSON.stringify(validLocations)}. Never use brand_policy.*, platform_rules.*, fact_results.*, citations, or any other input-policy location as a content finding location.${contactPolicy ? `\n- ${contactPolicy}` : ''}${cardPolicy}${recommendationPolicy}`;
+- Valid immutable content locations are limited to: ${JSON.stringify(validLocations)}. Never use brand_policy.*, platform_rules.*, fact_results.*, citations, or any other input-policy location as a content finding location.${contactPolicy ? `\n- ${contactPolicy}` : ''}${cardPolicy}${recommendationPolicy}${douyinLogicPolicy}`;
 }
 
 function qualitySemanticRepairPrompt(
