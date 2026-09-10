@@ -37,6 +37,24 @@ export interface RecommendationDraft {
 }
 
 const text = { type: 'string', minLength: 1 };
+
+/** A bound source is available evidence, not necessarily a claim in this paragraph.
+ * Keep service/insurance references; omit only explicitly typed certificates
+ * whose exact name is absent. Missing/foreign references still fail validation. */
+function usedRecommendationCitations(
+  ids: readonly string[],
+  paragraph: string,
+  citations: readonly JsonObject[],
+): string[] {
+  return ids.filter((id) => {
+    const quote = String(
+      citations.find((item) => item['citation_id'] === id)?.['quote_text'] ?? '',
+    );
+    if (!/^资料类型：企业证照\s*$/mu.test(quote)) return true;
+    const name = /^证照名称：\s*(.+)$/mu.exec(quote)?.[1]?.trim();
+    return !name || paragraph.includes(name);
+  });
+}
 const CARD_FIELDS = [
   'cover_body',
   'pain_heading',
@@ -128,15 +146,19 @@ export function recommendationArticleFromContent(
     recommendations: context.companies.map((company, index) => ({
       company_id: company.id,
       text: field(`company_${index + 1}`),
-      citation_ids: (
-        content.citation_map.find((claim) => claim.claim_key === `company_${index + 1}`)
-          ?.citation_ids ?? []
-      ).filter((id) =>
-        citations.some(
-          (citation) =>
-            citation['citation_id'] === id &&
-            company.source_document_ids.includes(String(citation['source_id'])),
+      citation_ids: usedRecommendationCitations(
+        (
+          content.citation_map.find((claim) => claim.claim_key === `company_${index + 1}`)
+            ?.citation_ids ?? []
+        ).filter((id) =>
+          citations.some(
+            (citation) =>
+              citation['citation_id'] === id &&
+              company.source_document_ids.includes(String(citation['source_id'])),
+          ),
         ),
+        field(`company_${index + 1}`),
+        citations,
       ),
     })),
     faq: Array.isArray(meta['faq']) ? (meta['faq'] as RecommendationArticleDraft['faq']) : [],
@@ -597,12 +619,15 @@ export function recommendationContent(
     ) {
       throw new Error(`${company.legal_name} 的推荐引用未绑定到该公司资料`);
     }
+    const usedCitations = usedRecommendationCitations(item.citation_ids, item.text, citations);
+    if (!usedCitations.length)
+      throw new Error(`${company.legal_name} 的推荐正文缺少实际使用的资料引用`);
     block(`company_${index + 1}_heading`, 'heading', company.legal_name);
     block(`company_${index + 1}`, 'paragraph', item.text);
     citationMap.push({
       claim_key: `company_${index + 1}`,
       claim_text: item.text,
-      citation_ids: item.citation_ids,
+      citation_ids: usedCitations,
     });
     descriptions.push(`${company.legal_name}：${item.text}`);
   }
@@ -671,6 +696,8 @@ export function recommendationContent(
                 })),
               },
             }
-          : {},
+          : context.platform_code === 'lieju'
+            ? { content_type: 'logistics_freight' }
+            : {},
   };
 }

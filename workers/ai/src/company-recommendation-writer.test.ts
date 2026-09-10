@@ -156,6 +156,49 @@ describe('multi-company recommendation mapping', () => {
       recommendationArticleFromContent({ ...content, blocks: [] }, context, fresh),
     ).toBeUndefined();
   });
+  it('removes unused typed certificates from both saved revisions and final citations', () => {
+    const { context, draft, citations } = fixture();
+    context.platform_code = 'official_site';
+    const certificate = {
+      ...citations[0]!,
+      citation_id: 'unused-certificate',
+      quote_text:
+        '资料类型：企业证照\n证照名称：环境管理体系认证证书\n持证主体：' +
+        context.companies[0]!.legal_name,
+    };
+    const sources = [...citations, certificate];
+    draft.recommendations[0]!.citation_ids.push(certificate.citation_id);
+    const original = JSON.stringify(draft);
+    const content = recommendationContent(draft, context, sources);
+    expect(content.citation_map[0]!.citation_ids).toEqual([citations[0]!.citation_id]);
+    const polluted = {
+      ...content,
+      citation_map: content.citation_map.map((claim, i) =>
+        i === 0
+          ? { ...claim, citation_ids: [...claim.citation_ids, certificate.citation_id] }
+          : claim,
+      ),
+    };
+    expect(
+      recommendationArticleFromContent(polluted, context, sources)!.recommendations[0]!
+        .citation_ids,
+    ).toEqual([citations[0]!.citation_id]);
+    expect(JSON.stringify(draft)).toBe(original);
+    draft.recommendations[0]!.text += '该公司持有环境管理体系认证证书。';
+    expect(recommendationContent(draft, context, sources).citation_map[0]!.citation_ids).toContain(
+      certificate.citation_id,
+    );
+    draft.recommendations[0]!.text = '该公司提供搬迁服务。';
+    draft.recommendations[0]!.citation_ids = [certificate.citation_id];
+    expect(() => recommendationContent(draft, context, sources)).toThrow('实际使用');
+  });
+  it('sets the required Lieju publication content type', () => {
+    const { context, draft, citations } = fixture();
+    context.platform_code = 'lieju';
+    expect(recommendationContent(draft, context, citations).platform_meta).toEqual({
+      content_type: 'logistics_freight',
+    });
+  });
   it('preserves a leading company name used as a grammatical subject', () => {
     const { context, draft } = fixture();
     context.platform_code = 'official_site';

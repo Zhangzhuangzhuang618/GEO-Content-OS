@@ -45,8 +45,10 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
     .filter((block) => block.block_type !== 'heading' && block.block_type !== 'media')
     .reduce((total, block) => total + effectiveCharacterLength(block.text), 0);
   if (
-    bodyLength < OFFICIAL_SITE_RENDER_RULES_V1.body.minimumCharacters ||
-    bodyLength > OFFICIAL_SITE_RENDER_RULES_V1.body.maximumCharacters
+    storedEditorialContext(value.editorial_context, 'official_site')?.style !==
+      'company_recommendation' &&
+    (bodyLength < OFFICIAL_SITE_RENDER_RULES_V1.body.minimumCharacters ||
+      bodyLength > OFFICIAL_SITE_RENDER_RULES_V1.body.maximumCharacters)
   ) {
     issues.push(
       blocker(

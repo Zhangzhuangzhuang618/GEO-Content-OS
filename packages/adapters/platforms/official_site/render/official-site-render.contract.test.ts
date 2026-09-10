@@ -40,6 +40,24 @@ describe('official_site render contract', () => {
       },
     };
     expect(validateOfficialSiteContent(contextual)).toMatchObject({ ok: true });
+    // Hard-ad copy uses an approximate 1100-character writing target, while
+    // regular articles retain the original publishing length bounds.
+    const short = structuredClone(contextual);
+    short.content.blocks.forEach((block) => {
+      block.text = block.text.slice(0, 30);
+    });
+    expect(
+      validateOfficialSiteContent(short).issues.some(
+        (issue) => issue.code === 'BODY_LENGTH_OUT_OF_RANGE',
+      ),
+    ).toBe(false);
+    const { editorial_context: _context, ...regular } = short;
+    expect(_context.style).toBe('company_recommendation');
+    expect(
+      validateOfficialSiteContent(regular).issues.some(
+        (issue) => issue.code === 'BODY_LENGTH_OUT_OF_RANGE',
+      ),
+    ).toBe(true);
     const rendered = renderOfficialSite(contextual);
     expect(JSON.stringify(rendered)).not.toContain('editorial-context@1');
     input.content.blocks[1]!.text += '广州未绑定测试有限公司。';
