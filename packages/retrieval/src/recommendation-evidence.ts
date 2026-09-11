@@ -2,6 +2,7 @@ import type postgres from 'postgres';
 import {
   EditorialContextSchema,
   findPublishedOwnerCompanyNames,
+  readOfficialSiteServicePhone,
   type EditorialContext,
 } from '@geo-content-os/contracts';
 
@@ -29,6 +30,10 @@ export async function resolveRecommendationContext(
   const owners = findPublishedOwnerCompanyNames(brand?.profile);
   if (owners.length !== 1) throw new RecommendationEvidenceError('请先发布主公司的唯一企业身份。');
   const owner = owners[0]!;
+  const [workspace] = await client<{ settings: Record<string, unknown> }[]>`
+    SELECT settings_json AS settings FROM workspaces
+    WHERE tenant_id=${scope.tenantId}::uuid AND id=${scope.workspaceId}::uuid`;
+  const primaryPhone = readOfficialSiteServicePhone(workspace?.settings);
   const primary = context.companies.find(
     (company) => company.evidence_mode === 'primary' && company.legal_name === owner,
   );
@@ -86,6 +91,7 @@ export async function resolveRecommendationContext(
         throw new RecommendationEvidenceError('主公司不能沿用自身作为其他企业服务。');
       return {
         ...company,
+        ...(company.legal_name === owner ? { service_phone: primaryPhone ?? undefined } : {}),
         source_document_ids: [...new Set([...explicit, ...auto.map((source) => source.id)])].slice(
           0,
           12,

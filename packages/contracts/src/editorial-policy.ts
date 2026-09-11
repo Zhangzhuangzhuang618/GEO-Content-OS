@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  OfficialSiteServicePhoneSchema,
+  findPhoneNumbers,
+} from './official-site-service-contact.js';
+import { findLiejuForbiddenContactDetails } from './lieju-content-policy.js';
 
 /** The first release deliberately excludes every other publishing platform. */
 export const EDITORIAL_PLATFORM_CODES = ['official_site', 'lieju', 'douyin'] as const;
@@ -39,6 +44,7 @@ export const RecommendedCompanySchema = z
         '请填写完整法定企业名称',
       ),
     source_document_ids: sourceIds,
+    service_phone: OfficialSiteServicePhoneSchema.optional(),
     evidence_mode: z.enum(['documents', 'primary', 'inherit_primary', 'description']).optional(),
     business_description: z
       .string()
@@ -77,6 +83,7 @@ export const AccountContentPolicyViewSchema = z
     version: z.number().int().nonnegative(),
     workspace_id: z.uuid(),
     primary_company_name: z.string().nullable().optional(),
+    primary_company_phone: OfficialSiteServicePhoneSchema.nullable().optional(),
   })
   .strict();
 
@@ -180,6 +187,7 @@ export function assessCompanyRecommendation(
     citation_ids: string[];
   }[];
   const issues: string[] = [];
+  issues.push(...assessRecommendationContacts(value, context));
   const names = context.companies.map((company) => company.legal_name);
   const companyHeadings = blocks
     .filter((block) => /^company_\d+_heading$/u.test(block.block_key))
@@ -311,4 +319,135 @@ export function readWriterEditorialContext(
 
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+interface ContactContent {
+  readonly blocks: readonly { block_key: string; block_type: string; text: string }[];
+  readonly platform_meta?: unknown;
+}
+
+/** Numbers are server-owned configuration, never inferred from service evidence. */
+export function recommendationContactText(company: RecommendedCompany): string {
+  return company.service_phone ? `联系电话：${company.service_phone}。` : '';
+}
+
+export function applyRecommendationContacts<T extends ContactContent>(
+  content: T,
+  context: EditorialContext | null,
+): T {
+  if (context?.style !== 'company_recommendation') return content;
+  let blocks = [...content.blocks];
+  const meta = record(content.platform_meta) ? { ...content.platform_meta } : null;
+  for (const [index, company] of context.companies.entries()) {
+    const text = recommendationContactText(company);
+    if (!text) continue;
+    const key = `company_${index + 1}`;
+    blocks = blocks.filter((block) => block.block_key !== `${key}_contact`);
+    const position = blocks.findIndex((block) => block.block_key === key);
+    if (position < 0) continue;
+    blocks.splice(position + 1, 0, { block_key: `${key}_contact`, block_type: 'paragraph', text });
+    if (context.platform_code === 'douyin' && typeof meta?.['description'] === 'string') {
+      meta['description'] = meta['description']
+        .split(/\n\s*\n/u)
+        .map((paragraph) => {
+          if (!paragraph.startsWith(`${company.legal_name}：`)) return paragraph;
+          return paragraph.endsWith(text) ? paragraph : `${paragraph}\n${text}`;
+        })
+        .join('\n\n');
+    }
+  }
+  return { ...content, blocks, ...(meta ? { platform_meta: meta } : {}) } as T;
+}
+
+/** Strip only exact, correctly placed configured contact lines before legacy contact checks. */
+export function withoutRecommendationContacts<T>(content: T, context: EditorialContext | null): T {
+  if (
+    context?.style !== 'company_recommendation' ||
+    !record(content) ||
+    !Array.isArray(content['blocks'])
+  )
+    return content;
+  let blocks = [...content['blocks']] as ContactContent['blocks'][number][];
+  const meta = record(content['platform_meta']) ? { ...content['platform_meta'] } : null;
+  for (const [index, company] of context.companies.entries()) {
+    const text = recommendationContactText(company);
+    if (!text) continue;
+    const key = `company_${index + 1}`;
+    blocks = blocks.map((block, i) =>
+      block.block_key === `${key}_contact` &&
+      block.text === text &&
+      blocks[i - 1]?.block_key === key
+        ? { ...block, text: '' }
+        : block,
+    );
+    if (context.platform_code === 'douyin' && typeof meta?.['description'] === 'string') {
+      meta['description'] = meta['description']
+        .split(/\n\s*\n/u)
+        .map((paragraph) =>
+          paragraph.startsWith(`${company.legal_name}：`) && paragraph.endsWith(`\n${text}`)
+            ? paragraph.slice(0, -text.length - 1)
+            : paragraph,
+        )
+        .join('\n\n');
+    }
+  }
+  return { ...content, blocks, ...(meta ? { platform_meta: meta } : {}) } as T;
+}
+
+export function assessRecommendationContacts(
+  value: unknown,
+  context: EditorialContext | null,
+): string[] {
+  if (
+    context?.style !== 'company_recommendation' ||
+    !record(value) ||
+    !Array.isArray(value['blocks'])
+  )
+    return [];
+  const blocks = value['blocks'] as ContactContent['blocks'];
+  const meta = record(value['platform_meta']) ? value['platform_meta'] : {};
+  const issues: string[] = [];
+  for (const [index, company] of context.companies.entries()) {
+    const text = recommendationContactText(company);
+    if (!text) continue;
+    const key = `company_${index + 1}`;
+    const positions = blocks.flatMap((block, i) =>
+      block.block_key === `${key}_contact` ? [i] : [],
+    );
+    if (
+      positions.length !== 1 ||
+      blocks[positions[0]!]!.text !== text ||
+      blocks[positions[0]! - 1]?.block_key !== key
+    )
+      issues.push(`${company.legal_name} 的联系电话缺失或与冻结配置不一致`);
+    if (context.platform_code === 'douyin') {
+      const paragraphs = String(meta['description'] ?? '').split(/\n\s*\n/u);
+      if (
+        !paragraphs.some(
+          (paragraph) =>
+            paragraph.startsWith(`${company.legal_name}：`) && paragraph.endsWith(`\n${text}`),
+        )
+      )
+        issues.push(`${company.legal_name} 的抖音主文案缺少对应联系电话`);
+    }
+  }
+  if (context.companies.some((company) => company.service_phone)) {
+    const stripped = withoutRecommendationContacts(value, context);
+    const fields = [
+      stripped['title'],
+      stripped['summary'],
+      stripped['blocks'],
+      stripped['platform_meta'],
+      stripped['hashtags'],
+      ...(context.platform_code === 'official_site' ? [] : [stripped['cta']]),
+    ];
+    if (
+      findPhoneNumbers(fields).length ||
+      findLiejuForbiddenContactDetails(JSON.stringify(fields)).some(
+        (finding) => finding.kind === 'external_account',
+      )
+    )
+      issues.push('硬广联系方式只能出现在对应公司的配置联系段，不得自行新增、移用或重复号码');
+  }
+  return issues;
 }

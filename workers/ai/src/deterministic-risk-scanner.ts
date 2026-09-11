@@ -4,6 +4,7 @@ import {
   storedEditorialContext,
   editorialAllowedCompanyNames,
   assessCompanyRecommendation,
+  withoutRecommendationContacts,
   findDisallowedCompanyNames,
   findInternalCustomerCopyLanguage,
   findLiejuForbiddenContactDetails,
@@ -159,6 +160,7 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
       ),
     );
   }
+  input = { ...input, content: withoutRecommendationContacts(input.content, editorial) };
   const brandEvidence = flattenStrings(input.brandProfile).join('\n');
   const citationEvidence = input.citations.map((item) => item.quoteText).join('\n');
 

@@ -3,6 +3,8 @@ import {
   editorialAllowedCompanyNames,
   storedEditorialContext,
   hasExactOfficialSiteServicePhone,
+  withoutRecommendationContacts,
+  assessRecommendationContacts,
 } from '@geo-content-os/contracts';
 
 import { OfficialSiteRenderInputSchema } from './schema.js';
@@ -97,7 +99,14 @@ export function validateOfficialSiteContent(input: unknown): OfficialSiteValidat
     );
   }
 
-  if (!hasExactOfficialSiteServicePhone(value.content, value.service_phone)) {
+  const editorial = storedEditorialContext(value.editorial_context, 'official_site');
+  if (
+    !hasExactOfficialSiteServicePhone(
+      withoutRecommendationContacts(value.content, editorial),
+      value.service_phone,
+    ) ||
+    assessRecommendationContacts(value.content, editorial).length > 0
+  ) {
     issues.push(
       blocker(
         'SERVICE_PHONE_REQUIRED',

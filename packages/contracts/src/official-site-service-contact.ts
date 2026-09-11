@@ -107,7 +107,7 @@ function countOccurrences(value: string, search: string): number {
   return value.split(search).length - 1;
 }
 
-function findPhoneNumbers(value: unknown): readonly string[] {
+export function findPhoneNumbers(value: unknown): readonly string[] {
   return Object.freeze(collectPhoneNumbers(value));
 }
 

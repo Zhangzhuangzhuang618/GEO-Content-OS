@@ -1,5 +1,6 @@
 import {
   assessDouyinImageNoteEditorial,
+  withoutRecommendationContacts,
   type EditorialContext,
   findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
@@ -153,7 +154,13 @@ function assessContent(
     );
   }
   if (content.platform_code === 'lieju') {
-    const liejuPublishText = [content.title, content.summary, content.cta, text]
+    const contactChecked = withoutRecommendationContacts(content, editorialContext ?? null);
+    const liejuPublishText = [
+      content.title,
+      content.summary,
+      content.cta,
+      ...contactChecked.blocks.map((block) => block.text),
+    ]
       .filter((value): value is string => typeof value === 'string')
       .join('\n');
     const prohibitedContactDetails = findLiejuForbiddenContactDetails(liejuPublishText);

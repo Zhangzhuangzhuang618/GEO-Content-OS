@@ -217,6 +217,7 @@ export class PlatformPublisher implements PublisherPlatformPort {
           claim,
           signal,
           renderLieju({
+            ...(claim.editorialContext ? { editorial_context: claim.editorialContext } : {}),
             citations: claim.citations,
             content: liejuArticleContentWithMedia(content, claim.mediaAssets ?? []),
             rule_version: LIEJU_RENDER_RULE_VERSION,

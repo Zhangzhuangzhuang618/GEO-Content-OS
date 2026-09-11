@@ -1,6 +1,9 @@
 import {
   findLiejuForbiddenContactDetails,
   findLiejuProhibitedPromotionalTerms,
+  storedEditorialContext,
+  withoutRecommendationContacts,
+  assessRecommendationContacts,
 } from '@geo-content-os/contracts';
 
 import { LIEJU_RENDER_RULES_V1 } from './rules.js';
@@ -40,7 +43,14 @@ export function validateLiejuContent(input: unknown): LiejuValidationResult {
     issues.push(blocker('BODY_LENGTH_OUT_OF_RANGE', '描述必须为 600-8000 字。', 'content.blocks'));
   }
   const publishText = `${value.content.title}\n${bodyText}`;
-  if (findLiejuForbiddenContactDetails(publishText).length > 0) {
+  const editorial = storedEditorialContext(value.editorial_context, 'lieju');
+  const checked = withoutRecommendationContacts(value.content, editorial);
+  if (
+    findLiejuForbiddenContactDetails(
+      `${checked.title}\n${checked.blocks.map((block) => block.text).join('\n')}`,
+    ).length > 0 ||
+    assessRecommendationContacts(value.content, editorial).length > 0
+  ) {
     issues.push(
       blocker('CONTACT_INFO_FORBIDDEN', '标题和描述不得包含电话、微信或 QQ 账号。', 'content'),
     );

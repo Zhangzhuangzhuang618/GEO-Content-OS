@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 import { describe, expect, it } from 'vitest';
+import { applyRecommendationContacts, type EditorialContext } from '@geo-content-os/contracts';
+import type { LiejuRenderInput } from './src/types.js';
 
 import { renderLieju } from './src/render.js';
 import { LIEJU_RENDER_RULES_V1 } from './src/rules.js';
@@ -8,6 +10,52 @@ import { LiejuPayloadSchema } from './src/schema.js';
 import { validateLiejuContent } from './src/validate.js';
 
 describe('Lieju render contract', () => {
+  it('renders only correctly attributed frozen hard-ad phone lines', async () => {
+    const input = (await fixture()) as LiejuRenderInput;
+    const context: EditorialContext = {
+      account_id: '11111111-1111-4111-8111-111111111111',
+      platform_code: 'lieju',
+      policy_version: 1,
+      schema_version: 'editorial-context@1',
+      template_version: 'company-recommendation@1',
+      style: 'company_recommendation',
+      companies: ['广东众人搬家起重吊装有限公司', '广州志远搬家服务有限公司'].map(
+        (legal_name, index) => ({
+          id: `21111111-1111-4111-8111-11111111111${index}`,
+          legal_name,
+          source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+          service_phone: index ? '02085627757' : '4008372383',
+        }),
+      ),
+    };
+    const content = applyRecommendationContacts(
+      {
+        ...input.content,
+        blocks: [
+          ...input.content.blocks,
+          ...context.companies.map((_, index) => ({
+            block_key: `company_${index + 1}`,
+            block_type: 'paragraph' as const,
+            text: '提供搬迁服务。',
+          })),
+        ],
+      },
+      context,
+    );
+    const result = renderLieju({ ...input, content, editorial_context: context });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.payload.body_text).toContain('联系电话：02085627757。');
+    expect(renderLieju({ ...input, content }).ok).toBe(false);
+    const wrong = {
+      ...content,
+      blocks: content.blocks.map((block) =>
+        block.block_key === 'company_1_contact'
+          ? { ...block, text: '联系电话：02085627757。' }
+          : block,
+      ),
+    };
+    expect(renderLieju({ ...input, content: wrong, editorial_context: context }).ok).toBe(false);
+  });
   it('renders a deterministic classified-information payload', async () => {
     const input = await fixture();
     const first = renderLieju(input);

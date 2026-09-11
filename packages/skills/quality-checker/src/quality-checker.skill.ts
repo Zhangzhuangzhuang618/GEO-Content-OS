@@ -2,6 +2,7 @@ import type { ModelMessage, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   findLiejuForbiddenContactDetails,
   storedEditorialContext,
+  withoutRecommendationContacts,
   editorialAllowedCompanyNames,
   findPublishedOwnerCompanyNames,
   isAllowedCompanyReference,
@@ -148,6 +149,15 @@ function messages(
         : QUALITY_CHECKER_TASK_PROMPT_V1,
       role: 'user',
     },
+    ...(recommendation
+      ? [
+          {
+            role: 'system' as const,
+            content:
+              '硬广公司的 service_phone 是服务器冻结的管理员联系电话配置，可作为对应公司联系方式的直接依据，无需另绑文档引用。company_N_contact 联系段和抖音对应公司主文案末尾允许准确展示该号码；官网行动引导还保留主公司电话。不因这些配置电话或独立联系段无 citation_map 而拒绝，禁止移用其他公司号码、自行新增电话或微信QQ。此规则优先于旧版平台通用电话禁令。',
+          },
+        ]
+      : []),
     ...examples,
     {
       content: JSON.stringify({
@@ -432,7 +442,13 @@ function invalidLiejuContactIssueReason(
   if (issue.category !== 'compliance') return 'category_must_be_compliance';
   if (issue.severity !== 'BLOCK') return 'severity_must_be_block';
   if (!issue.location) return 'location_is_required';
-  const locationText = textAtLocation(input.content_version.content, issue.location);
+  const locationText = textAtLocation(
+    withoutRecommendationContacts(
+      input.content_version.content,
+      storedEditorialContext(input.editorial_context, 'lieju'),
+    ),
+    issue.location,
+  );
   if (!locationText) return 'location_does_not_resolve_to_content';
   return containsLiejuContactDetail(locationText)
     ? null

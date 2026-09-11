@@ -108,6 +108,7 @@ test('auto-selects primary identity and saves inherited services and business de
     recommended_companies: [],
     version: 0,
     primary_company_name: owner,
+    primary_company_phone: '4008372383',
   };
   await page.route('**/api/v1/platform-accounts**', async (route) => {
     if (new URL(route.request().url()).pathname.endsWith('/content-policy')) {
@@ -129,12 +130,16 @@ test('auto-selects primary identity and saves inherited services and business de
   await page.getByRole('button', { name: '内容设置', exact: true }).click();
   await expect(page.getByLabel('推荐企业 1 全称')).toHaveValue(owner);
   await expect(page.getByLabel('推荐企业 1 全称')).toHaveAttribute('readonly', '');
+  await expect(page.getByLabel('推荐企业 1 联系电话')).toHaveValue('4008372383');
+  await expect(page.getByLabel('推荐企业 1 联系电话')).toHaveAttribute('readonly', '');
   await page.getByLabel('账号默认生文风格').selectOption('company_recommendation');
   await page.getByRole('button', { name: '添加推荐企业', exact: true }).click();
   await page.getByLabel('推荐企业 2 全称').fill('广州志远搬家服务有限公司');
   await page.getByLabel('推荐企业 2 业务信息来源').selectOption('inherit_primary');
+  await page.getByLabel('推荐企业 2 联系电话').fill('02085627757');
   await page.getByRole('button', { name: '添加推荐企业', exact: true }).click();
   await page.getByLabel('推荐企业 3 全称').fill('广州盛源机电制冷工程有限公司');
+  await page.getByLabel('推荐企业 3 联系电话').fill('18148943200');
   await page
     .getByLabel('推荐企业 3 业务说明')
     .fill('主营企业、家庭搬迁时准备出售的旧空调及二手家电回收。');
@@ -147,11 +152,13 @@ test('auto-selects primary identity and saves inherited services and business de
       {
         legal_name: '广州志远搬家服务有限公司',
         evidence_mode: 'inherit_primary',
+        service_phone: '02085627757',
         source_document_ids: [],
       },
       {
         legal_name: '广州盛源机电制冷工程有限公司',
         evidence_mode: 'description',
+        service_phone: '18148943200',
         source_document_ids: [],
         business_description: '主营企业、家庭搬迁时准备出售的旧空调及二手家电回收。',
       },

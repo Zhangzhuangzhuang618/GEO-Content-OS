@@ -20,6 +20,7 @@ const CompanySchema = z
     evidence_mode: z.enum(['documents', 'primary', 'inherit_primary', 'description']).optional(),
     business_description: z.string().optional(),
     description_source_id: z.uuid().optional(),
+    service_phone: z.string().optional(),
   })
   .strict();
 const PolicySchema = z
@@ -31,6 +32,7 @@ const PolicySchema = z
     recommended_companies: z.array(CompanySchema),
     version: z.number().int(),
     primary_company_name: z.string().nullable().optional(),
+    primary_company_phone: z.string().nullable().optional(),
   })
   .strict();
 type Policy = z.infer<typeof PolicySchema>;
@@ -205,6 +207,10 @@ export function AccountContentPolicyPanel({
               source_document_ids: company.source_document_ids,
               evidence_mode: company.evidence_mode,
               business_description: company.business_description,
+              service_phone:
+                company.evidence_mode === 'primary'
+                  ? undefined
+                  : company.service_phone?.trim() || undefined,
             })),
             expected_version: policy.version,
           }),
@@ -332,6 +338,28 @@ export function AccountContentPolicyPanel({
                   移除企业
                 </button>
               </div>
+              <label className="grid gap-2 text-sm">
+                联系电话{company.evidence_mode === 'primary' ? '（继承企业资料）' : '（可选）'}
+                <input
+                  aria-label={`推荐企业 ${index + 1} 联系电话`}
+                  value={
+                    company.evidence_mode === 'primary'
+                      ? (policy.primary_company_phone ?? '')
+                      : (company.service_phone ?? '')
+                  }
+                  readOnly={company.evidence_mode === 'primary'}
+                  placeholder={
+                    company.evidence_mode === 'primary'
+                      ? '请在企业资料中配置电话'
+                      : '手机号、座机、400 或 800 电话，不含空格和连字符'
+                  }
+                  onChange={(event) => updateCompany(index, { service_phone: event.target.value })}
+                  className="rounded-lg border border-line p-2"
+                />
+                <span className="text-xs text-ink-600">
+                  仅用于硬广公司介绍，生成时保存号码快照；修改不影响已有稿件。
+                </span>
+              </label>
               {company.evidence_mode === 'primary' ? (
                 <p className="text-sm">
                   主公司：自动使用当前企业有效资料与本公司授权证照，无需逐份勾选。

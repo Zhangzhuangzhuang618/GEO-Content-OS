@@ -2,6 +2,7 @@ import {
   AccountContentPolicyViewSchema,
   supportsEditorialStyle,
   findPublishedOwnerCompanyNames,
+  readOfficialSiteServicePhone,
   type RecommendedCompany,
   type AccountContentPolicyRequest,
   type AccountContentPolicyView,
@@ -162,6 +163,7 @@ export class AccountContentPolicyService {
       }
       companies.push({
         ...company,
+        ...(company.legal_name === before.primary_company_name ? { service_phone: undefined } : {}),
         ...(descriptionSourceId ? { description_source_id: descriptionSourceId } : {}),
       });
     }
@@ -222,6 +224,9 @@ export class AccountContentPolicyService {
       WHERE tenant_id=${scope.tenantId}::uuid AND workspace_id=${account.workspace_id}::uuid AND status='published'
       ORDER BY version DESC LIMIT 1`;
     const ownerNames = findPublishedOwnerCompanyNames(brand?.profile);
+    const [workspace] = await transaction<{ settings: Record<string, unknown> }[]>`
+      SELECT settings_json AS settings FROM workspaces
+      WHERE tenant_id=${scope.tenantId}::uuid AND id=${account.workspace_id}::uuid`;
     return AccountContentPolicyViewSchema.parse({
       account_id: accountId,
       platform_code: account.platform_code,
@@ -230,6 +235,7 @@ export class AccountContentPolicyService {
       recommended_companies: rows[0]?.recommended_companies ?? [],
       version: rows[0]?.version ?? 0,
       primary_company_name: ownerNames.length === 1 ? ownerNames[0] : null,
+      primary_company_phone: readOfficialSiteServicePhone(workspace?.settings),
     });
   }
 }

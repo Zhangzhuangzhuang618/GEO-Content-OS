@@ -2,6 +2,7 @@ import type { ModelAdapter, ModelUsage } from '@geo-content-os/adapter-model';
 import {
   companyNamePolicyInstruction,
   storedEditorialContext,
+  withoutRecommendationContacts,
   recommendationEvidenceModeInstruction,
   editorialAllowedCompanyNames,
   findLiejuForbiddenContactDetails,
@@ -256,7 +257,13 @@ function inputSemanticPolicy(input: Readonly<Record<string, unknown>>): string {
       : `High-risk unsupported/conflicted issues are allowed only at these exact locations: ${JSON.stringify(highRiskLocations)}.`;
   const contactPolicy =
     platformRules?.['platform_code'] === 'lieju' && rules?.['contact_in_content_forbidden'] === true
-      ? liejuContactPolicy(content, validLocations)
+      ? liejuContactPolicy(
+          withoutRecommendationContacts(
+            content,
+            storedEditorialContext(input['editorial_context'], 'lieju'),
+          ),
+          validLocations,
+        )
       : '';
   const meta = record(content?.['platform_meta']) ? content['platform_meta'] : null;
   const cards = Array.isArray(meta?.['cards']) ? meta['cards'] : [];

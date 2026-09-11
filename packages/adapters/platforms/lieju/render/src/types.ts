@@ -1,4 +1,5 @@
 import type { ContentWriterContent } from '@geo-content-os/contracts/skills';
+import type { EditorialContext } from '@geo-content-os/contracts';
 
 export const LIEJU_PLATFORM_CODE = 'lieju' as const;
 export const LIEJU_RENDER_RULE_VERSION = 'lieju-render-rules@1.0.0' as const;
@@ -24,6 +25,7 @@ export interface LiejuContent extends Omit<
 }
 
 export interface LiejuRenderInput {
+  readonly editorial_context?: EditorialContext;
   readonly citations: readonly LiejuCitationLink[];
   readonly content: LiejuContent;
   readonly rule_version: typeof LIEJU_RENDER_RULE_VERSION;

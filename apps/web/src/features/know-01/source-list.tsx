@@ -364,7 +364,7 @@ function OfficialSiteContactCard({
         <div>
           <h2 className="font-semibold text-ink-950">官网联系信息</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-ink-500">
-            官网服务电话属于当前工作区的结构化企业资料。官网文章保存时会自动合并到行动引导，其他平台不会继承。
+            官网服务电话属于当前工作区的结构化企业资料。官网文章保存时会自动合并到行动引导；官网、列举网、抖音硬广还会将该号码用于主公司介绍，其他公司电话在账号内容设置中配置。
           </p>
         </div>
         <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">

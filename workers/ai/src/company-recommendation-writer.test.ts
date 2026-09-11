@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { recommendationWritingExampleForTopic } from './company-recommendation-examples.js';
+import { scanDeterministicRisks } from './deterministic-risk-scanner.js';
+import { applyOfficialSiteServicePhone } from '@geo-content-os/contracts';
 import {
   assessCompanyRecommendation,
   assessDouyinOwnerPromotion,
@@ -110,6 +112,39 @@ function fixture(count = 2) {
 }
 
 describe('multi-company recommendation mapping', () => {
+  it.each(['official_site', 'lieju', 'douyin'] as const)(
+    'assembles configured %s contacts without weakening phone gates',
+    (platform) => {
+      const { context, draft, citations } = fixture();
+      context.platform_code = platform;
+      context.companies = context.companies.map((company, index) => ({
+        ...company,
+        service_phone: index ? '02085627757' : '4008372383',
+      }));
+      let content = recommendationContent(draft, context, citations);
+      if (platform === 'official_site')
+        content = applyOfficialSiteServicePhone(content, '4008372383');
+      expect(assessCompanyRecommendation(content, context)).toEqual([]);
+      const scan = () =>
+        scanDeterministicRisks({
+          content: content as unknown as Record<string, unknown>,
+          editorialContext: context,
+          platformCode: platform,
+          brandProfile: { contact: { official_site_service_phone: '4008372383' } },
+          citations: [],
+        });
+      expect(scan().filter((issue) => /phone|contact/.test(issue.rule_id))).toEqual([]);
+      content = {
+        ...content,
+        blocks: content.blocks.map((block) =>
+          block.block_key === 'company_1_contact'
+            ? { ...block, text: '联系电话：13900001111。' }
+            : block,
+        ),
+      };
+      expect(scan().some((issue) => /phone|company_recommendation/.test(issue.rule_id))).toBe(true);
+    },
+  );
   it('uses a functional checklist-card heading without changing its fee and package facts', () => {
     const { draft } = fixture();
     const { recommendations, ...fields } = draft;

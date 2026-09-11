@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EditorialContextSchema } from '@geo-content-os/contracts';
 
 import {
   LIEJU_PAYLOAD_SCHEMA_VERSION,
@@ -52,6 +53,7 @@ export const LiejuCitationLinkSchema = z
 
 export const LiejuRenderInputSchema = z
   .object({
+    editorial_context: EditorialContextSchema.optional(),
     citations: z
       .array(LiejuCitationLinkSchema)
       .max(200)

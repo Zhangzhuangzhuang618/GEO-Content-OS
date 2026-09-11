@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormatsImport, { type FormatsPlugin } from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
+import { applyRecommendationContacts, type EditorialContext } from '@geo-content-os/contracts';
+import type { OfficialSiteRenderInput } from './src/types.js';
 
 import {
   OFFICIAL_SITE_PAYLOAD_JSON_SCHEMA,
@@ -16,6 +18,52 @@ import { validateOfficialSiteContent } from './src/validate.js';
 const fixtureUrl = (name: string) => new URL(`./fixtures/${name}`, import.meta.url);
 
 describe('official_site render contract', () => {
+  it('renders configured company contacts while retaining the primary CTA', async () => {
+    const input = (await readJson('official-site.valid.input.json')) as OfficialSiteRenderInput;
+    const editorial: EditorialContext = {
+      account_id: '11111111-1111-4111-8111-111111111111',
+      platform_code: 'official_site',
+      policy_version: 1,
+      schema_version: 'editorial-context@1',
+      style: 'company_recommendation',
+      template_version: 'company-recommendation@1',
+      companies: ['广东众人搬家起重吊装有限公司', '广州志远搬家服务有限公司'].map(
+        (legal_name, index) => ({
+          id: `21111111-1111-4111-8111-11111111111${index}`,
+          legal_name,
+          service_phone: index ? '02085627757' : input.service_phone!,
+          source_document_ids: [`31111111-1111-4111-8111-11111111111${index}`],
+        }),
+      ),
+    };
+    const content = applyRecommendationContacts(
+      {
+        ...input.content,
+        blocks: [
+          ...input.content.blocks,
+          ...editorial.companies.map((_, index) => ({
+            block_key: `company_${index + 1}`,
+            block_type: 'paragraph' as const,
+            text: '提供搬迁服务。',
+          })),
+        ],
+      },
+      editorial,
+    );
+    expect(renderOfficialSite({ ...input, content, editorial_context: editorial }).ok).toBe(true);
+    expect(renderOfficialSite({ ...input, content }).ok).toBe(false);
+    const wrong = {
+      ...content,
+      blocks: content.blocks.map((block) =>
+        block.block_key === 'company_1_contact'
+          ? { ...block, text: '联系电话：13900001111。' }
+          : block,
+      ),
+    };
+    expect(renderOfficialSite({ ...input, content: wrong, editorial_context: editorial }).ok).toBe(
+      false,
+    );
+  });
   it('allows only frozen recommended names and never renders editorial metadata', async () => {
     const input = (await readJson('official-site.valid.input.json')) as {
       content: { blocks: { text: string }[] };

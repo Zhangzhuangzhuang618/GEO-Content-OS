@@ -1,5 +1,6 @@
 import {
   applyOfficialSiteServicePhone,
+  applyRecommendationContacts,
   freezeEditorialContext,
   supportsEditorialStyle,
   EditorialContextSchema,
@@ -651,7 +652,16 @@ export class ContentApiService {
     const variant = await this.variants.find(scope, variantId);
     if (!variant) throw contentNotFound();
     assertManualEditStatus(variant.status);
-    let preparedContent = content;
+    const [current] = await transaction<{ editorial: unknown }[]>`
+      SELECT version.editorial_context_json AS editorial FROM content_variants variant
+      JOIN content_versions version ON version.id=variant.current_content_version_id AND version.tenant_id=variant.tenant_id
+      WHERE variant.id=${variantId}::uuid AND variant.tenant_id=${scope.tenantId}::uuid`;
+    let preparedContent = ContentDocumentSchema.parse(
+      applyRecommendationContacts(
+        content,
+        current?.editorial ? EditorialContextSchema.parse(current.editorial) : null,
+      ),
+    );
     if (variant.platformCode === 'official_site') {
       const workspaces = await transaction<{ settings: Readonly<Record<string, unknown>> }[]>`
         SELECT settings_json AS settings
@@ -668,7 +678,9 @@ export class ContentApiService {
           'Configure the official-site service phone in enterprise data before saving official-site content',
         );
       }
-      preparedContent = ContentDocumentSchema.parse(applyOfficialSiteServicePhone(content, phone));
+      preparedContent = ContentDocumentSchema.parse(
+        applyOfficialSiteServicePhone(preparedContent, phone),
+      );
     }
     await this.versions.create(
       transaction,

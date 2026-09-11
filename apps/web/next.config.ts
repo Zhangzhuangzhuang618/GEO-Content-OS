@@ -2,6 +2,8 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   experimental: {
+    // Production shares a memory-limited Docker VM with other services.
+    cpus: 1,
     proxyTimeout: 70_000,
   },
   poweredByHeader: false,
