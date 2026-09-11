@@ -160,19 +160,22 @@ export function scanDeterministicRisks(input: DeterministicRiskScanInput): reado
       ),
     );
   }
-  input = { ...input, content: withoutRecommendationContacts(input.content, editorial) };
+  const contactCheckedInput = {
+    ...input,
+    content: withoutRecommendationContacts(input.content, editorial),
+  };
   const brandEvidence = flattenStrings(input.brandProfile).join('\n');
   const citationEvidence = input.citations.map((item) => item.quoteText).join('\n');
 
   addFormatIssues(issues, input);
   addBrandIssues(issues, input);
   addCompanyNameIssues(issues, input, allowedCompanyNames);
-  addOfficialSiteTechnicalIssues(issues, input);
+  addOfficialSiteTechnicalIssues(issues, contactCheckedInput);
   addBaijiahaoPlatformIssues(issues, input);
-  addLiejuPlatformIssues(issues, input);
+  addLiejuPlatformIssues(issues, contactCheckedInput);
   addDouyinEditorialIssues(issues, input, allowedCompanyNames);
 
-  for (const section of contentSections(input.content)) {
+  for (const section of contentSections(contactCheckedInput.content)) {
     if (findInternalCustomerCopyLanguage(section.text).length > 0) {
       issues.push(
         issue(

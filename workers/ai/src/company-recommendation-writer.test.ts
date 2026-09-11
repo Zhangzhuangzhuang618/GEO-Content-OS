@@ -133,7 +133,11 @@ describe('multi-company recommendation mapping', () => {
           brandProfile: { contact: { official_site_service_phone: '4008372383' } },
           citations: [],
         });
-      expect(scan().filter((issue) => /phone|contact/.test(issue.rule_id))).toEqual([]);
+      expect(
+        scan().filter(
+          (issue) => /phone|contact/.test(issue.rule_id) || /联系电话|联系方式/.test(issue.message),
+        ),
+      ).toEqual([]);
       content = {
         ...content,
         blocks: content.blocks.map((block) =>
