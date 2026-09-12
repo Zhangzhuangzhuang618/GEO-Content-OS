@@ -164,13 +164,12 @@ describe('multi-company recommendation mapping', () => {
   });
   it('does not teach corporate movers with a household-package example', () => {
     const corporate = recommendationWritingExampleForTopic('广州办公室和仓库搬迁');
-    expect(corporate).toContain('办公室搬迁');
+    expect(corporate).toContain('不固定谁讲套餐、谁讲拆装');
     expect(corporate).not.toContain('厨房拆包');
-    expect(corporate).toContain('甲只展开办公区标签与工位，乙只展开仓库清点与批次');
-    expect(corporate).toContain('纯办公室文章');
+    expect(corporate).toContain('不提供可复制的完整公司介绍范文');
     expect(corporate).not.toContain('甲展开标识、清点和批次，乙展开新址摆放');
-    expect(recommendationWritingExampleForTopic('广州日式家庭搬迁')).toContain('厨房拆包');
-    expect(recommendationWritingExampleForTopic('钢琴搬运')).toBe('');
+    expect(recommendationWritingExampleForTopic('广州日式家庭搬迁')).not.toContain('企业甲');
+    expect(recommendationWritingExampleForTopic('')).toBe('');
   });
   it('preserves saved citations without attaching unused company sources during reconstruction', () => {
     const { context, draft, citations } = fixture();

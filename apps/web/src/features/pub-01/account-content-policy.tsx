@@ -29,6 +29,7 @@ const PolicySchema = z
     workspace_id: z.uuid(),
     platform_code: z.enum(['official_site', 'lieju', 'douyin']),
     default_style: ContentStyleSchema,
+    regional_mode_enabled: z.boolean().default(false),
     recommended_companies: z.array(CompanySchema),
     version: z.number().int(),
     primary_company_name: z.string().nullable().optional(),
@@ -201,6 +202,7 @@ export function AccountContentPolicyPanel({
           },
           body: JSON.stringify({
             default_style: policy.default_style,
+            regional_mode_enabled: policy.regional_mode_enabled,
             recommended_companies: policy.recommended_companies.map((company) => ({
               id: company.id,
               legal_name: company.legal_name,
@@ -257,6 +259,21 @@ export function AccountContentPolicyPanel({
               if (value) setPolicy({ ...policy, default_style: value });
             }}
           />
+          <label className="grid gap-2 text-sm">
+            <span>
+              <input
+                type="checkbox"
+                checked={policy.regional_mode_enabled}
+                onChange={(event) =>
+                  setPolicy({ ...policy, regional_mode_enabled: event.target.checked })
+                }
+              />{' '}
+              区域模式：广州11区轮换
+            </span>
+            <span className="text-xs text-ink-600">
+              与常规或硬广风格组合，仅影响新建日批。每日篇数和时间不变，各账号跨天独立轮换；关闭后暂停，再开启继续。
+            </span>
+          </label>
           <label className="grid gap-2 text-sm">
             浏览资料所属项目
             <select

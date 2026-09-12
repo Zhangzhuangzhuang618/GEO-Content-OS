@@ -53,6 +53,7 @@ import {
   ToolRegistry,
 } from '@geo-content-os/skills/runtime';
 import { createHash } from 'node:crypto';
+import { recentRecommendationArticles } from './recommendation-history.js';
 import type postgres from 'postgres';
 
 import { contentHash } from './generation.content.js';
@@ -1318,6 +1319,12 @@ export class RuntimeContentWriter implements ContentWriterPort {
       citations,
       String(brief['title']),
     );
+    const recentArticles = await recentRecommendationArticles(
+      this.client,
+      input.context,
+      editorial.account_id,
+      platform,
+    );
     const previous =
       input.currentContent ??
       input.revision?.candidate.variants.find((value) => value.platform_code === platform);
@@ -1363,6 +1370,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
                 },
                 issues_to_fix: [...revisionIssues, ...planIssues],
                 companies: editorial.companies,
+                recent_recommendation_articles: recentArticles,
                 citations: citations.map((citation) => ({
                   citation_id: citation['citation_id'],
                   source_id: citation['source_id'],
@@ -1416,6 +1424,7 @@ export class RuntimeContentWriter implements ContentWriterPort {
           douyin_topic_focus: jsonObject(brief['constraints'])?.['douyin_topic_focus'] ?? null,
           writing_requirements: jsonObject(brief['constraints'])?.['writing_requirements'] ?? null,
           editorial_plan: acceptedPlan as unknown as JsonObject,
+          recent_recommendation_articles: recentArticles,
           editorial_contexts_by_code: {
             [platform]: JSON.parse(JSON.stringify(editorial)) as JsonObject,
           },

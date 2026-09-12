@@ -65,6 +65,7 @@ export const RecommendedCompaniesSchema = z
 
 export const AccountContentPolicyRequestSchema = z
   .object({
+    regional_mode_enabled: z.boolean().optional(),
     default_style: ContentStyleSchema,
     expected_version: z.number().int().nonnegative(),
     recommended_companies: z
@@ -76,6 +77,7 @@ export const AccountContentPolicyRequestSchema = z
   .strict();
 export const AccountContentPolicyViewSchema = z
   .object({
+    regional_mode_enabled: z.boolean().default(false),
     account_id: z.uuid(),
     default_style: ContentStyleSchema,
     platform_code: EditorialPlatformSchema,
@@ -90,6 +92,21 @@ export const AccountContentPolicyViewSchema = z
 /** Stored outside customer-editable content_json; only the server may create it. */
 export const EditorialContextSchema = z
   .object({
+    target_district: z
+      .enum([
+        '越秀',
+        '海珠',
+        '荔湾',
+        '天河',
+        '白云',
+        '黄埔',
+        '番禺',
+        '花都',
+        '南沙',
+        '从化',
+        '增城',
+      ])
+      .optional(),
     account_id: z.uuid(),
     companies: RecommendedCompaniesSchema,
     platform_code: EditorialPlatformSchema,

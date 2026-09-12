@@ -173,7 +173,7 @@ describe('AI Worker runtime wiring', () => {
         'deepseek-v4-flash',
       );
       const writer = new RuntimeContentWriter(
-        {} as postgres.Sql,
+        (async () => []) as unknown as postgres.Sql,
         new Map([['deepseek-v4-flash', adapter]]),
         vi.fn(),
         async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
@@ -491,7 +491,7 @@ describe('AI Worker runtime wiring', () => {
         'deepseek-v4-flash',
       );
       const writer = new RuntimeContentWriter(
-        {} as postgres.Sql,
+        (async () => []) as unknown as postgres.Sql,
         new Map([['deepseek-v4-flash', adapter]]),
         vi.fn(),
         async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),
@@ -664,7 +664,7 @@ describe('AI Worker runtime wiring', () => {
           'deepseek-v4-flash',
         );
         const revisionWriter = new RuntimeContentWriter(
-          {} as postgres.Sql,
+          (async () => []) as unknown as postgres.Sql,
           new Map([['deepseek-v4-flash', revisionAdapter]]),
           vi.fn(),
           async () => ({ systemPrompt: '测试', taskTemplate: '测试' }),

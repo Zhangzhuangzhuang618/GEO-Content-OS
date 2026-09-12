@@ -169,14 +169,15 @@ export class AccountContentPolicyService {
     }
     await transaction`
       INSERT INTO platform_account_content_policies (
-        account_id,tenant_id,workspace_id,platform_code,default_style,
+        account_id,tenant_id,workspace_id,platform_code,default_style,regional_mode_enabled,
         recommended_companies_json,created_by,updated_by
       ) VALUES (
         ${accountId}::uuid,${scope.tenantId}::uuid,${before.workspace_id}::uuid,
-        ${before.platform_code},${input.default_style},
+        ${before.platform_code},${input.default_style},${input.regional_mode_enabled ?? before.regional_mode_enabled},
         ${JSON.stringify(companies)}::text::jsonb,${scope.userId}::uuid,${scope.userId}::uuid
       ) ON CONFLICT (account_id) DO UPDATE SET
-        default_style=EXCLUDED.default_style,recommended_companies_json=EXCLUDED.recommended_companies_json,
+        default_style=EXCLUDED.default_style,regional_mode_enabled=EXCLUDED.regional_mode_enabled,
+        recommended_companies_json=EXCLUDED.recommended_companies_json,
         updated_by=EXCLUDED.updated_by,version=platform_account_content_policies.version+1
     `;
     const after = await AccountContentPolicyService.getInTransaction(transaction, scope, accountId);
@@ -213,9 +214,9 @@ export class AccountContentPolicyService {
       );
     }
     const rows = await transaction<
-      { default_style: string; recommended_companies: unknown; version: number }[]
+      { default_style: string; regional_mode_enabled: boolean; recommended_companies: unknown; version: number }[]
     >`
-      SELECT default_style,recommended_companies_json AS recommended_companies,version
+      SELECT default_style,regional_mode_enabled,recommended_companies_json AS recommended_companies,version
       FROM platform_account_content_policies WHERE tenant_id=${scope.tenantId}::uuid AND account_id=${accountId}::uuid
     `;
     const [brand] = await transaction<
@@ -232,6 +233,7 @@ export class AccountContentPolicyService {
       platform_code: account.platform_code,
       workspace_id: account.workspace_id,
       default_style: rows[0]?.default_style ?? 'standard',
+      regional_mode_enabled: rows[0]?.regional_mode_enabled ?? false,
       recommended_companies: rows[0]?.recommended_companies ?? [],
       version: rows[0]?.version ?? 0,
       primary_company_name: ownerNames.length === 1 ? ownerNames[0] : null,

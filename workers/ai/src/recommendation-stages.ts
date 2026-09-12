@@ -76,7 +76,7 @@ export function recommendationProseIssues(article: RecommendationArticleDraft): 
     const fullPackages = movers.filter(({ text }) => /全日式/u.test(text) && packageDetail(text));
     for (const other of fullPackages.slice(1))
       repeated.push(
-        `company_${other.index + 1}再次完整解释半日式和全日式的归位项目，前一家公司已解释。保留同样承接日式搬迁的完整身份与必要收费条件，删去第二套套餐定义，用本公司已绑定资料展开家具部件防护或拆装细节，不虚构差异。`,
+        `company_${other.index + 1}再次完整解释半日式和全日式的归位项目，前一家公司已解释。保留同样承接日式搬迁的完整身份与必要收费条件，删去重复的完整定义，按当前主题和本公司已选事实展开另一个相关问题；没有新细节就短写，不固定改成拆装流程，不虚构差异。`,
       );
     for (const first of movers) {
       if (!packageDetail(first.text) || !furnitureDetail(first.text)) continue;

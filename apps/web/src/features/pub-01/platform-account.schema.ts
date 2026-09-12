@@ -114,6 +114,7 @@ export const OfficialSiteAutomationPolicySchema = z
       .object({
         content_style: z.enum(['standard', 'company_recommendation']).optional(),
         recommended_company_names: z.array(z.string()).max(6).optional(),
+        regional_districts: z.array(z.string()).max(10).optional(),
         attempt_no: z.number().int().positive(),
         attempted_count: z.number().int().min(0).max(30),
         business_date: z.iso.date(),
@@ -349,6 +350,7 @@ export const BrowserPlatformAutomationPolicySchema = z
       .object({
         content_style: z.enum(['standard', 'company_recommendation']).optional(),
         recommended_company_names: z.array(z.string()).max(6).optional(),
+        regional_districts: z.array(z.string()).max(10).optional(),
         attempt_no: z.number().int().positive(),
         attempted_count: z.number().int().min(0).max(30),
         business_date: z.iso.date(),

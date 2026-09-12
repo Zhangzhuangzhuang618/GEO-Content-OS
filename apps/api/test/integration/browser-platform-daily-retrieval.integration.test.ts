@@ -296,49 +296,55 @@ describe('browser-platform daily candidate retrieval', () => {
     ]);
   });
 
-  it('allows Lieju generation without an optional enterprise evidence bundle', async () => {
-    const database = requireClient(client);
-    await database`
+  it.each([false, true])(
+    'allows Lieju generation without optional evidence (regional=%s)',
+    async (regional) => {
+      const database = requireClient(client);
+      if (regional)
+        await database`INSERT INTO platform_account_content_policies
+      (account_id,tenant_id,workspace_id,platform_code,regional_mode_enabled,created_by,updated_by)
+      VALUES (${LIEJU_ACCOUNT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'lieju',true,${USER_ID}::uuid,${USER_ID}::uuid)`;
+      await database`
       DELETE FROM source_chunks
       WHERE tenant_id=${TENANT_ID}::uuid AND source_document_id=${CERTIFICATE_SOURCE_ID}::uuid
     `;
-    await database`
+      await database`
       DELETE FROM source_documents
       WHERE tenant_id=${TENANT_ID}::uuid AND id=${CERTIFICATE_SOURCE_ID}::uuid
     `;
-    const requests: DailyCitationRequest[] = [];
-    const scheduler = new BrowserPlatformDailyScheduler(
-      database,
-      {
-        qualityModelKey: 'deepseek-v4-pro',
-        qualityPromptVersionId: QUALITY_PROMPT_ID,
-        qualitySkillVersion: '1.0.0',
-        rewriteModelKey: 'deepseek-v4-pro',
-        writerPromptVersionId: WRITER_PROMPT_ID,
-        writerSkillVersion: '1.0.0',
-      },
-      { tickMs: 30_000 },
-      {
-        retrieve: (input) => {
-          requests.push(input);
-          return Promise.resolve({
-            citations: [
-              { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
-            ],
-            contextHash: sha256(`context:${input.platformCode}`),
-            degraded: false,
-            queryHash: sha256(`query:${input.title}`),
-          });
+      const requests: DailyCitationRequest[] = [];
+      const scheduler = new BrowserPlatformDailyScheduler(
+        database,
+        {
+          qualityModelKey: 'deepseek-v4-pro',
+          qualityPromptVersionId: QUALITY_PROMPT_ID,
+          qualitySkillVersion: '1.0.0',
+          rewriteModelKey: 'deepseek-v4-pro',
+          writerPromptVersionId: WRITER_PROMPT_ID,
+          writerSkillVersion: '1.0.0',
         },
-      },
-    );
+        { tickMs: 30_000 },
+        {
+          retrieve: (input) => {
+            requests.push(input);
+            return Promise.resolve({
+              citations: [
+                { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
+              ],
+              contextHash: sha256(`context:${input.platformCode}`),
+              degraded: false,
+              queryHash: sha256(`query:${input.title}`),
+            });
+          },
+        },
+      );
 
-    await scheduler.tick();
+      await scheduler.tick();
 
-    expect(requests.map((request) => request.platformCode).sort()).toEqual(['lieju', 'sohu']);
-    expect(requests.every((request) => request.authoritySourceIds?.length === 0)).toBe(true);
-    expect(
-      await database<{ hasEnterpriseEvidence: boolean; platformCode: string }[]>`
+      expect(requests.map((request) => request.platformCode).sort()).toEqual(['lieju', 'sohu']);
+      expect(requests.every((request) => request.authoritySourceIds?.length === 0)).toBe(true);
+      expect(
+        await database<{ hasEnterpriseEvidence: boolean; platformCode: string }[]>`
         SELECT
           event.payload_json->'data'->'variant_runs'->0->>'platform_code' AS "platformCode",
           event.payload_json->'data'->'writer_input'->'brief'->'constraints'
@@ -348,23 +354,53 @@ describe('browser-platform daily candidate retrieval', () => {
           AND event.event_type='content.package.generation_requested.v1'
         ORDER BY "platformCode"
       `,
-    ).toEqual([
-      { hasEnterpriseEvidence: false, platformCode: 'lieju' },
-      { hasEnterpriseEvidence: false, platformCode: 'sohu' },
-    ]);
-  });
+      ).toEqual([
+        { hasEnterpriseEvidence: false, platformCode: 'lieju' },
+        { hasEnterpriseEvidence: false, platformCode: 'sohu' },
+      ]);
+      if (regional) {
+        await database`UPDATE browser_platform_automation_policies SET daily_candidate_limit=3
+          WHERE id=${LIEJU_POLICY_ID}::uuid`;
+        await database`UPDATE content_variants SET status='generation_failed'
+          WHERE id IN (SELECT variant_id FROM browser_platform_daily_batch_items
+            WHERE batch_id IN (SELECT id FROM browser_platform_daily_batches
+              WHERE policy_id=${LIEJU_POLICY_ID}::uuid))`;
+        await scheduler.tick();
+        const slots =
+          await database`SELECT i.regional_slot,i.status FROM browser_platform_daily_batch_items i
+          JOIN browser_platform_daily_batches b ON b.id=i.batch_id
+          WHERE b.policy_id=${LIEJU_POLICY_ID}::uuid ORDER BY i.candidate_no`;
+        expect(slots.map((row) => row.regional_slot)).toEqual([1, 1]);
+        expect(slots[0].status).toBe('retired');
+        expect(
+          (
+            await database`SELECT regional_cursor FROM platform_account_content_policies
+          WHERE account_id=${LIEJU_ACCOUNT_ID}::uuid`
+          )[0].regional_cursor,
+        ).toBe(1);
+        await database`INSERT INTO browser_platform_daily_batches(tenant_id,policy_id,business_date)
+          SELECT tenant_id,policy_id,business_date+1 FROM browser_platform_daily_batches
+          WHERE policy_id=${LIEJU_POLICY_ID}::uuid`;
+        const plans = await database`SELECT districts FROM regional_daily_plans
+          WHERE account_id=${LIEJU_ACCOUNT_ID}::uuid ORDER BY business_date`;
+        expect(plans.map((row) => row.districts)).toEqual([['越秀'], ['海珠']]);
+      }
+    },
+  );
 
-  it('reserves distinct company-level Douyin topics and freezes each account strategy', async () => {
-    const database = requireClient(client);
-    await database`
+  it.each([false, true])(
+    'reserves company-level Douyin topics and independent account regions (regional=%s)',
+    async (regional) => {
+      const database = requireClient(client);
+      await database`
       UPDATE browser_platform_automation_policies SET enabled=false,daily_enabled=false
       WHERE tenant_id=${TENANT_ID}::uuid
     `;
-    await database`
+      await database`
       UPDATE keywords SET platform_scope=ARRAY['sohu','lieju','douyin']::varchar[]
       WHERE id=${KEYWORD_ID}::uuid AND tenant_id=${TENANT_ID}::uuid
     `;
-    await database`
+      await database`
       INSERT INTO platform_rule_versions(
         id,platform_code,version,rules_json,content_hash,status,created_by,published_at
       ) VALUES(
@@ -373,7 +409,7 @@ describe('browser-platform daily candidate retrieval', () => {
         ${'d'.repeat(64)},'published',${USER_ID}::uuid,now()
       )
     `;
-    await database`
+      await database`
       INSERT INTO platform_accounts(
         id,tenant_id,workspace_id,platform_code,provider_account_id,display_name,
         capabilities_json,publish_mode,status,timezone
@@ -389,7 +425,7 @@ describe('browser-platform daily candidate retrieval', () => {
           'api','active','Asia/Shanghai'
         )
     `;
-    await database`
+      await database`
       INSERT INTO browser_platform_automation_policies(
         id,tenant_id,workspace_id,project_id,account_id,platform_code,
         enabled,daily_enabled,daily_target_count,daily_candidate_limit,
@@ -411,50 +447,56 @@ describe('browser-platform daily candidate retrieval', () => {
           ARRAY['设备搬迁'],ARRAY['广州'],ARRAY['工厂设备搬迁'],${USER_ID}::uuid
         )
     `;
-    const requests: DailyCitationRequest[] = [];
-    const scheduler = new BrowserPlatformDailyScheduler(
-      database,
-      {
-        draftModelKey: 'deepseek-v4-flash',
-        qualityModelKey: 'deepseek-v4-pro',
-        qualityPromptVersionId: QUALITY_PROMPT_ID,
-        qualitySkillVersion: '1.0.0',
-        rewriteModelKey: 'deepseek-v4-pro',
-        writerPromptVersionId: WRITER_PROMPT_ID,
-        writerSkillVersion: '1.0.0',
-      },
-      { tickMs: 30_000 },
-      {
-        retrieve: (input) => {
-          requests.push(input);
-          return Promise.resolve({
-            citations: [
-              { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
-            ],
-            contextHash: sha256(`context:${input.title}`),
-            degraded: false,
-            queryHash: sha256(`query:${input.title}`),
-          });
+      if (regional)
+        for (const accountId of [DOUYIN_ACCOUNT_ONE_ID, DOUYIN_ACCOUNT_TWO_ID]) {
+          await database`INSERT INTO platform_account_content_policies
+        (account_id,tenant_id,workspace_id,platform_code,regional_mode_enabled,created_by,updated_by)
+        VALUES (${accountId}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'douyin',true,${USER_ID}::uuid,${USER_ID}::uuid)`;
+        }
+      const requests: DailyCitationRequest[] = [];
+      const scheduler = new BrowserPlatformDailyScheduler(
+        database,
+        {
+          draftModelKey: 'deepseek-v4-flash',
+          qualityModelKey: 'deepseek-v4-pro',
+          qualityPromptVersionId: QUALITY_PROMPT_ID,
+          qualitySkillVersion: '1.0.0',
+          rewriteModelKey: 'deepseek-v4-pro',
+          writerPromptVersionId: WRITER_PROMPT_ID,
+          writerSkillVersion: '1.0.0',
         },
-      },
-    );
+        { tickMs: 30_000 },
+        {
+          retrieve: (input) => {
+            requests.push(input);
+            return Promise.resolve({
+              citations: [
+                { chunkId: CHUNK_ID, quoteText: '企业可核验服务资料', sourceId: SOURCE_ID },
+              ],
+              contextHash: sha256(`context:${input.title}`),
+              degraded: false,
+              queryHash: sha256(`query:${input.title}`),
+            });
+          },
+        },
+      );
 
-    await scheduler.tick();
+      await scheduler.tick();
 
-    expect(requests).toHaveLength(2);
-    const reservations = await database<
-      { accountId: string; keyword: string; searchIntent: string }[]
-    >`
+      expect(requests).toHaveLength(2);
+      const reservations = await database<
+        { accountId: string; keyword: string; searchIntent: string }[]
+      >`
       SELECT account_id AS "accountId",keyword_term::text AS keyword,
         search_intent AS "searchIntent"
       FROM douyin_topic_reservations
       WHERE tenant_id=${TENANT_ID}::uuid AND workspace_id=${WORKSPACE_ID}::uuid
       ORDER BY account_id
     `;
-    expect(reservations).toHaveLength(2);
-    expect(new Set(reservations.map((row) => `${row.keyword}:${row.searchIntent}`)).size).toBe(2);
-    await expect(
-      database`
+      expect(reservations).toHaveLength(2);
+      expect(new Set(reservations.map((row) => `${row.keyword}:${row.searchIntent}`)).size).toBe(2);
+      await expect(
+        database`
         INSERT INTO douyin_topic_reservations (
           tenant_id,workspace_id,policy_id,account_id,batch_id,business_date,
           keyword_term,search_intent
@@ -465,22 +507,22 @@ describe('browser-platform daily candidate retrieval', () => {
         WHERE tenant_id=${TENANT_ID}::uuid
         ORDER BY created_at,id LIMIT 1
       `,
-    ).rejects.toThrow(/douyin_topic_reservations_company_topic_uq/u);
-    await expect(
-      database`
+      ).rejects.toThrow(/douyin_topic_reservations_company_topic_uq/u);
+      await expect(
+        database`
         UPDATE browser_platform_automation_policies SET topic_pool=ARRAY[]::text[]
         WHERE id=${DOUYIN_POLICY_ONE_ID}::uuid AND tenant_id=${TENANT_ID}::uuid
       `,
-    ).rejects.toThrow(/browser_platform_automation_policies_douyin_strategy_check/u);
-    const frozenStrategies = await database<
-      {
-        accountId: string;
-        contentVoice: string;
-        positioning: string;
-        selectedTopic: string;
-        strategyHasContentVoice: boolean;
-      }[]
-    >`
+      ).rejects.toThrow(/browser_platform_automation_policies_douyin_strategy_check/u);
+      const frozenStrategies = await database<
+        {
+          accountId: string;
+          contentVoice: string;
+          positioning: string;
+          selectedTopic: string;
+          strategyHasContentVoice: boolean;
+        }[]
+      >`
       SELECT
         event.payload_json->'data'->'writer_input'->'brief'->'constraints'
           ->'target_accounts_by_code'->'douyin'->>'account_id' AS "accountId",
@@ -497,23 +539,24 @@ describe('browser-platform daily candidate retrieval', () => {
         AND event.event_type='content.package.generation_requested.v1'
       ORDER BY "accountId"
     `;
-    expect(frozenStrategies).toEqual([
-      {
-        accountId: DOUYIN_ACCOUNT_ONE_ID,
-        contentVoice: 'enterprise_official',
-        positioning: '服务广州家庭客户',
-        selectedTopic: '高层小区家庭搬迁',
-        strategyHasContentVoice: false,
-      },
-      {
-        accountId: DOUYIN_ACCOUNT_TWO_ID,
-        contentVoice: 'frontline_mover',
-        positioning: '服务广州企业客户',
-        selectedTopic: '工厂设备搬迁',
-        strategyHasContentVoice: false,
-      },
-    ]);
-  });
+      expect(frozenStrategies).toEqual([
+        {
+          accountId: DOUYIN_ACCOUNT_ONE_ID,
+          contentVoice: 'enterprise_official',
+          positioning: '服务广州家庭客户',
+          selectedTopic: regional ? '越秀高层小区家庭搬迁' : '高层小区家庭搬迁',
+          strategyHasContentVoice: false,
+        },
+        {
+          accountId: DOUYIN_ACCOUNT_TWO_ID,
+          contentVoice: 'frontline_mover',
+          positioning: '服务广州企业客户',
+          selectedTopic: regional ? '越秀工厂设备搬迁' : '工厂设备搬迁',
+          strategyHasContentVoice: false,
+        },
+      ]);
+    },
+  );
 });
 
 async function seed(database: Sql): Promise<void> {

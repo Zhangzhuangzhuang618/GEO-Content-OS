@@ -15,6 +15,7 @@ import type { PlatformAccountAudit, PlatformAccountScope } from './platform-acco
 interface PolicyRow {
   readonly contentStyleOverride: ContentStyle | null;
   readonly batchContentStyle?: ContentStyle | null;
+  readonly regionalDistricts?: string[] | null;
   readonly batchCompanyNames?: string[];
   readonly accountId: string;
   readonly batchAttemptNo: number | null;
@@ -100,6 +101,7 @@ export class OfficialSiteAutomationPolicyService {
         today.attempt_no AS "batchAttemptNo",
         today.content_style AS "batchContentStyle",
         today.company_names AS "batchCompanyNames",
+        today.regional_districts AS "regionalDistricts",
         today.business_date AS "batchBusinessDate", today.status AS "batchStatus",
         today.version AS "batchVersion",
         today.last_error_message AS "batchLastErrorMessage",
@@ -117,6 +119,7 @@ export class OfficialSiteAutomationPolicyService {
         SELECT
           batch.attempt_no, batch.business_date, batch.status, batch.version,
           batch.editorial_policy_snapshot_json->>'style' AS content_style,
+          (SELECT districts FROM regional_daily_plans WHERE id=batch.regional_plan_id AND tenant_id=batch.tenant_id) AS regional_districts,
           jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS company_names,
           COALESCE(batch.last_error_json->>'message', batch.last_error_json->>'code')
             AS last_error_message,
@@ -564,6 +567,7 @@ export class OfficialSiteAutomationPolicyService {
         policy.project_id AS "projectId",policy.account_id AS "accountId",policy.enabled,
         policy.content_style_override AS "contentStyleOverride",
         batch.editorial_policy_snapshot_json->>'style' AS "batchContentStyle",
+        (SELECT districts FROM regional_daily_plans WHERE id=batch.regional_plan_id AND tenant_id=batch.tenant_id) AS "regionalDistricts",
         jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS "batchCompanyNames",
         policy.daily_enabled AS "dailyEnabled",
         policy.daily_target_count AS "dailyTargetCount",
@@ -800,6 +804,7 @@ export class OfficialSiteAutomationPolicyService {
         policy.project_id AS "projectId",policy.account_id AS "accountId",policy.enabled,
         policy.content_style_override AS "contentStyleOverride",
         batch.editorial_policy_snapshot_json->>'style' AS "batchContentStyle",
+        (SELECT districts FROM regional_daily_plans WHERE id=batch.regional_plan_id AND tenant_id=batch.tenant_id) AS "regionalDistricts",
         jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS "batchCompanyNames",
         policy.daily_enabled AS "dailyEnabled",
         policy.daily_target_count AS "dailyTargetCount",
@@ -983,6 +988,7 @@ function mapPolicy(row: PolicyRow): OfficialSiteAutomationPolicyView {
             attempt_no: row.batchAttemptNo ?? 1,
             content_style: row.batchContentStyle ?? 'standard',
             recommended_company_names: row.batchCompanyNames ?? [],
+            regional_districts: row.regionalDistricts ?? [],
             attempted_count: row.attemptedCount ?? 0,
             business_date: dateOnly(row.batchBusinessDate),
             in_progress_count: row.inProgressCount ?? 0,

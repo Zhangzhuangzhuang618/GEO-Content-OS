@@ -16,6 +16,12 @@ import { supportsDouyinPriceComparison } from './douyin-price-evidence.js';
 import { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 import type { JsonObject } from './generation.types.js';
 import { dailyEditorialContext } from './daily-editorial-context.js';
+import {
+  nextRegionalSlot,
+  regionalInstructions,
+  regionalKeyword,
+  supportsGuangzhouTopic,
+} from './regional-daily-plan.js';
 
 type Platform = 'douyin' | 'lieju' | 'sohu';
 
@@ -197,7 +203,9 @@ export class BrowserPlatformDailyScheduler {
           policy.content_voice AS "contentVoice",
           policy.service_scopes AS "serviceScopes",policy.target_regions AS "targetRegions",
           policy.topic_pool AS "topicPool",
-          policy.daily_target_count AS "targetCount",
+          COALESCE((SELECT cardinality(plan.districts) FROM regional_daily_plans plan
+            WHERE plan.id=batch.regional_plan_id AND plan.tenant_id=batch.tenant_id),
+            policy.daily_target_count) AS "targetCount",
           policy.daily_candidate_limit AS "candidateLimit"
         FROM browser_platform_daily_batches AS batch
         JOIN browser_platform_automation_policies AS policy
@@ -484,10 +492,42 @@ async function createCandidate(
       error instanceof Error ? error.message : '推荐企业资料不可用',
     );
   }
+  const regional = await nextRegionalSlot(transaction, batch, batch.platformCode);
+  if (regional && editorial.context)
+    editorial.context = {
+      ...editorial.context,
+      target_district: regional.district as NonNullable<typeof editorial.context.target_district>,
+    };
+  const regionalBatch = regional
+    ? {
+        ...batch,
+        targetRegions: [regional.district],
+        topicPool: batch.topicPool
+          .filter((topic) => supportsGuangzhouTopic(topic))
+          .map((topic) => regionalKeyword(topic, regional.district)),
+      }
+    : batch;
+  const regionalKeywords = regional
+    ? seed.keywords
+        .filter((keyword) => supportsGuangzhouTopic(keyword.term, keyword.region))
+        .map((keyword) => ({
+          ...keyword,
+          term: regionalKeyword(keyword.term, regional.district),
+          region: regional.district,
+          scene: keyword.scene ? regionalKeyword(keyword.scene, regional.district) : null,
+        }))
+    : seed.keywords;
+  if (
+    !regionalKeywords.length ||
+    (batch.platformCode === 'douyin' && !regionalBatch.topicPool.length)
+  )
+    throw new DailyTopicCapacityExhaustedError(
+      '区域模式缺少适用于广州的关键词或主题，未改写外市关键词',
+    );
   const selection = await selectDailyCandidate(
     transaction,
-    batch,
-    seed.keywords,
+    regionalBatch,
+    regionalKeywords,
     startingSequenceNo,
   );
   const { editorialSequenceNo, keyword } = selection;
@@ -571,6 +611,7 @@ async function createCandidate(
         }
       : {}),
     additional_instructions: [
+      regionalInstructions(regional, keyword.term),
       `这是 ${batch.businessDate} ${batch.platformCode} 自动批次的第 ${editorialSequenceNo} 个当日编辑候选。`,
       `围绕“${keyword.term}”的“${angle.label}”展开。`,
       ...(batch.platformCode === 'douyin'
@@ -755,10 +796,10 @@ async function createCandidate(
   const automationRunId = required(automations[0]?.id, 'Automation run insert failed');
   await transaction`
     INSERT INTO browser_platform_daily_batch_items (
-      tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,variant_id,status
+      tenant_id,batch_id,candidate_no,automation_run_id,brief_id,package_id,variant_id,status,regional_slot
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.id}::uuid,${candidateNo},${automationRunId}::uuid,
-      ${briefId}::uuid,${packageId}::uuid,${variantId}::uuid,'generating'
+      ${briefId}::uuid,${packageId}::uuid,${variantId}::uuid,'generating',${regional?.slot ?? null}
     )
   `;
   const event = DomainEventEnvelopeSchema.parse({

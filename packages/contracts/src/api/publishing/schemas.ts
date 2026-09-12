@@ -129,6 +129,7 @@ export const OfficialSiteDailyBatchCancelRequestSchema = z
   .strict();
 export const OfficialSiteDailyBatchSummarySchema = z
   .object({
+    regional_districts: z.array(z.string()).max(10).optional(),
     recommended_company_names: z.array(z.string()).max(6).optional(),
     content_style: ContentStyleSchema.optional(),
     attempt_no: z.number().int().positive(),
@@ -562,6 +563,7 @@ export const BaijiahaoAutomationPolicyViewSchema = z
   });
 export const BrowserPlatformDailyBatchSummarySchema = z
   .object({
+    regional_districts: z.array(z.string()).max(10).optional(),
     recommended_company_names: z.array(z.string()).max(6).optional(),
     content_style: ContentStyleSchema.optional(),
     attempt_no: z.number().int().positive(),

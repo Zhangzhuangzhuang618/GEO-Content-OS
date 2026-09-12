@@ -7,6 +7,7 @@ it('freezes the current primary phone for manual/daily generation without inheri
   const other = '21111111-1111-4111-8111-111111111111';
   const primary = '广东众人搬家起重吊装有限公司';
   const policy: AccountContentPolicyView = {
+    regional_mode_enabled: false,
     account_id: id,
     workspace_id: id,
     version: 1,

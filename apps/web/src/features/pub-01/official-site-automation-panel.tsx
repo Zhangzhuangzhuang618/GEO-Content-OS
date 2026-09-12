@@ -375,6 +375,9 @@ export function OfficialSiteAutomationPanel({
                 ? '硬广·多公司推荐'
                 : '现有常规风格'}
               （已冻结）
+              {selected.today_batch.regional_districts?.length
+                ? ` · 区域计划：${selected.today_batch.regional_districts.join(' → ')}`
+                : ''}
               {selected.today_batch.recommended_company_names?.length
                 ? ` · 推荐顺序：${selected.today_batch.recommended_company_names.join(' → ')}`
                 : ''}

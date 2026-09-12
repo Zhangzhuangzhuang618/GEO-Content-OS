@@ -695,7 +695,7 @@ test.describe('AC-001..AC-016 system acceptance', () => {
         SELECT count(*)::integer AS count FROM pg_tables
         WHERE schemaname='public' AND tablename<>'__drizzle_migrations'
       `;
-      expect(tables[0]?.count).toBe(94);
+      expect(tables[0]?.count).toBe(95);
       const editorialTables = await database<{ name: string | null }[]>`
         SELECT to_regclass('public.platform_account_content_policies')::text AS name
       `;

@@ -11,6 +11,7 @@ import {
 } from './editorial-policy.js';
 
 const policy: AccountContentPolicyView = {
+  regional_mode_enabled: false,
   account_id: '11111111-1111-4111-8111-111111111111',
   default_style: 'company_recommendation',
   platform_code: 'douyin',

@@ -15,6 +15,7 @@ import type { PlatformAccountAudit, PlatformAccountScope } from './platform-acco
 type Platform = 'douyin' | 'lieju' | 'sohu';
 
 interface PolicyRow {
+  readonly regionalDistricts?: string[] | null;
   readonly contentStyleOverride: ContentStyle | null;
   readonly batchContentStyle: ContentStyle | null;
   readonly batchCompanyNames: string[] | null;
@@ -427,6 +428,7 @@ export class BrowserPlatformAutomationPolicyService {
         policy.daily_generation_time::text AS "dailyGenerationTime",
         policy.content_style_override AS "contentStyleOverride",
         batch.editorial_policy_snapshot_json->>'style' AS "batchContentStyle",
+        (SELECT districts FROM regional_daily_plans WHERE id=batch.regional_plan_id AND tenant_id=batch.tenant_id) AS "regionalDistricts",
         jsonb_path_query_array(batch.editorial_policy_snapshot_json, '$.companies[*].legal_name') AS "batchCompanyNames",
         policy.daily_schedule_times::text[] AS "dailyScheduleTimes",
         policy.version,policy.updated_at AS "updatedAt",
@@ -589,6 +591,7 @@ function mapPolicy(row: PolicyRow): BrowserPlatformAutomationPolicyView {
                   recommended_company_names: row.batchCompanyNames ?? [],
                 }),
             attempt_no: row.batchAttemptNo ?? 1,
+            regional_districts: row.regionalDistricts ?? [],
             attempted_count: row.attemptedCount ?? 0,
             business_date: new Date(row.batchBusinessDate).toISOString().slice(0, 10),
             in_progress_count: row.inProgressCount ?? 0,

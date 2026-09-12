@@ -89,10 +89,12 @@ describe('platform accounts', () => {
     expect(await policies.get(SCOPE, account.id)).toMatchObject({
       version: 0,
       default_style: 'standard',
+      regional_mode_enabled: false,
       recommended_companies: [],
     });
     const input = {
       default_style: 'company_recommendation' as const,
+      regional_mode_enabled: true,
       expected_version: 0,
       recommended_companies: [],
     };
@@ -101,7 +103,11 @@ describe('platform accounts', () => {
         requestId: 'editorial-save',
       }),
     );
-    expect(after).toMatchObject({ version: 1, default_style: 'company_recommendation' });
+    expect(after).toMatchObject({
+      version: 1,
+      default_style: 'company_recommendation',
+      regional_mode_enabled: true,
+    });
     await expect(
       database.begin((transaction) =>
         policies.saveInTransaction(transaction, SCOPE, account.id, input, {

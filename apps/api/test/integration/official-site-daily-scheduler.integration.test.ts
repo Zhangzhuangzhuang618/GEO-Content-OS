@@ -50,32 +50,122 @@ describe('official-site daily ten-article scheduler', () => {
     await container?.stop();
   });
 
-  it('runs without optional enterprise evidence, replaces a failed candidate, and schedules exactly ten qualified articles', async () => {
+  it('freezes eleven-district rotation across dates and reuses the same daily plan on retries', async () => {
     const database = requireClient(client);
-    const scheduler = createScheduler(database);
-
-    await scheduler.tick();
-    expect(await itemCounts(database)).toEqual({ generating: 0, retired: 0, total: 0 });
+    await database`INSERT INTO platform_account_content_policies
+      (account_id,tenant_id,workspace_id,platform_code,regional_mode_enabled,created_by,updated_by)
+      VALUES (${ACCOUNT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'official_site',true,${USER_ID}::uuid,${USER_ID}::uuid)`;
+    await database`INSERT INTO official_site_daily_batches(tenant_id,policy_id,business_date)
+      VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-12')`;
+    const [first] =
+      await database`SELECT * FROM regional_daily_plans WHERE account_id=${ACCOUNT_ID}::uuid`;
+    expect(first.districts).toEqual([
+      '越秀',
+      '海珠',
+      '荔湾',
+      '天河',
+      '白云',
+      '黄埔',
+      '番禺',
+      '花都',
+      '南沙',
+      '从化',
+    ]);
+    await database`INSERT INTO official_site_daily_batches(tenant_id,policy_id,business_date)
+      VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-12') ON CONFLICT DO NOTHING`;
     expect(
-      await database<{ status: string; errorCode: string | null }[]>`
+      (
+        await database`SELECT regional_cursor FROM platform_account_content_policies WHERE account_id=${ACCOUNT_ID}::uuid`
+      )[0].regional_cursor,
+    ).toBe(10);
+    await database`UPDATE official_site_daily_batches SET status='attention_required' WHERE policy_id=${POLICY_ID}::uuid`;
+    await database`INSERT INTO official_site_daily_batches(tenant_id,policy_id,business_date,attempt_no)
+      VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-12',2)`;
+    expect((await database`SELECT count(*)::int n FROM regional_daily_plans`)[0].n).toBe(1);
+    await database`INSERT INTO official_site_daily_batches(tenant_id,policy_id,business_date)
+      VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-13')`;
+    expect(
+      (
+        await database`SELECT districts FROM regional_daily_plans WHERE business_date='2026-09-13'`
+      )[0].districts,
+    ).toEqual(['增城', '越秀', '海珠', '荔湾', '天河', '白云', '黄埔', '番禺', '花都', '南沙']);
+    await database`UPDATE platform_account_content_policies SET regional_mode_enabled=false WHERE account_id=${ACCOUNT_ID}::uuid`;
+    await database`INSERT INTO official_site_daily_batches(tenant_id,policy_id,business_date)
+      VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-14')`;
+    expect(
+      (
+        await database`SELECT regional_plan_id FROM official_site_daily_batches WHERE business_date='2026-09-14'`
+      )[0].regional_plan_id,
+    ).toBeNull();
+    await database`UPDATE platform_account_content_policies SET regional_mode_enabled=true WHERE account_id=${ACCOUNT_ID}::uuid`;
+    await database`INSERT INTO official_site_daily_batches(tenant_id,policy_id,business_date)
+      VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-15')`;
+    expect(
+      (
+        await database`SELECT districts FROM regional_daily_plans WHERE business_date='2026-09-15'`
+      )[0].districts[0],
+    ).toBe('从化');
+  });
+
+  it('serializes concurrent inserts and rejects changes to frozen plans', async () => {
+    const database = requireClient(client);
+    await database`INSERT INTO platform_account_content_policies
+      (account_id,tenant_id,workspace_id,platform_code,regional_mode_enabled,created_by,updated_by)
+      VALUES (${ACCOUNT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'official_site',true,${USER_ID}::uuid,${USER_ID}::uuid)`;
+    await Promise.all(
+      [1, 2].map(
+        () => database`INSERT INTO official_site_daily_batches
+      (tenant_id,policy_id,business_date) VALUES (${TENANT_ID}::uuid,${POLICY_ID}::uuid,'2026-09-12')
+      ON CONFLICT DO NOTHING`,
+      ),
+    );
+    expect((await database`SELECT count(*)::int n FROM regional_daily_plans`)[0].n).toBe(1);
+    expect(
+      (
+        await database`SELECT regional_cursor FROM platform_account_content_policies
+      WHERE account_id=${ACCOUNT_ID}::uuid`
+      )[0].regional_cursor,
+    ).toBe(10);
+    await expect(database`UPDATE regional_daily_plans SET districts=ARRAY['增城']`).rejects.toThrow(
+      'immutable',
+    );
+    await expect(
+      database`UPDATE official_site_daily_batches SET regional_plan_id=NULL`,
+    ).rejects.toThrow('immutable');
+  });
+
+  it.each([false, true])(
+    'replaces a failed candidate and schedules ten articles (regional=%s)',
+    async (regional) => {
+      const database = requireClient(client);
+      if (regional)
+        await database`INSERT INTO platform_account_content_policies
+      (account_id,tenant_id,workspace_id,platform_code,regional_mode_enabled,created_by,updated_by)
+      VALUES (${ACCOUNT_ID}::uuid,${TENANT_ID}::uuid,${WORKSPACE_ID}::uuid,'official_site',true,${USER_ID}::uuid,${USER_ID}::uuid)`;
+      const scheduler = createScheduler(database);
+
+      await scheduler.tick();
+      expect(await itemCounts(database)).toEqual({ generating: 0, retired: 0, total: 0 });
+      expect(
+        await database<{ status: string; errorCode: string | null }[]>`
         SELECT status,last_error_json->>'code' AS "errorCode"
         FROM official_site_daily_batches
         WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
       `,
-    ).toEqual([
-      {
-        errorCode: 'PUBLISHED_BRAND_PROFILE_REQUIRED',
-        status: 'attention_required',
-      },
-    ]);
+      ).toEqual([
+        {
+          errorCode: 'PUBLISHED_BRAND_PROFILE_REQUIRED',
+          status: 'attention_required',
+        },
+      ]);
 
-    await seedBrand(database);
-    await scheduler.tick();
-    const initial = await itemCounts(database);
-    expect(initial).toEqual({ generating: 3, retired: 0, total: 3 });
-    expect(await generationEventCount(database)).toBe(3);
-    expect(
-      await database<{ cta: string | null; hasEnterpriseEvidence: boolean }[]>`
+      await seedBrand(database);
+      await scheduler.tick();
+      const initial = await itemCounts(database);
+      expect(initial).toEqual({ generating: 3, retired: 0, total: 3 });
+      expect(await generationEventCount(database)).toBe(3);
+      expect(
+        await database<{ cta: string | null; hasEnterpriseEvidence: boolean }[]>`
         SELECT event.payload_json->'data'->'writer_input'->'brief'->'constraints'
           ? 'enterprise_evidence' AS "hasEnterpriseEvidence",
           event.payload_json->'data'->'writer_input'->'brief'->'constraints'
@@ -85,83 +175,94 @@ describe('official-site daily ten-article scheduler', () => {
           AND event.event_type='content.package.generation_requested.v1'
         ORDER BY event.created_at,event.id
       `,
-    ).toEqual([
-      { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
-      { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
-      { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
-    ]);
+      ).toEqual([
+        { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
+        { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
+        { cta: '联系企业获取搬家方案', hasEnterpriseEvidence: false },
+      ]);
 
-    const failed = await database<{ variantId: string }[]>`
+      const failed = await database<{ variantId: string }[]>`
       SELECT variant_id AS "variantId"
       FROM official_site_daily_batch_items
       WHERE tenant_id=${TENANT_ID}::uuid
       ORDER BY candidate_no
       LIMIT 1
     `;
-    await database`
+      await database`
       UPDATE content_variants SET status='generation_failed'
       WHERE id=${required(failed[0]?.variantId)}::uuid
     `;
 
-    await scheduler.tick();
-    expect(await itemCounts(database)).toEqual({ generating: 3, retired: 1, total: 4 });
-    expect(await generationEventCount(database)).toBe(4);
+      await scheduler.tick();
+      expect(await itemCounts(database)).toEqual({ generating: 3, retired: 1, total: 4 });
+      expect(await generationEventCount(database)).toBe(4);
+      if (regional) {
+        const slots =
+          await database`SELECT regional_slot,title FROM official_site_daily_batch_items ORDER BY candidate_no`;
+        expect(slots.map((row) => row.regional_slot)).toEqual([1, 2, 3, 1]);
+        expect(slots[0].title).toContain('越秀');
+        expect(slots[3].title).toContain('越秀');
+        expect(
+          (await database`SELECT term FROM keywords WHERE id=${KEYWORD_ID}::uuid`)[0].term,
+        ).toBe('广州搬家公司');
+      }
 
-    while (true) {
-      const candidates = await database<
-        { packageId: string; variantId: string; candidateNo: number }[]
-      >`
+      while (true) {
+        const candidates = await database<
+          { packageId: string; variantId: string; candidateNo: number }[]
+        >`
         SELECT package_id AS "packageId",variant_id AS "variantId",
           candidate_no AS "candidateNo"
         FROM official_site_daily_batch_items
         WHERE tenant_id=${TENANT_ID}::uuid AND status='generating'
         ORDER BY candidate_no
       `;
-      expect(candidates.length).toBeGreaterThan(0);
-      expect(candidates.length).toBeLessThanOrEqual(3);
-      for (const candidate of candidates) {
-        await qualify(database, candidate);
+        expect(candidates.length).toBeGreaterThan(0);
+        expect(candidates.length).toBeLessThanOrEqual(3);
+        for (const candidate of candidates) {
+          await qualify(database, candidate);
+        }
+        if ((await qualifiedCount(database)) >= 10) break;
+        await scheduler.tick();
       }
-      if ((await qualifiedCount(database)) >= 10) break;
-      await scheduler.tick();
-    }
 
-    const batches = await database<{ businessDate: string }[]>`
+      const batches = await database<{ businessDate: string }[]>`
       SELECT business_date::text AS "businessDate"
       FROM official_site_daily_batches
       WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
     `;
-    const businessDate = required(batches[0]?.businessDate);
-    await scheduler.tick(new Date(`${businessDate}T00:00:00+08:00`));
+      const businessDate = required(batches[0]?.businessDate);
+      await scheduler.tick(new Date(`${businessDate}T00:00:00+08:00`));
 
-    const jobs = await database<{ idempotencyKey: string; scheduledAt: Date; status: string }[]>`
+      const jobs = await database<{ idempotencyKey: string; scheduledAt: Date; status: string }[]>`
       SELECT idempotency_key AS "idempotencyKey",scheduled_at AS "scheduledAt",status
       FROM publish_jobs
       WHERE tenant_id=${TENANT_ID}::uuid AND origin='official_site_automation'
       ORDER BY scheduled_at,id
     `;
-    expect(jobs).toHaveLength(10);
-    expect(new Set(jobs.map(({ idempotencyKey }) => idempotencyKey)).size).toBe(10);
-    expect(jobs.map(({ scheduledAt }) => scheduledAt.toISOString().slice(11, 16))).toEqual([
-      '00:00',
-      '01:30',
-      '03:00',
-      '04:30',
-      '06:00',
-      '07:30',
-      '09:00',
-      '10:30',
-      '12:00',
-      '13:30',
-    ]);
-    expect(new Set(jobs.map(({ status }) => status))).toEqual(new Set(['scheduled']));
-    expect(
-      await database<{ status: string }[]>`
+      expect(jobs).toHaveLength(10);
+      expect(new Set(jobs.map(({ idempotencyKey }) => idempotencyKey)).size).toBe(10);
+      expect(jobs.map(({ scheduledAt }) => scheduledAt.toISOString().slice(11, 16))).toEqual([
+        '00:00',
+        '01:30',
+        '03:00',
+        '04:30',
+        '06:00',
+        '07:30',
+        '09:00',
+        '10:30',
+        '12:00',
+        '13:30',
+      ]);
+      expect(new Set(jobs.map(({ status }) => status))).toEqual(new Set(['scheduled']));
+      expect(
+        await database<{ status: string }[]>`
         SELECT status FROM official_site_daily_batches
         WHERE tenant_id=${TENANT_ID}::uuid AND policy_id=${POLICY_ID}::uuid
       `,
-    ).toEqual([{ status: 'scheduled' }]);
-  });
+      ).toEqual([{ status: 'scheduled' }]);
+    },
+  );
 
   it('schedules partial successes and a restart only fills the remaining daily slot', async () => {
     const database = requireClient(client);

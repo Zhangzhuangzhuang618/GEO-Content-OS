@@ -7,9 +7,39 @@ import { QUALITY_CHECKER_CONTRACT_V1 } from '@geo-content-os/skills/quality-chec
 import type postgres from 'postgres';
 import { describe, expect, it, vi } from 'vitest';
 
-import { RuntimeQualityChecker } from './runtime-quality-checker.js';
+import { RuntimeQualityChecker, regionalTitleIssue } from './runtime-quality-checker.js';
 
 describe('RuntimeQualityChecker', () => {
+  it('requires the frozen district in the title without rejecting company names elsewhere', () => {
+    const input = {
+      editorial_context: {
+        schema_version: 'editorial-context@1',
+        template_version: 'company-recommendation@1',
+        account_id: '11111111-1111-4111-8111-111111111111',
+        platform_code: 'official_site',
+        policy_version: 1,
+        style: 'standard',
+        companies: [],
+        target_district: '增城',
+      },
+      content_version: {
+        content: { title: '广州搬家多少钱', blocks: [{ text: '广州志远搬家服务有限公司' }] },
+      },
+    };
+    expect(regionalTitleIssue(input, 'official_site')?.rule_id).toBe('readability.regional.title');
+    expect(
+      regionalTitleIssue(
+        {
+          ...input,
+          content_version: {
+            content: { title: '增城搬家多少钱', blocks: input.content_version.content.blocks },
+          },
+        },
+        'official_site',
+      ),
+    ).toBeNull();
+    expect(regionalTitleIssue({ ...input, editorial_context: null }, 'official_site')).toBeNull();
+  });
   it('includes subject consistency and unsupported negative inference review for Douyin', async () => {
     const clean = QUALITY_CHECKER_CONTRACT_V1.fewShots[0]!;
     const adapter = new QualityMockAdapter([JSON.stringify(clean.output.data)]);

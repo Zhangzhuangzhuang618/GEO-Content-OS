@@ -9300,6 +9300,22 @@
                                     {
                                       "type": "object",
                                       "properties": {
+                                        "target_district": {
+                                          "type": "string",
+                                          "enum": [
+                                            "越秀",
+                                            "海珠",
+                                            "荔湾",
+                                            "天河",
+                                            "白云",
+                                            "黄埔",
+                                            "番禺",
+                                            "花都",
+                                            "南沙",
+                                            "从化",
+                                            "增城"
+                                          ]
+                                        },
                                         "account_id": {
                                           "type": "string",
                                           "format": "uuid",
@@ -11022,6 +11038,22 @@
                                     {
                                       "type": "object",
                                       "properties": {
+                                        "target_district": {
+                                          "type": "string",
+                                          "enum": [
+                                            "越秀",
+                                            "海珠",
+                                            "荔湾",
+                                            "天河",
+                                            "白云",
+                                            "黄埔",
+                                            "番禺",
+                                            "花都",
+                                            "南沙",
+                                            "从化",
+                                            "增城"
+                                          ]
+                                        },
                                         "account_id": {
                                           "type": "string",
                                           "format": "uuid",
@@ -12220,6 +12252,22 @@
                                     {
                                       "type": "object",
                                       "properties": {
+                                        "target_district": {
+                                          "type": "string",
+                                          "enum": [
+                                            "越秀",
+                                            "海珠",
+                                            "荔湾",
+                                            "天河",
+                                            "白云",
+                                            "黄埔",
+                                            "番禺",
+                                            "花都",
+                                            "南沙",
+                                            "从化",
+                                            "增城"
+                                          ]
+                                        },
                                         "account_id": {
                                           "type": "string",
                                           "format": "uuid",
@@ -13042,6 +13090,22 @@
                                   {
                                     "type": "object",
                                     "properties": {
+                                      "target_district": {
+                                        "type": "string",
+                                        "enum": [
+                                          "越秀",
+                                          "海珠",
+                                          "荔湾",
+                                          "天河",
+                                          "白云",
+                                          "黄埔",
+                                          "番禺",
+                                          "花都",
+                                          "南沙",
+                                          "从化",
+                                          "增城"
+                                        ]
+                                      },
                                       "account_id": {
                                         "type": "string",
                                         "format": "uuid",
@@ -13693,6 +13757,22 @@
                                     {
                                       "type": "object",
                                       "properties": {
+                                        "target_district": {
+                                          "type": "string",
+                                          "enum": [
+                                            "越秀",
+                                            "海珠",
+                                            "荔湾",
+                                            "天河",
+                                            "白云",
+                                            "黄埔",
+                                            "番禺",
+                                            "花都",
+                                            "南沙",
+                                            "从化",
+                                            "增城"
+                                          ]
+                                        },
                                         "account_id": {
                                           "type": "string",
                                           "format": "uuid",
@@ -14515,6 +14595,22 @@
                                   {
                                     "type": "object",
                                     "properties": {
+                                      "target_district": {
+                                        "type": "string",
+                                        "enum": [
+                                          "越秀",
+                                          "海珠",
+                                          "荔湾",
+                                          "天河",
+                                          "白云",
+                                          "黄埔",
+                                          "番禺",
+                                          "花都",
+                                          "南沙",
+                                          "从化",
+                                          "增城"
+                                        ]
+                                      },
                                       "account_id": {
                                         "type": "string",
                                         "format": "uuid",
@@ -15397,6 +15493,22 @@
                                     {
                                       "type": "object",
                                       "properties": {
+                                        "target_district": {
+                                          "type": "string",
+                                          "enum": [
+                                            "越秀",
+                                            "海珠",
+                                            "荔湾",
+                                            "天河",
+                                            "白云",
+                                            "黄埔",
+                                            "番禺",
+                                            "花都",
+                                            "南沙",
+                                            "从化",
+                                            "增城"
+                                          ]
+                                        },
                                         "account_id": {
                                           "type": "string",
                                           "format": "uuid",
@@ -16219,6 +16331,22 @@
                                   {
                                     "type": "object",
                                     "properties": {
+                                      "target_district": {
+                                        "type": "string",
+                                        "enum": [
+                                          "越秀",
+                                          "海珠",
+                                          "荔湾",
+                                          "天河",
+                                          "白云",
+                                          "黄埔",
+                                          "番禺",
+                                          "花都",
+                                          "南沙",
+                                          "从化",
+                                          "增城"
+                                        ]
+                                      },
                                       "account_id": {
                                         "type": "string",
                                         "format": "uuid",
@@ -17373,6 +17501,22 @@
                             {
                               "type": "object",
                               "properties": {
+                                "target_district": {
+                                  "type": "string",
+                                  "enum": [
+                                    "越秀",
+                                    "海珠",
+                                    "荔湾",
+                                    "天河",
+                                    "白云",
+                                    "黄埔",
+                                    "番禺",
+                                    "花都",
+                                    "南沙",
+                                    "从化",
+                                    "增城"
+                                  ]
+                                },
                                 "account_id": {
                                   "type": "string",
                                   "format": "uuid",
@@ -18112,6 +18256,22 @@
                             {
                               "type": "object",
                               "properties": {
+                                "target_district": {
+                                  "type": "string",
+                                  "enum": [
+                                    "越秀",
+                                    "海珠",
+                                    "荔湾",
+                                    "天河",
+                                    "白云",
+                                    "黄埔",
+                                    "番禺",
+                                    "花都",
+                                    "南沙",
+                                    "从化",
+                                    "增城"
+                                  ]
+                                },
                                 "account_id": {
                                   "type": "string",
                                   "format": "uuid",
@@ -30337,6 +30497,11 @@
                               {
                                 "type": "object",
                                 "properties": {
+                                  "regional_districts": {
+                                    "maxItems": 10,
+                                    "type": "array",
+                                    "items": { "type": "string" }
+                                  },
                                   "recommended_company_names": {
                                     "maxItems": 6,
                                     "type": "array",
@@ -30854,6 +31019,11 @@
                             {
                               "type": "object",
                               "properties": {
+                                "regional_districts": {
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": { "type": "string" }
+                                },
                                 "recommended_company_names": {
                                   "maxItems": 6,
                                   "type": "array",
@@ -31340,6 +31510,11 @@
                             {
                               "type": "object",
                               "properties": {
+                                "regional_districts": {
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": { "type": "string" }
+                                },
                                 "recommended_company_names": {
                                   "maxItems": 6,
                                   "type": "array",
@@ -31822,6 +31997,11 @@
                             {
                               "type": "object",
                               "properties": {
+                                "regional_districts": {
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": { "type": "string" }
+                                },
                                 "recommended_company_names": {
                                   "maxItems": 6,
                                   "type": "array",
@@ -32187,6 +32367,7 @@
                     "data": {
                       "type": "object",
                       "properties": {
+                        "regional_mode_enabled": { "default": false, "type": "boolean" },
                         "account_id": {
                           "type": "string",
                           "format": "uuid",
@@ -32406,6 +32587,7 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "regional_mode_enabled": { "type": "boolean" },
                   "default_style": {
                     "type": "string",
                     "enum": ["standard", "company_recommendation"]
@@ -32477,6 +32659,7 @@
                     "data": {
                       "type": "object",
                       "properties": {
+                        "regional_mode_enabled": { "default": false, "type": "boolean" },
                         "account_id": {
                           "type": "string",
                           "format": "uuid",
@@ -34556,6 +34739,11 @@
                               {
                                 "type": "object",
                                 "properties": {
+                                  "regional_districts": {
+                                    "maxItems": 10,
+                                    "type": "array",
+                                    "items": { "type": "string" }
+                                  },
                                   "recommended_company_names": {
                                     "maxItems": 6,
                                     "type": "array",
@@ -34903,6 +35091,11 @@
                             {
                               "type": "object",
                               "properties": {
+                                "regional_districts": {
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": { "type": "string" }
+                                },
                                 "recommended_company_names": {
                                   "maxItems": 6,
                                   "type": "array",
@@ -35254,6 +35447,11 @@
                             {
                               "type": "object",
                               "properties": {
+                                "regional_districts": {
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": { "type": "string" }
+                                },
                                 "recommended_company_names": {
                                   "maxItems": 6,
                                   "type": "array",
@@ -35609,6 +35807,11 @@
                             {
                               "type": "object",
                               "properties": {
+                                "regional_districts": {
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": { "type": "string" }
+                                },
                                 "recommended_company_names": {
                                   "maxItems": 6,
                                   "type": "array",

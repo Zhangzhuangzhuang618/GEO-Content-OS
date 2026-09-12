@@ -14,6 +14,12 @@ import type { OfficialSiteAutomationConfig } from './config.js';
 import type { DailyCitation, DailyCitationPort } from './daily-citation-retriever.js';
 import { loadEnterpriseEvidenceBundle } from './enterprise-evidence.js';
 import type { JsonObject } from './generation.types.js';
+import {
+  nextRegionalSlot,
+  regionalInstructions,
+  regionalKeyword,
+  supportsGuangzhouTopic,
+} from './regional-daily-plan.js';
 
 const DAILY_TARGET = 10;
 const MAX_ACTIVE_CANDIDATES = 3;
@@ -105,6 +111,7 @@ interface CandidateSeed {
     readonly id: string;
     readonly intent: 'commercial' | 'informational' | 'navigational' | 'transactional';
     readonly serviceType: string | null;
+    readonly region: string | null;
     readonly term: string;
   }[];
   readonly rule: {
@@ -346,7 +353,9 @@ async function lockBatch(
       batch.status, batch.version,batch.editorial_policy_snapshot_json AS "editorialContext",
       policy.workspace_id AS "workspaceId", policy.project_id AS "projectId",
       policy.account_id AS "accountId", policy.created_by AS "createdBy",
-      policy.daily_target_count AS "targetCount",
+      COALESCE((SELECT cardinality(plan.districts) FROM regional_daily_plans plan
+        WHERE plan.id=batch.regional_plan_id AND plan.tenant_id=batch.tenant_id),
+        policy.daily_target_count) AS "targetCount",
       policy.daily_candidate_limit AS "candidateLimit",
       policy.daily_schedule_times::text[] AS "scheduleTimes"
     FROM official_site_daily_batches AS batch
@@ -527,11 +536,13 @@ async function loadCandidateSeed(
         id: string;
         intent: CandidateSeed['keywords'][number]['intent'];
         serviceType: string | null;
+        region: string | null;
         term: string;
       }[]
     >`
       SELECT keyword.id,keyword.intent,keyword.term::text AS term,
-        NULLIF(btrim(keyword.import_metadata_json->>'service_type'),'') AS "serviceType"
+        NULLIF(btrim(keyword.import_metadata_json->>'service_type'),'') AS "serviceType",
+        NULLIF(btrim(keyword.import_metadata_json->>'region'),'') AS region
       FROM keywords AS keyword
       JOIN keyword_sets AS set
         ON set.id=keyword.keyword_set_id AND set.tenant_id=keyword.tenant_id
@@ -660,10 +671,27 @@ async function createCandidate(
   config: OfficialSiteAutomationConfig,
   dailyCitations: DailyCitationPort,
 ): Promise<void> {
-  const keyword = seed.keywords[(candidateNo - 1) % seed.keywords.length]!;
+  const regional = await nextRegionalSlot(transaction, batch, 'official_site');
+  const eligibleKeywords = regional
+    ? seed.keywords.filter((keyword) => supportsGuangzhouTopic(keyword.term, keyword.region))
+    : seed.keywords;
+  if (!eligibleKeywords.length)
+    throw prerequisite(
+      'OFFICIAL_KEYWORD_REQUIRED',
+      '区域模式缺少适用于广州的关键词，未改写外市关键词',
+    );
+  const originalKeyword = eligibleKeywords[(candidateNo - 1) % eligibleKeywords.length]!;
+  const keyword = regional
+    ? { ...originalKeyword, term: regionalKeyword(originalKeyword.term, regional.district) }
+    : originalKeyword;
   let editorial;
   try {
     editorial = await dailyEditorialContext(transaction, batch, 'official_site');
+    if (regional && editorial.context)
+      editorial.context = {
+        ...editorial.context,
+        target_district: regional.district as NonNullable<typeof editorial.context.target_district>,
+      };
   } catch (error) {
     throw prerequisite(
       'PARSED_KNOWLEDGE_REQUIRED',
@@ -715,6 +743,7 @@ async function createCandidate(
         }
       : {}),
     additional_instructions: [
+      regionalInstructions(regional, keyword.term),
       `这是 ${batch.businessDate} 官网每日内容批次的第 ${candidateNo} 个候选。`,
       `本篇必须围绕“${keyword.term}”的“${angle.label}”展开，与同日其他文章保持不同角度。`,
       '优先使用企业第一方资料；涉及外部事实时必须使用所提供证据。',
@@ -861,10 +890,10 @@ async function createCandidate(
   const variantRunId = requiredId(variantRuns[0]?.id, 'Daily variant run insert failed');
   await transaction`
     INSERT INTO official_site_daily_batch_items (
-      tenant_id,batch_id,candidate_no,angle_key,title,brief_id,package_id,variant_id,status
+      tenant_id,batch_id,candidate_no,angle_key,title,brief_id,package_id,variant_id,status,regional_slot
     ) VALUES (
       ${batch.tenantId}::uuid,${batch.id}::uuid,${candidateNo},${angle.key},${title},
-      ${briefId}::uuid,${packageId}::uuid,${variantId}::uuid,'generating'
+      ${briefId}::uuid,${packageId}::uuid,${variantId}::uuid,'generating',${regional?.slot ?? null}
     )
   `;
   const event = DomainEventEnvelopeSchema.parse({

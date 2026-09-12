@@ -428,6 +428,13 @@
       "when": 1788931200000,
       "tag": "0060_account_editorial_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1789171200000,
+      "tag": "0061_regional_daily_mode",
+      "breakpoints": true
     }
   ]
 }
