@@ -425,11 +425,13 @@ export class DouyinBrowserService {
         storageStateJson,
       } as const;
       const beforeSubmit = async (png: Uint8Array) => {
+        // Persist evidence before setting the submission marker: neither failure
+        // permits clicking Publish, and storage failure must remain retryable.
+        await this.saveArtifact(publication, 'pre_submit', png);
         publication = await this.store.updatePublication(publication, {
           status: 'submitting',
           submittedAt: new Date(),
         });
-        await this.saveArtifact(publication, 'pre_submit', png);
       };
       let remote;
       try {
@@ -656,6 +658,15 @@ export class DouyinBrowserService {
     publication: PublicationClaim,
     error: PageDriverOperationError,
   ): Promise<BrowserGatewayError> {
+    if (error.stage === 'persist_pre_submit' && publication.status === 'prepared') {
+      return new BrowserGatewayError(
+        503,
+        'PRE_SUBMIT_PERSIST_FAILED',
+        'Douyin pre-submit persistence failed; no submit click was attempted',
+        error.stage,
+        error,
+      );
+    }
     await this.store.markSession(session, {
       error: {
         code: 'EDITOR_OPERATION_FAILED',
@@ -1130,7 +1141,9 @@ function shouldRecheckPersistedAuthentication(session: BrowserSession, error: un
 function isRecoverableRuntimeAttention(session: BrowserSession): boolean {
   return (
     session.status === 'attention_required' &&
-    session.lastError?.['code'] === 'BROWSER_RUNTIME_FAILED' &&
+    (session.lastError?.['code'] === 'BROWSER_RUNTIME_FAILED' ||
+      (session.lastError?.['code'] === 'EDITOR_OPERATION_FAILED' &&
+        session.lastError?.['stage'] === 'persist_pre_submit')) &&
     Boolean(session.storageStateCiphertext && session.storageStateKeyVersion)
   );
 }
@@ -1230,19 +1243,23 @@ function sessionVerificationErrorCode(error: unknown): string {
   return 'BROWSER_RUNTIME_FAILED';
 }
 
-export function safeBrowserError(error: unknown): string {
+export function safeBrowserError(error: unknown, depth = 0): string {
   const candidate = error as {
     readonly code?: unknown;
     readonly message?: unknown;
     readonly name?: unknown;
     readonly stage?: unknown;
+    readonly cause?: unknown;
   };
   const name = typeof candidate?.name === 'string' ? candidate.name : 'Error';
   const message =
     typeof candidate?.message === 'string' ? candidate.message : String(error ?? 'Unknown error');
   const code = typeof candidate?.code === 'string' ? ` (code=${candidate.code})` : '';
   const stage = typeof candidate?.stage === 'string' ? ` stage=${candidate.stage};` : '';
-  return `${name}:${stage} ${redact(message)}${code}`.slice(0, 2_000);
+  const cause = depth < 3 && candidate?.cause !== undefined
+    ? `; caused by ${safeBrowserError(candidate.cause, depth + 1)}`
+    : '';
+  return redact(`${name}:${stage} ${message}${code}${cause}`).slice(0, 2_000);
 }
 
 function redact(value: string): string {

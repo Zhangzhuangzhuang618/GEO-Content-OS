@@ -7,8 +7,8 @@ import type { CredentialEnvelopeService } from '@geo-content-os/security/credent
 import { describe, expect, it, vi } from 'vitest';
 
 import type { DouyinBrowserConfig } from './config.js';
-import { PageDriverError } from './page-driver.js';
-import { DouyinBrowserService } from './service.js';
+import { PageDriverError, PageDriverOperationError } from './page-driver.js';
+import { BrowserGatewayError, DouyinBrowserService, safeBrowserError } from './service.js';
 import type { PostgresDouyinBrowserStore, PublicationRow } from './store.js';
 import type {
   BrowserSession,
@@ -29,6 +29,19 @@ const IMAGE_IDS = Array.from(
 );
 
 describe('Douyin browser service', () => {
+  it('logs bounded nested storage causes without credentials', () => {
+    const root = Object.assign(new Error('disk full token=private-token Bearer private-bearer'), { code: 'ENOSPC' });
+    const error = new BrowserGatewayError(503, 'PRE_SUBMIT_PERSIST_FAILED', 'Persistence failed', 'persist_pre_submit',
+      new PageDriverOperationError('persist_pre_submit', root));
+    const result = safeBrowserError(error);
+    expect(result).toContain('ENOSPC');
+    expect(result).toContain('disk full');
+    expect(result).not.toContain('private-token');
+    expect(result).not.toContain('private-bearer');
+    const cyclic = new Error('cycle');
+    cyclic.cause = cyclic;
+    expect(safeBrowserError(cyclic).length).toBeLessThanOrEqual(2000);
+  });
   it('rejects legacy script packages before opening the browser', async () => {
     const service = new DouyinBrowserService(
       config(),
@@ -90,7 +103,7 @@ describe('Douyin browser service', () => {
     ).rejects.toMatchObject({ code: 'SCHEMA_INVALID', statusCode: 400 });
   });
 
-  it('uploads frozen images in payload order and records pre-submit evidence', async () => {
+  it.each(['success', 'storage', 'database'] as const)('persists evidence before submission: %s', async (failure) => {
     const payload = imageNotePayload();
     const session = browserSession();
     const prepared = publication('prepared', 1);
@@ -130,7 +143,11 @@ describe('Douyin browser service', () => {
     const refreshedStorageState = '{"cookies":[{"name":"sid","value":"refreshed"}]}';
     const finalStorageState = '{"cookies":[{"name":"sid","value":"after-submit"}]}';
     const submit = vi.fn(async (input, beforeSubmit: (png: Uint8Array) => Promise<void>) => {
-      await beforeSubmit(Buffer.from('pre-submit'));
+      try {
+        await beforeSubmit(Buffer.from('pre-submit'));
+      } catch (error) {
+        throw new PageDriverOperationError('persist_pre_submit', error);
+      }
       expect(input.images.map((image: { assetId: string }) => image.assetId)).toEqual(IMAGE_IDS);
       expect(input.storageStateJson).toBe(refreshedStorageState);
       return {
@@ -177,6 +194,22 @@ describe('Douyin browser service', () => {
       } as unknown as CredentialEnvelopeService,
       storage,
     );
+
+    if (failure !== 'success') {
+      const cause = Object.assign(new Error('storage temporarily unavailable'), { code: 'ENOSPC' });
+      if (failure === 'storage') vi.mocked(storage.putObject).mockRejectedValueOnce(cause);
+      else vi.mocked(store.insertArtifact).mockRejectedValueOnce(cause);
+      await expect(service.publish(ACCOUNT_ID, {
+        content_version_id: CONTENT_VERSION_ID,
+        idempotency_key: 'douyin:image-note:158',
+        payload,
+        payload_hash: hashDouyinPayload(payload),
+      })).rejects.toMatchObject({ code: 'PRE_SUBMIT_PERSIST_FAILED', statusCode: 503 });
+      expect(updatePublication).not.toHaveBeenCalled();
+      expect(markSession.mock.calls.every((call) => call[1].status === 'authenticated')).toBe(true);
+      expect(submit).toHaveBeenCalledOnce();
+      return;
+    }
 
     await expect(
       service.publish(ACCOUNT_ID, {
@@ -629,14 +662,17 @@ describe('Douyin browser service', () => {
     warning.mockRestore();
   });
 
-  it('recovers a persisted browser runtime attention state before scheduled publishing', async () => {
+  it.each([
+    { code: 'BROWSER_RUNTIME_FAILED' },
+    { code: 'EDITOR_OPERATION_FAILED', stage: 'persist_pre_submit' },
+  ])('recovers safe persisted attention before scheduled publishing: %j', async (lastError) => {
     const payload = imageNotePayload();
     const body = Buffer.from('card-image');
     const contentHash = createHash('sha256').update(body).digest('hex');
     const attention = Object.freeze({
       ...browserSession(),
       lastError: {
-        code: 'BROWSER_RUNTIME_FAILED',
+        ...lastError,
         schema_version: 'douyin-browser-error@1',
       },
       status: 'attention_required' as const,
@@ -722,10 +758,14 @@ describe('Douyin browser service', () => {
     warning.mockRestore();
   });
 
-  it('keeps a genuine manual challenge blocked before scheduled publishing', async () => {
+  it.each([
+    { code: 'CAPTCHA_REQUIRED' },
+    { code: 'EDITOR_OPERATION_FAILED', stage: 'submit' },
+    { code: 'EDITOR_OPERATION_FAILED', stage: 'verify_pre_submit' },
+  ])('keeps unsafe manual attention blocked: %j', async (lastError) => {
     const attention = Object.freeze({
       ...browserSession(),
-      lastError: { code: 'CAPTCHA_REQUIRED', schema_version: 'douyin-browser-error@1' },
+      lastError: { ...lastError, schema_version: 'douyin-browser-error@1' },
       status: 'attention_required' as const,
     });
     const verifyAuthenticated = vi.fn();
